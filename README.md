@@ -12,6 +12,7 @@ This AI setup focuses on these pillars:
 - Reliability & security: Prioritize stable, dependable, and secure software outcomes.
 - Cost efficiency: Reduce cost by optimizing token usage and keeping workflows to as few steps as possible.
 - Hybrid Review: Combine human insight with AI-assisted review to validate plans early and review code thoroughly for better outcomes.
+- Minimal and reviewable output: Keep plans and changes small, clear, and scoped so humans can review quickly and confidently.
 
 ## Agent & Framework
 
