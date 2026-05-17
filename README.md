@@ -16,14 +16,14 @@ This AI setup focuses on these pillars:
 
 Use multiple AI agents for different purposes.
 
-- LangGraph: The multi agent orchestration framework for building controllable agents.
+- Paperclip: The multi agent orchestration framework for building controllable agents.
 - pi: The main AI agent for background tasks and multi-agent workflows.
 
 ## Large language models (LLM)
 
-Only use monthly subscription models to avoid high costs from pay-per-use pricing.
+Only use local LLM and monthly subscription models to avoid high costs from pay-per-use pricing.
 
-- Gemini (Google One)
+- VLLM (OpenAI Compatible)
 - Github Copilot
 
 ## Programming Languages
@@ -47,11 +47,12 @@ Ripgrep recursively searches directories for a regex pattern while respecting yo
 
 ## Project Management
 
+- Paperclip Issues: Built-in paperclip Issues and Projects.
 - GitHub Projects and Issues: Use GitHub Issues and Projects.
 
-## LangGraph.js Multi-Agent Starter
+## Paperclip Multi-Agent Starter
 
-This repository now includes a TypeScript LangGraph.js agent implementation that follows the core principles above.
+This repository now includes a TypeScript Paperclip-style agent implementation that follows the core principles above.
 
 ### Workflow
 
@@ -59,46 +60,3 @@ This repository now includes a TypeScript LangGraph.js agent implementation that
 - Specialist agents in parallel: researcher, developer, tester, designer.
 - Synthesis agent: combines outputs into a single recommendation.
 - Hybrid review gate: output is prepared for human review before execution.
-
-### Files
-
-- `src/principles.ts`: central principle definitions and base behavior prompt.
-- `src/agent.ts`: LangGraph state, nodes, routing, and `runZeroFactory` runner.
-- `src/index.ts`: CLI entrypoint.
-
-### Setup
-
-```bash
-npm install
-cp .env.example .env
-```
-
-Authenticate `pi` on your machine before running.
-
-Per-agent Pi settings are now loaded from role-specific files:
-
-- `src/agents/manager/settings.json`
-- `src/agents/researcher/settings.json`
-- `src/agents/developer/settings.json`
-- `src/agents/tester/settings.json`
-- `src/agents/designer/settings.json`
-- `src/agents/synthesis/settings.json`
-
-Each `settings.json` supports Pi's documented settings keys such as:
-
-- `defaultModel`: primary model for that agent
-- `enabledModels`: model list available for cycling
-
-At runtime, each graph node is executed with its own config by setting `PI_CODING_AGENT_DIR` to that role's directory before calling `pi run`.
-
-### Run
-
-```bash
-npm run dev -- "Design a TypeScript CLI architecture for issue triage"
-```
-
-### Build
-
-```bash
-npm run build
-```
