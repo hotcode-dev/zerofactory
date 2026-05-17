@@ -1,11 +1,12 @@
 # Zero Factory
 
-An AI multi-agent workflow setup that works in parallel. Include manager, researcher, developer, tester, designer, etc., agents.
+A 24/7 AI multi-agent orchestration setup that works in parallel. Include manager, researcher, developer, tester, designer, etc., agents.
 
 ## Core Principles
 
 This AI setup focuses on these pillars:
 
+- 24/7 agile non-stop development cycle: Operate in continuous short iterations with frequent reprioritization, quick feedback, rolling handoffs, parallel execution, automated checks, and immediate follow-up on blockers.
 - Productivity & automation: Build efficient multi-agent workflows and automate routine, low-priority tasks.
 - Quality & performance: Deliver high-quality, maintainable code, high performance.
 - Reliability & security: Prioritize stable, dependable, and secure software outcomes.
@@ -23,8 +24,9 @@ Use multiple AI agents for different purposes.
 
 Only use local LLM and monthly subscription models to avoid high costs from pay-per-use pricing.
 
-- VLLM (OpenAI Compatible)
+- VLLM (OpenAI Compatible) [Qwen3.6-27B-AEON](https://github.com/AEON-7/Qwen3.6-27B-AEON-Ultimate-Uncensored-DFlash)
 - Github Copilot
+- Gemini (Google One)
 
 ## Programming Languages
 
@@ -37,26 +39,7 @@ The AI will only generate code in these languages because I am most familiar wit
 
 These are CLI and MCP tools we can install to help AI agents take actions, access resources, and maintain context.
 
-### GitHub CLI (gh)
-
-GitHub CLI helps manage GitHub issues, pull requests, and projects. It also enables AI agents to check pull requests and submit reviews.
-
-### Ripgrep (rg)
-
-Ripgrep recursively searches directories for a regex pattern while respecting your gitignore
-
 ## Project Management
 
 - Paperclip Issues: Built-in paperclip Issues and Projects.
 - GitHub Projects and Issues: Use GitHub Issues and Projects.
-
-## Paperclip Multi-Agent Starter
-
-This repository now includes a TypeScript Paperclip-style agent implementation that follows the core principles above.
-
-### Workflow
-
-- Manager agent: creates a compact plan.
-- Specialist agents in parallel: researcher, developer, tester, designer.
-- Synthesis agent: combines outputs into a single recommendation.
-- Hybrid review gate: output is prepared for human review before execution.
