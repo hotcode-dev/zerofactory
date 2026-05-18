@@ -19,7 +19,7 @@ This AI setup focuses on these pillars:
 Use multiple AI agents for different purposes.
 
 - Paperclip: The multi agent orchestration framework for building controllable agents.
-- pi: The main AI agent for background tasks and multi-agent workflows.
+- [Hermes Agent](https://hermes-agent.nousresearch.com/): The main AI agent for background tasks and multi-agent workflows.
 
 ## Large language models (LLM)
 
