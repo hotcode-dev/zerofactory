@@ -1,0 +1,23 @@
+[Unit]
+Description=Hermes
+After=network.target
+
+[Service]
+Type=simple
+User=ntsd
+Group=ntsd
+WorkingDirectory=/home/ntsd/git/hermes-workspace
+EnvironmentFile=/home/ntsd/hermes-workspace.env
+
+# 1. Add this Environment line to explicitly inject the NVM path into systemd
+# Environment="PATH=/home/ntsd/.nvm/versions/node/v26.1.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+ExecStart=/home/ntsd/.nvm/versions/node/v26.1.0/bin/npm start
+Restart=on-failure
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+
+
+[Install]
+WantedBy=multi-user.target
