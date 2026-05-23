@@ -1,6 +1,6 @@
 # Zero Factory
 
-A 24/7 AI multi-agent orchestration setup that works in parallel. Include manager, researcher, developer, tester, designer, etc., agents.
+A 24/7 AI multi-agent orchestration setup that works in parallel. Include project manager, researcher, coder, tester, designer, reviewer, etc., agents.
 
 ## Core Principles
 
@@ -14,33 +14,54 @@ This AI setup focuses on these pillars:
 - Hybrid Review: Combine human insight with AI-assisted review to validate plans early and review code thoroughly for better outcomes.
 - Minimal and reviewable output: Keep plans and changes small, clear, and scoped so humans can review quickly and confidently.
 
-## Agent & Framework
+## AI Agent & Workspace
 
-Use multiple AI agents for different purposes.
+- [Hermes Agent](https://hermes-agent.nousresearch.com/): Primary orchestrator for long-running background tasks and coordination across specialist agents.
+- [Hermes Workspace](https://github.com/outsourc-e/hermes-workspace): Native web workspace for Hermes Agent — chat, terminal, memory, skills, inspector.
 
-- Paperclip: The multi agent orchestration framework for building controllable agents.
-- [Hermes Agent](https://hermes-agent.nousresearch.com/): The main AI agent for background tasks and multi-agent workflows.
+## Project Structure
+
+```
+zerofactory/
+├── Makefile
+├── README.md
+├── hermes/
+│   ├── config.yaml
+│   └── profiles/
+│       └── profile/
+│           ├── config.yaml
+│           └── SOUL.md
+└── vllm/
+    └── qwen3.6-35b-a3b/
+        └── docker-compose.yml
+```
 
 ## Large language models (LLM)
 
 Only use local LLM and monthly subscription models to avoid high costs from pay-per-use pricing.
 
 - VLLM (OpenAI Compatible) [Qwen3.6-27B-AEON](https://github.com/AEON-7/Qwen3.6-27B-AEON-Ultimate-Uncensored-DFlash)
-- Github Copilot
-- Gemini (Google One)
+- Github Copilot, Gemini (Google One), etc.
+
+### Model setup
+
+- Use OpenAI Responses API: instead of Chat Completions use the new Responses API.
+- Always use 0 temperature: Always be logical, This is for the fastest agent response and no feeling need.
+- Maximum concurrency: Control the maximum concurrency of the model and agent call to prevent out-of-memory error or GPU deadlock based on the hardware limit, also to prevent timeout error when the task is on the queue.
 
 ## Programming Languages
 
-The AI will only generate code in these languages because I am most familiar with them, which helps me review the code more effectively.
+The AI will only generate code in these languages, which helps me review the code more effectively.
 
 - TypeScript: For frontend development (web, mobile, desktop), CLI tools, and Bun backend servers.
 - Go: For high-performance, concurrent backend servers and CLI tools.
 
 ## Tools
 
-These are CLI and MCP tools we can install to help AI agents take actions, access resources, and maintain context.
+CLI and MCP tools we can install to help AI agents take actions, access resources, and maintain context.
+Agent will only access the tools and skill that it need for the role.
 
 ## Project Management
 
-- Paperclip Issues: Built-in paperclip Issues and Projects.
+- Hermes Workspace Built-in: use Hermes Workspace built-in Kanban board.
 - GitHub Projects and Issues: Use GitHub Issues and Projects.
