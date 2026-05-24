@@ -1,10 +1,20 @@
 # Systemd
 
-To make all the agent service always run 24/7 and automated start we need systemd setup on Linux.
+To make all the agent service always run 24/7 on a Linux machine and automated start we need systemd setup.
 
 ## Installation
 
-1. Link systemd file to /etc/systemd/system
+1. Generate local `.service` files from template
+
+```sh
+env USER="$USER" HOME="$HOME" envsubst < "$(pwd)/hermes-gateway.service.template" > "$(pwd)/hermes-gateway.service"
+env USER="$USER" HOME="$HOME" envsubst < "$(pwd)/hermes-dashboard.service.template" > "$(pwd)/hermes-dashboard.service"
+env USER="$USER" HOME="$HOME" envsubst < "$(pwd)/hermes-workspace.service.template" > "$(pwd)/hermes-workspace.service"
+```
+
+The templates use `${USER}` for `User` and `Group`, and `${HOME}` for paths.
+
+2. Link systemd file to /etc/systemd/system
 
 ```sh
 sudo ln -sf "$(pwd)/hermes-gateway.service" /etc/systemd/system/hermes-gateway.service
@@ -12,7 +22,7 @@ sudo ln -sf "$(pwd)/hermes-dashboard.service" /etc/systemd/system/hermes-dashboa
 sudo ln -sf "$(pwd)/hermes-workspace.service" /etc/systemd/system/hermes-workspace.service
 ```
 
-2. Create env file for additional environments
+3. Create env file for additional environments
 
 ```sh
 touch ~/hermes-gateway.env
@@ -23,6 +33,8 @@ touch ~/hermes-workspace.env
 then put the requires env there for each service.
 
 Tip: you can also set `PATH` inside the env to allow access the binary files or cli tools.
+
+For `hermes-workspace.service`, `ExecStart` now uses `npm dev` from `PATH` instead of a fixed Node/NPM absolute path.
 
 Example hermes-gateway.env
 
@@ -46,7 +58,7 @@ HERMES_API_URL=http://127.0.0.1:8642
 HERMES_API_TOKEN=
 ```
 
-3. Start systemd by systemctl
+4. Start systemd by systemctl
 
 ```sh
 sudo systemctl daemon-reload
@@ -56,7 +68,7 @@ sudo systemctl enable --now hermes-dashboard
 sudo systemctl enable --now hermes-workspace
 ```
 
-4. Check status and the journalctl log
+5. Check status and the journalctl log
 
 ```sh
 sudo systemctl status hermes-gateway
@@ -68,7 +80,7 @@ sudo journalctl -u hermes-dashboard -f
 sudo journalctl -u hermes-workspace -f
 ```
 
-5. To disable systemd service
+6. To disable systemd service
 
 by disable systemd the service will not automatic start anymore
 

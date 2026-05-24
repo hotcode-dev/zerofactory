@@ -1,0 +1,22 @@
+[Unit]
+Description=Hermes
+After=network.target
+
+[Service]
+Type=simple
+User=${USER}
+Group=${USER}
+WorkingDirectory=${HOME}
+
+Environment="PATH=${HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=-${HOME}/hermes-gateway.env
+
+ExecStart=/usr/bin/env hermes gateway run
+Restart=on-failure
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+
+
+[Install]
+WantedBy=multi-user.target
