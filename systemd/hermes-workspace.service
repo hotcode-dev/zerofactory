@@ -6,13 +6,13 @@ After=network.target
 Type=simple
 User=ntsd
 Group=ntsd
-WorkingDirectory=/home/ntsd/git/hermes-workspace
-EnvironmentFile=/home/ntsd/hermes-workspace.env
+WorkingDirectory=/home/ntsd/hermes-workspace
 
-# 1. Add this Environment line to explicitly inject the NVM path into systemd
-# Environment="PATH=/home/ntsd/.nvm/versions/node/v26.1.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/home/ntsd/.nvm/versions/node/v26.1.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=-/home/ntsd/hermes-workspace.env
 
-ExecStart=/home/ntsd/.nvm/versions/node/v26.1.0/bin/npm start
+# use dev instead of start for the webui update
+ExecStart=/home/ntsd/.nvm/versions/node/v26.1.0/bin/npm dev
 Restart=on-failure
 RestartSec=60
 StandardOutput=journal

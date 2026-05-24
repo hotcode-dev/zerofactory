@@ -7,10 +7,9 @@ Type=simple
 User=ntsd
 Group=ntsd
 WorkingDirectory=/home/ntsd
-EnvironmentFile=/home/ntsd/hermes-dashboard.env
 
-# 1. Add this Environment line to explicitly inject the NVM path into systemd
-# Environment="PATH=/home/ntsd/.nvm/versions/node/v26.1.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/home/ntsd/.nvm/versions/node/v26.1.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=-/home/ntsd/hermes-dashboard.env
 
 ExecStart=/home/ntsd/.local/bin/hermes dashboard --host 0.0.0.0 --port 9119 --insecure --no-open
 Restart=on-failure
