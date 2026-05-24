@@ -34,7 +34,7 @@ then put the requires env there for each service.
 
 Tip: you can also set `PATH` inside the env to allow access the binary files or cli tools.
 
-For `hermes-workspace.service`, `ExecStart` now uses `npm dev` from `PATH` instead of a fixed Node/NPM absolute path.
+All services now load `~/.bashrc` in `ExecStart` before running their command. For workspace service, if `npm` is not found after loading `.bashrc`, it falls back to `~/.nvm/nvm.sh`.
 
 Example hermes-gateway.env
 

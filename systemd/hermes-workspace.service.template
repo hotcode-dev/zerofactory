@@ -11,8 +11,8 @@ WorkingDirectory=${HOME}/hermes-workspace
 Environment="PATH=${HOME}/.local/bin:${HOME}/.nvm/versions/node/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EnvironmentFile=-${HOME}/hermes-workspace.env
 
-# use dev instead of start for the webui update
-ExecStart=/usr/bin/env npm dev
+# find the actual path and use `npm run dev` instead of start for the webui update
+ExecStart=/bin/bash -lc 'source "${HOME}/.bashrc" 2>/dev/null || true; if ! command -v npm >/dev/null 2>&1; then source "${HOME}/.nvm/nvm.sh" 2>/dev/null || true; fi; if ! command -v npm >/dev/null 2>&1; then echo "npm not found after loading .bashrc and .nvm/nvm.sh" >&2; exit 127; fi; exec npm run dev'
 Restart=on-failure
 RestartSec=60
 StandardOutput=journal

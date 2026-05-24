@@ -11,7 +11,7 @@ WorkingDirectory=${HOME}
 Environment="PATH=${HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EnvironmentFile=-${HOME}/hermes-dashboard.env
 
-ExecStart=/usr/bin/env hermes dashboard --host 0.0.0.0 --port 9119 --insecure --no-open
+ExecStart=/bin/bash -lc 'source "${HOME}/.bashrc" && hermes dashboard --host 0.0.0.0 --port 9119 --insecure --no-open'
 Restart=on-failure
 RestartSec=60
 StandardOutput=journal
