@@ -7,6 +7,8 @@ toolsets:
 - terminal
 - search_files
 - web
+- skills
+- mcp
 agent:
   max_turns: 60
   gateway_timeout: 1800
