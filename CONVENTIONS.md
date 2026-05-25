@@ -1,0 +1,143 @@
+# Zero Factory — Shared Conventions
+
+All agents reference this file. It is the single source of truth for project conventions. If anything here changes, every agent follows automatically.
+
+---
+
+## General Rules
+
+- Code first, explanation second.
+- Prefer small, focused changes over big bangs.
+- Always run type checks and linters before submitting.
+- Use existing patterns unless justified.
+- No TODOs — leave no unfinished work.
+- Flag breaking changes and migration needs immediately.
+- Don't duplicate information — reference shared files with relative paths.
+
+## Naming Conventions
+
+- **Files**: kebab-case — `feature-name.ts`, `data-model.go`
+- **Classes/Types**: PascalCase — `UserManager`, `PaymentProcessor`
+- **Variables**: camelCase — `userId`, `requestCount`
+- **Constants**: UPPER_SNAKE_CASE — `MAX_RETRIES`, `DEFAULT_TIMEOUT`
+- **Functions**: camelCase with clear verb — `fetchUsers()`, `buildTemplate()`
+- **Interfaces/Protocols**: PascalCase or `I` prefix — `IUserService` or `UserService`
+- **Tests**: match source naming with extension — `user-manager.test.ts`, `handler_test.go`
+- **Directories**: kebab-case — `src/user-manager/`, `internal/payment/`
+
+## TypeScript / Bun Conventions
+
+```
+project/
+├── src/
+│   ├── index.ts
+│   ├── config.ts
+│   └── modules/
+│       └── <feature>/
+│           ├── index.ts          # public API
+│           ├── <feature>.ts      # implementation
+│           └── <feature>.test.ts # tests
+├── tests/
+│   ├── fixtures/
+│   └── helpers/
+├── docs/
+│   └── README.md
+├── Makefile
+├── package.json
+└── README.md
+```
+
+- All public APIs re-exported from `index.ts`
+- Strict TypeScript mode enabled
+- ES modules with `.ts` extension
+- Test files co-located with source when possible, otherwise in `tests/`
+- All dependencies explicitly versioned
+
+## Go Conventions
+
+```
+project/
+├── cmd/
+│   └── <binary>/
+│       └── main.go
+├── internal/
+│   └── <package>/
+│       ├── <package>.go
+│       └── <package>_test.go
+├── pkg/
+│   └── <external-package>/
+│       └── <file>.go
+├── Makefile
+├── go.mod
+└── README.md
+```
+
+- `internal/` for private package code (Go visibility rule)
+- `pkg/` for public package code
+- One public type per file when possible
+- Receiver names: short, 1-2 chars, consistent across package
+- Errors wrapped with context: `fmt.Errorf("failed to X: %w", err)`
+- Test files: `<source>_test.go`
+
+## Test Conventions
+
+- Arrange-Act-Assert structure
+- Table-driven tests for multiple scenarios
+- Mock external dependencies
+- One assertion per test line when possible
+- Test names: `Test<Function>_<scenario>_expected`
+- Coverage threshold: minimum 80%
+
+## Commit Message Convention
+
+```
+<type>(<scope>): <subject>
+
+body (optional)
+
+footer (optional)
+```
+
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
+
+Examples:
+- `feat(auth): add OAuth2 login flow`
+- `fix(user): handle null email in validation`
+- `docs(api): add webhook reference`
+
+## Code Review Criteria
+
+### Must Fix (blocking)
+- Bugs or incorrect logic
+- Security vulnerabilities
+- Missing error handling
+- Race conditions / concurrency issues
+- Breaking API changes without migration
+
+### Should Fix (non-blocking)
+- Performance improvements
+- Missing edge case coverage
+- Code smell / readability issues
+- Inconsistent style
+
+### Optional
+- Minor refactoring
+- Better naming
+- Additional comments
+
+## Documentation Standards
+
+- **README.md**: project overview, setup, usage
+- **docs/api.md**: endpoint reference, parameters, examples
+- **docs/architecture.md**: system design, data flows
+- **docs/changelog.md**: version history, breaking changes
+- Inline comments for non-obvious logic
+- No duplicate docs — link cross-references
+
+## File References
+
+- This file: `CONVENTIONS.md`
+- Agent configs: `hermes/profiles/<agent>/config.yaml`
+- Agent identity: `hermes/profiles/<agent>/SOUL.md`
+- System prompt: `hermes/profiles/<agent>/system_prompt.txt`
+- Project root README: `README.md`
