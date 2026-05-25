@@ -8,6 +8,15 @@
 # This configuration is explicitly tuned for the GB10 (sm_121a) architecture with 128GB unified memory.
 # It includes strict safety ceilings to prevent CUDA deadlocks during heavy multi-agent workflows,
 # utilizing the Multimodal-NVFP4-MTP-XS checkpoint and DFlash speculative decoding.
+#
+# Required downloads (run once):
+#   hf auth login
+#   hf download AEON-7/Qwen3.6-27B-AEON-Ultimate-Uncensored-NVFP4 --local-dir ./models/aeon-ultimate-nvfp4
+#   hf download z-lab/Qwen3.6-27B-DFlash --local-dir ./models/dflash-drafter
+#
+# Start:
+#   docker compose up -d
+#   docker compose logs -f vllm
 
 services:
   vllm:

@@ -1,0 +1,11 @@
+*
+!.gitignore
+!*/
+
+*/**
+!*/SOUL.md
+!*/config.yaml
+!*/skills/
+!*/skills/**
+!*/plugins/
+!*/plugins/**

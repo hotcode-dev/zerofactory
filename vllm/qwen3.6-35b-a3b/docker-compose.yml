@@ -13,6 +13,15 @@
 # Default layout (override with QWEN36_MODELS_DIR=/your/path docker compose up -d):
 #   /opt/qwen36/qwen36-nvfp4/    ← AEON-7/Qwen3.6-35B-A3B-heretic-NVFP4
 #   /opt/qwen36/qwen36-dflash/   ← z-lab/Qwen3.6-35B-A3B-DFlash
+#
+# Required downloads (run once):
+#   hf auth login
+#   hf download AEON-7/Qwen3.6-35B-A3B-heretic-NVFP4 --local-dir ./models/qwen36-nvfp4
+#   hf download z-lab/Qwen3.6-35B-A3B-DFlash --local-dir ./models/qwen36-dflash
+#
+# Start:
+#   docker compose up -d
+#   docker compose logs -f vllm
 
 services:
   vllm:

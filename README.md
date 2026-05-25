@@ -7,12 +7,11 @@ A 24/7 AI multi-agent orchestration setup that works in parallel. Include projec
 This AI setup focuses on these pillars:
 
 - 24/7 agile non-stop development cycle: Operate in continuous short iterations with frequent reprioritization, quick feedback, rolling handoffs, parallel execution, automated checks, and immediate follow-up on blockers.
-- Productivity & automation: Build efficient multi-agent workflows and automate routine, low-priority tasks.
-- Quality & performance: Deliver high-quality, maintainable code, high performance.
-- Reliability & security: Prioritize stable, dependable, and secure software outcomes.
-- Cost efficiency: Reduce cost by optimizing token usage and keeping workflows to as few steps as possible.
+- Productivity & automation: Build efficient multi-agent workflows and automate routine.
+- Quality, performance, reliability & security: Deliver high-quality, maintainable, stable, dependable, secure, and high-performance software outcomes.
+- Cost efficiency: Reduce cost by optimizing token usage and keeping workflows to as few steps as possible, disable all skills/plugins by default then ask human to turn it on or create if need, specific purpose agent only have skills relate to them.
 - Hybrid Review: Combine human insight with AI-assisted review to validate plans early and review code thoroughly for better outcomes.
-- Minimal and reviewable output: Keep plans and changes small, clear, and scoped so humans can review quickly and confidently.
+- Minimalist: Keep everything as small, simple, clean, and usable as possible.
 
 ## AI Agent & Workspace
 

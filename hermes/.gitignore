@@ -1,6 +1,0 @@
-.env
-auth.json
-cron
-memory
-logs
-runtime.json
