@@ -51,11 +51,10 @@ Example hermes-workspace.env
 ```sh
 PORT=3000
 HOST=0.0.0.0
-HERMES_PASSWORD=
 
 HERMES_DASHBOARD_URL=http://127.0.0.1:9119
 HERMES_API_URL=http://127.0.0.1:8642
-HERMES_API_TOKEN=
+HERMES_PASSWORD=
 ```
 
 4. Start systemd by systemctl
