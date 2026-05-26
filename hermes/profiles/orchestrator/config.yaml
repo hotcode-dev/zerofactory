@@ -1,6 +1,16 @@
-model: qwen36-fast
+# Model and provider configuration.
+model:
+  default: qwen36-fast
+  provider: custom
+custom_providers:
+- name: Spark.ntsd.dev:8000
+  base_url: http://spark.ntsd.dev:8000/v1
+  model: qwen36-fast
 providers: {}
+default:
+  temperature: 0
 fallback_providers: []
+
 credential_pool_strategies: {}
 toolsets:
 - kanban

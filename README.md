@@ -12,7 +12,6 @@ This AI setup focuses on these pillars:
 - **Cost efficiency**: Reduce cost by optimizing token usage and keeping workflows to as few steps as possible. Each agent only has skills related to their specific role.
 - **Hybrid Review**: Combine human insight with AI-assisted review to validate plans early and review code thoroughly for better outcomes.
 - **Single source of truth**: One canonical location for shared info. Link, don't copy — edit one, update all.
-
 - **Minimalist**: Keep everything as small, simple, clean, and usable as possible.
 
 ## The Team
