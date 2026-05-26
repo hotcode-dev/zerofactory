@@ -1,25 +1,346 @@
-# Model and provider configuration.
+_config_version: 24
 model:
   default: qwen36-fast
   provider: custom
 custom_providers:
-- name: Spark.ntsd.dev:8000
-  base_url: http://spark.ntsd.dev:8000/v1
-  model: qwen36-fast
+  - name: Spark.ntsd.dev:8000
+    base_url: http://spark.ntsd.dev:8000/v1
+    model: qwen36-fast
 providers: {}
 default:
   temperature: 0
 fallback_providers: []
-
 credential_pool_strategies: {}
+checkpoints:
+  enabled: false
+  max_snapshots: 20
+  max_total_size_mb: 500
+  max_file_size_mb: 10
+  auto_prune: true
+  retention_days: 7
+approvals:
+  cron_mode: deny
+  destructive_slash_confirm: true
+  mcp_reload_confirm: true
+  mode: manual
+  timeout: 60
+auxiliary:
+  approval:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 30
+  compression:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 120
+  curator:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 600
+  kanban_decomposer:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 180
+  mcp:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 30
+  profile_describer:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 60
+  skills_hub:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 30
+  title_generation:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 30
+  triage_specifier:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 120
+  vision:
+    api_key: ''
+    base_url: ''
+    download_timeout: 30
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 120
+  web_extract:
+    api_key: ''
+    base_url: ''
+    extra_body: {}
+    model: ''
+    provider: auto
+    timeout: 360
+bedrock:
+  discovery:
+    enabled: true
+    provider_filter: []
+    refresh_interval: 3600
+  region: ''
+browser:
+  allow_private_urls: false
+  auto_local_for_private_urls: true
+  cdp_url: ''
+  command_timeout: 30
+  dialog_policy: must_respond
+  engine: auto
+  inactivity_timeout: 120
+  record_sessions: false
+code_execution:
+  max_tool_calls: 50
+  mode: project
+  timeout: 300
+command_allowlist: []
+compression:
+  enabled: true
+  hygiene_hard_message_limit: 400
+  protect_first_n: 3
+  protect_last_n: 20
+  target_ratio: 0.2
+  threshold: 0.5
+context:
+  engine: compressor
+cron:
+  max_parallel_jobs: null
+  wrap_response: true
+curator:
+  archive_after_days: 90
+  backup:
+    enabled: true
+    keep: 5
+  enabled: true
+  interval_hours: 168
+  min_idle_hours: 2
+  stale_after_days: 30
+dashboard:
+  show_token_analytics: false
+  theme: default
+delegation:
+  api_key: ''
+  api_mode: ''
+  base_url: ''
+  child_timeout_seconds: 600
+  inherit_mcp_toolsets: true
+  max_concurrent_children: 3
+  max_iterations: 50
+  max_spawn_depth: 1
+  model: ''
+  orchestrator_enabled: true
+  provider: ''
+  reasoning_effort: ''
+  subagent_auto_approve: false
+discord:
+  allowed_channels: ''
+  auto_thread: true
+  channel_prompts: {}
+  free_response_channels: ''
+  history_backfill: true
+  history_backfill_limit: 50
+  reactions: true
+  require_mention: true
+  thread_require_mention: false
+display:
+  background_process_notifications: all
+  bell_on_complete: false
+  busy_input_mode: interrupt
+  cleanup_progress: false
+  compact: false
+  copy_shortcut: auto
+  ephemeral_system_ttl: 0
+  file_mutation_verifier: true
+  final_response_markdown: strip
+  inline_diffs: true
+  interim_assistant_messages: true
+  language: en
+  persistent_output: true
+  persistent_output_max_lines: 200
+  personality: technical
+  platforms: {}
+  resume_display: full
+  runtime_footer:
+    enabled: false
+    fields:
+      - model
+      - context_pct
+      - cwd
+  show_cost: false
+  show_reasoning: false
+  skin: default
+  streaming: true
+  timestamps: false
+  tool_preview_length: 0
+  tool_progress: all
+  tool_progress_command: false
+  tool_progress_overrides: {}
+  tui_auto_resume_recent: false
+  tui_status_indicator: kaomoji
+  user_message_preview:
+    first_lines: 2
+    last_lines: 2
+file_read_max_chars: 100000
+goals:
+  max_turns: 20
+honcho: {}
+hooks: {}
+hooks_auto_accept: false
+human_delay:
+  max_ms: 2500
+  min_ms: 800
+  mode: 'off'
+kanban:
+  auto_decompose: true
+  auto_decompose_per_tick: 3
+  default_assignee: ''
+  dispatch_in_gateway: true
+  dispatch_interval_seconds: 60
+  dispatch_stale_timeout_seconds: 14400
+  failure_limit: 2
+  orchestrator_profile: ''
+  worker_log_backup_count: 1
+  worker_log_rotate_bytes: 2097152
+logging:
+  backup_count: 3
+  level: INFO
+  max_size_mb: 5
+matrix:
+  allowed_rooms: ''
+  free_response_rooms: ''
+  require_mention: true
+mattermost:
+  allowed_channels: ''
+  channel_prompts: {}
+  free_response_channels: ''
+  require_mention: true
+memory:
+  memory_char_limit: 2200
+  memory_enabled: true
+  provider: ''
+  user_char_limit: 1375
+  user_profile_enabled: true
+openrouter:
+  response_cache: true
+  response_cache_ttl: 300
+paste_collapse_threshold: 5
+paste_collapse_threshold_fallback: 0
+personalities: {}
+prefill_messages_file: ''
+privacy:
+  redact_pii: false
+prompt_caching:
+  cache_ttl: 5m
+provider: ''
+quick_commands: {}
+security:
+  acked_advisories: []
+  allow_lazy_installs: true
+  allow_private_urls: false
+  redact_secrets: true
+  tirith_enabled: true
+  tirith_fail_open: true
+  tirith_path: tirith
+  tirith_timeout: 5
+  website_blocklist:
+    domains: []
+    enabled: false
+    shared_files: []
+slack:
+  allowed_channels: ''
+  channel_prompts: {}
+  free_response_channels: ''
+  require_mention: true
+stt:
+  enabled: true
+  local:
+    language: ''
+    model: base
+  provider: local
+telegram:
+  allowed_chats: ''
+  channel_prompts: {}
+  reactions: false
+terminal:
+  auto_source_bashrc: true
+  backend: local
+  cwd: .
+  docker_image: nikolaik/python-nodejs:python3.11-nodejs20
+  env_passthrough: []
+  lifetime_seconds: 300
+  modal_mode: auto
+  persistent_shell: true
+  shell_init_files: []
+  timeout: 180
+timezone: ''
+tool_loop_guardrails:
+  hard_stop_after:
+    exact_failure: 5
+    idempotent_no_progress: 5
+    same_tool_failure: 8
+  hard_stop_enabled: false
+  warn_after:
+    exact_failure: 2
+    idempotent_no_progress: 2
+    same_tool_failure: 3
+  warnings_enabled: true
+tool_output:
+  max_bytes: 50000
+  max_line_length: 2000
+  max_lines: 2000
+tts:
+  edge:
+    voice: en-US-AriaNeural
+  provider: edge
+voice:
+  auto_tts: false
+  beep_enabled: true
+  max_recording_seconds: 120
+  record_key: ctrl+b
+  silence_duration: 3.0
+  silence_threshold: 200
+web:
+  backend: ''
+  extract_backend: ''
+  search_backend: ''
+whatsapp: {}
 toolsets:
-- file
-- terminal
-- search_files
-- web
-- kanban
-- skills
-- mcp
+  - file
+  - terminal
+  - search_files
+  - web
+  - kanban
+  - skills
+  - mcp
 agent:
   max_turns: 90
   gateway_timeout: 1800
@@ -33,371 +354,74 @@ agent:
   gateway_auto_continue_freshness: 3600
   image_input_mode: auto
   disabled_toolsets:
-  - image_gen
-  - tts
-  - discord
-  - slack
-  - telegram
-  - whatsapp
-  - mattermost
-  - matrix
-  - x_search
-  - spotify
-  - homeassistant
-  - cronjob
-  - delegation
+    - image_gen
+    - tts
+    - discord
+    - slack
+    - telegram
+    - whatsapp
+    - mattermost
+    - matrix
+    - x_search
+    - spotify
+    - homeassistant
+    - cronjob
+    - delegation
   verbose: false
   reasoning_effort: medium
   personalities: {}
-terminal:
-  backend: local
-  modal_mode: auto
-  cwd: .
-  timeout: 180
-  env_passthrough: []
-  shell_init_files: []
-  auto_source_bashrc: true
-  docker_image: nikolaik/python-nodejs:python3.11-nodejs20
-  persistent_shell: true
-  lifetime_seconds: 300
-web:
-  backend: ''
-  search_backend: ''
-  extract_backend: ''
-browser:
-  inactivity_timeout: 120
-  command_timeout: 30
-  record_sessions: false
-  allow_private_urls: false
-  engine: auto
-  auto_local_for_private_urls: true
-  cdp_url: ''
-  dialog_policy: must_respond
-checkpoints:
-  enabled: false
-  max_snapshots: 20
-  max_total_size_mb: 500
-  max_file_size_mb: 10
-  auto_prune: true
-  retention_days: 7
-file_read_max_chars: 100000
-tool_output:
-  max_bytes: 50000
-  max_lines: 2000
-  max_line_length: 2000
-tool_loop_guardrails:
-  warnings_enabled: true
-  hard_stop_enabled: false
-  warn_after:
-    exact_failure: 2
-    same_tool_failure: 3
-    idempotent_no_progress: 2
-  hard_stop_after:
-    exact_failure: 5
-    same_tool_failure: 8
-    idempotent_no_progress: 5
-compression:
-  enabled: true
-  threshold: 0.5
-  target_ratio: 0.2
-  protect_last_n: 20
-  hygiene_hard_message_limit: 400
-  protect_first_n: 3
-prompt_caching:
-  cache_ttl: 5m
-openrouter:
-  response_cache: true
-  response_cache_ttl: 300
-bedrock:
-  region: ''
-  discovery:
-    enabled: true
-    provider_filter: []
-    refresh_interval: 3600
-auxiliary:
-  vision:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 120
-    extra_body: {}
-    download_timeout: 30
-  web_extract:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 360
-    extra_body: {}
-  compression:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 120
-    extra_body: {}
-  skills_hub:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-  approval:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-  mcp:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-  title_generation:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 30
-    extra_body: {}
-  triage_specifier:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 120
-    extra_body: {}
-  kanban_decomposer:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 180
-    extra_body: {}
-  profile_describer:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 60
-    extra_body: {}
-  curator:
-    provider: auto
-    model: ''
-    base_url: ''
-    api_key: ''
-    timeout: 600
-    extra_body: {}
-display:
-  compact: false
-  personality: technical
-  resume_display: full
-  busy_input_mode: interrupt
-  tui_auto_resume_recent: false
-  bell_on_complete: false
-  show_reasoning: false
-  streaming: true
-  timestamps: false
-  final_response_markdown: strip
-  persistent_output: true
-  persistent_output_max_lines: 200
-  inline_diffs: true
-  file_mutation_verifier: true
-  show_cost: false
-  skin: default
-  language: en
-  tui_status_indicator: kaomoji
-  user_message_preview:
-    first_lines: 2
-    last_lines: 2
-  interim_assistant_messages: true
-  tool_progress_command: false
-  tool_progress_overrides: {}
-  tool_preview_length: 0
-  ephemeral_system_ttl: 0
-  platforms: {}
-  runtime_footer:
-    enabled: false
-    fields:
-    - model
-    - context_pct
-    - cwd
-  copy_shortcut: auto
-  tool_progress: all
-  cleanup_progress: false
-  background_process_notifications: all
-dashboard:
-  theme: default
-  show_token_analytics: false
-privacy:
-  redact_pii: false
-tts:
-  provider: edge
-  edge:
-    voice: en-US-AriaNeural
-stt:
-  enabled: true
-  provider: local
-  local:
-    model: base
-    language: ''
-voice:
-  record_key: ctrl+b
-  max_recording_seconds: 120
-  auto_tts: false
-  beep_enabled: true
-  silence_threshold: 200
-  silence_duration: 3.0
-human_delay:
-  mode: 'off'
-  min_ms: 800
-  max_ms: 2500
-context:
-  engine: compressor
-memory:
-  memory_enabled: true
-  user_profile_enabled: true
-  memory_char_limit: 2200
-  user_char_limit: 1375
-  provider: ''
-delegation:
-  model: ''
-  provider: ''
-  base_url: ''
-  api_key: ''
-  api_mode: ''
-  inherit_mcp_toolsets: true
-  max_iterations: 50
-  child_timeout_seconds: 600
-  reasoning_effort: ''
-  max_concurrent_children: 3
-  max_spawn_depth: 1
-  orchestrator_enabled: true
-  subagent_auto_approve: false
-prefill_messages_file: ''
-goals:
-  max_turns: 20
 skills:
   external_dirs: []
   template_vars: true
   inline_shell: false
-  inline_shell_timeout: 10
+  inline_shell_timeout: 15
   guard_agent_created: false
-  disabled: []
-curator:
-  enabled: true
-  interval_hours: 168
-  min_idle_hours: 2
-  stale_after_days: 30
-  archive_after_days: 90
-  backup:
-    enabled: true
-    keep: 5
-honcho: {}
-timezone: ''
-slack:
-  require_mention: true
-  free_response_channels: ''
-  allowed_channels: ''
-  channel_prompts: {}
-discord:
-  require_mention: true
-  free_response_channels: ''
-  allowed_channels: ''
-  auto_thread: true
-  thread_require_mention: false
-  history_backfill: true
-  history_backfill_limit: 50
-  reactions: true
-  channel_prompts: {}
-whatsapp: {}
-telegram:
-  reactions: false
-  channel_prompts: {}
-  allowed_chats: ''
-mattermost:
-  require_mention: true
-  free_response_channels: ''
-  allowed_channels: ''
-  channel_prompts: {}
-matrix:
-  require_mention: true
-  free_response_rooms: ''
-  allowed_rooms: ''
-approvals:
-  mode: manual
-  timeout: 60
-  cron_mode: deny
-  mcp_reload_confirm: true
-  destructive_slash_confirm: true
-command_allowlist: []
-quick_commands: {}
-hooks: {}
-hooks_auto_accept: false
-personalities: {}
-security:
-  allow_private_urls: false
-  redact_secrets: true
-  tirith_enabled: true
-  tirith_path: tirith
-  tirith_timeout: 5
-  tirith_fail_open: true
-  website_blocklist:
-    enabled: false
-    domains: []
-    shared_files: []
-  acked_advisories: []
-  allow_lazy_installs: true
-cron:
-  wrap_response: true
-  max_parallel_jobs: null
-kanban:
-  dispatch_in_gateway: true
-  dispatch_interval_seconds: 60
-  failure_limit: 2
-  worker_log_rotate_bytes: 2097152
-  worker_log_backup_count: 1
-  orchestrator_profile: ''
-  default_assignee: ''
-  auto_decompose: true
-  auto_decompose_per_tick: 3
-  dispatch_stale_timeout_seconds: 14400
-code_execution:
-  mode: project
-  timeout: 300
-  max_tool_calls: 50
-logging:
-  level: INFO
-  max_size_mb: 5
-  backup_count: 3
-paste_collapse_threshold: 5
-paste_collapse_threshold_fallback: 0
-_config_version: 24
-provider: ''
-system_prompt: "You are Builder, a senior software engineer at Zero Factory.
-
-Your role:
-  - Implement features, fix bugs, and refactor code across the codebase
-  - Write clean, efficient TypeScript and Go code
-  - Write tests and documentation alongside code
-  - Maintain code quality standards
-
-Technical Stack:
-  - Backend: TypeScript (Bun/Node.js), Go, PostgreSQL, Redis
-  - Frontend: Svelte, Astro, Tailwind CSS, Capacitor
-
-Single Source of Truth:
-  - Read CONVENTIONS.md for naming, file structure, commit format, code style, and test conventions
-  - Never invent or duplicate conventions — follow the canonical file
-  - If a convention is missing, extend it in CONVENTIONS.md
-
-Style: Ship fast, iterate. Small focused PRs over big bangs. Always run type checks before submitting. Use existing patterns unless justified.
-
-Output: Code first, explanation second. Show diffs when modifying existing code. Flag breaking changes and migration needs.
-"
+  disabled:
+    - airtable
+    - architecture-diagram
+    - arxiv
+    - ascii-art
+    - ascii-video
+    - audiocraft-audio-generation
+    - baoyu-article-illustrator
+    - baoyu-comic
+    - baoyu-infographic
+    - blogwatcher
+    - claude-code
+    - claude-design
+    - codex
+    - comfyui
+    - debugging-hermes-tui-commands
+    - design-md
+    - dogfood
+    - dspy
+    - evaluating-llms-harness
+    - excalidraw
+    - gif-search
+    - godmode
+    - google-workspace
+    - heartmula
+    - humanizer
+    - jupyter-live-kernel
+    - linear
+    - llama-cpp
+    - llm-wiki
+    - manim-video
+    - maps
+    - minecraft-modpack-server
+    - notion
+    - obliteratus
+    - obsidian
+    - openhue
+    - pixel-art
+    - pokemon-player
+    - powerpoint
+    - sketch
+    - songsee
+    - songwriting-and-ai-music
+    - spotify
+    - touchdesigner-mcp
+    - youtube-content
+    - yuanbao
+system_prompt: "You are Builder, a senior software engineer at Zero Factory.\nYour role: - Implement features, fix bugs, and refactor code across the codebase - Write clean, efficient TypeScript and Go code - Write tests and documentation alongside code - Maintain code quality standards\nTechnical Stack: - Backend: TypeScript (Bun/Node.js), Go, PostgreSQL, Redis - Frontend: Svelte, Astro, Tailwind CSS, Capacitor\nSingle Source of Truth: - Read CONVENTIONS.md for naming, file structure, commit format, code style, and test conventions - Never invent or duplicate conventions — follow the canonical file - If a convention is missing, extend it in CONVENTIONS.md\nStyle: Ship fast, iterate. Small focused PRs over big bangs. Always run type checks before submitting. Use existing patterns unless justified.\nOutput: Code first, explanation second. Show diffs when modifying existing code. Flag breaking changes and migration needs. "
 description: Software engineer & coding agent

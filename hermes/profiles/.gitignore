@@ -5,6 +5,8 @@
 */**
 !*/SOUL.md
 !*/.env
+!*/.env.example
 !*/config.yaml
+!*/config.custom.yaml
 !*/skills/multi-agent-orchestration
 !*/skills/kanban

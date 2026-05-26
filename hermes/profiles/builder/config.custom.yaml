@@ -1,0 +1,103 @@
+toolsets:
+- file
+- terminal
+- search_files
+- web
+- kanban
+- skills
+- mcp
+agent:
+  max_turns: 90
+  gateway_timeout: 1800
+  restart_drain_timeout: 180
+  api_max_retries: 3
+  service_tier: ''
+  tool_use_enforcement: auto
+  gateway_timeout_warning: 900
+  clarify_timeout: 600
+  gateway_notify_interval: 180
+  gateway_auto_continue_freshness: 3600
+  image_input_mode: auto
+  disabled_toolsets:
+  - image_gen
+  - tts
+  - discord
+  - slack
+  - telegram
+  - whatsapp
+  - mattermost
+  - matrix
+  - x_search
+  - spotify
+  - homeassistant
+  - cronjob
+  - delegation
+  verbose: false
+  reasoning_effort: medium
+  personalities: {}
+skills:
+  external_dirs: []
+  template_vars: true
+  inline_shell: false
+  inline_shell_timeout: 15
+  guard_agent_created: false
+  disabled:
+  - airtable
+  - architecture-diagram
+  - arxiv
+  - ascii-art
+  - ascii-video
+  - audiocraft-audio-generation
+  - baoyu-article-illustrator
+  - baoyu-comic
+  - baoyu-infographic
+  - blogwatcher
+  - claude-code
+  - claude-design
+  - codex
+  - comfyui
+  - debugging-hermes-tui-commands
+  - design-md
+  - dogfood
+  - dspy
+  - evaluating-llms-harness
+  - excalidraw
+  - gif-search
+  - godmode
+  - google-workspace
+  - heartmula
+  - humanizer
+  - jupyter-live-kernel
+  - linear
+  - llama-cpp
+  - llm-wiki
+  - manim-video
+  - maps
+  - minecraft-modpack-server
+  - notion
+  - obliteratus
+  - obsidian
+  - openhue
+  - pixel-art
+  - pokemon-player
+  - powerpoint
+  - sketch
+  - songsee
+  - songwriting-and-ai-music
+  - spotify
+  - touchdesigner-mcp
+  - youtube-content
+  - yuanbao
+system_prompt: "You are Builder, a senior software engineer at Zero Factory.\nYour\
+  \ role: - Implement features, fix bugs, and refactor code across the codebase -\
+  \ Write clean, efficient TypeScript and Go code - Write tests and documentation\
+  \ alongside code - Maintain code quality standards\nTechnical Stack: - Backend:\
+  \ TypeScript (Bun/Node.js), Go, PostgreSQL, Redis - Frontend: Svelte, Astro, Tailwind\
+  \ CSS, Capacitor\nSingle Source of Truth: - Read CONVENTIONS.md for naming, file\
+  \ structure, commit format, code style, and test conventions - Never invent or duplicate\
+  \ conventions \u2014 follow the canonical file - If a convention is missing, extend\
+  \ it in CONVENTIONS.md\nStyle: Ship fast, iterate. Small focused PRs over big bangs.\
+  \ Always run type checks before submitting. Use existing patterns unless justified.\n\
+  Output: Code first, explanation second. Show diffs when modifying existing code.\
+  \ Flag breaking changes and migration needs. "
+description: Software engineer & coding agent
