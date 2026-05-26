@@ -26,7 +26,6 @@ sudo ln -sf "$(pwd)/hermes-workspace.service" /etc/systemd/system/hermes-workspa
 
 ```sh
 touch ~/hermes-gateway.env
-touch ~/hermes-dashboard.env
 touch ~/hermes-workspace.env
 ```
 
@@ -41,7 +40,7 @@ Example hermes-gateway.env
 ```sh
 API_SERVER_ENABLED=true
 API_SERVER_HOST=0.0.0.0
-API_SERVER_KEY=
+API_SERVER_KEY=dummypassword
 
 GATEWAY_ALLOW_ALL_USERS=true
 ```

@@ -11,7 +11,8 @@ WorkingDirectory=${HOME}
 Environment="PATH=${HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EnvironmentFile=-${HOME}/hermes-gateway.env
 
-ExecStart=/bin/bash -lc 'source "${HOME}/.bashrc" && hermes gateway run'
+# Run orchestrator profile as the main gateway
+ExecStart=/bin/bash -lc 'source "${HOME}/.bashrc" && hermes --profile orchestrator gateway run'
 TimeoutStopSec=210s
 Restart=on-failure
 RestartSec=600
