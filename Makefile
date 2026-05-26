@@ -4,13 +4,22 @@ HERMES_SRC := $(CURDIR)/hermes
 HERMES_DEST := $(HOME)/.hermes
 SYSTEMD_SERVICES := hermes-gateway hermes-dashboard hermes-workspace
 SYSTEMD_DIR := $(CURDIR)/systemd
+MERGE_PROFILE ?= builder
 
-.PHONY: hermes-link systemd-generate systemd-link systemd-enable systemd-disable systemd-start systemd-stop systemd-status systemd-logs
+.PHONY: hermes-link config-merge config-merge-all systemd-generate systemd-link systemd-enable systemd-disable systemd-start systemd-stop systemd-status systemd-logs systemd-refresh
 hermes-link:
 	@mkdir -p "$(HERMES_DEST)"
 	@rm -rf "$(HERMES_DEST)/profiles"
 	@ln -sfnT "$(HERMES_SRC)/profiles" "$(HERMES_DEST)/profiles"
 	@echo "Linked Hermes profiles to $(HERMES_DEST)"
+
+config-merge:
+	@./hermes/bin/merge-config.sh "$(MERGE_PROFILE)"
+	@echo "Merged config for profile: $(MERGE_PROFILE)"
+
+config-merge-all:
+	@./hermes/bin/merge-config.sh all
+	@echo "Merged config for all profiles"
 
 systemd-generate:
 	@command -v envsubst >/dev/null 2>&1 || (echo "Error: envsubst not found. Install gettext package." && exit 1)
@@ -73,3 +82,11 @@ systemd-logs:
 		sudo journalctl -u "$$svc" -n 120 --no-pager -l || true; \
 		echo; \
 	done
+
+systemd-refresh:
+	@sudo systemctl daemon-reload
+	@sudo systemctl reset-failed $(SYSTEMD_SERVICES) || true
+	@$(MAKE) systemd-link
+	@$(MAKE) systemd-enable
+	@$(MAKE) systemd-start
+	@echo "Refreshed and restarted: $(SYSTEMD_SERVICES)"
