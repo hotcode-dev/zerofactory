@@ -30,6 +30,22 @@ This creates:
 - `~/.hermes/config.yaml` → symlink to `zerofactory/hermes/config.yaml`
 - `~/.hermes/profiles/` → symlink to `zerofactory/hermes/profiles/`
 
+### Configuration Hierarchy
+
+```
+profiles/common/config.yaml    ← Base config (shared by all agents)
+         ↓ + profile override
+profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
+         ↓ merge-config.sh
+hermes/profiles/<profile>/config.yaml  ← Merged final config
+```
+
+Each profile extends the base config with its own overrides. To manually merge:
+
+```bash
+./hermes/bin/merge-config.sh <profile-name>
+```
+
 ## Step 3: Configure Systemd
 
 Generate systemd services from templates:
@@ -38,10 +54,8 @@ Generate systemd services from templates:
 cd systemd
 env USER="$USER" HOME="$HOME" \
   envsubst < "$(pwd)/hermes-gateway.service.template" > "$(pwd)/hermes-gateway.service"
-env USER="$USER" HOME="$HOME" \
-  envsubst < "$(pwd)/hermes-dashboard.service.template" > "$(pwd)/hermes-dashboard.service"
-env USER="$USER" HOME="$HOME" \
-  envsubst < "$(pwd)/hermes-workspace.service.template" > "$(pwd)/hermes-workspace.service"
+env USER="$USER" HOME="$USER" envsubst < "$(pwd)/hermes-dashboard.service.template" > "$(pwd)/hermes-dashboard.service"
+env USER="$USER" HOME="$USER" envsubst < "$(pwd)/hermes-workspace.service.template" > "$(pwd)/hermes-workspace.service"
 ```
 
 Link and enable:
@@ -49,6 +63,13 @@ Link and enable:
 ```bash
 make systemd-link
 make systemd-enable
+```
+
+Or use the Makefile shorthand:
+
+```bash
+make systemd-link    # Generate + link services
+make systemd-enable  # Enable all services
 ```
 
 ## Step 4: Configure Environment Files
@@ -76,24 +97,141 @@ HERMES_API_URL=http://127.0.0.1:8642
 HERMES_PASSWORD=***
 ```
 
-## Step 5: vLLM GPU Setup
+## Step 5: Configure Agent Profiles
 
-If running LLM inference locally:
+### Base Configuration
 
-1. Install vLLM: `pip install vllm`
-2. Configure GPU memory in `hermes/config.yaml`:
-   ```yaml
-   model:
-     default: qwen36-fast
-     provider: custom
-     base_url: http://.spark.ntsd.dev:8000/v1
-   ```
-3. Ensure CUDA drivers are installed: `nvidia-smi`
-4. Test inference: `vllm serve model-name`
+All agents share the base config at `profiles/common/config.yaml`:
 
-See [troubleshooting.md](troubleshooting.md) for GPU issues.
+```yaml
+model:
+  default: qwen36-fast
+  provider: custom
+agent:
+  max_turns: 90
+  gateway_timeout: 1800
+compression:
+  enabled: true
+  threshold: 0.5
+```
 
-## Step 6: Start Services
+### Profile Overrides
+
+Each profile can override settings via `config.custom.yaml`:
+
+| Profile | max_turns | Key Differences |
+|---------|-----------|-----------------|
+| orchestrator | 120 | Longer timeout (3600s), higher compression protection |
+| builder | 90 | Terminal-heavy, file output |
+| researcher | 60 | Web browser, file I/O |
+| reviewer | 60 | File-heavy review checks |
+| qa | 60 | Terminal testing |
+| scribe | 60 | File I/O only (no terminal) |
+
+Example — orchestrator custom config:
+
+```yaml
+agent:
+  max_turns: 120
+  gateway_timeout: 3600
+compression:
+  threshold: 0.3  # Lower threshold for complex task trees
+```
+
+### Toolset Management
+
+Each profile has a specific toolset:
+
+```yaml
+# orchestrator — full orchestration
+toolsets:
+  - kanban
+  - delegation
+  - cronjob
+  - file
+  - terminal
+  - search_files
+  - web
+  - skills
+  - mcp
+
+# builder — coding focused
+toolsets:
+  - file
+  - terminal
+  - search_files
+  - web
+  - kanban
+  - skills
+  - mcp
+
+# scribe — documentation only
+toolsets:
+  - file
+  - terminal
+  - search_files
+  - web
+```
+
+### Adding MCP Servers
+
+Each profile can add MCP servers in `mcp_servers.json`:
+
+```json
+[
+  {
+    "name": "server-name",
+    "command": "executable",
+    "args": [],
+    "env": {},
+    "description": "brief description",
+    "disabled": false
+  }
+]
+```
+
+## Step 6: vLLM Inference (Docker Compose)
+
+GPU-based LLM inference runs via Docker Compose. Choose one of the pre-configured setups:
+
+### Option A: Qwen3.6-35B-A3B (NVFP4 + DFlash)
+
+```bash
+cd vllm/qwen3.6-35b-a3b
+docker compose up -d
+```
+
+This uses the AEON-7 NVFP4 quantized model with DFlash speculative decoding on DGX Spark.
+
+### Option B: Qwen3.6-27B v4
+
+```bash
+cd vllm/qwen3.6-27b
+docker compose up -d
+```
+
+This uses the Qwen3.6-27B v4 multimodal model with DFlash on DGX Spark (GB10 architecture).
+
+### Verify Inference
+
+Both setups expose the OpenAI-compatible API at `http://localhost:8000/v1`:
+
+```bash
+curl http://localhost:8000/v1/models | jq '.data[0].id'
+```
+
+After inference is running, update `~/.hermes/config.yaml` to point to the correct endpoint:
+
+```yaml
+custom_providers:
+  - name: Spark.ntsd.dev:8000
+    base_url: http://spark.ntsd.dev:8000/v1
+    model: qwen36-fast
+```
+
+See [troubleshooting.md](troubleshooting.md) for GPU and Docker issues.
+
+## Step 7: Start Services
 
 ```bash
 # Start all services
@@ -108,7 +246,7 @@ Expected output:
 - `hermes-dashboard` — Dashboard on port 9119
 - `hermes-workspace` — Workspace on port 3000
 
-## Step 7: Verify
+## Step 8: Verify
 
 ```bash
 # Check all services running
@@ -121,6 +259,34 @@ sudo journalctl -u hermes-gateway -f
 sudo journalctl -u hermes-workspace -f
 ```
 
+## Using the System
+
+### Launch an Agent
+
+```bash
+hermes -p orchestrator -m "Research how to implement real-time notifications with WebSockets"
+```
+
+The Orchestrator will:
+1. Decompose the task
+2. Dispatch to Researcher (research) → Builder (implement)
+3. Run Reviewer and QA in parallel
+4. Scribe documents everything
+
+### Service Management
+
+```bash
+# Full restart
+make systemd-stop
+make systemd-start
+
+# Individual service
+sudo systemctl restart hermes-gateway
+
+# View logs
+make systemd-logs
+```
+
 ## Maintenance
 
 ```bash
@@ -128,11 +294,9 @@ sudo journalctl -u hermes-workspace -f
 cd /path/to/zerofactory
 git pull
 
-# Restart services
-make systemd-stop
-make systemd-link
-make systemd-enable
-make systemd-start
+# Regenerate and restart
+make hermes-link
+make systemd-refresh
 ```
 
 ## File Locations
@@ -145,6 +309,14 @@ make systemd-start
 | Environment | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
 | Logs | `journalctl -u hermes-<service>` |
 | Kanban DB | `~/.hermes/kanban.db` |
+| Profile config | `hermes/profiles/<agent>/config.custom.yaml` |
+| Base config | `hermes/profiles/common/config.yaml` |
 
-See [systemd/README.md](../systemd/README.md) for detailed systemd configuration.
-See [architecture.md](architecture.md) for system overview.
+## Troubleshooting
+
+- **Services not starting**: Check env files exist and have correct paths
+- **Config changes not reflected**: Run `make hermes-link` to re-link
+- **Agent not responding**: Check gateway is running, model endpoint is reachable
+- **Disk space issues**: Check `df -h`, clean journal logs with `journalctl --vacuum-time=7d`
+
+See [troubleshooting.md](troubleshooting.md) for detailed issue resolution.

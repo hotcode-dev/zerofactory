@@ -1,6 +1,6 @@
 # Architecture
 
-Zero Factory is an AI multi-agent orchestration system built on top of **Hermes Agent**. Six specialist agents form a complete software factory, from research to deployment.
+Zero Factory is an AI multi-agent orchestration system built on **Hermes Agent**. Six specialist agents form a complete software factory, from research to deployment.
 
 ## System Overview
 
@@ -15,6 +15,7 @@ Zero Factory is an AI multi-agent orchestration system built on top of **Hermes 
 │              Orchestrator Agent                  │
 │              (CEO — task decomposition)          │
 │  Tools: kanban, delegation, cronjob             │
+│  max_turns: 120, timeout: 3600s                 │
 └──┬──┬──┬──┬──┬─────────────────────────────────┘
    │  │  │  │  │
    ▼  ▼  ▼  ▼  ▼
@@ -29,33 +30,33 @@ Zero Factory is an AI multi-agent orchestration system built on top of **Hermes 
 
 ### 1. Agent Profiles
 
-Each agent is configured in `hermes/profiles/<name>/` with three files:
+Each agent is configured in `hermes/profiles/<name>/` with:
 
 - **SOUL.md** — Agent identity, responsibilities, tools, constraints
 - **system_prompt.txt** — Concise prompt for context injection
-- **config.yaml** — Runtime configuration (toolsets, timeouts)
+- **config.custom.yaml** — Profile-specific configuration overrides
+- **mcp_servers.json** — MCP server configuration (optional)
 
-| Profile | Role | Purpose | Key Tools |
-|---------|------|---------|-----------|
-| orchestrator | CEO | Task decomposition, kanban, delegation | kanban, delegation, cronjob |
-| researcher | CTO | Research, specs, architecture | web, browser, file, search_files |
-| builder | Lead Engineer | Feature implementation, tests | file, terminal, search_files, web |
-| reviewer | Code Reviewer | Quality gates, security | file, terminal, search_files, web |
-| qa | QA Engineer | Test design, integration | file, terminal, search_files, web |
-| scribe | Documentation | API docs, user guides, changelogs | file, terminal, search_files, web |
+Configuration is built by merging `profiles/common/config.yaml` (base config) with `profiles/<profile>/config.custom.yaml` (overrides) using `hermes/bin/merge-config.sh`.
 
-### 2. Configuration
+### 2. Configuration Hierarchy
 
-Main config at `hermes/config.yaml`:
+```
+profiles/common/config.yaml    ← Base config (shared by all agents)
+         ↓ + profile override
+profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
+         ↓ merge-config.sh
+hermes/profiles/<profile>/config.yaml  ← Merged final config (symlinked to ~/.hermes/)
+```
 
-- **model** — Default model (`qwen36-fast`) via custom provider at `http://spark.ntsd.dev:8000/v1`
-- **toolsets** — Controls which tools each agent has access to
-- **agent** — Max turns, gateway timeout, retry settings
-- **terminal** — Backend (local), Docker images, timeouts
-- **compression** — Context compression enabled (threshold 0.5)
-- **prompt_caching** — LLM prompt caching for cost reduction
-
-See [setup-guide.md](setup-guide.md) for configuration steps.
+| Profile | max_turns | gateway_timeout | Key Settings |
+|---------|-----------|-----------------|--------------|
+| orchestrator | 120 | 3600s | compression threshold 0.3, higher protection |
+| researcher | 60 | 1800s | Web/browser toolset |
+| builder | 90 | 1800s | Terminal-heavy, file output |
+| reviewer | 60 | 1800s | File review checks |
+| qa | 60 | 1800s | Terminal testing |
+| scribe | 60 | 1800s | File I/O only (no terminal in toolsets) |
 
 ### 3. Kanban Board
 
@@ -66,17 +67,17 @@ Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key 
 - **blocked** — Waiting on human input
 - **done** — Completed
 
-The Orchestrator creates tasks, assigns agents, and monitors progress through this board.
+The Orchestrator creates tasks, assigns agents, and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done`.
 
 ### 4. Systemd Services
 
 Three services run continuously on Linux:
 
-| Service | Purpose |
-|---------|---------|
-| hermes-gateway | API server for agent communication |
-| hermes-dashboard | Web UI for monitoring |
-| hermes-workspace | Workspace management (chat, terminal, files) |
+| Service | Port | Purpose |
+|---------|------|---------|
+| hermes-gateway | 8642 | API server for agent communication |
+| hermes-dashboard | 9119 | Web UI for monitoring |
+| hermes-workspace | 3000 | Workspace management (chat, terminal, files) |
 
 See [systemd/README.md](../systemd/README.md) for setup details.
 
@@ -89,15 +90,25 @@ See [systemd/README.md](../systemd/README.md) for setup details.
 5. **Testing**: QA verifies functionality with tests
 6. **Documentation**: Scribe documents the changes
 
-Parallel execution: Multiple features can be implemented simultaneously. Review and QA run in parallel.
+Parallel execution: Review and QA run concurrently. Researcher can work on one feature while Builder handles another.
+
+## Communication Channels
+
+| Channel | Purpose |
+|---------|---------|
+| Kanban Board | Task handoffs, status tracking, dependency management |
+| File System | Shared output files, configuration, documentation |
+| Gateway API | Real-time messaging between agents |
 
 ## Cost Optimization
 
-- Each agent has only necessary skills enabled
-- Compression enabled (target ratio 0.2)
-- Prompt caching enabled
-- Short max_turns per agent to limit token waste
-- Tool-use enforcement to prevent redundant API calls
+| Technique | Setting | Purpose |
+|-----------|---------|---------|
+| Toolsets | Per-profile | Each agent has only the tools it needs |
+| Compression | enabled, threshold 0.5 | Reduces context window usage |
+| Prompt caching | cache_ttl: 5m | Reuses system prompt tokens |
+| max_turns limits | Per profile (60-120) | Caps token consumption per task |
+| Short-lived tasks | Task-based lifecycle | No idle agents burning resources |
 
 ## File Structure
 
@@ -108,20 +119,38 @@ zerofactory/
 ├── ORCHESTRATION.md           # Team structure details
 ├── Makefile                   # Build/management shortcuts
 ├── LICENSE
-├── docs/                      # Documentation suite (this directory)
+├── docs/                      # Documentation suite
+│   ├── architecture.md        # This file
+│   ├── api.md                 # CLI interface reference
+│   ├── setup-guide.md         # Setup instructions
+│   ├── troubleshooting.md     # Common issues
+│   ├── changelog.md           # Version history
+│   └── runbook.md             # Operations runbook
 ├── hermes/
-│   ├── config.yaml            # Main agent config
-│   └── profiles/              # Agent-specific configs
-│       ├── orchestrator/
-│       ├── researcher/
-│       ├── builder/
-│       ├── reviewer/
-│       ├── qa/
-│       └── scribe/
+│   ├── profiles/              # Agent configurations
+│   │   ├── common/            # Base config for all agents
+│   │   │   ├── config.yaml
+│   │   │   └── SOUL.md
+│   │   ├── orchestrator/      # CEO — task decomposition & dispatch
+│   │   ├── researcher/        # CTO — research & architecture
+│   │   ├── builder/           # Lead Engineer — implementation
+│   │   ├── reviewer/          # Code Review — quality gates
+│   │   ├── qa/                # QA — testing & verification
+│   │   └── scribe/            # Documentation — API docs & guides
+│   └── bin/                   # Helper scripts
 ├── systemd/                   # Systemd service files
-│   ├── README.md
-│   ├── *.service              # Generated services
-│   └── *.service.template     # Service templates
+│   ├── *.service.template     # Service templates
+│   └── *.service              # Generated services
+└── vllm/                      # LLM inference Docker configs
+    ├── qwen3.6-35b-a3b/       # 35B model with DFlash
+    └── qwen3.6-27b/           # 27B model with DFlash
 ```
 
-See [CONVENTIONS.md](../CONVENTIONS.md) for naming conventions and coding standards.
+## Agent Communication Protocol
+
+Agents communicate through:
+1. **Kanban board** — task status and handoffs
+2. **Files** — shared output, configs, documentation
+3. **Gateway** — real-time messaging
+
+Each agent has a `description` field in its `config.custom.yaml` for quick identification by the Orchestrator.

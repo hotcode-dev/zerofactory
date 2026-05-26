@@ -49,11 +49,23 @@ ls -la ~/.hermes/profiles/
 
 ### Config changes not reflecting
 
-The config file is symlinked to `hermes/config.yaml`. Changes should appear immediately. If not:
+The config files are symlinked from `~/.hermes/`. Changes should appear immediately. If not:
 
 ```bash
 # Force re-link
 make hermes-link
+```
+
+### Agent not using correct config
+
+Each agent profile merges `common/config.yaml` with its `config.custom.yaml`. If changes aren't taking effect:
+
+```bash
+# Manually merge the profile's config
+./hermes/bin/merge-config.sh <profile-name>
+
+# Check the merged output
+cat ~/.hermes/profiles/<profile>/config.yaml
 ```
 
 ## Agent Issues
@@ -83,9 +95,57 @@ make hermes-link
 
 ### Agent stuck in loop
 
-- Check `max_turns` in `hermes/config.yaml` (default: 60)
-- Review compression settings (default: enabled)
+- Check `max_turns` in `hermes/profiles/<profile>/config.custom.yaml` (orchestrator: 120, others: 60-90)
+- Review compression settings (default: enabled, threshold 0.5)
 - Check prompt caching is enabled
+
+### Missing tools for an agent
+
+Check `profiles/<agent>/config.custom.yaml` → `toolsets`. Add missing tools:
+
+```yaml
+toolsets:
+  - file
+  - terminal
+  - search_files
+  - web
+  - kanban    # Add if needed
+  - skills
+  - mcp
+```
+
+## Configuration Issues
+
+### Config merge failures
+
+```bash
+# Check if the merge script exists
+ls -la hermes/bin/merge-config.sh
+
+# Re-link to refresh
+make hermes-link
+
+# Test merge manually
+./hermes/bin/merge-config.sh <profile-name>
+```
+
+### Profile not recognized
+
+```bash
+# Verify profile directory exists
+ls ~/.hermes/profiles/<profile>/
+
+# Ensure SOUL.md and config.yaml exist
+ls ~/.hermes/profiles/<profile>/SOUL.md
+ls ~/.hermes/profiles/<profile>/config.yaml
+```
+
+### Config override not taking effect
+
+1. Edit `hermes/profiles/<profile>/config.custom.yaml`
+2. Merge: `./hermes/bin/merge-config.sh <profile-name>`
+3. The merged config goes to `hermes/profiles/<profile>/config.yaml`
+4. If symlinked, `~/.hermes/profiles/<profile>/` will reflect changes
 
 ## Network Issues
 
@@ -109,7 +169,7 @@ sudo ufw status
 
 ### Commands hang
 
-- Terminal timeout defaults to 180s (configurable in `hermes/config.yaml`)
+- Terminal timeout defaults to 180s (configurable in `config.custom.yaml`)
 - Increase if needed:
   ```yaml
   terminal:
@@ -125,40 +185,66 @@ Services source `.bashrc`. If custom binaries are needed:
 export PATH="$PATH:/path/to/bin"
 ```
 
+### Docker containers not starting
+
+```bash
+# Check Docker is running
+systemctl is-active docker
+
+# Check specific container
+docker ps -a | grep vllm
+```
+
 ## GPU Issues (vLLM)
 
 ### vLLM not finding GPU
 
 ```bash
 nvidia-smi
-pip list | grep vllm
+docker ps | grep vllm
 ```
 
 ### OOM errors
 
-Reduce context window or batch size in config.
+Reduce context window or batch size in `vllm/*/docker-compose.yml`.
 
-## General Debugging
-
-### Full service restart
+### Docker port conflicts
 
 ```bash
-make systemd-stop
-make systemd-start
+# Check if port 8000 is in use
+ss -tlnp | grep 8000
+
+# Modify docker-compose.yml to use a different port
+# Then update config.yaml base_url
 ```
 
-### Reset configuration
+## Daily Operations
+
+### Morning checks
 
 ```bash
-# Stop services
-make systemd-stop
+# 1. Service health
+make systemd-status
 
-# Re-link
-make hermes-link
-make systemd-link
+# 2. Review logs since 06:00
+sudo journalctl -u hermes-gateway --since "06:00" -n 100 --no-pager
 
-# Start fresh
-make systemd-start
+# 3. Disk usage
+df -h
+du -sh ~/.hermes/
+```
+
+### Disk space cleanup
+
+```bash
+# Clean up old journal logs (keep 7 days)
+sudo journalctl --vacuum-time=7d
+
+# Check kanban DB size
+ls -la ~/.hermes/kanban.db
+
+# Check Hermes profile size
+du -sh ~/.hermes/profiles/
 ```
 
 ## Common Errors
@@ -167,9 +253,14 @@ make systemd-start
 |-------|-------|-----|
 | Service not found | Symlink broken | Run `make systemd-link` |
 | Connection refused | Gateway not running | `systemctl start hermes-gateway` |
-| Agent timeout | `max_turns` too low | Increase in config.yaml |
+| Agent timeout | `max_turns` too low | Increase in `config.custom.yaml` |
 | Empty kanban board | Workspace not running | `systemctl start hermes-workspace` |
-| Config not applied | Symlink stale | `make hermes-link` |
+| Config not applied | Stale merged config | Run `./hermes/bin/merge-config.sh <profile>` |
+| Profile missing | Profile directory empty | Check `~/.hermes/profiles/<profile>/SOUL.md` |
+| Tool not found | Not in toolsets list | Add to `toolsets` in `config.custom.yaml` |
+| Port conflict | Another service on same port | Change port in `docker-compose.yml` or env |
+| Docker not running | Docker daemon stopped | `systemctl start docker` |
+| OOM | Memory exhausted | Reduce `max_turns` or `terminal.timeout` |
 
 ## Get Help
 
@@ -177,3 +268,4 @@ make systemd-start
 - Setup: [docs/setup-guide.md](setup-guide.md)
 - CLI reference: [docs/api.md](api.md)
 - Systemd: [systemd/README.md](../systemd/README.md)
+- Operations: [docs/runbook.md](runbook.md)

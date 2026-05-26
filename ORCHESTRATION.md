@@ -5,9 +5,17 @@ This orchestration system manages a team of AI agents that work in parallel to d
 ## Team Structure
 
 ### CEO (Orchestrator)
+
 **Role**: Strategic oversight and workflow management
-**SOUL**: Defines decision-making framework and communication style
-**Config**: Toolsets: kanban, delegation, cronjob
+
+**SOUL**: `profiles/orchestrator/SOUL.md` — Defines decision-making framework and communication style
+
+**Config**: `profiles/orchestrator/config.custom.yaml`
+
+**Toolsets**: kanban, delegation, cronjob, file, terminal, search_files, web, skills, mcp
+
+**Settings**: max_turns=120, gateway_timeout=3600s, compression threshold=0.3
+
 **Responsibilities**:
 - Decompose complex goals into parallelizable work packages
 - Dispatch tasks to specialist agents
@@ -15,50 +23,80 @@ This orchestration system manages a team of AI agents that work in parallel to d
 - Coordinate handoffs between development stages
 - Report concise status to human
 
-### CTO (Researcher)
+### Researcher (CTO)
+
 **Role**: Technical research and analysis
-**SOUL**: Defines research methodology and output format
-**Config**: Toolsets: web, browser, file, search_files
+
+**SOUL**: `profiles/researcher/SOUL.md`
+
+**Config**: `profiles/researcher/config.custom.yaml`
+
+**Toolsets**: file, terminal, search_files, web, skills, mcp
+
 **Responsibilities**:
 - Research APIs, frameworks, and best practices
-- Explore multiple solutions and compare trade-offs
-- Create comprehensive research reports
-- Analyze competitive landscape
+- Create technical specifications and architecture documents
+- Analyze competitive landscape and trade-offs
+- Provide actionable recommendations to Builder
 
-### Lead Engineer (Builder)
+### Builder (Lead Engineer)
+
 **Role**: Code implementation
-**SOUL**: Defines coding standards and development workflow
-**Config**: Toolsets: file, terminal, search_files, web
+
+**SOUL**: `profiles/builder/SOUL.md`
+
+**Config**: `profiles/builder/config.custom.yaml`
+
+**Toolsets**: file, terminal, search_files, web, kanban, skills, mcp
+
 **Responsibilities**:
 - Implement features from design specifications
 - Write clean, efficient TypeScript and Go code
 - Write comprehensive tests
 - Maintain code quality standards
 
-### QA Engineer
-**Role**: Quality assurance and testing
-**SOUL**: Defines testing methodology and reporting format
-**Config**: Toolsets: file, terminal, search_files, web
-**Responsibilities**:
-- Create and execute comprehensive test suites
-- Verify edge cases and error handling
-- Write test plans and run them methodically
-- Report bugs with clear reproduction steps
+### Reviewer (Code Reviewer)
 
-### Reviewer
 **Role**: Code review and quality gatekeeper
-**SOUL**: Defines review process and feedback format
-**Config**: Toolsets: file, terminal, search_files, web
+
+**SOUL**: `profiles/reviewer/SOUL.md`
+
+**Config**: `profiles/reviewer/config.custom.yaml`
+
+**Toolsets**: file, terminal, search_files, web, skills, mcp
+
 **Responsibilities**:
 - Review code for correctness, style, performance, maintainability
 - Assess architecture decisions
 - Check for security vulnerabilities
 - Verify test coverage
 
-### Scribe
+### QA (Quality Assurance)
+
+**Role**: Quality assurance and testing
+
+**SOUL**: `profiles/qa/SOUL.md`
+
+**Config**: `profiles/qa/config.custom.yaml`
+
+**Toolsets**: file, terminal, search_files, web, skills, mcp
+
+**Responsibilities**:
+- Create and execute comprehensive test suites
+- Verify edge cases and error handling
+- Write test plans and run them methodically
+- Report bugs with clear reproduction steps
+
+### Scribe (Documentation)
+
 **Role**: Technical documentation
-**SOUL**: Defines writing standards and documentation categories
-**Config**: Toolsets: file, terminal, search_files, web
+
+**SOUL**: `profiles/scribe/SOUL.md`
+
+**Config**: `profiles/scribe/config.custom.yaml`
+
+**Toolsets**: file, terminal, search_files, web
+
 **Responsibilities**:
 - Create and maintain technical documentation
 - Write API docs, READMEs, user guides
@@ -68,8 +106,7 @@ This orchestration system manages a team of AI agents that work in parallel to d
 ## Workflow Pipeline
 
 ```
-Goal → Researcher (analyze) → Architect (design) → Builder (implement) → 
-Reviewer (review) → QA (test) → Scribe (document) → Deploy
+Goal → Researcher (research) → Builder (implement) → Reviewer (review) → QA (test) → Scribe (document) → Done
 ```
 
 The Orchestrator manages this pipeline, parallelizing where possible:
@@ -102,11 +139,11 @@ Each agent has access only to the tools it needs:
 
 ## Configuration
 
-Each agent has its own `SOUL.md` and `config.yaml` in the `profiles/` directory.
+Each agent has its own `SOUL.md` and `config.custom.yaml` in the `profiles/` directory. The base config from `profiles/common/config.yaml` is merged with each profile's overrides to produce the final configuration.
 
 ## Making Tasks
 
-Tasks are created by the Orchestrator and assigned to appropriate agents based on their expertise.
+Tasks are created by the Orchestrator and assigned to appropriate agents based on their expertise through the kanban board.
 
 ## Status Reporting
 

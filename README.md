@@ -1,53 +1,70 @@
 # Zero Factory
 
-A 24/7 AI multi-agent orchestration setup that works in parallel. Six specialized agents form a complete software factory — from research to deployment.
+A 24/7 AI multi-agent orchestration system built on Hermes Agent. Six specialized agents form a complete software factory — from research to deployment.
 
 ## Quick Start
 
-1. Set up a project directory
-2. Link the config: `make hermes-link`
-3. Run a command: `hermes -p orchestrator -m "Research how to implement real-time notifications with WebSockets and PostgreSQL"`
-4. The Orchestrator delegates to Researcher, who produces a spec
-5. Builder implements based on the spec
-6. Reviewer and QA run in parallel
-7. Scribe documents everything
+```bash
+# 1. Clone the repo
+git clone <repo-url> zerofactory
+cd zerofactory
+
+# 2. Link Hermes config
+make hermes-link
+
+# 3. Launch an agent
+hermes -p orchestrator -m "Research how to implement real-time notifications with WebSockets and PostgreSQL"
+
+# 4. The Orchestrator delegates to Researcher, who produces a spec
+#    then Builder implements, Reviewer checks quality, QA tests, Scribe documents
+```
 
 Full setup guide: [docs/setup-guide.md](docs/setup-guide.md)
 
 ## Core Principles
 
-This AI setup focuses on these pillars:
-
-- **24/7 agile non-stop development**: Operate in continuous short iterations with frequent reprioritization, quick feedback, rolling handoffs, parallel execution, automated checks, and immediate follow-up on blockers.
-- **Productivity & automation**: Build efficient multi-agent workflows and automate routine tasks.
-- **Quality, performance, reliability & security**: Deliver high-quality, maintainable, stable, dependable, secure, and high-performance software outcomes.
-- **Cost efficiency**: Reduce cost by optimizing token usage and keeping workflows to as few steps as possible. Each agent only has skills related to their specific role.
-- **Hybrid Review**: Combine human insight with AI-assisted review to validate plans early and review code thoroughly for better outcomes.
-- **Single source of truth**: One canonical location for shared info. Link, don't copy — edit one, update all.
-- **Minimalist**: Keep everything as small, simple, clean, and usable as possible.
+| Pillar | Description |
+|--------|-------------|
+| **24/7 Development** | Continuous iterations with frequent reprioritization, rolling handoffs, and parallel execution |
+| **Productivity & Automation** | Multi-agent workflows that automate routine tasks end-to-end |
+| **Quality & Reliability** | High-quality, maintainable, secure software with layered review |
+| **Cost Efficiency** | Optimized token usage — each agent has only the skills it needs |
+| **Hybrid Review** | Human insight combined with AI-assisted review at every stage |
+| **Single Source of Truth** | One canonical location for shared info. Link, don't copy. |
+| **Minimalist** | Everything as small, simple, clean, and usable as possible |
 
 ## The Team
 
-| Agent | Role | Specialization |
-|-------|------|----------------|
-| **Orchestrator** | CEO | Task decomposition, agent dispatch, progress tracking, kanban management |
-| **Researcher** | Architect | Technical research, architecture design, feasibility analysis, specs |
-| **Builder** | Engineer | Feature implementation, bug fixes, refactoring, test writing |
-| **Reviewer** | Code Reviewer | Code quality, architecture review, security audit, performance analysis |
-| **QA** | Quality Assurance | Test design, integration testing, regression testing, bug tracking |
-| **Scribe** | Documentation | API docs, architecture docs, changelogs, tutorials, knowledge base |
+|| Agent | Role | Toolsets | Key Tools |
+|---|-------|--------|----------|-----------|
+| 1️⃣ | **Orchestrator** | CEO | kanban, delegation, cronjob | task decomposition, agent dispatch, progress tracking |
+| 2️⃣ | **Researcher** | CTO | web, browser, file, search_files | technical research, architecture design, specs |
+| 3️⃣ | **Builder** | Lead Engineer | file, terminal, search_files, web | feature implementation, bug fixes, refactoring |
+| 4️⃣ | **Reviewer** | Code Reviewer | file, terminal, search_files, web | code quality, security audit, performance review |
+| 5️⃣ | **QA** | QA Engineer | file, terminal, search_files, web | test design, integration testing, regression testing |
+| 6️⃣ | **Scribe** | Documentation | file, terminal, search_files, web | API docs, architecture docs, changelogs, tutorials |
+
+### Agent Profiles
+
+Each profile has three files:
+
+| File | Purpose |
+|------|---------|
+| `SOUL.md` | Agent identity, responsibilities, tools, constraints |
+| `system_prompt.txt` | Concise prompt for context injection |
+| `config.custom.yaml` | Profile-specific overrides (merged with common/config.yaml) |
 
 ## Workflow Pipeline
 
 ```
-Goal → Researcher (research & specs) → Builder (implement) → Reviewer (review) → QA (test) → Scribe (document) → Done
+Goal → Researcher (research) → Builder (implement) → Reviewer (review) → QA (test) → Scribe (document) → Done
 ```
 
 Each stage can parallelize:
-- Researcher works independently while Builder handles other tasks
-- Reviewer can review code as soon as Builder finishes a module
-- QA tests in parallel with Reviewer reviewing
-- Scribe documents as work progresses, not just at the end
+- **Researcher** works independently while **Builder** handles other tasks
+- **Reviewer** reviews code as soon as **Builder** finishes a module
+- **QA** tests in parallel with **Reviewer** reviewing
+- **Scribe** documents as work progresses, not just at the end
 
 ## Project Structure
 
@@ -57,82 +74,111 @@ zerofactory/
 ├── README.md             # You are here
 ├── CONVENTIONS.md        # Shared conventions (single source of truth)
 ├── ORCHESTRATION.md      # Team structure details
+├── LICENSE
 ├── docs/                 # Documentation suite
 │   ├── architecture.md   # System design and data flows
-│   ├── api.md            # CLI interface reference
-│   ├── changelog.md      # Version history
+│   ├── api.md            # CLI interface and configuration reference
 │   ├── setup-guide.md    # Installation and configuration
-│   └── troubleshooting.md # Common issues and solutions
-├── hermes/
-│   ├── config.yaml       # Main agent configuration
-│   └── profiles/
-│       ├── orchestrator/ # CEO — task decomposition, delegation
-│       ├── researcher/   # CTO — research, specs, architecture
-│       ├── builder/      # Lead Engineer — implementation
-│       ├── reviewer/     # Code Reviewer — quality gates
-│       ├── qa/           # QA Engineer — testing
-│       └── scribe/       # Documentation specialist
-├── systemd/              # Systemd service files
+│   ├── troubleshooting.md # Common issues and solutions
+│   ├── changelog.md      # Version history
+│   └── runbook.md        # Operations runbook
+├── hermes/               # Agent configuration
+│   ├── config.yaml       # Merged main config (symlinked from here)
+│   ├── profiles/         # Agent profiles
+│   │   ├── common/       # Base config shared by all agents
+│   │   ├── orchestrator/ # CEO — task decomposition & dispatch
+│   │   ├── researcher/   # CTO — research & architecture
+│   │   ├── builder/      # Lead Engineer — implementation
+│   │   ├── reviewer/     # Code Reviewer — quality gates
+│   │   ├── qa/           # QA — testing & verification
+│   │   └── scribe/       # Documentation specialist
+│   └── bin/              # Helper scripts (merge-config.sh)
+├── systemd/              # Systemd service files for 24/7 operation
 │   ├── README.md         # Systemd setup guide
-│   └── *.service         # Generated service units
-└── LICENSE
+│   ├── *.service.template # Service unit templates
+│   └── *.service          # Generated service units
+└── vllm/                 # Docker Compose LLM inference configs
+    ├── qwen3.6-35b-a3b/  # NVFP4 35B with DFlash on DGX Spark
+    └── qwen3.6-27b/      # Qwen3.6-27B v4 on DGX Spark
 ```
 
 ## Documentation
 
 Full documentation suite: [docs/](docs/)
 
-| Document | Description |
+|| Document | Description |
 |----------|-------------|
 | [README.md](README.md) | Project overview and quick start |
 | [architecture.md](docs/architecture.md) | System design and data flows |
 | [api.md](docs/api.md) | CLI interface and configuration reference |
 | [setup-guide.md](docs/setup-guide.md) | Setup: hermes-link, systemd, vLLM |
-| [changelog.md](docs/changelog.md) | Version history |
+| [changelog.md](docs/changelog.md) | Version history and change log |
 | [troubleshooting.md](docs/troubleshooting.md) | Common issues and solutions |
-| [CONVENTIONS.md](CONVENTIONS.md) | Project conventions and standards |
+| [CONVENTIONS.md](CONVENTIONS.md) | Shared conventions and standards |
 | [ORCHESTRATION.md](ORCHESTRATION.md) | Team structure and workflow details |
+| [runbook.md](docs/runbook.md) | Operations runbook |
 | [systemd/README.md](systemd/README.md) | Systemd service configuration |
 
-## AI Agent & Workspace
+## vLLM Inference (Optional)
 
-- [Hermes Agent](https://hermes-agent.nousresearch.com/): Primary orchestrator for long-running background tasks and coordination across specialist agents.
-- [Hermes Workspace](https://github.com/outsourc-e/heres-workworkspace): Native web workspace for Hermes Agent — chat, terminal, memory, skills, inspector.
+GPU-based LLM inference runs via Docker Compose in `vllm/`:
+
+| Setup | Model | GPU | Details |
+|-------|-------|-----|---------|
+| `vllm/qwen3.6-35b-a3b/` | Qwen3.6-35B-A3B | DGX Spark (NVFP4 + DFlash) | Speculative decoding with AEON-7 |
+| `vllm/qwen3.6-27b/` | Qwen3.6-27B v4 | DGX Spark (GB10) | Multimodal with DFlash |
+
+Both expose the OpenAI-compatible API at `http://localhost:8000/v1`.
 
 ## Agent Configuration
 
-Each profile has three key files:
+### Toolsets by Profile
 
-1. **SOUL.md** — Agent identity, responsibilities, tools, constraints
-2. **system_prompt.txt** — Concise prompt for immediate context injection
-3. **config.yaml** — Full runtime configuration (toolsets, timeouts, capabilities)
+| Agent | Tools | max_turns |
+|-------|-------|-----------|
+| orchestrator | kanban, delegation, cronjob, file, terminal, web, search_files, skills, mcp | 120 |
+| researcher | file, terminal, search_files, web, skills, mcp | 60 |
+| builder | file, terminal, search_files, web, kanban, skills, mcp | 90 |
+| reviewer | file, terminal, search_files, web, skills, mcp | 60 |
+| qa | file, terminal, search_files, web, skills, mcp | 60 |
+| scribe | file, terminal, search_files, web | 60 |
 
-Profile-specific toolsets:
-- **Orchestrator**: hermes-cli, delegation, kanban, cronjob (coordinator)
-- **Researcher**: web, browser, file, search_files (research)
-- **Builder**: file, terminal, search_files, web (coding)
-- **Reviewer**: file, terminal, search_files, web (review)
-- **QA**: file, terminal, search_files, web (testing)
-- **Scribe**: file, terminal, search_files, web (documentation)
+### Configuration Hierarchy
+
+```
+profiles/common/config.yaml    ← Base config (all agents share)
+         ↓ + profile override
+profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
+         ↓ merge-config.sh
+hermes/profiles/<profile>/config.yaml  ← Merged final config
+```
 
 ## Makefile Commands
 
 | Command | Description |
 |---------|-------------|
 | `make hermes-link` | Link config and profiles to `~/.hermes/` |
+| `make config-merge` | Merge config for a specific profile (`MERGE_PROFILE=builder make config-merge`) |
 | `make systemd-link` | Link systemd services to `/etc/systemd/system/` |
 | `make systemd-enable` | Enable all services on boot |
 | `make systemd-start` | Start all services |
 | `make systemd-stop` | Stop all services |
 | `make systemd-status` | Show service status |
+| `make systemd-logs` | Show service logs |
+| `make systemd-refresh` | Full refresh (generate → link → enable → start) |
 
-## Cost Optimization
+## AI Agent & Workspace
 
-- Each agent has only the skills relevant to their role
-- All non-essential skills/plugins disabled by default
-- Compression enabled for context efficiency
-- Prompt caching enabled
-- Short max_turns per agent (reduces token waste)
+- [Hermes Agent](https://hermes-agent.nousresearch.com/): Primary orchestrator for long-running background tasks and coordination across specialist agents.
+- [Hermes Workspace](https://github.com/outsourc-e/hermes-workspace): Native web workspace for Hermes Agent — chat, terminal, memory, skills, inspector.
+
+## Service Ports
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| hermes-gateway | 8642 | API server for agent communication |
+| hermes-dashboard | 9119 | Web UI for monitoring |
+| hermes-workspace | 3000 | Workspace management (chat, terminal, files) |
 
 ## License
 
