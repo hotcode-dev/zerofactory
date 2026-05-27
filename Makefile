@@ -4,9 +4,10 @@ HERMES_SRC := $(CURDIR)/hermes
 HERMES_DEST := $(HOME)/.hermes
 SYSTEMD_SERVICES := hermes-gateway hermes-dashboard hermes-workspace
 SYSTEMD_DIR := $(CURDIR)/systemd
-MERGE_PROFILE ?= builder
+MERGE_PROFILE ?= orchestrator
+JOBS_PROFILE ?= orchestrator
 
-.PHONY: hermes-link config-merge config-merge-all systemd-generate systemd-link systemd-enable systemd-disable systemd-start systemd-stop systemd-status systemd-logs systemd-refresh
+.PHONY: hermes-link config-merge config-merge-all jobs-merge jobs-merge-all systemd-generate systemd-link systemd-enable systemd-disable systemd-start systemd-stop systemd-status systemd-logs systemd-refresh
 hermes-link:
 	@mkdir -p "$(HERMES_DEST)"
 	@rm -rf "$(HERMES_DEST)/profiles"
@@ -20,6 +21,14 @@ config-merge:
 config-merge-all:
 	@./hermes/bin/merge-config.sh all
 	@echo "Merged config for all profiles"
+
+jobs-merge:
+	@./hermes/bin/merge-jobs.sh "$(JOBS_PROFILE)"
+	@echo "Merged jobs for profile: $(JOBS_PROFILE)"
+
+jobs-merge-all:
+	@./hermes/bin/merge-jobs.sh all
+	@echo "Merged jobs for all profiles"
 
 systemd-generate:
 	@command -v envsubst >/dev/null 2>&1 || (echo "Error: envsubst not found. Install gettext package." && exit 1)

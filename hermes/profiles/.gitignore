@@ -11,6 +11,7 @@
 !*/mcp_servers.json
 !*/cron/
 !*/cron/jobs.json
+!*/cron/jobs.custom.json
 !*/skills
 !*/skills/multi-agent-orchestration
 !*/skills/kanban

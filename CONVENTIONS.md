@@ -13,7 +13,7 @@ All agents reference this file. It is the single source of truth for project con
 - No TODOs — leave no unfinished work.
 - Flag breaking changes and migration needs immediately.
 - Don't duplicate information — reference shared files with relative paths.
-- **Always use the latest stable versions of packages, libraries, and frameworks.** Pin to exact versions (e.g. `^1.2.3` or `==1.2.3`) and run `npm outdated` / `pip list --outdated` / `go list -u -m all` regularly to track updates.
+- Always use the latest stable versions of packages, libraries, and frameworks. Pin to exact versions (e.g. `^1.2.3`) and run `npm outdated` regularly to track updates.
 
 ## Naming Conventions
 
@@ -25,6 +25,9 @@ All agents reference this file. It is the single source of truth for project con
 - **Interfaces/Protocols**: PascalCase or `I` prefix — `IUserService` or `UserService`
 - **Tests**: match source naming with extension — `user-manager.test.ts`, `handler_test.go`
 - **Directories**: kebab-case — `src/user-manager/`, `internal/payment/`
+- Tasks use `t_<hex_id>` format
+- Workspaces are created under `workspaces/<task_id>`
+- Branch names follow pattern `task/<task_id>` when applicable
 
 ## TypeScript / Bun Conventions
 
@@ -112,6 +115,20 @@ Examples:
 - Commit frequently with small, focused changes.
 - Push a descriptive branch per task for traceability.
 
+### Always create pull request to git remote after a task is done
+Every agent **must** push their work and create a pull request to the git remote after finishing a task. This ensures:
+- Work is not lost during workspace garbage collection
+- Changes are reviewed before merging
+- All progress is tracked in the repository
+
+**Required steps:**
+1. Commit changes with clear, descriptive messages
+2. Push to the remote repository
+3. Open a pull request against the target branch
+4. Reference the PR URL in task completion notes
+
+> **Important:** Never finish a task without pushing to remote and creating a PR.
+
 ## Git Directory Structure
 
 - **Always use `~/git/<gituser>/<reponame>` as the local clone path** when cloning or working with a repository. The `<gituser>` component matches the GitHub (or Git hosting) username/organization from the remote URL, and `<reponame>` matches the repository name.
@@ -156,3 +173,15 @@ Examples:
 - Agent identity: `hermes/profiles/<agent>/SOUL.md`
 - System prompt: `hermes/profiles/<agent>/system_prompt.txt`
 - Project root README: `README.md`
+
+## Task Lifecycle
+1. **triage** → Initial state, being prepared
+2. **todo** → Ready to work on
+3. **running** → Currently being worked on
+4. **blocked** → Waiting on something/someone
+5. **done** → Task completed
+
+## Communication
+- Reference task IDs in all comments and notes
+- Use structured metadata in task completion
+- Keep summaries concise and actionable
