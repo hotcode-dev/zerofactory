@@ -253,7 +253,7 @@ display:
   cleanup_progress: false
   tool_progress: all
 dashboard:
-  theme: default
+  theme: mono
   show_token_analytics: false
 privacy:
   redact_pii: false
@@ -454,12 +454,12 @@ cron:
   max_parallel_jobs: 10
 kanban:
   dispatch_in_gateway: true
-  dispatch_interval_seconds: 30
+  dispatch_interval_seconds: 15
   failure_limit: 3
   worker_log_rotate_bytes: 4194304
   worker_log_backup_count: 3
-  orchestrator_profile: ''
-  default_assignee: ''
+  orchestrator_profile: orchestrator
+  default_assignee: orchestrator
   auto_decompose: true
   auto_decompose_per_tick: 5
   dispatch_stale_timeout_seconds: 7200
@@ -492,7 +492,8 @@ sessions:
   min_interval_hours: 24
   write_json_snapshots: false
 onboarding:
-  seen: {}
+  seen:
+    tool_progress_prompt: true
 updates:
   pre_update_backup: false
   backup_keep: 5

@@ -257,7 +257,7 @@ display:
   cleanup_progress: false
   tool_progress: all
 dashboard:
-  theme: default
+  theme: mono
   show_token_analytics: false
 privacy:
   redact_pii: false
@@ -496,7 +496,8 @@ sessions:
   min_interval_hours: 24
   write_json_snapshots: false
 onboarding:
-  seen: {}
+  seen:
+    tool_progress_prompt: true
 updates:
   pre_update_backup: false
   backup_keep: 5

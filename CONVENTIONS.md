@@ -13,6 +13,7 @@ All agents reference this file. It is the single source of truth for project con
 - No TODOs — leave no unfinished work.
 - Flag breaking changes and migration needs immediately.
 - Don't duplicate information — reference shared files with relative paths.
+- **Always use the latest stable versions of packages, libraries, and frameworks.** Pin to exact versions (e.g. `^1.2.3` or `==1.2.3`) and run `npm outdated` / `pip list --outdated` / `go list -u -m all` regularly to track updates.
 
 ## Naming Conventions
 
@@ -104,6 +105,12 @@ Examples:
 - `feat(auth): add OAuth2 login flow`
 - `fix(user): handle null email in validation`
 - `docs(api): add webhook reference`
+
+## Git Workflow
+
+- **Always push to git remote after finishing a task.** Work stored only in a local worktree or scratch directory is lost if the run is reclaimed or the workspace is garbage-collected. Push commits to the remote before marking a task complete so work survives.
+- Commit frequently with small, focused changes.
+- Push a descriptive branch per task for traceability.
 
 ## Code Review Criteria
 
