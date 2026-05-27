@@ -71,7 +71,7 @@ hermes -p orchestrator -m "Show me the current kanban board"
 
 | Purpose | Path |
 |---------|------|
-| Main config | `~/.hermes/config.yaml` (symlinked from `hermes/config.yaml`) |
+| Base config | `~/.hermes/profiles/common/config.yaml` |
 | Agent profiles | `~/.hermes/profiles/` (symlinked from `hermes/profiles/`) |
 | Agent SOUL files | `~/.hermes/profiles/<profile>/SOUL.md` |
 | Systemd units | `/etc/systemd/system/hermes-*.service` |

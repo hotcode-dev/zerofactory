@@ -18,16 +18,15 @@ git clone <repo-url> zerofactory
 cd zerofactory
 ```
 
-## Step 2: Link Hermes Config
+## Step 2: Link Hermes Profiles
 
-Link the config and profiles to the standard Hermes location:
+Link profiles to the standard Hermes location:
 
 ```bash
 make hermes-link
 ```
 
 This creates:
-- `~/.hermes/config.yaml` → symlink to `zerofactory/hermes/config.yaml`
 - `~/.hermes/profiles/` → symlink to `zerofactory/hermes/profiles/`
 
 ### Configuration Hierarchy
@@ -220,7 +219,7 @@ Both setups expose the OpenAI-compatible API at `http://localhost:8000/v1`:
 curl http://localhost:8000/v1/models | jq '.data[0].id'
 ```
 
-After inference is running, update `~/.hermes/config.yaml` to point to the correct endpoint:
+After inference is running, update `~/.hermes/profiles/common/config.yaml` to point to the correct endpoint:
 
 ```yaml
 custom_providers:
@@ -303,14 +302,13 @@ make systemd-refresh
 
 | Component | Path |
 |-----------|------|
-| Config | `~/.hermes/config.yaml` (symlink → `hermes/config.yaml`) |
 | Profiles | `~/.hermes/profiles/` (symlink → `hermes/profiles/`) |
 | Systemd units | `/etc/systemd/system/hermes-*.service` |
 | Environment | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
 | Logs | `journalctl -u hermes-<service>` |
 | Kanban DB | `~/.hermes/kanban.db` |
 | Profile config | `hermes/profiles/<agent>/config.custom.yaml` |
-| Base config | `hermes/profiles/common/config.yaml` |
+| Base config | `~/.hermes/profiles/common/config.yaml` |
 
 ## Troubleshooting
 

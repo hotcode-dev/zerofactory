@@ -43,7 +43,7 @@ make systemd-enable
 make hermes-link
 
 # Verify
-ls -la ~/.hermes/config.yaml
+ls -la ~/.hermes/profiles/common/config.yaml
 ls -la ~/.hermes/profiles/
 ```
 

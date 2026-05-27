@@ -39,7 +39,7 @@ hermes -p orchestrator -m "Create task: implement user authentication with JWT"
 
 ## Configuration File
 
-The main config is at `hermes/config.yaml` (symlinked from `~/.hermes/config.yaml`).
+The base config is at `~/.hermes/profiles/common/config.yaml`.
 
 ### Model Configuration
 
@@ -194,7 +194,7 @@ make config-merge MERGE_PROFILE=builder
 
 | Item | Path |
 |------|------|
-| Main config | `~/.hermes/config.yaml` (symlink → `hermes/config.yaml`) |
+| Base config | `~/.hermes/profiles/common/config.yaml` |
 | Profiles | `hermes/profiles/<agent>/` |
 | Base config | `hermes/profiles/common/config.yaml` |
 | Profile overrides | `hermes/profiles/<profile>/config.custom.yaml` |

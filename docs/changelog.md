@@ -36,7 +36,7 @@ All notable changes to the Zero Factory project.
 Core 6-agent architecture built on Hermes Agent: Orchestrator, Researcher, Builder, Reviewer, QA, Scribe.
 
 ### Added
-- `hermes/config.yaml` — Main agent configuration
+- `hermes/profiles/common/config.yaml` — Base agent configuration
 - `hermes/profiles/*/` — 6 agent profiles with SOUL.md, system_prompt.txt, config.yaml
 - `systemd/*.service` — Systemd service units for gateway, dashboard, workspace
 - `systemd/*.service.template` — Service unit templates with env substitution

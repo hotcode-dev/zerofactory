@@ -83,7 +83,6 @@ zerofactory/
 │   ├── changelog.md      # Version history
 │   └── runbook.md        # Operations runbook
 ├── hermes/               # Agent configuration
-│   ├── config.yaml       # Merged main config (symlinked from here)
 │   ├── profiles/         # Agent profiles
 │   │   ├── common/       # Base config shared by all agents
 │   │   ├── orchestrator/ # CEO — task decomposition & dispatch
@@ -157,7 +156,7 @@ hermes/profiles/<profile>/config.yaml  ← Merged final config
 
 | Command | Description |
 |---------|-------------|
-| `make hermes-link` | Link config and profiles to `~/.hermes/` |
+| `make hermes-link` | Link `~/.hermes/profiles/` only |
 | `make config-merge` | Merge config for a specific profile (`MERGE_PROFILE=builder make config-merge`) |
 | `make systemd-link` | Link systemd services to `/etc/systemd/system/` |
 | `make systemd-enable` | Enable all services on boot |
