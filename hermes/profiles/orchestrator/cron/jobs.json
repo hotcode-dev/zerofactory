@@ -1,0 +1,119 @@
+{
+  "jobs": [
+    {
+      "id": "742dbc0d4e3f",
+      "name": "Zero Factory board sync",
+      "prompt": "Sync the kanban board - check for any orphaned tasks, verify task graphs are correct, and ensure all pipeline stages are represented. Report board health status.",
+      "skills": [],
+      "skill": null,
+      "model": "qwen36-fast",
+      "provider": "custom",
+      "base_url": null,
+      "script": null,
+      "no_agent": false,
+      "context_from": null,
+      "schedule": {
+        "kind": "interval",
+        "minutes": 60,
+        "display": "every 60m"
+      },
+      "schedule_display": "every 60m",
+      "repeat": {
+        "times": null,
+        "completed": 3
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-05-27T03:32:51.061594+07:00",
+      "next_run_at": "2026-05-27T08:16:25.403361+07:00",
+      "last_run_at": "2026-05-27T06:33:25.178092+07:00",
+      "last_status": "error",
+      "last_error": "RuntimeError: No LLM provider configured. Run `hermes model` to select a provider, or run `hermes setup` for first-time configuration.",
+      "last_delivery_error": "no delivery target resolved for deliver=origin",
+      "deliver": "origin",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null,
+      "profile": null
+    },
+    {
+      "id": "bd818865da4b",
+      "name": "Zero Factory task queue check",
+      "prompt": "Check Zero Factory task queue - any tasks stuck in 'running' too long? Any 'blocked' tasks waiting for human review? Report on task throughput and bottlenecks.",
+      "skills": [],
+      "skill": null,
+      "model": "qwen36-fast",
+      "provider": "custom",
+      "base_url": null,
+      "script": null,
+      "no_agent": false,
+      "context_from": null,
+      "schedule": {
+        "kind": "interval",
+        "minutes": 120,
+        "display": "every 120m"
+      },
+      "schedule_display": "every 120m",
+      "repeat": {
+        "times": null,
+        "completed": 1
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-05-27T03:33:55.582320+07:00",
+      "next_run_at": "2026-05-27T07:34:24.693676+07:00",
+      "last_run_at": "2026-05-27T05:34:24.693676+07:00",
+      "last_status": "error",
+      "last_error": "RuntimeError: No LLM provider configured. Run `hermes model` to select a provider, or run `hermes setup` for first-time configuration.",
+      "last_delivery_error": "no delivery target resolved for deliver=origin",
+      "deliver": "origin",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null,
+      "profile": null
+    },
+    {
+      "id": "7f9e9ac9350d",
+      "name": "Zero Factory daily report",
+      "prompt": "Generate a comprehensive daily report for Zero Factory. Include: total tasks completed, tasks currently running, tasks blocked, agent performance, and any issues. Summarize with actionable items.",
+      "skills": [],
+      "skill": null,
+      "model": "qwen36-fast",
+      "provider": "custom",
+      "base_url": null,
+      "script": null,
+      "no_agent": false,
+      "context_from": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * *",
+        "display": "0 9 * * *"
+      },
+      "schedule_display": "0 9 * * *",
+      "repeat": {
+        "times": null,
+        "completed": 0
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-05-27T03:35:15.996896+07:00",
+      "next_run_at": "2026-05-27T09:00:00+07:00",
+      "last_run_at": null,
+      "last_status": null,
+      "last_error": null,
+      "last_delivery_error": null,
+      "deliver": "origin",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null,
+      "profile": null
+    }
+  ],
+  "updated_at": "2026-05-27T07:16:25.403524+07:00"
+}

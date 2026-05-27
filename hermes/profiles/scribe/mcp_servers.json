@@ -1,0 +1,10 @@
+[
+  {
+    "name": "<server-name>",
+    "command": "<executable>",
+    "args": [],
+    "env": {},
+    "description": "<brief description of what this MCP server does>",
+    "disabled": false
+  }
+]

@@ -222,7 +222,7 @@ approvals:
 cron:
   wrap_response: true
   max_parallel_jobs: 10
-dispatch:
+kanban:
   dispatch_in_gateway: true
   dispatch_interval_seconds: 15
   failure_limit: 3

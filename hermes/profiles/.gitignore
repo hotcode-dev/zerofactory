@@ -8,5 +8,9 @@
 !*/.env.example
 !*/config.yaml
 !*/config.custom.yaml
+!*/mcp_servers.json
+!*/cron/
+!*/cron/jobs.json
+!*/skills
 !*/skills/multi-agent-orchestration
 !*/skills/kanban
