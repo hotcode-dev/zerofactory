@@ -11,7 +11,7 @@ WorkingDirectory=${HOME}
 Environment="PATH=${HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EnvironmentFile=-${HOME}/hermes-dashboard.env
 
-ExecStart=/bin/bash -lc 'source "${HOME}/.bashrc" && hermes dashboard --host 0.0.0.0 --port 9119 --insecure --no-open'
+ExecStart=/bin/bash -lc 'source "${HOME}/.bashrc" 2>/dev/null || true; if ! command -v npm >/dev/null 2>&1; then source "${HOME}/.nvm/nvm.sh" 2>/dev/null || true; fi; if ! command -v npm >/dev/null 2>&1; then echo "npm not found after loading .bashrc and .nvm/nvm.sh" >&2; exit 127; fi; exec hermes dashboard --host 0.0.0.0 --port 9119 --insecure --no-open'
 TimeoutStopSec=210s
 Restart=on-failure
 RestartSec=600

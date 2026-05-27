@@ -112,6 +112,14 @@ Examples:
 - Commit frequently with small, focused changes.
 - Push a descriptive branch per task for traceability.
 
+## Git Directory Structure
+
+- **Always use `~/git/<gituser>/<reponame>` as the local clone path** when cloning or working with a repository. The `<gituser>` component matches the GitHub (or Git hosting) username/organization from the remote URL, and `<reponame>` matches the repository name.
+  - Example: `https://github.com/hotcode-dev/zerofactory` → `~/git/hotcode-dev/zerofactory`
+  - Example: `https://github.com/ntsd/git-fight` → `~/git/ntsd/git-fight`
+  - Example: `https://github.com/ntsd/zerofactory` → `~/git/ntsd/zerofactory`
+- This ensures a consistent, predictable location for every project's local copy across runs and workspaces.
+
 ## Code Review Criteria
 
 ### Must Fix (blocking)
