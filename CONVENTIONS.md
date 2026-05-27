@@ -17,13 +17,13 @@ All agents reference this file. It is the single source of truth for project con
 
 ## Naming Conventions
 
-- **Files**: kebab-case — `feature-name.ts`, `data-model.go`
+- **Files**: kebab-case — `feature-name.ts`, `data-model.ts`
 - **Classes/Types**: PascalCase — `UserManager`, `PaymentProcessor`
 - **Variables**: camelCase — `userId`, `requestCount`
 - **Constants**: UPPER_SNAKE_CASE — `MAX_RETRIES`, `DEFAULT_TIMEOUT`
 - **Functions**: camelCase with clear verb — `fetchUsers()`, `buildTemplate()`
 - **Interfaces/Protocols**: PascalCase or `I` prefix — `IUserService` or `UserService`
-- **Tests**: match source naming with extension — `user-manager.test.ts`, `handler_test.go`
+- **Tests**: match source naming with extension — `user-manager.test.ts`, `handler.test.ts`
 - **Directories**: kebab-case — `src/user-manager/`, `internal/payment/`
 - Tasks use `t_<hex_id>` format
 - Workspaces are created under `workspaces/<task_id>`
@@ -56,32 +56,6 @@ project/
 - ES modules with `.ts` extension
 - Test files co-located with source when possible, otherwise in `tests/`
 - All dependencies explicitly versioned
-
-## Go Conventions
-
-```
-project/
-├── cmd/
-│   └── <binary>/
-│       └── main.go
-├── internal/
-│   └── <package>/
-│       ├── <package>.go
-│       └── <package>_test.go
-├── pkg/
-│   └── <external-package>/
-│       └── <file>.go
-├── Makefile
-├── go.mod
-└── README.md
-```
-
-- `internal/` for private package code (Go visibility rule)
-- `pkg/` for public package code
-- One public type per file when possible
-- Receiver names: short, 1-2 chars, consistent across package
-- Errors wrapped with context: `fmt.Errorf("failed to X: %w", err)`
-- Test files: `<source>_test.go`
 
 ## Test Conventions
 
