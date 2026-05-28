@@ -15,7 +15,8 @@ Complete operational runbook for Zero Factory — the AI multi-agent orchestrati
 9. [Monitoring & Alerting](#monitoring--alerting)
 10. [Agent Communication Protocol](#agent-communication-protocol)
 11. [Task Lifecycle](#task-lifecycle)
-12. [Appendix](#appendix)
+12. [Agent Dispatch Reference](#agent-dispatch-reference)
+13. [Appendix](#appendix)
 
 ---
 
@@ -90,7 +91,7 @@ Any change to `hermes/profiles/<profile>/config.custom.yaml` (including MCP serv
 Run:
 
 ```bash
-make config-merge-all
+make config-merge
 ```
 
 If this step is skipped, Hermes continues using stale `config.yaml` values.
@@ -173,7 +174,7 @@ Each profile's config is built from two files:
 1. `profiles/common/config.yaml` — Base configuration (shared by all agents)
 2. `profiles/<profile>/config.custom.yaml` — Profile-specific overrides
 
-Run `hermes/bin/merge-config.sh <profile>` to merge. Run with `all` to rebuild all.
+Run `hermes/bin/merge-config.sh` to rebuild all profiles.
 
 ### Key Settings by Profile
 
@@ -226,7 +227,7 @@ To add or update MCP servers for any profile:
 2. Regenerate merged runtime configs:
 
 ```bash
-make config-merge-all
+make config-merge
 ```
 
 Hermes reads per-profile `config.yaml`, which is generated from `config.custom.yaml`.
@@ -305,7 +306,7 @@ cd /home/ntsd/git/hotcode/zerofactory
 vim hermes/profiles/<profile>/config.custom.yaml
 
 # 2. Regenerate merged config
-make hermes-link
+make config-merge
 
 # 3. Restart services if needed
 make systemd-restart
@@ -476,7 +477,24 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 
 ---
 
-## 12. Appendix
+## 12. Agent Dispatch Reference
+
+See [docs/agent-dispatch.md](agent-dispatch.md) for the complete task-to-agent mapping.
+
+**Quick summary:**
+
+| Task Type | Correct Agent |
+|-----------|--------------|
+| Research, architecture, specs | Researcher |
+| Code implementation, bug fixes | Builder |
+| Code quality review, security audit | Reviewer |
+| Test design, verification | QA |
+| Documentation, API reference, changelogs | Scribe |
+| Task decomposition, coordination | Orchestrator |
+
+See the full dispatch reference for decision flowcharts, anti-patterns, and parallel assignment guidance.
+
+## 13. Appendix
 
 ### A. Quick Command Reference
 

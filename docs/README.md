@@ -21,5 +21,3 @@ Complete documentation for the Zero Factory system — an AI multi-agent orchest
 - Consult [runbook.md](runbook.md) for daily operations and procedures.
 - Check [troubleshooting.md](troubleshooting.md) if something breaks.
 - See [changelog.md](changelog.md) for version history.
-
-Cross-references are used throughout to avoid duplication. See [CONVENTIONS.md](../CONVENTIONS.md) for documentation standards.

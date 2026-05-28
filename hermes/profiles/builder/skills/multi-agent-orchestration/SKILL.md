@@ -53,15 +53,10 @@ Parallelism rules:
 
 Never duplicate information. When the same concept or rule applies across multiple agent profiles (e.g. naming, file structure, commit format, review criteria), store the canonical version in one place and reference it — do not copy-paste and edit independently.
 
-- **Canonical file**: One authoritative source for shared definitions (`CONVENTIONS.md` at repo root).
-- **Cross-reference**: Use file links (`../CONVENTIONS.md`) or relative paths so everyone reads the same truth.
 - **Edit one, update all**: When a rule changes, update the source file — linked profiles auto-see it.
 - **No forks of truth**: If you must customize (e.g. a role needs a different toolset), extend, don't duplicate the whole block.
-- **SOUL.md inclusion**: Every agent's `SOUL.md` must include a "Single Source of Truth" section that references CONVENTIONS.md with role-specific guidance (e.g. Reviewer references review criteria, QA references test conventions).
 
-### CONVENTIONS.md content template
 
-A production CONVENTIONS.md should include:
 1. **General Rules** — code-first, small changes, type checks, no TODOs
 2. **Naming Conventions** — kebab-case files, PascalCase classes, camelCase variables
 3. **File Structure** — TS project templates
@@ -87,7 +82,7 @@ A production CONVENTIONS.md should include:
 - **Avoid toolset creep**: Don't add tools agents don't need. Each agent should have only its relevant tools — this saves tokens and reduces distraction.
 - **Distinct identities**: Every agent must have a unique SOUL.md. Don't reuse templates without customization — agents need distinct roles to avoid conflicting behavior.
 - **Cost awareness**: Short max_turns + disabled skills + compression = lower cost. Review every profile for unnecessary tools/skills.
-- **MCP servers live in config.custom.yaml**: Add or update MCP servers in `config.custom.yaml`, then run `make config-merge-all` to regenerate `config.yaml`.
+- **MCP servers live in config.custom.yaml**: Add or update MCP servers in `config.custom.yaml`, then run `make config-merge` to regenerate `config.yaml`.
 - **Three files minimum**: Every profile needs SOUL.md, config.custom.yaml, and config.yaml.
 - **Active profile is write-protected**: The profile currently running as the active session blocks `write_file` from overwriting its `config.yaml`. If `write_file` fails with "protected system/credential file", use `terminal` with a Python script to write the file directly:
   ```python
@@ -104,5 +99,4 @@ A production CONVENTIONS.md should include:
 
 - **references/team-structure.md** — Example team rosters, pipeline layouts, agent identities
 - **templates/profile-template/** — Starter template for a new agent profile directory
-- **templates/conventions.md** — Single source of truth for naming, file structure, commits, reviews, docs
 - **templates/profile-template/** — Starter profile directory including config template files

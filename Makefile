@@ -4,31 +4,28 @@ HERMES_SRC := $(CURDIR)/hermes
 HERMES_DEST := $(HOME)/.hermes
 SYSTEMD_SERVICES := hermes-gateway hermes-dashboard hermes-workspace
 SYSTEMD_DIR := $(CURDIR)/systemd
-MERGE_PROFILE ?= orchestrator
-JOBS_PROFILE ?= orchestrator
 
-.PHONY: hermes-link config-merge config-merge-all jobs-merge jobs-merge-all systemd-generate systemd-link systemd-enable systemd-disable systemd-start systemd-stop systemd-status systemd-logs systemd-refresh
+.PHONY: hermes-link merge-all config-merge jobs-merge soul-merge systemd-generate systemd-link systemd-enable systemd-disable systemd-start systemd-stop systemd-status systemd-logs systemd-refresh
 hermes-link:
 	@mkdir -p "$(HERMES_DEST)"
 	@rm -rf "$(HERMES_DEST)/profiles"
 	@ln -sfnT "$(HERMES_SRC)/profiles" "$(HERMES_DEST)/profiles"
 	@echo "Linked Hermes profiles to $(HERMES_DEST)"
 
-config-merge:
-	@./hermes/bin/merge-config.sh "$(MERGE_PROFILE)"
-	@echo "Merged config for profile: $(MERGE_PROFILE)"
+merge-all: config-merge jobs-merge soul-merge
+	@echo "Merged config, jobs, and SOUL for all profiles"
 
-config-merge-all:
-	@./hermes/bin/merge-config.sh all
+config-merge:
+	@./hermes/bin/merge-config.sh
 	@echo "Merged config for all profiles"
 
 jobs-merge:
-	@./hermes/bin/merge-jobs.sh "$(JOBS_PROFILE)"
-	@echo "Merged jobs for profile: $(JOBS_PROFILE)"
-
-jobs-merge-all:
-	@./hermes/bin/merge-jobs.sh all
+	@./hermes/bin/merge-jobs.sh
 	@echo "Merged jobs for all profiles"
+
+soul-merge:
+	@./hermes/bin/merge-soul.sh
+	@echo "Merged SOUL for all profiles"
 
 systemd-generate:
 	@command -v envsubst >/dev/null 2>&1 || (echo "Error: envsubst not found. Install gettext package." && exit 1)

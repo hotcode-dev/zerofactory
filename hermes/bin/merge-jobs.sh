@@ -3,16 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "Usage: $0 <profile-name|all> [output-file]" >&2
-  echo "Example: $0 orchestrator $ROOT_DIR/profiles/orchestrator/cron/jobs.json" >&2
-  echo "Example: $0 all" >&2
-  exit 1
-fi
-
-PROFILE_NAME="$1"
-if [[ "$PROFILE_NAME" == "common" ]]; then
-  echo "Error: profile-name must not be 'common'." >&2
+if [[ $# -ne 0 ]]; then
+  echo "Usage: $0" >&2
   exit 1
 fi
 
@@ -23,7 +15,7 @@ fi
 
 merge_one() {
   local profile_name="$1"
-  local output_file="$2"
+  local output_file="$ROOT_DIR/profiles/$profile_name/cron/jobs.json"
   local base_jobs_file="$ROOT_DIR/profiles/$profile_name/cron/jobs.json"
   local custom_jobs_file="$ROOT_DIR/profiles/$profile_name/cron/jobs.custom.json"
   local tmp_output
@@ -81,33 +73,21 @@ merge_one() {
   echo "Merged jobs written to: $output_file"
 }
 
-if [[ "$PROFILE_NAME" == "all" ]]; then
-  if [[ $# -eq 2 ]]; then
-    echo "Error: output-file is not supported when using 'all'." >&2
-    exit 1
+shopt -s nullglob
+found_any=false
+for profile_dir in "$ROOT_DIR"/profiles/*; do
+  [[ -d "$profile_dir" ]] || continue
+
+  profile_name="$(basename "$profile_dir")"
+  [[ "$profile_name" == "common" ]] && continue
+
+  if [[ -f "$profile_dir/cron/jobs.custom.json" ]]; then
+    found_any=true
+    merge_one "$profile_name"
   fi
+done
 
-  shopt -s nullglob
-  found_any=false
-  for profile_dir in "$ROOT_DIR"/profiles/*; do
-    [[ -d "$profile_dir" ]] || continue
-
-    profile_name="$(basename "$profile_dir")"
-    [[ "$profile_name" == "common" ]] && continue
-
-    if [[ -f "$profile_dir/cron/jobs.custom.json" ]]; then
-      found_any=true
-      merge_one "$profile_name" "$profile_dir/cron/jobs.json"
-    fi
-  done
-
-  if [[ "$found_any" == false ]]; then
-    echo "Error: no profiles with cron/jobs.custom.json found under $ROOT_DIR/profiles" >&2
-    exit 1
-  fi
-
-  exit 0
+if [[ "$found_any" == false ]]; then
+  echo "Error: no profiles with cron/jobs.custom.json found under $ROOT_DIR/profiles" >&2
+  exit 1
 fi
-
-OUTPUT_FILE="${2:-$ROOT_DIR/profiles/$PROFILE_NAME/cron/jobs.json}"
-merge_one "$PROFILE_NAME" "$OUTPUT_FILE"

@@ -181,11 +181,11 @@ hermes/profiles/<profile>/
 ### Configuration Merging
 
 ```bash
-# Merge a specific profile's config
-make config-merge MERGE_PROFILE=builder
+# Merge all profiles' config
+make config-merge
 
 # Or manually:
-./hermes/bin/merge-config.sh <profile>
+./hermes/bin/merge-config.sh
 ```
 
 ## Quick Reference
@@ -200,5 +200,4 @@ make config-merge MERGE_PROFILE=builder
 | Systemd units | `systemd/*.service` |
 | Environment files | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
 | Kanban DB | `~/.hermes/kanban.db` |
-| Conventions | `CONVENTIONS.md` |
 | Architecture | `docs/architecture.md` |

@@ -5,7 +5,7 @@ All notable changes to the Zero Factory project.
 ## [Unreleased]
 
 ### Added
-- `docs/runbook.md` — comprehensive operations runbook with 11 sections
+- `docs/agent-dispatch.md` — comprehensive task-to-agent mapping with decision flowchart, anti-patterns, and parallel assignment matrix
 - `systemd/README.md` — detailed systemd service setup guide
 - `hermes/bin/merge-config.sh` — config merge helper script
 - `vllm/qwen3.6-35b-a3b/` — Docker Compose vLLM for Qwen3.6-35B-A3B (NVFP4 + DFlash on DGX Spark)
@@ -38,7 +38,6 @@ Core 6-agent architecture built on Hermes Agent: Orchestrator, Researcher, Build
 - `hermes/profiles/*/` — 6 agent profiles with SOUL.md, config.custom.yaml
 - `systemd/*.service` — Systemd service units for gateway, dashboard, workspace
 - `systemd/*.service.template` — Service unit templates with env substitution
-- `CONVENTIONS.md` — Shared conventions: naming, commit format, code review criteria, documentation standards
 - `ORCHESTRATION.md` — Team structure and workflow details
 - `Makefile` — Build automation: hermes-link, systemd-link, systemd-status, systemd-start/stop, systemd-logs
 - `README.md` — Project overview and quick start

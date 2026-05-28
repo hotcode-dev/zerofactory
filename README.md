@@ -26,7 +26,7 @@ Full setup guide: [docs/setup-guide.md](docs/setup-guide.md)
 Any time you change a profile config (including MCP server settings), you must rebuild merged runtime configs:
 
 ```bash
-make config-merge-all
+make config-merge
 ```
 
 Why this matters:
@@ -84,7 +84,6 @@ Each stage can parallelize:
 zerofactory/
 ├── Makefile              # Build & management shortcuts
 ├── README.md             # You are here
-├── CONVENTIONS.md        # Shared conventions (single source of truth)
 ├── ORCHESTRATION.md      # Team structure details
 ├── LICENSE
 ├── docs/                 # Documentation suite
@@ -96,7 +95,7 @@ zerofactory/
 │   └── runbook.md        # Operations runbook
 ├── hermes/               # Agent configuration
 │   ├── profiles/         # Agent profiles
-│   │   ├── common/       # Base config shared by all agents
+│   │   ├── common/       # Base config shared by all agents (source of truth)
 │   │   ├── orchestrator/ # CEO — task decomposition & dispatch
 │   │   ├── researcher/   # CTO — research & architecture
 │   │   ├── builder/      # Lead Engineer — implementation
@@ -125,9 +124,9 @@ Full documentation suite: [docs/](docs/)
 | [setup-guide.md](docs/setup-guide.md) | Setup: hermes-link, systemd, vLLM |
 | [changelog.md](docs/changelog.md) | Version history and change log |
 | [troubleshooting.md](docs/troubleshooting.md) | Common issues and solutions |
-| [CONVENTIONS.md](CONVENTIONS.md) | Shared conventions and standards |
 | [ORCHESTRATION.md](ORCHESTRATION.md) | Team structure and workflow details |
 | [runbook.md](docs/runbook.md) | Operations runbook |
+| [agent-dispatch.md](docs/agent-dispatch.md) | Task-to-agent mapping & dispatch rules |
 | [systemd/README.md](systemd/README.md) | Systemd service configuration |
 
 ## vLLM Inference (Optional)
@@ -169,7 +168,7 @@ hermes/profiles/<profile>/config.yaml  ← Merged final config
 | Command | Description |
 |---------|-------------|
 | `make hermes-link` | Link `~/.hermes/profiles/` only |
-| `make config-merge` | Merge config for a specific profile (`MERGE_PROFILE=builder make config-merge`) |
+| `make config-merge` | Merge config for all profiles |
 | `make systemd-link` | Link systemd services to `/etc/systemd/system/` |
 | `make systemd-enable` | Enable all services on boot |
 | `make systemd-start` | Start all services |

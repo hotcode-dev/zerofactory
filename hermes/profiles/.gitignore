@@ -3,9 +3,10 @@
 !*/
 
 */**
-!*/SOUL.md
 !*/.env
 !*/.env.example
+!*/SOUL.md
+!*/SOUL.custom.md
 !*/config.yaml
 !*/config.custom.yaml
 !*/cron/

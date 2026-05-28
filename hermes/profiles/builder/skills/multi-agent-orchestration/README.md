@@ -21,7 +21,6 @@ Set up specialized AI agent teams with role-specific toolsets, identities, and c
 Never duplicate information. When a rule, convention, or definition applies across multiple agents:
 
 - Store the **canonical version** in one place.
-- **Cross-reference** it via file links (e.g. `../shared/toolset-conventions.md`).
 - **Edit one, update all** — linked profiles auto-see the change.
 - If you must customize, **extend** rather than copy-paste-and-edit.
 

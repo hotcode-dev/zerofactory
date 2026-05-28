@@ -114,7 +114,6 @@ Parallel execution: Review and QA run concurrently. Researcher can work on one f
 ```
 zerofactory/
 ├── README.md                  # Project overview
-├── CONVENTIONS.md             # Shared conventions (single source of truth)
 ├── ORCHESTRATION.md           # Team structure details
 ├── Makefile                   # Build/management shortcuts
 ├── LICENSE

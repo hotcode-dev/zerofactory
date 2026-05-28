@@ -30,13 +30,7 @@ yq eval-all '. as $item ireduce ({}; . * $item )' \
 Script helper:
 
 ```bash
-./hermes/bin/merge-config.sh builder
-```
-
-Merge all profiles except `common`:
-
-```bash
-./hermes/bin/merge-config.sh all
+./hermes/bin/merge-config.sh
 ```
 
 For each profile other than `common`, keep custom overrides in `config.custom.yaml`.

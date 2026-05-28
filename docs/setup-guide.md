@@ -34,7 +34,7 @@ This creates:
 After any edit to `hermes/profiles/<profile>/config.custom.yaml` (including MCP server changes), regenerate merged runtime configs:
 
 ```bash
-make config-merge-all
+make config-merge
 ```
 
 Do not edit `config.yaml` directly; it is generated output.
@@ -49,10 +49,10 @@ profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
 hermes/profiles/<profile>/config.yaml  ← Merged final config
 ```
 
-Each profile extends the base config with its own overrides. To manually merge:
+Each profile extends the base config with its own overrides. To manually merge all profiles:
 
 ```bash
-./hermes/bin/merge-config.sh <profile-name>
+./hermes/bin/merge-config.sh
 ```
 
 ## Step 3: Configure Systemd
@@ -191,7 +191,7 @@ Configure MCP servers in each profile's `config.custom.yaml`:
 vim hermes/profiles/<profile>/config.custom.yaml
 ```
 
-Then run `make config-merge-all` (see "Config Merge Step" above). Do not edit `config.yaml` directly; it is generated.
+Then run `make config-merge` (see "Config Merge Step" above). Do not edit `config.yaml` directly; it is generated.
 
 ## Step 6: vLLM Inference (Docker Compose)
 

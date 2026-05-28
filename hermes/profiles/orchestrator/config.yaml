@@ -7,39 +7,45 @@ credential_pool_strategies: {}
 toolsets:
 - kanban
 - delegation
+- cronjob
 - file
 - terminal
-- web
 - search_files
-- cronjob
+- web
 - skills
 - mcp
 agent:
   max_turns: 120
   gateway_timeout: 3600
-  restart_drain_timeout: 300
-  api_max_retries: 5
+  restart_drain_timeout: 180
+  api_max_retries: 3
   service_tier: ''
   tool_use_enforcement: auto
-  gateway_timeout_warning: 1800
+  gateway_timeout_warning: 900
   clarify_timeout: 600
-  gateway_notify_interval: 300
-  gateway_auto_continue_freshness: 7200
+  gateway_notify_interval: 180
+  gateway_auto_continue_freshness: 3600
   image_input_mode: auto
   disabled_toolsets:
   - image_gen
   - tts
+  - discord
+  - slack
+  - telegram
+  - whatsapp
+  - mattermost
+  - matrix
   - x_search
   - spotify
   - homeassistant
   verbose: false
-  reasoning_effort: high
+  reasoning_effort: medium
   personalities: {}
 terminal:
   backend: local
   modal_mode: auto
   cwd: .
-  timeout: 300
+  timeout: 180
   env_passthrough: []
   shell_init_files: []
   auto_source_bashrc: true
@@ -49,7 +55,6 @@ terminal:
   singularity_image: docker://nikolaik/python-nodejs:python3.11-nodejs20
   modal_image: nikolaik/python-nodejs:python3.11-nodejs20
   daytona_image: nikolaik/python-nodejs:python3.11-nodejs20
-  vercel_runtime: node24
   container_cpu: 1
   container_memory: 5120
   container_disk: 51200
@@ -59,14 +64,15 @@ terminal:
   docker_extra_args: []
   docker_run_as_host_user: false
   persistent_shell: true
-  lifetime_seconds: 600
+  vercel_runtime: node24
+  lifetime_seconds: 300
 web:
   backend: ''
   search_backend: ''
   extract_backend: ''
 browser:
-  inactivity_timeout: 300
-  command_timeout: 60
+  inactivity_timeout: 120
+  command_timeout: 30
   record_sessions: false
   allow_private_urls: false
   engine: auto
@@ -80,40 +86,40 @@ browser:
     session_key: ''
     adopt_existing_tab: false
 checkpoints:
-  enabled: true
-  max_snapshots: 50
-  max_total_size_mb: 1000
-  max_file_size_mb: 20
+  enabled: false
+  max_snapshots: 20
+  max_total_size_mb: 500
+  max_file_size_mb: 10
   auto_prune: true
-  retention_days: 14
+  retention_days: 7
   delete_orphans: true
   min_interval_hours: 24
 file_read_max_chars: 100000
 tool_output:
-  max_bytes: 100000
-  max_lines: 3000
+  max_bytes: 50000
+  max_lines: 2000
   max_line_length: 2000
 tool_loop_guardrails:
   warnings_enabled: true
   hard_stop_enabled: false
   warn_after:
-    exact_failure: 3
-    same_tool_failure: 5
-    idempotent_no_progress: 3
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
   hard_stop_after:
-    exact_failure: 8
-    same_tool_failure: 12
-    idempotent_no_progress: 8
+    exact_failure: 5
+    same_tool_failure: 8
+    idempotent_no_progress: 5
 compression:
   enabled: true
-  threshold: 0.3
-  target_ratio: 0.15
-  protect_last_n: 30
-  hygiene_hard_message_limit: 500
-  protect_first_n: 5
+  threshold: 0.5
+  target_ratio: 0.2
+  protect_last_n: 20
+  hygiene_hard_message_limit: 400
+  protect_first_n: 3
   abort_on_summary_failure: false
 prompt_caching:
-  cache_ttl: 10m
+  cache_ttl: 5m
 openrouter:
   response_cache: true
   response_cache_ttl: 300
@@ -225,7 +231,7 @@ display:
   timestamps: false
   final_response_markdown: strip
   persistent_output: true
-  persistent_output_max_lines: 500
+  persistent_output_max_lines: 200
   inline_diffs: true
   file_mutation_verifier: true
   show_cost: false
@@ -233,8 +239,8 @@ display:
   language: en
   tui_status_indicator: kaomoji
   user_message_preview:
-    first_lines: 3
-    last_lines: 3
+    first_lines: 2
+    last_lines: 2
   interim_assistant_messages: true
   tool_progress_command: false
   tool_progress_overrides: {}
@@ -242,12 +248,11 @@ display:
   ephemeral_system_ttl: 0
   platforms: {}
   runtime_footer:
-    enabled: true
+    enabled: false
     fields:
     - model
     - context_pct
     - cwd
-    - status
   copy_shortcut: auto
   background_process_notifications: all
   cleanup_progress: false
@@ -255,6 +260,10 @@ display:
 dashboard:
   theme: mono
   show_token_analytics: false
+  oauth:
+    client_id: ''
+    portal_url: ''
+  public_url: ''
 privacy:
   redact_pii: false
 tts:
@@ -308,8 +317,8 @@ context:
 memory:
   memory_enabled: true
   user_profile_enabled: true
-  memory_char_limit: 3000
-  user_char_limit: 1800
+  memory_char_limit: 2200
+  user_char_limit: 1375
   provider: ''
 delegation:
   model: ''
@@ -318,21 +327,21 @@ delegation:
   api_key: ''
   api_mode: ''
   inherit_mcp_toolsets: true
-  max_iterations: 100
-  child_timeout_seconds: 900
+  max_iterations: 50
+  child_timeout_seconds: 600
   reasoning_effort: ''
-  max_concurrent_children: 5
-  max_spawn_depth: 2
+  max_concurrent_children: 3
+  max_spawn_depth: 1
   orchestrator_enabled: true
   subagent_auto_approve: false
 prefill_messages_file: ''
 goals:
-  max_turns: 30
+  max_turns: 20
 skills:
   external_dirs: []
   template_vars: true
   inline_shell: false
-  inline_shell_timeout: 15
+  inline_shell_timeout: 10
   guard_agent_created: false
   disabled:
   - airtable
@@ -345,7 +354,9 @@ skills:
   - baoyu-comic
   - baoyu-infographic
   - blogwatcher
+  - claude-code
   - claude-design
+  - codex
   - comfyui
   - debugging-hermes-tui-commands
   - design-md
@@ -381,13 +392,13 @@ skills:
   - yuanbao
 curator:
   enabled: true
-  interval_hours: 24
-  min_idle_hours: 1
-  stale_after_days: 14
-  archive_after_days: 60
+  interval_hours: 168
+  min_idle_hours: 2
+  stale_after_days: 30
+  archive_after_days: 90
   backup:
     enabled: true
-    keep: 10
+    keep: 5
 honcho: {}
 timezone: ''
 slack:
@@ -402,7 +413,7 @@ discord:
   auto_thread: true
   thread_require_mention: false
   history_backfill: true
-  history_backfill_limit: 100
+  history_backfill_limit: 50
   reactions: true
   channel_prompts: {}
   dm_role_auth_guild: ''
@@ -425,11 +436,12 @@ matrix:
   allowed_rooms: ''
 approvals:
   mode: manual
-  timeout: 120
-  cron_mode: allow
+  timeout: 60
+  cron_mode: deny
   mcp_reload_confirm: true
   destructive_slash_confirm: true
-command_allowlist: []
+command_allowlist:
+- script execution via -e/-c flag
 quick_commands: {}
 hooks: {}
 hooks_auto_accept: false
@@ -449,26 +461,26 @@ security:
   allow_lazy_installs: true
 cron:
   wrap_response: true
-  max_parallel_jobs: 10
+  max_parallel_jobs: null
 kanban:
   dispatch_in_gateway: true
-  dispatch_interval_seconds: 15
-  failure_limit: 3
-  worker_log_rotate_bytes: 4194304
-  worker_log_backup_count: 3
+  dispatch_interval_seconds: 60
+  failure_limit: 2
+  worker_log_rotate_bytes: 2097152
+  worker_log_backup_count: 1
   orchestrator_profile: orchestrator
   default_assignee: orchestrator
   auto_decompose: true
-  auto_decompose_per_tick: 5
-  dispatch_stale_timeout_seconds: 7200
+  auto_decompose_per_tick: 3
+  dispatch_stale_timeout_seconds: 14400
 code_execution:
   mode: project
-  max_tool_calls: 100
-  timeout: 600
+  max_tool_calls: 50
+  timeout: 300
 logging:
   level: INFO
-  max_size_mb: 10
-  backup_count: 5
+  max_size_mb: 5
+  backup_count: 3
   memory_monitor:
     enabled: true
     interval_seconds: 300
@@ -516,6 +528,7 @@ secrets:
     server_url: ''
 paste_collapse_threshold: 5
 paste_collapse_threshold_fallback: 0
+paste_collapse_char_threshold: 2000
 _config_version: 24
 custom_providers:
 - name: Spark.ntsd.dev:8000
@@ -524,6 +537,41 @@ custom_providers:
 default:
   temperature: 0
 provider: ''
-system_prompt: "You are Orchestrator, the CEO of Zero Factory AI company.\n\nYour role:\n  - Decompose complex goals into parallelizable work packages\n  - Dispatch tasks to specialist agents (Builder, Researcher, Reviewer, QA, Scribe)\n  - Monitor kanban board progress and unblock stalled work\n  - Coordinate handoffs between development stages\n  - Track dependencies and decide what can run in parallel\n  - Report concise status to human when needed\n  - Never write code directly \u2014 delegate coding to Builder\n  - Never review code directly \u2014 delegate to Reviewer\n\nWorkflow Pipeline:\n  Goal \u2192 Researcher (analyze) \u2192 Builder (implement) \u2192 Reviewer (review) \u2192 QA (test) \u2192 Scribe (document) \u2192 Done\n\nCommunication Style:\n  - Concise, direct, action-oriented\n  - Reference task IDs and kanban states\n  - Summarize status clearly when reporting to human\n\nConstraints:\n  - Respect hardware limits for concurrency\n  - Minimize token usage across all agents\n\
-  \  - Keep workflows to fewest steps possible\n  - Zero temperature \u2014 logical, deterministic decisions\n\nOutput format: Status reports, dispatch instructions, dependency mapping, escalation flags.\n"
+system_prompt: "You are the Orchestrator, the CEO at Zero Factory.\nYour role:\n \
+  \ - Decompose complex goals into parallelizable work packages\n  - Dispatch tasks\
+  \ to specialist agents (Builder, Researcher, Reviewer, QA, Scribe)\n  - Monitor\
+  \ kanban board progress and unblock stalled work\n  - Coordinate handoffs between\
+  \ development stages\n  - Track dependencies and decide what can run in parallel\n\
+  \  - Report concise status to human when needed\n  - Never write code directly \u2014\
+  \ delegate coding to Builder\n  - Never review code directly \u2014 delegate to\
+  \ Reviewer\n\nWorkflow Pipeline:\n  Goal \u2192 Researcher (analyze) \u2192 Builder\
+  \ (implement) \u2192 Reviewer (review) \u2192 QA (test) \u2192 Scribe (document)\
+  \ \u2192 Done\n\nCommunication Style:\n  - Concise, direct, action-oriented\n  -\
+  \ Reference task IDs and kanban states\n  - Summarize status clearly when reporting\
+  \ to human\n\nConstraints:\n  - Respect hardware limits for concurrency\n  - Minimize\
+  \ token usage across all agents\n  - Keep workflows to fewest steps possible\n \
+  \ - Zero temperature \u2014 logical, deterministic decisions\n\nOutput format: Status\
+  \ reports, dispatch instructions, dependency mapping, escalation flags.\n"
 description: Project manager & orchestrator
+
+# ── Fallback Model ────────────────────────────────────────────────────
+# Automatic provider failover when primary is unavailable.
+# Uncomment and configure to enable. Triggers on rate limits (429),
+# overload (529), service errors (503), or connection failures.
+#
+# Supported providers:
+#   openrouter   (OPENROUTER_API_KEY)  — routes to any model
+#   openai-codex (OAuth — hermes auth) — OpenAI Codex
+#   nous         (OAuth — hermes auth) — Nous Portal
+#   zai          (ZAI_API_KEY)         — Z.AI / GLM
+#   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
+#   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)
+#   minimax      (MINIMAX_API_KEY)     — MiniMax
+#   minimax-cn   (MINIMAX_CN_API_KEY)  — MiniMax (China)
+#   bedrock      (AWS IAM / boto3)     — AWS Bedrock (Converse API)
+#
+# For custom OpenAI-compatible endpoints, add base_url and key_env.
+#
+# fallback_model:
+#   provider: openrouter
+#   model: anthropic/claude-sonnet-4

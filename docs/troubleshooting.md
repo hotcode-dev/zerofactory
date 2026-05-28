@@ -62,7 +62,7 @@ Each agent profile merges `common/config.yaml` with its `config.custom.yaml`. If
 
 ```bash
 # Manually merge the profile's config
-./hermes/bin/merge-config.sh <profile-name>
+./hermes/bin/merge-config.sh
 
 # Check the merged output
 cat ~/.hermes/profiles/<profile>/config.yaml
@@ -126,7 +126,7 @@ ls -la hermes/bin/merge-config.sh
 make hermes-link
 
 # Test merge manually
-./hermes/bin/merge-config.sh <profile-name>
+./hermes/bin/merge-config.sh
 ```
 
 ### Profile not recognized
@@ -143,7 +143,7 @@ ls ~/.hermes/profiles/<profile>/config.yaml
 ### Config override not taking effect
 
 1. Edit `hermes/profiles/<profile>/config.custom.yaml`
-2. Merge: `./hermes/bin/merge-config.sh <profile-name>`
+2. Merge: `./hermes/bin/merge-config.sh`
 3. The merged config goes to `hermes/profiles/<profile>/config.yaml`
 4. If symlinked, `~/.hermes/profiles/<profile>/` will reflect changes
 
@@ -255,7 +255,7 @@ du -sh ~/.hermes/profiles/
 | Connection refused | Gateway not running | `systemctl start hermes-gateway` |
 | Agent timeout | `max_turns` too low | Increase in `config.custom.yaml` |
 | Empty kanban board | Workspace not running | `systemctl start hermes-workspace` |
-| Config not applied | Stale merged config | Run `./hermes/bin/merge-config.sh <profile>` |
+| Config not applied | Stale merged config | Run `./hermes/bin/merge-config.sh` |
 | Profile missing | Profile directory empty | Check `~/.hermes/profiles/<profile>/SOUL.md` |
 | Tool not found | Not in toolsets list | Add to `toolsets` in `config.custom.yaml` |
 | Port conflict | Another service on same port | Change port in `docker-compose.yml` or env |
