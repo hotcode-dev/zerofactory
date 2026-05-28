@@ -5,12 +5,12 @@ providers: {}
 fallback_providers: []
 credential_pool_strategies: {}
 toolsets:
-  - file
-  - terminal
-  - search_files
-  - web
-  - skills
-  - mcp
+- file
+- terminal
+- search_files
+- web
+- skills
+- mcp
 agent:
   max_turns: 60
   gateway_timeout: 1800
@@ -24,19 +24,19 @@ agent:
   gateway_auto_continue_freshness: 3600
   image_input_mode: auto
   disabled_toolsets:
-    - image_gen
-    - tts
-    - discord
-    - slack
-    - telegram
-    - whatsapp
-    - mattermost
-    - matrix
-    - x_search
-    - spotify
-    - homeassistant
-    - cronjob
-    - delegation
+  - image_gen
+  - tts
+  - discord
+  - slack
+  - telegram
+  - whatsapp
+  - mattermost
+  - matrix
+  - x_search
+  - spotify
+  - homeassistant
+  - cronjob
+  - delegation
   verbose: false
   reasoning_effort: medium
   personalities: {}
@@ -249,9 +249,9 @@ display:
   runtime_footer:
     enabled: false
     fields:
-      - model
-      - context_pct
-      - cwd
+    - model
+    - context_pct
+    - cwd
   copy_shortcut: auto
   background_process_notifications: all
   cleanup_progress: false
@@ -339,52 +339,50 @@ skills:
   inline_shell_timeout: 10
   guard_agent_created: false
   disabled:
-    - airtable
-    - architecture-diagram
-    - arxiv
-    - ascii-art
-    - ascii-video
-    - audiocraft-audio-generation
-    - baoyu-article-illustrator
-    - baoyu-comic
-    - baoyu-infographic
-    - blogwatcher
-    - claude-code
-    - claude-design
-    - codex
-    - comfyui
-    - debugging-hermes-tui-commands
-    - design-md
-    - dogfood
-    - dspy
-    - evaluating-llms-harness
-    - excalidraw
-    - gif-search
-    - godmode
-    - google-workspace
-    - heartmula
-    - humanizer
-    - jupyter-live-kernel
-    - linear
-    - llama-cpp
-    - llm-wiki
-    - manim-video
-    - maps
-    - minecraft-modpack-server
-    - notion
-    - obliteratus
-    - obsidian
-    - openhue
-    - pixel-art
-    - pokemon-player
-    - powerpoint
-    - sketch
-    - songsee
-    - songwriting-and-ai-music
-    - spotify
-    - touchdesigner-mcp
-    - youtube-content
-    - yuanbao
+  - airtable
+  - architecture-diagram
+  - arxiv
+  - ascii-art
+  - ascii-video
+  - audiocraft-audio-generation
+  - baoyu-article-illustrator
+  - baoyu-comic
+  - baoyu-infographic
+  - blogwatcher
+  - claude-design
+  - comfyui
+  - debugging-hermes-tui-commands
+  - design-md
+  - dogfood
+  - dspy
+  - evaluating-llms-harness
+  - excalidraw
+  - gif-search
+  - godmode
+  - google-workspace
+  - heartmula
+  - humanizer
+  - jupyter-live-kernel
+  - linear
+  - llama-cpp
+  - llm-wiki
+  - manim-video
+  - maps
+  - minecraft-modpack-server
+  - notion
+  - obliteratus
+  - obsidian
+  - openhue
+  - pixel-art
+  - pokemon-player
+  - powerpoint
+  - sketch
+  - songsee
+  - songwriting-and-ai-music
+  - spotify
+  - touchdesigner-mcp
+  - youtube-content
+  - yuanbao
 curator:
   enabled: true
   interval_hours: 168
@@ -524,32 +522,11 @@ paste_collapse_threshold: 5
 paste_collapse_threshold_fallback: 0
 _config_version: 24
 custom_providers:
-  - name: Spark.ntsd.dev:8000
-    base_url: http://spark.ntsd.dev:8000/v1
-    model: qwen36-fast
+- name: Spark.ntsd.dev:8000
+  base_url: http://spark.ntsd.dev:8000/v1
+  model: qwen36-fast
 default:
   temperature: 0
 provider: ''
 system_prompt: "You are Researcher, the technical architect at Zero Factory.\nYour role:\n  - Research APIs, frameworks, and best practices\n  - Create technical specifications and architecture documents\n  - Design solutions for complex problems\n  - Write detailed technical requirements for Builders\nResearch Methodology:\n  1. Understand the problem space\n  2. Investigate existing solutions and patterns\n  3. Evaluate trade-offs between approaches\n  4. Create detailed technical specifications\n  5. Validate designs meet all requirements\nStyle: Analytical, thorough, evidence-based. Create clear technical docs with diagrams and examples. Focus on practical, implementable solutions. Zero temperature - logical, deterministic.\nOutput format: Technical specifications, architecture documents, research reports.\n"
 description: Technical architect & researcher
-# ── Fallback Model ────────────────────────────────────────────────────
-# Automatic provider failover when primary is unavailable.
-# Uncomment and configure to enable. Triggers on rate limits (429),
-# overload (529), service errors (503), or connection failures.
-#
-# Supported providers:
-#   openrouter   (OPENROUTER_API_KEY)  — routes to any model
-#   openai-codex (OAuth — hermes auth) — OpenAI Codex
-#   nous         (OAuth — hermes auth) — Nous Portal
-#   zai          (ZAI_API_KEY)         — Z.AI / GLM
-#   kimi-coding  (KIMI_API_KEY)        — Kimi / Moonshot
-#   kimi-coding-cn (KIMI_CN_API_KEY)   — Kimi / Moonshot (China)
-#   minimax      (MINIMAX_API_KEY)     — MiniMax
-#   minimax-cn   (MINIMAX_CN_API_KEY)  — MiniMax (China)
-#   bedrock      (AWS IAM / boto3)     — AWS Bedrock (Converse API)
-#
-# For custom OpenAI-compatible endpoints, add base_url and key_env.
-#
-# fallback_model:
-#   provider: openrouter
-#   model: anthropic/claude-sonnet-4

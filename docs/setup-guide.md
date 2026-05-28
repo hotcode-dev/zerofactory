@@ -29,6 +29,16 @@ make hermes-link
 This creates:
 - `~/.hermes/profiles/` → symlink to `zerofactory/hermes/profiles/`
 
+## Config Merge Step
+
+After any edit to `hermes/profiles/<profile>/config.custom.yaml` (including MCP server changes), regenerate merged runtime configs:
+
+```bash
+make config-merge-all
+```
+
+Do not edit `config.yaml` directly; it is generated output.
+
 ### Configuration Hierarchy
 
 ```
@@ -174,20 +184,14 @@ toolsets:
 
 ### Adding MCP Servers
 
-Each profile can add MCP servers in `mcp_servers.json`:
+Configure MCP servers in each profile's `config.custom.yaml`:
 
-```json
-[
-  {
-    "name": "server-name",
-    "command": "executable",
-    "args": [],
-    "env": {},
-    "description": "brief description",
-    "disabled": false
-  }
-]
+```bash
+# Edit profile override
+vim hermes/profiles/<profile>/config.custom.yaml
 ```
+
+Then run `make config-merge-all` (see "Config Merge Step" above). Do not edit `config.yaml` directly; it is generated.
 
 ## Step 6: vLLM Inference (Docker Compose)
 

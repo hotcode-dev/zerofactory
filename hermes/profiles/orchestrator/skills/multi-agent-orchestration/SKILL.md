@@ -32,8 +32,8 @@ Every multi-agent orchestration should have these roles, each with distinct SOUL
 Every agent profile needs exactly three files in its directory under `hermes/profiles/<name>/`:
 
 1. **SOUL.md** — Agent identity, core responsibilities, tools & skills, constraints, communication style. This is the primary definition file.
-2. **system_prompt.txt** — Concise system prompt for immediate context injection (10-20 lines, plain text, no markdown formatting).
-3. **config.yaml** — Full runtime config: model, toolsets, disabled_toolsets, timeouts, display, terminal sandbox, skills filter.
+2. **config.custom.yaml** — Profile-specific overrides, including MCP server definitions and role customizations.
+3. **config.yaml** — Generated runtime config from `common/config.yaml` + `config.custom.yaml`. Do not edit directly.
 
 ## Pipeline Architecture
 
@@ -57,7 +57,6 @@ Never duplicate information. When the same concept or rule applies across multip
 - **Cross-reference**: Use file links (`../CONVENTIONS.md`) or relative paths so everyone reads the same truth.
 - **Edit one, update all**: When a rule changes, update the source file — linked profiles auto-see it.
 - **No forks of truth**: If you must customize (e.g. a role needs a different toolset), extend, don't duplicate the whole block.
-- **System prompt linking**: Every agent's `system_prompt.txt` must include a "Single source of truth" section that tells the agent to read CONVENTIONS.md and never invent or duplicate conventions.
 - **SOUL.md inclusion**: Every agent's `SOUL.md` must include a "Single Source of Truth" section that references CONVENTIONS.md with role-specific guidance (e.g. Reviewer references review criteria, QA references test conventions).
 
 ### CONVENTIONS.md content template
@@ -88,7 +87,7 @@ A production CONVENTIONS.md should include:
 - **Avoid toolset creep**: Don't add tools agents don't need. Each agent should have only its relevant tools — this saves tokens and reduces distraction.
 - **Distinct identities**: Every agent must have a unique SOUL.md. Don't reuse templates without customization — agents need distinct roles to avoid conflicting behavior.
 - **Cost awareness**: Short max_turns + disabled skills + compression = lower cost. Review every profile for unnecessary tools/skills.
-- **System prompt format**: Keep it plain text, no markdown headers. Keep it under 20 lines. The system_prompt.txt is injected as-is — no rendering.
+- **MCP servers live in config.custom.yaml**: Add or update MCP servers in `config.custom.yaml`, then run `make config-merge-all` to regenerate `config.yaml`.
 
 ## Support Files
 

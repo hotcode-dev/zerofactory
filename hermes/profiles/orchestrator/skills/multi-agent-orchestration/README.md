@@ -7,14 +7,14 @@ Set up specialized AI agent teams with role-specific toolsets, identities, and c
 1. Pick the roles you need (Researcher, Builder, Reviewer, QA, Scribe, Orchestrator).
 2. Create a profile directory under `hermes/profiles/<agent-name>/`.
 3. Copy the starter template from `templates/profile-template/` as your starting point.
-4. Fill in SOUL.md, system_prompt.txt, config.yaml.
+4. Fill in SOUL.md and config.custom.yaml, then generate config.yaml.
 5. Each profile gets three files:
 
 | File | Purpose |
 |------|---------|
 | **SOUL.md** | Agent identity, core responsibilities, tools & skills, constraints, communication style |
-| **system_prompt.txt** | Concise system prompt (10–20 lines, plain text, no markdown) |
-| **config.yaml** | Runtime config: model, toolsets, disabled_toolsets, timeouts, skills filter |
+| **config.custom.yaml** | Profile overrides including MCP server settings |
+| **config.yaml** | Generated runtime config (do not edit directly) |
 
 ## Single Source of Truth
 

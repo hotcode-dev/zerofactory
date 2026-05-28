@@ -5,16 +5,17 @@ Complete operational runbook for Zero Factory — the AI multi-agent orchestrati
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
-2. [Agent Profiles](#agent-profiles)
-3. [Configuration Reference](#configuration-reference)
-4. [Systemd Services](#systemd-services)
-5. [Daily Operations](#daily-operations)
-6. [Maintenance Procedures](#maintenance-procedures)
-7. [Emergency Procedures](#emergency-procedures)
-8. [Monitoring & Alerting](#monitoring--alerting)
-9. [Agent Communication Protocol](#agent-communication-protocol)
-10. [Task Lifecycle](#task-lifecycle)
-11. [Appendix](#appendix)
+2. [Config Merge Step](#config-merge-step)
+3. [Agent Profiles](#agent-profiles)
+4. [Configuration Reference](#configuration-reference)
+5. [Systemd Services](#systemd-services)
+6. [Daily Operations](#daily-operations)
+7. [Maintenance Procedures](#maintenance-procedures)
+8. [Emergency Procedures](#emergency-procedures)
+9. [Monitoring & Alerting](#monitoring--alerting)
+10. [Agent Communication Protocol](#agent-communication-protocol)
+11. [Task Lifecycle](#task-lifecycle)
+12. [Appendix](#appendix)
 
 ---
 
@@ -81,6 +82,18 @@ hermes -p orchestrator -m "Show me the current kanban board"
 || Project root | `/home/ntsd/git/hotcode/zerofactory` |
 
 ---
+
+## Config Merge Step
+
+Any change to `hermes/profiles/<profile>/config.custom.yaml` (including MCP server changes) requires regenerating merged runtime configs.
+
+Run:
+
+```bash
+make config-merge-all
+```
+
+If this step is skipped, Hermes continues using stale `config.yaml` values.
 
 ## Agent Profiles Reference
 
@@ -206,15 +219,21 @@ HERMES_PASSWORD=***
 
 ### MCP Servers
 
-Each profile has `mcp_servers.json` with template:
-```json
-[{"name": "<server-name>", "command": "<executable>", "args": [], "env": {}, "description": "<brief description>", "disabled": false}]
+Each profile defines MCP servers in `config.custom.yaml`.
+
+To add or update MCP servers for any profile:
+1. Edit `hermes/profiles/<profile>/config.custom.yaml`
+2. Regenerate merged runtime configs:
+
+```bash
+make config-merge-all
 ```
-Add MCP servers per profile by editing their `mcp_servers.json`.
+
+Hermes reads per-profile `config.yaml`, which is generated from `config.custom.yaml`.
 
 ---
 
-## 5. Daily Operations
+## 6. Daily Operations
 
 ### Morning Routine
 
@@ -262,7 +281,7 @@ sudo systemctl restart hermes-dashboard
 
 ---
 
-## 6. Maintenance Procedures
+## 7. Maintenance Procedures
 
 ### Disk Space Management
 
@@ -304,7 +323,7 @@ cp hermes/profiles/common/config.yaml hermes/profiles/<new-profile>/config.custo
 
 ---
 
-## 7. Emergency Procedures
+## 8. Emergency Procedures
 
 ### Full Service Failure
 
@@ -355,7 +374,7 @@ make systemd-status
 
 ---
 
-## 8. Monitoring & Alerting
+## 9. Monitoring & Alerting
 
 ### Health Checks
 
@@ -392,7 +411,7 @@ curl -s http://spark.ntsd.dev:8000/v1/models > /dev/null && echo "OK" || echo "D
 
 ---
 
-## 9. Agent Communication Protocol
+## 10. Agent Communication Protocol
 
 ### How Agents Talk
 
@@ -422,7 +441,7 @@ Orchestrator → assigns task on kanban → Agent claims task → works → mark
 
 ---
 
-## 10. Task Lifecycle
+## 11. Task Lifecycle
 
 ### States
 
@@ -457,7 +476,7 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 
 ---
 
-## 11. Appendix
+## 12. Appendix
 
 ### A. Quick Command Reference
 

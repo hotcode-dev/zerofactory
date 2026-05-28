@@ -21,6 +21,19 @@ hermes -p orchestrator -m "Research how to implement real-time notifications wit
 
 Full setup guide: [docs/setup-guide.md](docs/setup-guide.md)
 
+## Config Merge Step
+
+Any time you change a profile config (including MCP server settings), you must rebuild merged runtime configs:
+
+```bash
+make config-merge-all
+```
+
+Why this matters:
+- Hermes reads `hermes/profiles/<profile>/config.yaml` at runtime
+- `config.yaml` is generated from `config.custom.yaml`
+- If you skip merge, your config changes will not be applied
+
 ## Core Principles
 
 | Pillar | Description |

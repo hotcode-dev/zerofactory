@@ -33,8 +33,8 @@ Zero Factory is an AI multi-agent orchestration system built on **Hermes Agent**
 Each agent is configured in `hermes/profiles/<name>/` with:
 
 - **SOUL.md** — Agent identity, responsibilities, tools, constraints
-- **system_prompt.txt** — Concise prompt for context injection
 - **config.custom.yaml** — Profile-specific configuration overrides
+- **config.yaml** — Generated runtime config
 
 Configuration is built by merging `profiles/common/config.yaml` (base config) with `profiles/<profile>/config.custom.yaml` (overrides) using `hermes/bin/merge-config.sh`.
 
