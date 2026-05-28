@@ -66,7 +66,7 @@ Never duplicate information. When the same concept or rule applies across multip
 A production CONVENTIONS.md should include:
 1. **General Rules** — code-first, small changes, type checks, no TODOs
 2. **Naming Conventions** — kebab-case files, PascalCase classes, camelCase variables
-3. **File Structure** — TS/Go project templates
+3. **File Structure** — TS project templates
 4. **Test Conventions** — Arrange-Act-Assert, table-driven tests, 80% coverage
 5. **Commit Format** — Conventional Commits (feat, fix, docs, refactor, test, chore)
 6. **Review Criteria** — blocking vs non-blocking definitions

@@ -31,6 +31,8 @@ All agents reference this file. It is the single source of truth for project con
 
 ## TypeScript / Bun Conventions
 
+All code is written in **TypeScript** using **Bun** as the runtime. No Go.
+
 ```
 project/
 ├── src/

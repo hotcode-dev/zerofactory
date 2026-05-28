@@ -109,7 +109,7 @@ Launch with: `hermes -p builder`
 - **Role**: Feature implementation, bug fixes, refactoring
 - **Toolsets**: file, terminal, search_files, web
 - **Config**: max_turns=90, compression enabled
-- **Stack**: TypeScript (Bun), Go, PostgreSQL, Redis
+- **Stack**: TypeScript (Bun), PostgreSQL, Redis
 - **Key file**: `profiles/builder/SOUL.md`
 
 ### Reviewer (Code Reviewer)

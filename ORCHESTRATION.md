@@ -51,7 +51,7 @@ This orchestration system manages a team of AI agents that work in parallel to d
 
 **Responsibilities**:
 - Implement features from design specifications
-- Write clean, efficient TypeScript and Go code
+- Write clean, efficient TypeScript (Bun) code
 - Write comprehensive tests
 - Maintain code quality standards
 
