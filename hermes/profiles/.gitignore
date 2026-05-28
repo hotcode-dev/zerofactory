@@ -8,7 +8,6 @@
 !*/.env.example
 !*/config.yaml
 !*/config.custom.yaml
-!*/mcp_servers.json
 !*/cron/
 !*/cron/jobs.json
 !*/cron/jobs.custom.json

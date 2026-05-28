@@ -35,7 +35,6 @@ Each agent is configured in `hermes/profiles/<name>/` with:
 - **SOUL.md** — Agent identity, responsibilities, tools, constraints
 - **system_prompt.txt** — Concise prompt for context injection
 - **config.custom.yaml** — Profile-specific configuration overrides
-- **mcp_servers.json** — MCP server configuration (optional)
 
 Configuration is built by merging `profiles/common/config.yaml` (base config) with `profiles/<profile>/config.custom.yaml` (overrides) using `hermes/bin/merge-config.sh`.
 

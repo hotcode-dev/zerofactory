@@ -51,7 +51,6 @@ Each profile has three files:
 | File | Purpose |
 |------|---------|
 | `SOUL.md` | Agent identity, responsibilities, tools, constraints |
-| `system_prompt.txt` | Concise prompt for context injection |
 | `config.custom.yaml` | Profile-specific overrides (merged with common/config.yaml) |
 
 ## Workflow Pipeline

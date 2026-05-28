@@ -176,8 +176,6 @@ hermes/profiles/<profile>/
 ├── config.yaml              ← Merged config (base + custom)
 ├── config.custom.yaml       ← Profile-specific overrides (edit this)
 ├── SOUL.md                  ← Agent identity and responsibilities
-├── system_prompt.txt        ← Context injection prompt
-└── mcp_servers.json         ← MCP server list (if any)
 ```
 
 ### Configuration Merging

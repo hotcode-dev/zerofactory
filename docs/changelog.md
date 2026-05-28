@@ -12,8 +12,6 @@ All notable changes to the Zero Factory project.
 - `vllm/qwen3.6-27b/` — Docker Compose vLLM for Qwen3.6-27B v4 (GB10)
 - `profiles/common/` — base config shared across all agent profiles
 - `profiles/*/config.custom.yaml` — profile-specific configuration overrides
-- `profiles/*/system_prompt.txt` — per-profile context injection
-- `profiles/*/mcp_servers.json` — MCP server configuration per profile
 
 ### Changed
 - vLLM setup migrated from pip to Docker Compose
@@ -37,7 +35,7 @@ Core 6-agent architecture built on Hermes Agent: Orchestrator, Researcher, Build
 
 ### Added
 - `hermes/profiles/common/config.yaml` — Base agent configuration
-- `hermes/profiles/*/` — 6 agent profiles with SOUL.md, system_prompt.txt, config.yaml
+- `hermes/profiles/*/` — 6 agent profiles with SOUL.md, config.custom.yaml
 - `systemd/*.service` — Systemd service units for gateway, dashboard, workspace
 - `systemd/*.service.template` — Service unit templates with env substitution
 - `CONVENTIONS.md` — Shared conventions: naming, commit format, code review criteria, documentation standards

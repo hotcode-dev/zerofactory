@@ -502,8 +502,6 @@ hermes/
 │   ├── config.yaml   ← Merged config
 │   ├── config.custom.yaml ← Profile overrides
 │   ├── SOUL.md       ← Agent identity
-│   ├── system_prompt.txt ← Context injection
-│   └── mcp_servers.json ← MCP server list
 ├── researcher/       ← CTO — research & architecture
 ├── builder/          ← Lead Engineer — implementation
 ├── reviewer/         ← Code Reviewer — quality gates

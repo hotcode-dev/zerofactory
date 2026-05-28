@@ -25,13 +25,11 @@ All agents reference this file. It is the single source of truth for project con
 - **Interfaces/Protocols**: PascalCase or `I` prefix — `IUserService` or `UserService`
 - **Tests**: match source naming with extension — `user-manager.test.ts`, `handler.test.ts`
 - **Directories**: kebab-case — `src/user-manager/`, `internal/payment/`
-- Tasks use `t_<hex_id>` format
-- Workspaces are created under `workspaces/<task_id>`
-- Branch names follow pattern `task/<task_id>` when applicable
+- **Kanbam**: Tasks use `t_<hex_id>` format, Branch names follow pattern `task/<task_id>` when applicable
 
 ## TypeScript / Bun Conventions
 
-All code is written in **TypeScript** using **Bun** as the runtime. No Go.
+All code is written in **TypeScript** using **Bun** as the runtime.
 
 ```
 project/
@@ -66,7 +64,7 @@ project/
 - Mock external dependencies
 - One assertion per test line when possible
 - Test names: `Test<Function>_<scenario>_expected`
-- Coverage threshold: minimum 80%
+- Coverage threshold: minimum 90%
 
 ## Commit Message Convention
 
@@ -109,7 +107,6 @@ Every agent **must** push their work and create a pull request to the git remote
 
 - **Always use `~/git/<gituser>/<reponame>` as the local clone path** when cloning or working with a repository. The `<gituser>` component matches the GitHub (or Git hosting) username/organization from the remote URL, and `<reponame>` matches the repository name.
   - Example: `https://github.com/hotcode-dev/zerofactory` → `~/git/hotcode-dev/zerofactory`
-  - Example: `https://github.com/ntsd/git-fight` → `~/git/ntsd/git-fight`
   - Example: `https://github.com/ntsd/zerofactory` → `~/git/ntsd/zerofactory`
 - This ensures a consistent, predictable location for every project's local copy across runs and workspaces.
 
@@ -121,16 +118,14 @@ Every agent **must** push their work and create a pull request to the git remote
 - Missing error handling
 - Race conditions / concurrency issues
 - Breaking API changes without migration
+- Naming conventions
+- Code smell / readability issues
 
 ### Should Fix (non-blocking)
 - Performance improvements
 - Missing edge case coverage
-- Code smell / readability issues
 - Inconsistent style
-
-### Optional
 - Minor refactoring
-- Better naming
 - Additional comments
 
 ## Documentation Standards
@@ -145,10 +140,10 @@ Every agent **must** push their work and create a pull request to the git remote
 ## File References
 
 - This file: `CONVENTIONS.md`
-- Agent configs: `hermes/profiles/<agent>/config.yaml`
+- Agent configs (this will overwrite the runtime config.yaml): `hermes/profiles/<agent>/config.custom.yaml`
 - Agent identity: `hermes/profiles/<agent>/SOUL.md`
-- System prompt: `hermes/profiles/<agent>/system_prompt.txt`
 - Project root README: `README.md`
+
 
 ## Task Lifecycle
 1. **triage** → Initial state, being prepared
