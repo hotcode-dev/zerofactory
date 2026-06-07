@@ -154,6 +154,7 @@ hermes/profiles/<profile>/config.yaml  ← Merged final config
 | hermes-gateway | 8642 | API server for agent communication |
 | hermes-dashboard | 9119 | Web UI for monitoring |
 | hermes-workspace | 3000 | Workspace management (chat, terminal, files) |
+| hermes-webui | 8787 | Native web interface for Hermes |
 
 ## License
 

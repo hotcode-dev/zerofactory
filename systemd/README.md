@@ -10,6 +10,7 @@ To make all the agent service always run 24/7 on a Linux machine and automated s
 env USER="$USER" HOME="$HOME" envsubst < "$(pwd)/hermes-gateway.service.template" > "$(pwd)/hermes-gateway.service"
 env USER="$USER" HOME="$HOME" envsubst < "$(pwd)/hermes-dashboard.service.template" > "$(pwd)/hermes-dashboard.service"
 env USER="$USER" HOME="$HOME" envsubst < "$(pwd)/hermes-workspace.service.template" > "$(pwd)/hermes-workspace.service"
+env USER="$USER" HOME="$HOME" envsubst < "$(pwd)/hermes-webui.service.template" > "$(pwd)/hermes-webui.service"
 ```
 
 The templates use `${USER}` for `User` and `Group`, and `${HOME}` for paths.
@@ -20,6 +21,7 @@ The templates use `${USER}` for `User` and `Group`, and `${HOME}` for paths.
 sudo ln -sf "$(pwd)/hermes-gateway.service" /etc/systemd/system/hermes-gateway.service
 sudo ln -sf "$(pwd)/hermes-dashboard.service" /etc/systemd/system/hermes-dashboard.service
 sudo ln -sf "$(pwd)/hermes-workspace.service" /etc/systemd/system/hermes-workspace.service
+sudo ln -sf "$(pwd)/hermes-webui.service" /etc/systemd/system/hermes-webui.service
 ```
 
 3. Create env file for additional environments
@@ -27,6 +29,7 @@ sudo ln -sf "$(pwd)/hermes-workspace.service" /etc/systemd/system/hermes-workspa
 ```sh
 touch ~/hermes-gateway.env
 touch ~/hermes-workspace.env
+touch ~/hermes-webui.env
 ```
 
 then put the requires env there for each service.
@@ -64,6 +67,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now hermes-gateway
 sudo systemctl enable --now hermes-dashboard
 sudo systemctl enable --now hermes-workspace
+sudo systemctl enable --now hermes-webui
 ```
 
 5. Check status and the journalctl log
@@ -72,10 +76,12 @@ sudo systemctl enable --now hermes-workspace
 sudo systemctl status hermes-gateway
 sudo systemctl status hermes-dashboard
 sudo systemctl status hermes-workspace
+sudo systemctl status hermes-webui
 
 sudo journalctl -u hermes-gateway -f
 sudo journalctl -u hermes-dashboard -f
 sudo journalctl -u hermes-workspace -f
+sudo journalctl -u hermes-webui -f
 ```
 
 6. To disable systemd service
@@ -86,8 +92,10 @@ by disable systemd the service will not automatic start anymore
 sudo systemctl stop hermes-gateway
 sudo systemctl stop hermes-dashboard
 sudo systemctl stop hermes-workspace
+sudo systemctl stop hermes-webui
 
 sudo systemctl disable hermes-gateway
 sudo systemctl disable hermes-dashboard
 sudo systemctl disable hermes-workspace
+sudo systemctl disable hermes-webui
 ```

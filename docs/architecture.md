@@ -45,13 +45,14 @@ The Orchestrator creates tasks, assigns agents, and monitors progress through th
 
 ### 4. Systemd Services
 
-Three services run continuously on Linux:
+Four services run continuously on Linux:
 
 | Service | Port | Purpose |
 |---------|------|---------|
 | hermes-gateway | 8642 | API server for agent communication |
 | hermes-dashboard | 9119 | Web UI for monitoring |
 | hermes-workspace | 3000 | Workspace management (chat, terminal, files) |
+| hermes-webui | 8787 | Native web interface for Hermes |
 
 See [systemd/README.md](../systemd/README.md) for setup details.
 

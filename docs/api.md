@@ -148,6 +148,7 @@ make systemd-start
 | hermes-gateway | `systemd/hermes-gateway.service` | API server (port 8642) |
 | hermes-dashboard | `systemd/hermes-dashboard.service` | Web UI (port 9119) |
 | hermes-workspace | `systemd/hermes-workspace.service` | Workspace (port 3000) |
+| hermes-webui | `systemd/hermes-webui.service` | Native web UI (port 8787) |
 
 ## Agent Profiles Structure
 

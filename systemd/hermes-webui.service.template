@@ -1,0 +1,22 @@
+[Unit]
+Description=Hermes Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=${USER}
+Group=${USER}
+WorkingDirectory=${HOME}/hermes-webui
+
+Environment="PATH=${HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=-${HOME}/hermes-webui.env
+
+ExecStart=/bin/bash -lc 'source "${HOME}/.bashrc" 2>/dev/null || true; exec ./start.sh'
+TimeoutStopSec=210s
+Restart=on-failure
+RestartSec=600
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
