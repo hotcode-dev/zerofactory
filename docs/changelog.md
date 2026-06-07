@@ -5,7 +5,6 @@ All notable changes to the Zero Factory project.
 ## [Unreleased]
 
 ### Added
-- `docs/agent-dispatch.md` — comprehensive task-to-agent mapping with decision flowchart, anti-patterns, and parallel assignment matrix
 - `systemd/README.md` — detailed systemd service setup guide
 - `hermes/bin/merge-config.sh` — config merge helper script
 - `hermes/bin/link-skills.sh` — skills linking helper script

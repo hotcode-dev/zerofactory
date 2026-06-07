@@ -72,27 +72,9 @@ prompt_caching:
 
 ### Per-Profile Overrides (profiles/<profile>/config.custom.yaml)
 
-Each profile extends the base config with its own overrides:
+Each profile extends the base config with its own overrides. 
 
-| Profile | max_turns | gateway_timeout | Key Customizations |
-|---------|-----------|-----------------|-------------------|
-| orchestrator | 120 | 3600s | Longer timeout for complex orchestration; higher compression protection |
-| builder | 90 | 1800s | Terminal-heavy; compression enabled |
-| researcher | 60 | 1800s | File-heavy; compression enabled |
-| reviewer | 60 | 1800s | File-heavy; compression enabled |
-| qa | 60 | 1800s | File-heavy; compression enabled |
-| scribe | 60 | 1800s | File-heavy; compression enabled |
-
-### Toolsets by Profile
-
-| Agent | Tools |
-|-------|-------|
-| orchestrator | kanban, delegation, cronjob, file, terminal, search_files, web, skills, mcp |
-| researcher | file, terminal, search_files, web, skills, mcp |
-| builder | file, terminal, search_files, web, kanban, skills, mcp |
-| reviewer | file, terminal, search_files, web, skills, mcp |
-| qa | file, terminal, search_files, web, skills, mcp |
-| scribe | file, terminal, search_files, web |
+For specific toolsets and limits per profile, please consult the [multi-agent-orchestration](../hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) skill document, which serves as the single source of truth for agent configurations.
 
 ### Terminal Configuration
 

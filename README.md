@@ -46,37 +46,11 @@ Why this matters:
 | **Single Source of Truth** | One canonical location for shared info. Link, don't copy. |
 | **Minimalist** | Everything as small, simple, clean, and usable as possible |
 
-## The Team
+## Orchestration & Team Structure
 
-|| Agent | Role | Toolsets | Key Tools |
-|---|-------|--------|----------|-----------|
-| 1️⃣ | **Orchestrator** | CEO | kanban, delegation, cronjob | task decomposition, agent dispatch, progress tracking |
-| 2️⃣ | **Researcher** | CTO | web, browser, file, search_files | technical research, architecture design, specs |
-| 3️⃣ | **Builder** | Lead Engineer | file, terminal, search_files, web | feature implementation, bug fixes, refactoring |
-| 4️⃣ | **Reviewer** | Code Reviewer | file, terminal, search_files, web | code quality, security audit, performance review |
-| 5️⃣ | **QA** | QA Engineer | file, terminal, search_files, web | test design, integration testing, regression testing |
-| 6️⃣ | **Scribe** | Documentation | file, terminal, search_files, web | API docs, architecture docs, changelogs, tutorials |
+Zero Factory operates using a specialized team of Hermes agents (Orchestrator, Researcher, Builder, Reviewer, QA, Scribe) following an agile parallel pipeline.
 
-### Agent Profiles
-
-Each profile has three files:
-
-| File | Purpose |
-|------|---------|
-| `SOUL.md` | Agent identity, responsibilities, tools, constraints |
-| `config.custom.yaml` | Profile-specific overrides (merged with common/config.yaml) |
-
-## Workflow Pipeline
-
-```
-Goal → Researcher (research) → Builder (implement) → Reviewer (review) → QA (test) → Scribe (document) → Done
-```
-
-Each stage can parallelize:
-- **Researcher** works independently while **Builder** handles other tasks
-- **Reviewer** reviews code as soon as **Builder** finishes a module
-- **QA** tests in parallel with **Reviewer** reviewing
-- **Scribe** documents as work progresses, not just at the end
+The single source of truth for the team structure, pipeline architecture, and agent rules is defined in the [multi-agent-orchestration](hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) skill. Please refer to it for comprehensive details on how the factory operates.
 
 ## Project Structure
 
@@ -84,7 +58,6 @@ Each stage can parallelize:
 zerofactory/
 ├── Makefile              # Build & management shortcuts
 ├── README.md             # You are here
-├── ORCHESTRATION.md      # Team structure details
 ├── LICENSE
 ├── docs/                 # Documentation suite
 │   ├── architecture.md   # System design and data flows
@@ -124,9 +97,7 @@ Full documentation suite: [docs/](docs/)
 | [setup-guide.md](docs/setup-guide.md) | Setup: hermes-link, systemd, vLLM |
 | [changelog.md](docs/changelog.md) | Version history and change log |
 | [troubleshooting.md](docs/troubleshooting.md) | Common issues and solutions |
-| [ORCHESTRATION.md](ORCHESTRATION.md) | Team structure and workflow details |
 | [runbook.md](docs/runbook.md) | Operations runbook |
-| [agent-dispatch.md](docs/agent-dispatch.md) | Task-to-agent mapping & dispatch rules |
 | [systemd/README.md](systemd/README.md) | Systemd service configuration |
 
 ## vLLM Inference (Optional)
@@ -144,14 +115,7 @@ Both expose the OpenAI-compatible API at `http://localhost:8000/v1`.
 
 ### Toolsets by Profile
 
-| Agent | Tools | max_turns |
-|-------|-------|-----------|
-| orchestrator | kanban, delegation, cronjob, file, terminal, web, search_files, skills, mcp | 120 |
-| researcher | file, terminal, search_files, web, skills, mcp | 60 |
-| builder | file, terminal, search_files, web, kanban, skills, mcp | 90 |
-| reviewer | file, terminal, search_files, web, skills, mcp | 60 |
-| qa | file, terminal, search_files, web, skills, mcp | 60 |
-| scribe | file, terminal, search_files, web | 60 |
+Toolsets and configuration constraints are defined in the [multi-agent-orchestration](hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) skill document. Please reference it for the canonical list of tools allowed per agent.
 
 ### Configuration Hierarchy
 

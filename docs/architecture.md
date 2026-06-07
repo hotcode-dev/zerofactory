@@ -28,34 +28,9 @@ Zero Factory is an AI multi-agent orchestration system built on **Hermes Agent**
 
 ## Core Components
 
-### 1. Agent Profiles
+### 1. Agent Profiles & Configuration
 
-Each agent is configured in `hermes/profiles/<name>/` with:
-
-- **SOUL.md** — Agent identity, responsibilities, tools, constraints
-- **config.custom.yaml** — Profile-specific configuration overrides
-- **config.yaml** — Generated runtime config
-
-Configuration is built by merging `profiles/common/config.yaml` (base config) with `profiles/<profile>/config.custom.yaml` (overrides) using `hermes/bin/merge-config.sh`.
-
-### 2. Configuration Hierarchy
-
-```
-profiles/common/config.yaml    ← Base config (shared by all agents)
-         ↓ + profile override
-profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
-         ↓ merge-config.sh
-hermes/profiles/<profile>/config.yaml  ← Merged final config (symlinked to ~/.hermes/)
-```
-
-| Profile | max_turns | gateway_timeout | Key Settings |
-|---------|-----------|-----------------|--------------|
-| orchestrator | 120 | 3600s | compression threshold 0.3, higher protection |
-| researcher | 60 | 1800s | Web/browser toolset |
-| builder | 90 | 1800s | Terminal-heavy, file output |
-| reviewer | 60 | 1800s | File review checks |
-| qa | 60 | 1800s | Terminal testing |
-| scribe | 60 | 1800s | File I/O only (no terminal in toolsets) |
+The agent roles, toolsets, and configuration patterns are explicitly defined in the [multi-agent-orchestration](../hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) skill document. Please refer to it as the single source of truth for agent capabilities.
 
 ### 3. Kanban Board
 
@@ -114,7 +89,6 @@ Parallel execution: Review and QA run concurrently. Researcher can work on one f
 ```
 zerofactory/
 ├── README.md                  # Project overview
-├── ORCHESTRATION.md           # Team structure details
 ├── Makefile                   # Build/management shortcuts
 ├── LICENSE
 ├── docs/                      # Documentation suite

@@ -479,7 +479,7 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 
 ## 12. Agent Dispatch Reference
 
-See [docs/agent-dispatch.md](agent-dispatch.md) for the complete task-to-agent mapping.
+See [multi-agent-orchestration](../hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) for the complete task-to-agent mapping.
 
 **Quick summary:**
 
