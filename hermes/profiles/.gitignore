@@ -2,16 +2,22 @@
 !.gitignore
 !*/
 
+# ignore all files
 */**
+
+# unignore all files in common
+!common/**
+# unignore .env
 !*/.env
 !*/.env.example
-!*/SOUL.md
+# unignore custom SOUL.md
 !*/SOUL.custom.md
-!*/config.yaml
+# unignore custom config
 !*/config.custom.yaml
+# unignore cron
 !*/cron/
-!*/cron/jobs.json
 !*/cron/jobs.custom.json
+# unignore skills
 !*/skills/
 !*/skills/multi-agent-orchestration
 !*/skills/multi-agent-orchestration/
