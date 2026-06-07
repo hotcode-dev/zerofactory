@@ -256,6 +256,7 @@ du -sh ~/.hermes/profiles/
 | Agent timeout | `max_turns` too low | Increase in `config.custom.yaml` |
 | Empty kanban board | Workspace not running | `systemctl start hermes-workspace` |
 | Config not applied | Stale merged config | Run `./hermes/bin/merge-config.sh` |
+| Skills not found | Missing skill symlink | Run `make skills-link` or `./hermes/bin/link-skills.sh` |
 | Profile missing | Profile directory empty | Check `~/.hermes/profiles/<profile>/SOUL.md` |
 | Tool not found | Not in toolsets list | Add to `toolsets` in `config.custom.yaml` |
 | Port conflict | Another service on same port | Change port in `docker-compose.yml` or env |

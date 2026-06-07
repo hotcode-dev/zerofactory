@@ -169,6 +169,7 @@ hermes/profiles/<profile>/config.yaml  ← Merged final config
 |---------|-------------|
 | `make hermes-link` | Link `~/.hermes/profiles/` only |
 | `make config-merge` | Merge config for all profiles |
+| `make skills-link` | Link common skills to all profiles |
 | `make systemd-link` | Link systemd services to `/etc/systemd/system/` |
 | `make systemd-enable` | Enable all services on boot |
 | `make systemd-start` | Start all services |

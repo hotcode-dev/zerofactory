@@ -20,18 +20,18 @@
       "schedule_display": "every 60m",
       "repeat": {
         "times": null,
-        "completed": 39
+        "completed": 251
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-05-27T03:32:51.061594+07:00",
-      "next_run_at": "2026-05-29T01:24:29.375263+07:00",
-      "last_run_at": "2026-05-29T00:24:29.375263+07:00",
+      "next_run_at": "2026-06-08T00:29:41.428769+07:00",
+      "last_run_at": "2026-06-07T23:29:41.428769+07:00",
       "last_status": "ok",
       "last_error": null,
-      "last_delivery_error": null,
+      "last_delivery_error": "no delivery target resolved for deliver=origin",
       "deliver": "origin",
       "origin": null,
       "enabled_toolsets": null,
@@ -58,18 +58,18 @@
       "schedule_display": "every 120m",
       "repeat": {
         "times": null,
-        "completed": 18
+        "completed": 126
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-05-27T03:33:55.582320+07:00",
-      "next_run_at": "2026-05-29T00:52:00.494313+07:00",
-      "last_run_at": "2026-05-28T22:52:00.494313+07:00",
+      "next_run_at": "2026-06-08T01:34:18.832951+07:00",
+      "last_run_at": "2026-06-07T23:34:18.832951+07:00",
       "last_status": "ok",
       "last_error": null,
-      "last_delivery_error": null,
+      "last_delivery_error": "no delivery target resolved for deliver=origin",
       "deliver": "origin",
       "origin": null,
       "enabled_toolsets": null,
@@ -96,15 +96,15 @@
       "schedule_display": "0 9 * * *",
       "repeat": {
         "times": null,
-        "completed": 2
+        "completed": 11
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-05-27T03:35:15.996896+07:00",
-      "next_run_at": "2026-05-29T09:00:00+07:00",
-      "last_run_at": "2026-05-28T09:02:20.686763+07:00",
+      "next_run_at": "2026-06-08T09:00:00+07:00",
+      "last_run_at": "2026-06-07T09:01:24.886289+07:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": "no delivery target resolved for deliver=origin",
@@ -115,5 +115,5 @@
       "profile": null
     }
   ],
-  "updated_at": "2026-05-29T00:24:29.375483+07:00"
+  "updated_at": "2026-06-07T23:34:18.833193+07:00"
 }

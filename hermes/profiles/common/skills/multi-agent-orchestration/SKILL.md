@@ -99,4 +99,3 @@ Never duplicate information. When the same concept or rule applies across multip
 
 - **references/team-structure.md** — Example team rosters, pipeline layouts, agent identities
 - **templates/profile-template/** — Starter template for a new agent profile directory
-- **templates/profile-template/** — Starter profile directory including config template files

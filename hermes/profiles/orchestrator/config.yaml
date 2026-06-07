@@ -5,15 +5,15 @@ providers: {}
 fallback_providers: []
 credential_pool_strategies: {}
 toolsets:
-- kanban
-- delegation
-- cronjob
-- file
-- terminal
-- search_files
-- web
-- skills
-- mcp
+  - kanban
+  - delegation
+  - cronjob
+  - file
+  - terminal
+  - search_files
+  - web
+  - skills
+  - mcp
 agent:
   max_turns: 120
   gateway_timeout: 3600
@@ -27,17 +27,17 @@ agent:
   gateway_auto_continue_freshness: 3600
   image_input_mode: auto
   disabled_toolsets:
-  - image_gen
-  - tts
-  - discord
-  - slack
-  - telegram
-  - whatsapp
-  - mattermost
-  - matrix
-  - x_search
-  - spotify
-  - homeassistant
+    - image_gen
+    - tts
+    - discord
+    - slack
+    - telegram
+    - whatsapp
+    - mattermost
+    - matrix
+    - x_search
+    - spotify
+    - homeassistant
   verbose: false
   reasoning_effort: medium
   personalities: {}
@@ -55,6 +55,7 @@ terminal:
   singularity_image: docker://nikolaik/python-nodejs:python3.11-nodejs20
   modal_image: nikolaik/python-nodejs:python3.11-nodejs20
   daytona_image: nikolaik/python-nodejs:python3.11-nodejs20
+  vercel_runtime: node24
   container_cpu: 1
   container_memory: 5120
   container_disk: 51200
@@ -64,7 +65,6 @@ terminal:
   docker_extra_args: []
   docker_run_as_host_user: false
   persistent_shell: true
-  vercel_runtime: node24
   lifetime_seconds: 300
 web:
   backend: ''
@@ -250,9 +250,9 @@ display:
   runtime_footer:
     enabled: false
     fields:
-    - model
-    - context_pct
-    - cwd
+      - model
+      - context_pct
+      - cwd
   copy_shortcut: auto
   background_process_notifications: all
   cleanup_progress: false
@@ -260,10 +260,6 @@ display:
 dashboard:
   theme: mono
   show_token_analytics: false
-  oauth:
-    client_id: ''
-    portal_url: ''
-  public_url: ''
 privacy:
   redact_pii: false
 tts:
@@ -344,52 +340,52 @@ skills:
   inline_shell_timeout: 10
   guard_agent_created: false
   disabled:
-  - airtable
-  - architecture-diagram
-  - arxiv
-  - ascii-art
-  - ascii-video
-  - audiocraft-audio-generation
-  - baoyu-article-illustrator
-  - baoyu-comic
-  - baoyu-infographic
-  - blogwatcher
-  - claude-code
-  - claude-design
-  - codex
-  - comfyui
-  - debugging-hermes-tui-commands
-  - design-md
-  - dogfood
-  - dspy
-  - evaluating-llms-harness
-  - excalidraw
-  - gif-search
-  - godmode
-  - google-workspace
-  - heartmula
-  - humanizer
-  - jupyter-live-kernel
-  - linear
-  - llama-cpp
-  - llm-wiki
-  - manim-video
-  - maps
-  - minecraft-modpack-server
-  - notion
-  - obliteratus
-  - obsidian
-  - openhue
-  - pixel-art
-  - pokemon-player
-  - powerpoint
-  - sketch
-  - songsee
-  - songwriting-and-ai-music
-  - spotify
-  - touchdesigner-mcp
-  - youtube-content
-  - yuanbao
+    - airtable
+    - architecture-diagram
+    - arxiv
+    - ascii-art
+    - ascii-video
+    - audiocraft-audio-generation
+    - baoyu-article-illustrator
+    - baoyu-comic
+    - baoyu-infographic
+    - blogwatcher
+    - claude-code
+    - claude-design
+    - codex
+    - comfyui
+    - debugging-hermes-tui-commands
+    - design-md
+    - dogfood
+    - dspy
+    - evaluating-llms-harness
+    - excalidraw
+    - gif-search
+    - godmode
+    - google-workspace
+    - heartmula
+    - humanizer
+    - jupyter-live-kernel
+    - linear
+    - llama-cpp
+    - llm-wiki
+    - manim-video
+    - maps
+    - minecraft-modpack-server
+    - notion
+    - obliteratus
+    - obsidian
+    - openhue
+    - pixel-art
+    - pokemon-player
+    - powerpoint
+    - sketch
+    - songsee
+    - songwriting-and-ai-music
+    - spotify
+    - touchdesigner-mcp
+    - youtube-content
+    - yuanbao
 curator:
   enabled: true
   interval_hours: 168
@@ -440,8 +436,7 @@ approvals:
   cron_mode: deny
   mcp_reload_confirm: true
   destructive_slash_confirm: true
-command_allowlist:
-- script execution via -e/-c flag
+command_allowlist: []
 quick_commands: {}
 hooks: {}
 hooks_auto_accept: false
@@ -528,32 +523,16 @@ secrets:
     server_url: ''
 paste_collapse_threshold: 5
 paste_collapse_threshold_fallback: 0
-paste_collapse_char_threshold: 2000
 _config_version: 24
 custom_providers:
-- name: Spark.ntsd.dev:8000
-  base_url: http://spark.ntsd.dev:8000/v1
-  model: qwen36-fast
+  - name: Spark.ntsd.dev:8000
+    base_url: http://spark.ntsd.dev:8000/v1
+    model: qwen36-fast
 default:
   temperature: 0
 provider: ''
-system_prompt: "You are the Orchestrator, the CEO at Zero Factory.\nYour role:\n \
-  \ - Decompose complex goals into parallelizable work packages\n  - Dispatch tasks\
-  \ to specialist agents (Builder, Researcher, Reviewer, QA, Scribe)\n  - Monitor\
-  \ kanban board progress and unblock stalled work\n  - Coordinate handoffs between\
-  \ development stages\n  - Track dependencies and decide what can run in parallel\n\
-  \  - Report concise status to human when needed\n  - Never write code directly \u2014\
-  \ delegate coding to Builder\n  - Never review code directly \u2014 delegate to\
-  \ Reviewer\n\nWorkflow Pipeline:\n  Goal \u2192 Researcher (analyze) \u2192 Builder\
-  \ (implement) \u2192 Reviewer (review) \u2192 QA (test) \u2192 Scribe (document)\
-  \ \u2192 Done\n\nCommunication Style:\n  - Concise, direct, action-oriented\n  -\
-  \ Reference task IDs and kanban states\n  - Summarize status clearly when reporting\
-  \ to human\n\nConstraints:\n  - Respect hardware limits for concurrency\n  - Minimize\
-  \ token usage across all agents\n  - Keep workflows to fewest steps possible\n \
-  \ - Zero temperature \u2014 logical, deterministic decisions\n\nOutput format: Status\
-  \ reports, dispatch instructions, dependency mapping, escalation flags.\n"
+system_prompt: "You are the Orchestrator, the CEO at Zero Factory.\nYour role:\n  - Decompose complex goals into parallelizable work packages\n  - Dispatch tasks to specialist agents (Builder, Researcher, Reviewer, QA, Scribe)\n  - Monitor kanban board progress and unblock stalled work\n  - Coordinate handoffs between development stages\n  - Track dependencies and decide what can run in parallel\n  - Report concise status to human when needed\n  - Never write code directly — delegate coding to Builder\n  - Never review code directly — delegate to Reviewer\n\nWorkflow Pipeline:\n  Goal → Researcher (analyze) → Builder (implement) → Reviewer (review) → QA (test) → Scribe (document) → Done\n\nCommunication Style:\n  - Concise, direct, action-oriented\n  - Reference task IDs and kanban states\n  - Summarize status clearly when reporting to human\n\nConstraints:\n  - Respect hardware limits for concurrency\n  - Minimize token usage across all agents\n  - Keep workflows to fewest steps possible\n  - Zero temperature — logical, deterministic decisions\n\nOutput format: Status reports, dispatch instructions, dependency mapping, escalation flags.\n"
 description: Project manager & orchestrator
-
 # ── Fallback Model ────────────────────────────────────────────────────
 # Automatic provider failover when primary is unavailable.
 # Uncomment and configure to enable. Triggers on rate limits (429),

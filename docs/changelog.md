@@ -8,6 +8,7 @@ All notable changes to the Zero Factory project.
 - `docs/agent-dispatch.md` — comprehensive task-to-agent mapping with decision flowchart, anti-patterns, and parallel assignment matrix
 - `systemd/README.md` — detailed systemd service setup guide
 - `hermes/bin/merge-config.sh` — config merge helper script
+- `hermes/bin/link-skills.sh` — skills linking helper script
 - `vllm/qwen3.6-35b-a3b/` — Docker Compose vLLM for Qwen3.6-35B-A3B (NVFP4 + DFlash on DGX Spark)
 - `vllm/qwen3.6-27b/` — Docker Compose vLLM for Qwen3.6-27B v4 (GB10)
 - `profiles/common/` — base config shared across all agent profiles

@@ -33,6 +33,12 @@ Script helper:
 ./hermes/bin/merge-config.sh
 ```
 
+To link common skills to all profiles:
+
+```bash
+./hermes/bin/link-skills.sh
+```
+
 For each profile other than `common`, keep custom overrides in `config.custom.yaml`.
 Regenerate `config.yaml` when custom or common settings change.
 

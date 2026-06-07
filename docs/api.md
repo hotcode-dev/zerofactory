@@ -181,8 +181,8 @@ hermes/profiles/<profile>/
 ### Configuration Merging
 
 ```bash
-# Merge all profiles' config
-make config-merge
+# Merge all profiles' config, jobs, soul, and link skills
+make merge-all
 
 # Or manually:
 ./hermes/bin/merge-config.sh
@@ -196,7 +196,8 @@ make config-merge
 | Profiles | `hermes/profiles/<agent>/` |
 | Base config | `hermes/profiles/common/config.yaml` |
 | Profile overrides | `hermes/profiles/<profile>/config.custom.yaml` |
-| Merge script | `hermes/bin/merge-config.sh` |
+| Config Merge script | `hermes/bin/merge-config.sh` |
+| Skills Link script | `hermes/bin/link-skills.sh` |
 | Systemd units | `systemd/*.service` |
 | Environment files | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
 | Kanban DB | `~/.hermes/kanban.db` |

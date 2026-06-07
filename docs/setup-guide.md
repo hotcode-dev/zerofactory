@@ -29,15 +29,15 @@ make hermes-link
 This creates:
 - `~/.hermes/profiles/` → symlink to `zerofactory/hermes/profiles/`
 
-## Config Merge Step
+## Merge Step
 
-After any edit to `hermes/profiles/<profile>/config.custom.yaml` (including MCP server changes), regenerate merged runtime configs:
+After any edit to `hermes/profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, regenerate merged runtime files and links:
 
 ```bash
-make config-merge
+make merge-all
 ```
 
-Do not edit `config.yaml` directly; it is generated output.
+If you only want to merge configs, you can run `make config-merge`. Do not edit `config.yaml` directly; it is generated output.
 
 ### Configuration Hierarchy
 
@@ -49,10 +49,16 @@ profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
 hermes/profiles/<profile>/config.yaml  ← Merged final config
 ```
 
-Each profile extends the base config with its own overrides. To manually merge all profiles:
+Each profile extends the base config with its own overrides. To manually merge configurations across all profiles:
 
 ```bash
 ./hermes/bin/merge-config.sh
+```
+
+You can also link common skills using:
+
+```bash
+./hermes/bin/link-skills.sh
 ```
 
 ## Step 3: Configure Systemd
@@ -191,7 +197,7 @@ Configure MCP servers in each profile's `config.custom.yaml`:
 vim hermes/profiles/<profile>/config.custom.yaml
 ```
 
-Then run `make config-merge` (see "Config Merge Step" above). Do not edit `config.yaml` directly; it is generated.
+Then run `make merge-all` (see "Merge Step" above). Do not edit `config.yaml` directly; it is generated.
 
 ## Step 6: vLLM Inference (Docker Compose)
 

@@ -91,7 +91,7 @@ Any change to `hermes/profiles/<profile>/config.custom.yaml` (including MCP serv
 Run:
 
 ```bash
-make config-merge
+make merge-all
 ```
 
 If this step is skipped, Hermes continues using stale `config.yaml` values.
@@ -227,7 +227,7 @@ To add or update MCP servers for any profile:
 2. Regenerate merged runtime configs:
 
 ```bash
-make config-merge
+make merge-all
 ```
 
 Hermes reads per-profile `config.yaml`, which is generated from `config.custom.yaml`.
@@ -306,7 +306,7 @@ cd /home/ntsd/git/hotcode/zerofactory
 vim hermes/profiles/<profile>/config.custom.yaml
 
 # 2. Regenerate merged config
-make config-merge
+make merge-all
 
 # 3. Restart services if needed
 make systemd-restart

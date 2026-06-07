@@ -12,6 +12,7 @@
 !*/cron/
 !*/cron/jobs.json
 !*/cron/jobs.custom.json
-!*/skills
+!*/skills/
 !*/skills/multi-agent-orchestration
-!*/skills/kanban
+!*/skills/multi-agent-orchestration/
+!*/skills/multi-agent-orchestration/**
