@@ -37,11 +37,15 @@ Every agent profile needs exactly three files in its directory under `hermes/pro
 
 ## Pipeline Architecture
 
-Standard pipeline (can parallelize stages):
+Standard agile pipeline with Human-in-the-Loop (HITL) gates:
 
 ```
-Goal → Researcher (research & specs) → Builder (implement) → Reviewer (review) → QA (test) → Scribe (document) → Done
+Goal → Researcher (research & specs) → 🛑 Human Plan Review → Builder (implement) → Reviewer & QA (verify) → 🛑 Human Result Review → Scribe (document) → Done
 ```
+
+**Human-in-the-Loop (HITL) Reviews:**
+- **Plan Review**: After the Researcher finishes, the Orchestrator pauses to get human approval on the spec before writing code.
+- **Result Review**: After Reviewer and QA finish, the Orchestrator gets final human sign-off before Scribe documentation.
 
 Parallelism rules:
 - Researcher can work while Builder handles other tasks

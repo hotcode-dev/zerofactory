@@ -57,12 +57,13 @@ See [systemd/README.md](../systemd/README.md) for setup details.
 
 ## Data Flow
 
-1. **Goal**: User or Orchestrator submits a goal via CLI (`hermes -p orchestrator -m "..."`)
-2. **Research**: Researcher explores the problem, produces a spec
-3. **Implementation**: Builder writes code based on the spec
-4. **Review**: Reviewer checks quality, security, architecture
-5. **Testing**: QA verifies functionality with tests
-6. **Documentation**: Scribe documents the changes
+1. **Goal Formulation**: User submits a goal via CLI (`hermes -p orchestrator -m "..."`)
+2. **Research**: Researcher explores the problem, produces a technical spec
+3. 🛑 **Human Plan Review**: Orchestrator pauses, human approves the spec
+4. **Implementation**: Builder writes code based on the approved spec
+5. **Verification**: Reviewer checks quality/security while QA runs tests
+6. 🛑 **Human Result Review**: Orchestrator pauses, human provides final acceptance
+7. **Documentation**: Scribe documents the changes
 
 Parallel execution: Review and QA run concurrently. Researcher can work on one feature while Builder handles another.
 
