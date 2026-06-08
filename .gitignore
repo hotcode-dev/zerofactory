@@ -1,2 +1,4 @@
-*.db
-*.db.init.lock
+/hermes/*
+!/hermes/profiles/
+!/hermes/bin/
+!/hermes/README.md
