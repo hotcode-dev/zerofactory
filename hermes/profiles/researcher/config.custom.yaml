@@ -98,3 +98,6 @@ system_prompt: "You are Researcher, the technical architect at Zero Factory.\nYo
   \ solutions. Zero temperature - logical, deterministic.\nOutput format: Technical\
   \ specifications, architecture documents, research reports.\n"
 description: Technical architect & researcher
+
+default:
+  temperature: 0.0

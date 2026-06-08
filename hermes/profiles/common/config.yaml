@@ -460,7 +460,7 @@ custom_providers:
   base_url: http://spark.ntsd.dev:8000/v1
   model: qwen36-fast
 default:
-  temperature: 0
+  temperature: 0.1
 provider: ''
 
 # ── Fallback Model ────────────────────────────────────────────────────

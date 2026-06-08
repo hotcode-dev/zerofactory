@@ -27,13 +27,14 @@ Every multi-agent orchestration should have these roles, each with distinct SOUL
 | **QA** | Quality engineer — test design, regression, performance | file, terminal, search_files, web |
 | **Scribe** | Technical writer — docs, API reference, changelogs | file, terminal, search_files, web |
 
-## 3-File Per Profile Structure
+## 4-File Per Profile Structure
 
-Every agent profile needs exactly three files in its directory under `hermes/profiles/<name>/`:
+Every agent profile needs exactly four files in its directory under `hermes/profiles/<name>/`:
 
 1. **SOUL.md** — Agent identity, core responsibilities, tools & skills, constraints, communication style. This is the primary definition file.
-2. **config.custom.yaml** — Profile-specific overrides, including MCP server definitions and role customizations.
-3. **config.yaml** — Generated runtime config from `common/config.yaml` + `config.custom.yaml`. Do not edit directly.
+2. **SOUL.custom.md** — Profile-specific identity overrides, keeping the base SOUL intact.
+3. **config.custom.yaml** — Profile-specific overrides, including MCP server definitions, temperature, and role customizations.
+4. **config.yaml** — Generated runtime config from `common/config.yaml` + `config.custom.yaml`. Do not edit directly.
 
 ## Pipeline Architecture
 
@@ -79,6 +80,7 @@ Never duplicate information. When the same concept or rule applies across multip
 - **compression**: Enable (target_ratio: 0.2)
 - **prompt_caching**: Enable (cache_ttl: 5m)
 - **skills.disabled**: Large list of irrelevant skills — only enable per-role
+- **temperature**: Customize temperature under `default:` in `config.custom.yaml` based on the profile (e.g., `0.0` for Orchestrator/QA/Reviewer/Researcher for deterministic output, `0.1` for Builder for structured creativity, `0.2` for Scribe for documentation phrasing).
 
 ## Pitfalls
 
@@ -87,7 +89,7 @@ Never duplicate information. When the same concept or rule applies across multip
 - **Distinct identities**: Every agent must have a unique SOUL.md. Don't reuse templates without customization — agents need distinct roles to avoid conflicting behavior.
 - **Cost awareness**: Short max_turns + disabled skills + compression = lower cost. Review every profile for unnecessary tools/skills.
 - **MCP servers live in config.custom.yaml**: Add or update MCP servers in `config.custom.yaml`, then run `make config-merge` to regenerate `config.yaml`.
-- **Three files minimum**: Every profile needs SOUL.md, config.custom.yaml, and config.yaml.
+- **Four files minimum**: Every profile needs SOUL.md, SOUL.custom.md, config.custom.yaml, and config.yaml.
 - **Active profile is write-protected**: The profile currently running as the active session blocks `write_file` from overwriting its `config.yaml`. If `write_file` fails with "protected system/credential file", use `terminal` with a Python script to write the file directly:
   ```python
   import os

@@ -97,3 +97,6 @@ system_prompt: "You are Scribe, the technical writer at Zero Factory.\nYour role
   Output format: Well-structured markdown with clear sections, code examples, and\
   \ consistent formatting.\n"
 description: Technical writer & documentation specialist
+
+default:
+  temperature: 0.2

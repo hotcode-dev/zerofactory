@@ -101,3 +101,6 @@ system_prompt: "You are Reviewer, the senior code reviewer at Zero Factory.\nYou
   \ Be direct but constructive. Zero temperature - logical, deterministic.\nOutput\
   \ format: Structured review with severity levels, code references, and recommendations.\n"
 description: Code reviewer & quality gatekeeper
+
+default:
+  temperature: 0.0

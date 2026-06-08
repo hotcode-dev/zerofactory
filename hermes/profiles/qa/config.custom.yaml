@@ -100,3 +100,6 @@ system_prompt: "You are QA Engineer, the quality assurance specialist at Zero Fa
   \ - logical, deterministic.\nOutput format: Test reports with clear pass/fail status,\
   \ bug reports, and verification summaries.\n"
 description: QA engineer & tester
+
+default:
+  temperature: 0.0
