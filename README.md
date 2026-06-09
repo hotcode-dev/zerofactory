@@ -12,27 +12,55 @@ cd zerofactory
 # 2. Link Hermes config
 make hermes-link
 
-# 3. Launch an agent
+# 3. Merge profile configurations
+make merge-all
+
+# 4. Launch an agent
 hermes -p orchestrator -m "Research how to implement real-time notifications with WebSockets and PostgreSQL"
 
-# 4. The Orchestrator delegates to Researcher, who produces a spec
+# 5. The Orchestrator delegates to Researcher, who produces a spec
 #    then Builder implements, Reviewer checks quality, QA tests, Scribe documents
 ```
 
 Full setup guide: [docs/setup-guide.md](docs/setup-guide.md)
 
-## Config Merge Step
+## Profile Merge Steps
 
-Any time you change a profile config (including MCP server settings), you must rebuild merged runtime configs:
+> [!TIP]
+> Rule of thumb: only edit the custom source files (which are tracked by Git). The merged output files are listed in `.gitignore` and will be overwritten when you run the merge commands.
 
+Any time you change a profile's custom files, you must rebuild the generated runtime files. You can merge everything at once or run individual merge commands:
+
+```bash
+# Merge config, jobs, SOUL, and link skills for all profiles
+make merge-all
+```
+
+### Individual Merge Commands
+
+**1. Config Merge**
+You should only edit `config.custom.yaml`. Hermes reads `config.yaml` at runtime.
 ```bash
 make config-merge
 ```
 
-Why this matters:
-- Hermes reads `hermes/profiles/<profile>/config.yaml` at runtime
-- `config.yaml` is generated from `config.custom.yaml`
-- If you skip merge, your config changes will not be applied
+**2. Jobs Merge**
+You should only edit `jobs.custom.json`. Hermes reads `jobs.json` for cron jobs.
+```bash
+make jobs-merge
+```
+
+**3. SOUL Merge**
+You should only edit `SOUL.custom.md`. Hermes reads `SOUL.md` (which appends `common/SOUL.md`).
+```bash
+make soul-merge
+```
+
+**4. Skills Link**
+Links common skills to all profiles.
+```bash
+make skills-link
+```
 
 ## Core Principles
 
@@ -115,20 +143,6 @@ hermes/profiles/<profile>/config.yaml  ← Merged final config
 | `make hermes-link` | Link `~/.hermes/profiles/` only |
 | `make config-merge` | Merge config for all profiles |
 | `make skills-link` | Link common skills to all profiles |
-
-## AI Agent & Workspace
-
-- [Hermes Agent](https://hermes-agent.nousresearch.com/): Primary orchestrator for long-running background tasks and coordination across specialist agents.
-- [Hermes Workspace](https://github.com/outsourc-e/hermes-workspace): Native web workspace for Hermes Agent — chat, terminal, memory, skills, inspector.
-
-## Service Ports
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| hermes-gateway | 8642 | API server for agent communication |
-| hermes-dashboard | 9119 | Web UI for monitoring |
-| hermes-workspace | 3000 | Workspace management (chat, terminal, files) |
-| hermes-webui | 8787 | Native web interface for Hermes |
 
 ## License
 

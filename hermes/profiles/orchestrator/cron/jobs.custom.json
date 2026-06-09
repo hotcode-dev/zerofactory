@@ -1,7 +1,7 @@
 {
   "jobs": [
     {
-      "id": "742dbc0d4e3f",
+      "id": "zero-factory-board-sync",
       "name": "Zero Factory board sync",
       "prompt": "Sync the kanban board - check for any orphaned tasks, verify task graphs are correct, and ensure all pipeline stages are represented. Report board health status.",
       "skills": [],
@@ -30,7 +30,7 @@
       "profile": null
     },
     {
-      "id": "bd818865da4b",
+      "id": "zero-factory-task-queue-check",
       "name": "Zero Factory task queue check",
       "prompt": "Check Zero Factory task queue - any tasks stuck in 'running' too long? Any 'blocked' tasks waiting for human review? Report on task throughput and bottlenecks.",
       "skills": [],
@@ -59,7 +59,7 @@
       "profile": null
     },
     {
-      "id": "7f9e9ac9350d",
+      "id": "zero-factory-daily-report",
       "name": "Zero Factory daily report",
       "prompt": "Generate a comprehensive daily report for Zero Factory. Include: total tasks completed, tasks currently running, tasks blocked, agent performance, and any issues. Summarize with actionable items.",
       "skills": [],
@@ -84,6 +84,43 @@
       "deliver": "origin",
       "origin": null,
       "enabled_toolsets": null,
+      "workdir": null,
+      "profile": null
+    },
+    {
+      "id": "zero-factory-improvement-scanner",
+      "name": "Zero Factory-improvement scanner",
+      "prompt": "Scan ZeroFactory workspaces for code quality issues, tech debt, and improvement opportunities.\n\n## Workspace Convention: `~/git/<user>/<project>/`\n\nAll projects live under `~/git/`. Every top-level directory is a potential project:\n```\n~/git/<github_user>/<project>/   # e.g., ~/git/hotcode-dev/zerofactory/\n```\n\n## Discover target projects:\n1. **Scan `~/git/`** \u2014 list all top-level directories (these are all active projects).\n2. **Filter by activity** \u2014 check for git commits in the last 30 days; skip inactive projects.\n3. **Cross-reference kanban** \u2014 for projects with active tasks, prioritize them.\n4. **Always scan ZeroFactory itself** \u2014 `~/git/hotcode-dev/zerofactory/` is the fallback.\n\n## Scan criteria (prioritized):\n1. **BUG FIXES** \u2014 null pointers, missing edge cases, type mismatches, logic errors, broken imports\n2. **DUPLICATE CODE** \u2014 repeated patterns that should be extracted or refactored\n3. **MISSING TESTS** \u2014 functions/classes without coverage that should have them\n4. **PERFORMANCE** \u2014 O(n\u00b2) patterns, redundant operations, memory leaks, unoptimized queries\n5. **DOCUMENTATION** \u2014 undocumented functions, stale README sections, missing inline comments, broken links\n6. **REFactoring** \u2014 extract utility functions, improve naming, reduce cyclomatic complexity, remove dead code\n7. **SECURITY** \u2014 hardcoded secrets, unsanitized input, missing error handling, unsafe eval/exec usage\n8. **CONFIG** \u2014 missing .gitignore files, uncommitted config drift, stale dependencies\n\n## For each issue found:\n1. Create a **hermes kanban task** with:\n   - Clear description of the issue with file path and line numbers\n   - Priority: critical/high/medium/low\n   - Category: bug-fix, refactoring, performance, documentation, testing, security, config\n   - Project: the project path (e.g., `~/git/hotcode-dev/zerofactory`)\n   - Assign to appropriate agent (builder, reviewer, scribe)\n   - Status: `blocked/waiting-on-human`\n2. Write/update a summary to `docs/IMPROVEMENT_PLAN.md` with:\n   - Number of improvements found across all projects\n   - Priority ranking\n   - Estimated impact of each fix\n   - List of projects scanned (with paths)\n\n## Deliver to user:\n- Summary of what was found\n- List of projects scanned with paths\n- Link to the plan file\n- Status: \"WAITING-HUMAN-REVIEW\"\n- Ask for approval to execute\n\n## IMPORTANT:\n- DO NOT execute the improvements yet\n- Only scan, create hermes kanban tasks, and deliver the plan\n- Mark all tasks as `waiting-on-human`\n- End the run after delivery\n\n## Edge cases:\n- If no active projects found, report: \"No active projects to scan. Waiting for new work.\"\n- If scan fails on a project (e.g., missing deps), skip it and note the error\n- Always scan the ZeroFactory repo itself as a fallback",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "base_url": null,
+      "script": null,
+      "no_agent": false,
+      "context_from": null,
+      "schedule": {
+        "kind": "interval",
+        "minutes": 240,
+        "display": "every 240m"
+      },
+      "schedule_display": "every 240m",
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-06-08T18:47:31.093182+07:00",
+      "last_status": "ok",
+      "last_error": null,
+      "last_delivery_error": "no delivery target resolved for deliver=origin",
+      "deliver": "origin",
+      "origin": null,
+      "enabled_toolsets": [
+        "terminal",
+        "file",
+        "web",
+        "kanban"
+      ],
       "workdir": null,
       "profile": null
     }
