@@ -43,19 +43,6 @@ Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key 
 
 The Orchestrator creates tasks, assigns agents, and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done`.
 
-### 4. Systemd Services
-
-Four services run continuously on Linux:
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| hermes-gateway | 8642 | API server for agent communication |
-| hermes-dashboard | 9119 | Web UI for monitoring |
-| hermes-workspace | 3000 | Workspace management (chat, terminal, files) |
-| hermes-webui | 8787 | Native web interface for Hermes |
-
-See [systemd/README.md](../systemd/README.md) for setup details.
-
 ## Data Flow
 
 1. **Goal Formulation**: User submits a goal via CLI (`hermes -p orchestrator -m "..."`)
@@ -112,12 +99,6 @@ zerofactory/
 │   │   ├── qa/                # QA — testing & verification
 │   │   └── scribe/            # Documentation — API docs & guides
 │   └── bin/                   # Helper scripts
-├── systemd/                   # Systemd service files
-│   ├── *.service.template     # Service templates
-│   └── *.service              # Generated services
-└── vllm/                      # LLM inference Docker configs
-    ├── qwen3.6-35b-a3b/       # 35B model with DFlash
-    └── qwen3.6-27b/           # 27B model with DFlash
 ```
 
 ## Agent Communication Protocol

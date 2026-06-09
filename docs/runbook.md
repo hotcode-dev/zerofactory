@@ -8,15 +8,14 @@ Complete operational runbook for Zero Factory — the AI multi-agent orchestrati
 2. [Config Merge Step](#config-merge-step)
 3. [Agent Profiles](#agent-profiles)
 4. [Configuration Reference](#configuration-reference)
-5. [Systemd Services](#systemd-services)
-6. [Daily Operations](#daily-operations)
-7. [Maintenance Procedures](#maintenance-procedures)
-8. [Emergency Procedures](#emergency-procedures)
-9. [Monitoring & Alerting](#monitoring--alerting)
-10. [Agent Communication Protocol](#agent-communication-protocol)
-11. [Task Lifecycle](#task-lifecycle)
-12. [Agent Dispatch Reference](#agent-dispatch-reference)
-13. [Appendix](#appendix)
+5. [Daily Operations](#daily-operations)
+6. [Maintenance Procedures](#maintenance-procedures)
+7. [Emergency Procedures](#emergency-procedures)
+8. [Monitoring & Alerting](#monitoring--alerting)
+9. [Agent Communication Protocol](#agent-communication-protocol)
+10. [Task Lifecycle](#task-lifecycle)
+11. [Agent Dispatch Reference](#agent-dispatch-reference)
+12. [Appendix](#appendix)
 
 ---
 
@@ -42,18 +41,6 @@ cd zerofactory
 # 2. Link Hermes config to standard location
 make hermes-link
 
-# 3. Generate systemd services from templates
-make systemd-generate
-
-# 4. Link and enable systemd services
-make systemd-link
-make systemd-enable
-
-# 5. Start all services
-make systemd-start
-
-# 6. Verify everything is running
-make systemd-status
 ```
 
 ### Basic Usage
@@ -76,10 +63,8 @@ hermes -p orchestrator -m "Show me the current kanban board"
 | Base config | `~/.hermes/profiles/common/config.yaml` |
 | Agent profiles | `~/.hermes/profiles/` (symlinked from `hermes/profiles/`) |
 | Agent SOUL files | `~/.hermes/profiles/<profile>/SOUL.md` |
-| Systemd units | `/etc/systemd/system/hermes-*.service` |
 | Kanban database | `~/.hermes/kanban.db` |
 | Environment files | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
-| Service logs | `journalctl -u hermes-<service>` |
 || Project root | `/home/ntsd/git/hotcode/zerofactory` |
 
 ---
@@ -234,30 +219,17 @@ Hermes reads per-profile `config.yaml`, which is generated from `config.custom.y
 
 ---
 
-## 6. Daily Operations
+## 5. Daily Operations
 
 ### Morning Routine
 
-1. Check service health:
-   ```bash
-   make systemd-status
-   ```
-2. Review agent activity logs:
-   ```bash
-   sudo journalctl -u hermes-gateway --since "06:00" -n 100 --no-pager
-   sudo journalctl -u hermes-workspace --since "06:00" -n 100 --no-pager
-   ```
-3. Verify kanban board has pending tasks:
+1. Verify kanban board has pending tasks:
    ```bash
    hermes -p orchestrator -m "Show kanban board status"
    ```
 
 ### Managing Agent Work
 
-- Check agent status:
-  ```bash
-  systemctl status hermes-gateway
-  ```
 - Monitor kanban board:
   ```bash
   hermes -p orchestrator -m "What tasks are currently running?"
@@ -267,32 +239,16 @@ Hermes reads per-profile `config.yaml`, which is generated from `config.custom.y
   hermes -p orchestrator -m "Add task: optimize database queries"
   ```
 
-### Restarting Services
-
-```bash
-# Full restart
-make systemd-stop
-make systemd-start
-
-# Individual service restart
-sudo systemctl restart hermes-gateway
-sudo systemctl restart hermes-workspace
-sudo systemctl restart hermes-dashboard
-```
 
 ---
 
-## 7. Maintenance Procedures
+## 6. Maintenance Procedures
 
 ### Disk Space Management
 
 ```bash
 # Check disk usage
 du -sh ~/.hermes/
-journalctl --disk-usage
-
-# Clean up journal logs
-sudo journalctl --vacuum-time=7d
 
 # Prune old kanban tasks
 hermes -p orchestrator -m "Archive completed kanban tasks from last week"
@@ -307,9 +263,6 @@ vim hermes/profiles/<profile>/config.custom.yaml
 
 # 2. Regenerate merged config
 make merge-all
-
-# 3. Restart services if needed
-make systemd-restart
 ```
 
 ### Profile Additions
@@ -324,58 +277,20 @@ cp hermes/profiles/common/config.yaml hermes/profiles/<new-profile>/config.custo
 
 ---
 
-## 8. Emergency Procedures
+## 7. Emergency Procedures
 
-### Full Service Failure
 
-```bash
-# 1. Check if systemd is running
-systemctl is-active hermes-gateway
 
-# 2. If not, regenerate and restart
-make systemd-link
-make systemd-start
-
-# 3. Check logs for root cause
-sudo journalctl -u hermes-gateway -n 200 --no-pager
-```
-
-### Config Corruption Recovery
-
-```bash
-# Stop services
-make systemd-stop
-
-# Re-link from clean source
-make hermes-link
-make systemd-link
-
-# Start fresh
-make systemd-start
-```
-
-### Network Isolation
-
-```bash
-# Stop all services
-make systemd-stop
-
-# Disable auto-start
-make systemd-disable
-
-# Verify
-make systemd-status
-```
 
 ### Hardware Issues
 
 - **OOM Kill**: Check `free -h`, reduce `max_turns` or compression threshold
-- **GPU issues**: Check `nvidia-smi`, verify docker containers running
-- **Disk full**: `df -h`, clean journal logs, remove old vLLM caches
+- **Disk full**: `df -h`
+
 
 ---
 
-## 9. Monitoring & Alerting
+## 8. Monitoring & Alerting
 
 ### Health Checks
 
@@ -397,22 +312,20 @@ curl -s http://spark.ntsd.dev:8000/v1/models > /dev/null && echo "OK" || echo "D
 
 | Metric | Check Command | Alert Threshold |
 |--------|---------------|-----------------|
-| Gateway status | `systemctl is-active hermes-gateway` | not active for > 5m |
 | Disk usage | `df -h` | > 85% |
 | Memory usage | `free -h` | > 90% |
-| Journal size | `journalctl --disk-usage` | > 500MB |
 | Active kanban tasks | `hermes -p orchestrator -m "kanban"` | > 0 stuck > 1h |
 
 ### Cron Monitoring (Optional)
 
 ```bash
 # Add to crontab for periodic health checks
-*/5 * * * * curl -s http://localhost:8642/health > /dev/null || systemctl restart hermes-gateway
+*/5 * * * * curl -s http://localhost:8642/health > /dev/null
 ```
 
 ---
 
-## 10. Agent Communication Protocol
+## 9. Agent Communication Protocol
 
 ### How Agents Talk
 
@@ -442,7 +355,7 @@ Orchestrator → assigns task on kanban → Agent claims task → works → mark
 
 ---
 
-## 11. Task Lifecycle
+## 10. Task Lifecycle
 
 ### States
 
@@ -477,7 +390,7 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 
 ---
 
-## 12. Agent Dispatch Reference
+## 11. Agent Dispatch Reference
 
 See [multi-agent-orchestration](../hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) for the complete task-to-agent mapping.
 
@@ -494,7 +407,7 @@ See [multi-agent-orchestration](../hermes/profiles/common/skills/multi-agent-orc
 
 See the full dispatch reference for decision flowcharts, anti-patterns, and parallel assignment guidance.
 
-## 13. Appendix
+## 12. Appendix
 
 ### A. Quick Command Reference
 
@@ -505,17 +418,7 @@ hermes -p orchestrator -m "show kanban"       # Check tasks
 
 # Service commands
 make hermes-link          # Link config
-make systemd-link         # Link services
-make systemd-start        # Start all
-make systemd-stop         # Stop all
-make systemd-status       # Check status
-make systemd-status       # Show status
-make systemd-logs         # Show logs
-make systemd-restart      # Restart all
 
-# Monitoring
-make systemd-status       # Show service status
-journalctl -u hermes-gateway -f  # Follow logs
 ```
 
 ### B. Configuration Hierarchy
@@ -553,7 +456,6 @@ hermes/
 | hermes-gateway | 8642 | HTTP/REST | Agent API server |
 | hermes-dashboard | 9119 | HTTP/Web | Dashboard web UI |
 | hermes-workspace | 3000 | HTTP/Web | Workspace chat/terminal |
-| vLLM models | 8000 | HTTP/OpenAI | LLM inference API |
 
 ### E. Configuration Keys Quick Reference
 
@@ -576,7 +478,6 @@ hermes/
 | **Profile** | A named agent configuration with SOUL.md and config |
 | **Toolset** | A set of tools available to a specific profile |
 | **SOUL** | Agent's identity file defining role, constraints, responsibilities |
-| **vLLM** | High-performance LLM inference engine |
 | **DFlash** | Dynamic Flash for speculative decoding acceleration |
 | **NVFP4** | NVIDIA FP4 quantization format |
 | **TIR** | Tool-input-response, the agent interaction loop |

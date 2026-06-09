@@ -128,28 +128,6 @@ HERMES_API_URL=http://127.0.0.1:8642
 HERMES_PASSWORD=
 ```
 
-## Systemd Services
-
-```bash
-# Generate and link services
-make systemd-link
-
-# Enable all services
-make systemd-enable
-
-# Start all services
-make systemd-start
-```
-
-### Service Units
-
-| Service | File | Description |
-|---------|------|-------------|
-| hermes-gateway | `systemd/hermes-gateway.service` | API server (port 8642) |
-| hermes-dashboard | `systemd/hermes-dashboard.service` | Web UI (port 9119) |
-| hermes-workspace | `systemd/hermes-workspace.service` | Workspace (port 3000) |
-| hermes-webui | `systemd/hermes-webui.service` | Native web UI (port 8787) |
-
 ## Agent Profiles Structure
 
 Each profile directory contains:
@@ -181,7 +159,6 @@ make merge-all
 | Profile overrides | `hermes/profiles/<profile>/config.custom.yaml` |
 | Config Merge script | `hermes/bin/merge-config.sh` |
 | Skills Link script | `hermes/bin/link-skills.sh` |
-| Systemd units | `systemd/*.service` |
 | Environment files | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
 | Kanban DB | `~/.hermes/kanban.db` |
 | Architecture | `docs/architecture.md` |
