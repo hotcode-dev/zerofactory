@@ -1,5 +1,5 @@
 ---
-name: multi-agent-orchestration
+name: zerofactory-orchestration
 category: architecture
 description: Set up specialized AI agent teams with role-specific tools, identities, and continuous agile workflows.
 ---

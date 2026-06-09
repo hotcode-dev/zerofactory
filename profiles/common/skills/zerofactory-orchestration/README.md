@@ -46,7 +46,7 @@ Stages can parallelize: Reviewer reviews as soon as Builder finishes a module; Q
 ## File Structure
 
 ```
-multi-agent-orchestration/
+zerofactory-orchestration/
 ├── README.md            ← you are here
 ├── SKILL.md             ← full procedural guide
 ├── references/

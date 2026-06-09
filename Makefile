@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-HERMES_SRC := $(CURDIR)/hermes
+HERMES_SRC := $(CURDIR)
 HERMES_DEST := $(HOME)/.hermes
 
 .PHONY: hermes-link merge-all config-merge jobs-merge soul-merge skills-link
@@ -14,17 +14,17 @@ merge-all: config-merge jobs-merge soul-merge skills-link
 	@echo "Merged config, jobs, and SOUL, and linked skills for all profiles"
 
 config-merge:
-	@./hermes/bin/merge-config.sh
+	@./bin/merge-config.sh
 	@echo "Merged config for all profiles"
 
 jobs-merge:
-	@./hermes/bin/merge-jobs.sh
+	@./bin/merge-jobs.sh
 	@echo "Merged jobs for all profiles"
 
 soul-merge:
-	@./hermes/bin/merge-soul.sh
+	@./bin/merge-soul.sh
 	@echo "Merged SOUL for all profiles"
 
 skills-link:
-	@./hermes/bin/link-skills.sh
+	@./bin/link-skills.sh
 	@echo "Linked common skills to all profiles"

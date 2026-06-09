@@ -10,7 +10,7 @@
 !common/.env.example
 !common/config.yaml
 !common/SOUL.md
-!common/skills/multi-agent-orchestration/**
+!common/skills/zerofactory-orchestration/**
 # unignore .env
 !*/.env
 !*/.env.example
@@ -23,6 +23,4 @@
 !*/cron/jobs.custom.json
 # unignore skills
 !*/skills/
-!*/skills/multi-agent-orchestration
-!*/skills/multi-agent-orchestration/
-!*/skills/multi-agent-orchestration/**
+!*/skills/zerofactory-orchestration

@@ -30,7 +30,7 @@ Zero Factory is an AI multi-agent orchestration system built on **Hermes Agent**
 
 ### 1. Agent Profiles & Configuration
 
-The agent roles, toolsets, and configuration patterns are explicitly defined in the [multi-agent-orchestration](../hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) skill document. Please refer to it as the single source of truth for agent capabilities.
+The agent roles, toolsets, and configuration patterns are explicitly defined in the [zerofactory-orchestration](../profiles/common/skills/zerofactory-orchestration/SKILL.md) skill document. Please refer to it as the single source of truth for agent capabilities.
 
 ### 3. Kanban Board
 
@@ -87,7 +87,6 @@ zerofactory/
 │   ├── troubleshooting.md     # Common issues
 │   ├── changelog.md           # Version history
 │   └── runbook.md             # Operations runbook
-├── hermes/
 │   ├── profiles/              # Agent configurations
 │   │   ├── common/            # Base config for all agents
 │   │   │   ├── config.yaml

@@ -2,6 +2,18 @@
 
 A 24/7 AI multi-agent orchestration system built on Hermes Agent. Six specialized agents form a complete software factory — from research to deployment.
 
+## Core Principles
+
+| Pillar | Description |
+|--------|-------------|
+| **24/7 Development** | Continuous iterations with frequent reprioritization, rolling handoffs, and parallel execution |
+| **Productivity & Automation** | Multi-agent workflows that automate routine tasks end-to-end |
+| **Quality & Reliability** | High-quality, maintainable, secure software with layered review |
+| **Cost Efficiency** | Optimized token usage — each agent has only the skills it needs |
+| **Hybrid Review** | Human insight combined with AI-assisted review at every stage |
+| **Single Source of Truth** | One canonical location for shared info. Link, don't copy. |
+| **Minimalist** | Everything as small, simple, clean, and usable as possible |
+
 ## Quick Start
 
 ```bash
@@ -62,23 +74,11 @@ Links common skills to all profiles.
 make skills-link
 ```
 
-## Core Principles
-
-| Pillar | Description |
-|--------|-------------|
-| **24/7 Development** | Continuous iterations with frequent reprioritization, rolling handoffs, and parallel execution |
-| **Productivity & Automation** | Multi-agent workflows that automate routine tasks end-to-end |
-| **Quality & Reliability** | High-quality, maintainable, secure software with layered review |
-| **Cost Efficiency** | Optimized token usage — each agent has only the skills it needs |
-| **Hybrid Review** | Human insight combined with AI-assisted review at every stage |
-| **Single Source of Truth** | One canonical location for shared info. Link, don't copy. |
-| **Minimalist** | Everything as small, simple, clean, and usable as possible |
-
 ## Orchestration & Team Structure
 
 Zero Factory operates using a specialized team of Hermes agents (Orchestrator, Researcher, Builder, Reviewer, QA, Scribe) following an agile parallel pipeline.
 
-The single source of truth for the team structure, pipeline architecture, and agent rules is defined in the [multi-agent-orchestration](hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) skill. Please refer to it for comprehensive details on how the factory operates.
+The single source of truth for the team structure, pipeline architecture, and agent rules is defined in the [zerofactory-orchestration](profiles/common/skills/zerofactory-orchestration/SKILL.md) skill. Please refer to it for comprehensive details on how the factory operates.
 
 ## Project Structure
 
@@ -94,9 +94,8 @@ zerofactory/
 │   ├── troubleshooting.md # Common issues and solutions
 │   ├── changelog.md      # Version history
 │   └── runbook.md        # Operations runbook
-├── hermes/               # Agent configuration
-│   ├── profiles/         # Agent profiles
-│   │   ├── common/       # Base config shared by all agents (source of truth)
+├── profiles/         # Agent profiles
+│   ├── common/       # Base config shared by all agents (source of truth)
 │   │   ├── orchestrator/ # CEO — task decomposition & dispatch
 │   │   ├── researcher/   # CTO — research & architecture
 │   │   ├── builder/      # Lead Engineer — implementation
@@ -124,7 +123,7 @@ Full documentation suite: [docs/](docs/)
 
 ### Toolsets by Profile
 
-Toolsets and configuration constraints are defined in the [multi-agent-orchestration](hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) skill document. Please reference it for the canonical list of tools allowed per agent.
+Toolsets and configuration constraints are defined in the [zerofactory-orchestration](profiles/common/skills/zerofactory-orchestration/SKILL.md) skill document. Please reference it for the canonical list of tools allowed per agent.
 
 ### Configuration Hierarchy
 
@@ -133,7 +132,7 @@ profiles/common/config.yaml    ← Base config (all agents share)
          ↓ + profile override
 profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
          ↓ merge-config.sh
-hermes/profiles/<profile>/config.yaml  ← Merged final config
+profiles/<profile>/config.yaml  ← Merged final config
 ```
 
 ## Makefile Commands

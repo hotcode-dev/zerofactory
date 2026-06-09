@@ -30,7 +30,7 @@ Each agent profile merges `common/config.yaml` with its `config.custom.yaml`. If
 
 ```bash
 # Manually merge the profile's config
-./hermes/bin/merge-config.sh
+./bin/merge-config.sh
 
 # Check the merged output
 cat ~/.hermes/profiles/<profile>/config.yaml
@@ -63,7 +63,7 @@ cat ~/.hermes/profiles/<profile>/config.yaml
 
 ### Agent stuck in loop
 
-- Check `max_turns` in `hermes/profiles/<profile>/config.custom.yaml` (orchestrator: 120, others: 60-90)
+- Check `max_turns` in `profiles/<profile>/config.custom.yaml` (orchestrator: 120, others: 60-90)
 - Review compression settings (default: enabled, threshold 0.5)
 - Check prompt caching is enabled
 
@@ -88,13 +88,13 @@ toolsets:
 
 ```bash
 # Check if the merge script exists
-ls -la hermes/bin/merge-config.sh
+ls -la bin/merge-config.sh
 
 # Re-link to refresh
 make hermes-link
 
 # Test merge manually
-./hermes/bin/merge-config.sh
+./bin/merge-config.sh
 ```
 
 ### Profile not recognized
@@ -110,9 +110,9 @@ ls ~/.hermes/profiles/<profile>/config.yaml
 
 ### Config override not taking effect
 
-1. Edit `hermes/profiles/<profile>/config.custom.yaml`
-2. Merge: `./hermes/bin/merge-config.sh`
-3. The merged config goes to `hermes/profiles/<profile>/config.yaml`
+1. Edit `profiles/<profile>/config.custom.yaml`
+2. Merge: `./bin/merge-config.sh`
+3. The merged config goes to `profiles/<profile>/config.yaml`
 4. If symlinked, `~/.hermes/profiles/<profile>/` will reflect changes
 
 ## Network Issues
@@ -187,8 +187,8 @@ du -sh ~/.hermes/profiles/
 | Connection refused | Gateway not running | `systemctl start hermes-gateway` |
 | Agent timeout | `max_turns` too low | Increase in `config.custom.yaml` |
 | Empty kanban board | Workspace not running | `systemctl start hermes-workspace` |
-| Config not applied | Stale merged config | Run `./hermes/bin/merge-config.sh` |
-| Skills not found | Missing skill symlink | Run `make skills-link` or `./hermes/bin/link-skills.sh` |
+| Config not applied | Stale merged config | Run `./bin/merge-config.sh` |
+| Skills not found | Missing skill symlink | Run `make skills-link` or `./bin/link-skills.sh` |
 | Profile missing | Profile directory empty | Check `~/.hermes/profiles/<profile>/SOUL.md` |
 | Tool not found | Not in toolsets list | Add to `toolsets` in `config.custom.yaml` |
 | Port conflict | Another service on same port | Change port in `docker-compose.yml` or env |

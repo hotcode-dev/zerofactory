@@ -61,7 +61,7 @@ hermes -p orchestrator -m "Show me the current kanban board"
 | Purpose | Path |
 |---------|------|
 | Base config | `~/.hermes/profiles/common/config.yaml` |
-| Agent profiles | `~/.hermes/profiles/` (symlinked from `hermes/profiles/`) |
+| Agent profiles | `~/.hermes/profiles/` (symlinked from `profiles/`) |
 | Agent SOUL files | `~/.hermes/profiles/<profile>/SOUL.md` |
 | Kanban database | `~/.hermes/kanban.db` |
 | Environment files | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
@@ -71,7 +71,7 @@ hermes -p orchestrator -m "Show me the current kanban board"
 
 ## Config Merge Step
 
-Any change to `hermes/profiles/<profile>/config.custom.yaml` (including MCP server changes) requires regenerating merged runtime configs.
+Any change to `profiles/<profile>/config.custom.yaml` (including MCP server changes) requires regenerating merged runtime configs.
 
 Run:
 
@@ -159,7 +159,7 @@ Each profile's config is built from two files:
 1. `profiles/common/config.yaml` — Base configuration (shared by all agents)
 2. `profiles/<profile>/config.custom.yaml` — Profile-specific overrides
 
-Run `hermes/bin/merge-config.sh` to rebuild all profiles.
+Run `bin/merge-config.sh` to rebuild all profiles.
 
 ### Key Settings by Profile
 
@@ -208,7 +208,7 @@ HERMES_PASSWORD=***
 Each profile defines MCP servers in `config.custom.yaml`.
 
 To add or update MCP servers for any profile:
-1. Edit `hermes/profiles/<profile>/config.custom.yaml`
+1. Edit `profiles/<profile>/config.custom.yaml`
 2. Regenerate merged runtime configs:
 
 ```bash
@@ -259,7 +259,7 @@ hermes -p orchestrator -m "Archive completed kanban tasks from last week"
 ```bash
 # 1. Edit config at source
 cd /home/ntsd/git/hotcode/zerofactory
-vim hermes/profiles/<profile>/config.custom.yaml
+vim profiles/<profile>/config.custom.yaml
 
 # 2. Regenerate merged config
 make merge-all
@@ -269,9 +269,9 @@ make merge-all
 
 To add a new profile:
 ```bash
-mkdir -p hermes/profiles/<new-profile>
-cp hermes/profiles/common/SOUL.md hermes/profiles/<new-profile>/
-cp hermes/profiles/common/config.yaml hermes/profiles/<new-profile>/config.custom.yaml
+mkdir -p profiles/<new-profile>
+cp profiles/common/SOUL.md profiles/<new-profile>/
+cp profiles/common/config.yaml profiles/<new-profile>/config.custom.yaml
 # Edit SOUL.md and config.custom.yaml with profile-specific settings
 ```
 
@@ -392,7 +392,7 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 
 ## 11. Agent Dispatch Reference
 
-See [multi-agent-orchestration](../hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) for the complete task-to-agent mapping.
+See [zerofactory-orchestration](../profiles/common/skills/zerofactory-orchestration/SKILL.md) for the complete task-to-agent mapping.
 
 **Quick summary:**
 
@@ -428,7 +428,7 @@ profiles/common/config.yaml    ← Base config (all agents share)
          ↓ + profile override
 profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
          ↓ merge-config.sh
-hermes/profiles/<profile>/config.yaml  ← Merged final config
+profiles/<profile>/config.yaml  ← Merged final config
 ```
 
 ### C. File Structure Map

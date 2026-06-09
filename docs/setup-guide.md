@@ -27,11 +27,11 @@ make hermes-link
 ```
 
 This creates:
-- `~/.hermes/profiles/` → symlink to `zerofactory/hermes/profiles/`
+- `~/.hermes/profiles/` → symlink to `zerofactory/profiles/`
 
 ## Merge Step
 
-After any edit to `hermes/profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, regenerate merged runtime files and links:
+After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, regenerate merged runtime files and links:
 
 ```bash
 make merge-all
@@ -46,19 +46,19 @@ profiles/common/config.yaml    ← Base config (shared by all agents)
          ↓ + profile override
 profiles/<profile>/config.custom.yaml  ← Profile-specific overrides
          ↓ merge-config.sh
-hermes/profiles/<profile>/config.yaml  ← Merged final config
+profiles/<profile>/config.yaml  ← Merged final config
 ```
 
 Each profile extends the base config with its own overrides. To manually merge configurations across all profiles:
 
 ```bash
-./hermes/bin/merge-config.sh
+./bin/merge-config.sh
 ```
 
 You can also link common skills using:
 
 ```bash
-./hermes/bin/link-skills.sh
+./bin/link-skills.sh
 ```
 
 ## Step 4: Configure Environment Files
@@ -168,7 +168,7 @@ Configure MCP servers in each profile's `config.custom.yaml`:
 
 ```bash
 # Edit profile override
-vim hermes/profiles/<profile>/config.custom.yaml
+vim profiles/<profile>/config.custom.yaml
 ```
 
 Then run `make merge-all` (see "Merge Step" above). Do not edit `config.yaml` directly; it is generated.
@@ -216,11 +216,11 @@ make hermes-link
 
 | Component | Path |
 |-----------|------|
-| Profiles | `~/.hermes/profiles/` (symlink → `hermes/profiles/`) |
+| Profiles | `~/.hermes/profiles/` (symlink → `profiles/`) |
 | Environment | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
 | Logs | `journalctl -u hermes-<service>` |
 | Kanban DB | `~/.hermes/kanban.db` |
-| Profile config | `hermes/profiles/<agent>/config.custom.yaml` |
+| Profile config | `profiles/<agent>/config.custom.yaml` |
 | Base config | `~/.hermes/profiles/common/config.yaml` |
 
 ## Troubleshooting

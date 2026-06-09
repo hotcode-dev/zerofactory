@@ -6,8 +6,8 @@ All notable changes to the Zero Factory project.
 
 ### Added
 - `systemd/README.md` — detailed systemd service setup guide
-- `hermes/bin/merge-config.sh` — config merge helper script
-- `hermes/bin/link-skills.sh` — skills linking helper script
+- `bin/merge-config.sh` — config merge helper script
+- `bin/link-skills.sh` — skills linking helper script
 - `vllm/qwen3.6-35b-a3b/` — Docker Compose vLLM for Qwen3.6-35B-A3B (NVFP4 + DFlash on DGX Spark)
 - `vllm/qwen3.6-27b/` — Docker Compose vLLM for Qwen3.6-27B v4 (GB10)
 - `profiles/common/` — base config shared across all agent profiles
@@ -34,8 +34,8 @@ All notable changes to the Zero Factory project.
 Core 6-agent architecture built on Hermes Agent: Orchestrator, Researcher, Builder, Reviewer, QA, Scribe.
 
 ### Added
-- `hermes/profiles/common/config.yaml` — Base agent configuration
-- `hermes/profiles/*/` — 6 agent profiles with SOUL.md, config.custom.yaml
+- `profiles/common/config.yaml` — Base agent configuration
+- `profiles/*/` — 6 agent profiles with SOUL.md, config.custom.yaml
 - `systemd/*.service` — Systemd service units for gateway, dashboard, workspace
 - `systemd/*.service.template` — Service unit templates with env substitution
 - `ORCHESTRATION.md` — Team structure and workflow details

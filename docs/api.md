@@ -74,7 +74,7 @@ prompt_caching:
 
 Each profile extends the base config with its own overrides. 
 
-For specific toolsets and limits per profile, please consult the [multi-agent-orchestration](../hermes/profiles/common/skills/multi-agent-orchestration/SKILL.md) skill document, which serves as the single source of truth for agent configurations.
+For specific toolsets and limits per profile, please consult the [zerofactory-orchestration](../profiles/common/skills/zerofactory-orchestration/SKILL.md) skill document, which serves as the single source of truth for agent configurations.
 
 ### Terminal Configuration
 
@@ -133,7 +133,7 @@ HERMES_PASSWORD=
 Each profile directory contains:
 
 ```
-hermes/profiles/<profile>/
+profiles/<profile>/
 ├── config.yaml              ← Merged config (base + custom)
 ├── config.custom.yaml       ← Profile-specific overrides (edit this)
 ├── SOUL.md                  ← Agent identity and responsibilities
@@ -146,7 +146,7 @@ hermes/profiles/<profile>/
 make merge-all
 
 # Or manually:
-./hermes/bin/merge-config.sh
+./bin/merge-config.sh
 ```
 
 ## Quick Reference
@@ -154,11 +154,11 @@ make merge-all
 | Item | Path |
 |------|------|
 | Base config | `~/.hermes/profiles/common/config.yaml` |
-| Profiles | `hermes/profiles/<agent>/` |
-| Base config | `hermes/profiles/common/config.yaml` |
-| Profile overrides | `hermes/profiles/<profile>/config.custom.yaml` |
-| Config Merge script | `hermes/bin/merge-config.sh` |
-| Skills Link script | `hermes/bin/link-skills.sh` |
+| Profiles | `profiles/<agent>/` |
+| Base config | `profiles/common/config.yaml` |
+| Profile overrides | `profiles/<profile>/config.custom.yaml` |
+| Config Merge script | `bin/merge-config.sh` |
+| Skills Link script | `bin/link-skills.sh` |
 | Environment files | `~/hermes-gateway.env`, `~/hermes-workspace.env` |
 | Kanban DB | `~/.hermes/kanban.db` |
 | Architecture | `docs/architecture.md` |
