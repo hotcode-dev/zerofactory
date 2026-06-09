@@ -6,7 +6,11 @@
 */**
 
 # unignore all files in common
-!common/**
+!common/.env
+!common/.env.example
+!common/config.yaml
+!common/SOUL.md
+!common/skills/multi-agent-orchestration/**
 # unignore .env
 !*/.env
 !*/.env.example
