@@ -9,57 +9,49 @@ Used in Zero Factory: a complete software factory with pipeline-aware coordinati
 1. **Orchestrator** (CEO)
    - Breaks goals into work packages, dispatches agents, tracks kanban, manages handoffs
    - Never writes code directly; never reviews code — delegates everything
-   - Tools: hermes-cli, delegation, kanban, cronjob, file, terminal, web
 
 2. **Researcher** (Architect)
    - Technical research, architecture design, feasibility analysis, technical specs
    - Produces detailed specs before Builder starts coding
-   - Tools: web, browser, file, terminal, search_files
 
 3. **Builder** (Engineer)
    - Feature implementation, bug fixes, refactoring, test writing, documentation
-   - Backend: TypeScript (Bun/Node), Go, PostgreSQL, Redis
-   - Frontend: Svelte, Astro, Tailwind CSS, Capacitor
-   - Tools: file, terminal, search_files, web
 
 4. **Reviewer** (Code Reviewer)
    - Code quality gate: correctness, performance, security, maintainability
    - Blocks only for serious issues (bugs, security, major architecture flaws)
    - Non-blocking: minor style nitpicks
-   - Tools: file, terminal, search_files, web
 
 5. **QA** (Quality Assurance)
    - Test design, integration testing, performance testing, regression testing
    - Focus on breaking what's built, not testing what works
    - Reports bugs with clear reproduction steps and severity
-   - Tools: file, terminal, search_files, web
 
 6. **Scribe** (Documentation)
    - API docs, architecture docs, changelogs, tutorials, knowledge base
    - Prioritizes accuracy over completeness, updates alongside code
    - Avoids speculation — documents what exists
-   - Tools: file, terminal, search_files, web
 
 ## Pipeline Variations
 
 ### Standard Pipeline
 ```
-Goal → Researcher → Builder → Reviewer → QA → Scribe → Done
+Goal → Triage → Todo → Running (Researcher → Builder → Reviewer → QA → Scribe) → Ready → Done
 ```
 
 ### Minimal Pipeline (2-3 agents)
 ```
-Goal → Builder → Reviewer → Done
+Goal → Triage → Todo → Running (Builder → Reviewer) → Ready → Done
 ```
 
 ### Fast Loop
 ```
-Goal → Builder + QA (parallel) → Reviewer → Done
+Goal → Triage → Todo → Running (Builder + QA in parallel → Reviewer) → Ready → Done
 ```
 
 ### Research-First
 ```
-Goal → Researcher (long research) → Builder → QA → Done
+Goal → Triage → Todo → Running (Researcher long spec → Builder → QA) → Ready → Done
 ```
 
 ## Cost Optimization Tips

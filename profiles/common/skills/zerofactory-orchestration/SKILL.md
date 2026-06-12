@@ -16,16 +16,16 @@ Set up a team of specialized AI agents that operate in a continuous 24/7 agile l
 
 ## Team Roles
 
-Every multi-agent orchestration should have these roles, each with distinct SOUL.md and toolset:
+The following agents are pre-defined in the `./profiles` directory. They can be customized by editing their `SOUL.custom.md` and `config.custom.yaml`:
 
-| Role | Identity | Tools |
-|------|----------|-------|
-| **Orchestrator** | CEO/coordinator — delegates, tracks progress, manages kanban | hermes-cli, delegation, kanban, cronjob, file, terminal, web |
-| **Researcher** | Architect — researches APIs, designs specs | web, browser, file, terminal, search_files |
-| **Builder** | Engineer — writes code, implements features | file, terminal, search_files, web |
-| **Reviewer** | Code reviewer — quality gate, security, architecture review | file, terminal, search_files, web |
-| **QA** | Quality engineer — test design, regression, performance | file, terminal, search_files, web |
-| **Scribe** | Technical writer — docs, API reference, changelogs | file, terminal, search_files, web |
+| Role | Identity / Behavior |
+|------|----------|
+| **Orchestrator** | CEO/coordinator — delegates, tracks progress, manages kanban |
+| **Researcher** | Architect — researches APIs, designs specs |
+| **Builder** | Engineer — writes code, implements features |
+| **Reviewer** | Code reviewer — quality gate, security, architecture review |
+| **QA** | Quality engineer — test design, regression, performance |
+| **Scribe** | Technical writer — docs, API reference, changelogs |
 
 ## 4-File Per Profile Structure
 
@@ -38,21 +38,18 @@ Every agent profile needs exactly four files in its directory under `hermes/prof
 
 ## Pipeline Architecture
 
-Standard agile pipeline with Human-in-the-Loop (HITL) gates:
+The workflow is managed via the **Hermes Kanban** system with explicit Human-in-the-Loop (HITL) gates:
 
-```
-Goal → Researcher (research & specs) → 🛑 Human Plan Review → Builder (implement) → Reviewer & QA (verify) → 🛑 Human Result Review → Scribe (document) → Done
-```
-
-**Human-in-the-Loop (HITL) Reviews:**
-- **Plan Review**: After the Researcher finishes, the Orchestrator pauses to get human approval on the spec before writing code.
-- **Result Review**: After Reviewer and QA finish, the Orchestrator gets final human sign-off before Scribe documentation.
+1. **Goal & Triage**: User provides a goal, triggering a cron job for the **Orchestrator** (or a user directly) to create a plan and place it in the `Triage` column.
+2. **Plan Review (HITL)**: Human reviews the task. If changes are needed, the Orchestrator edits the plan. Once approved, the human moves it to the `Todo` column.
+3. **Task Delegation**: The Orchestrator assigns the task from `Todo` to a specialized agent (`Running`).
+4. **Iterative Steps**: When an agent finishes its part, the step is evaluated. If more steps are needed, it returns to `Todo` for the Orchestrator to assign the next agent.
+5. **Result Review (HITL)**: Once all steps are completed, the task is moved to `Ready`. The human reviews the final result. If changes are needed, it returns to `Todo`. If approved, it is moved to `Done`.
 
 Parallelism rules:
-- Researcher can work while Builder handles other tasks
-- Reviewer can review code as soon as Builder finishes a module
-- QA tests in parallel with Reviewer reviewing
-- Scribe documents as work progresses, not just at the end
+- Researcher can gather context for upcoming tasks while Builder handles active implementations
+- Reviewer and QA can operate in parallel to verify completed code blocks
+- Scribe documents as work progresses, not just at the very end
 
 ## Single Source of Truth
 
@@ -104,4 +101,3 @@ Never duplicate information. When the same concept or rule applies across multip
 ## Support Files
 
 - **references/team-structure.md** — Example team rosters, pipeline layouts, agent identities
-- **templates/profile-template/** — Starter template for a new agent profile directory

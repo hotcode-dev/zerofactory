@@ -4,17 +4,8 @@ Set up specialized AI agent teams with role-specific toolsets, identities, and c
 
 ## Quick Start
 
-1. Pick the roles you need (Researcher, Builder, Reviewer, QA, Scribe, Orchestrator).
-2. Create a profile directory under `hermes/profiles/<agent-name>/`.
-3. Copy the starter template from `templates/profile-template/` as your starting point.
-4. Fill in SOUL.md and config.custom.yaml, then generate config.yaml.
-5. Each profile gets three files:
-
-| File | Purpose |
-|------|---------|
-| **SOUL.md** | Agent identity, core responsibilities, tools & skills, constraints, communication style |
-| **config.custom.yaml** | Profile overrides including MCP server settings |
-| **config.yaml** | Generated runtime config (do not edit directly) |
+The agents are fully pre-defined in the `zerofactory/profiles` directory. 
+To customize an agent's behavior, toolset, or constraints, simply edit its `SOUL.custom.md` and `config.custom.yaml` files, then run `make merge-all`.
 
 ## Single Source of Truth
 
@@ -37,11 +28,19 @@ Never duplicate information. When a rule, convention, or definition applies acro
 
 ## Pipeline
 
+The workflow is managed via the **Hermes Kanban** system:
+
 ```
-Goal → Researcher → Builder → Reviewer → QA → Scribe → Done
+Goal → Triage → Todo → Running (Agents) → Ready → Done
 ```
 
-Stages can parallelize: Reviewer reviews as soon as Builder finishes a module; QA tests in parallel with Reviewer; Scribe documents continuously.
+- **Triage**: Agent or User creates the initial plan.
+- **Todo**: Human approves plan; tasks return here between agent steps.
+- **Running**: Orchestrator delegates task to the specific agent (e.g., Researcher, Builder, QA).
+- **Ready**: Final step completed, awaiting human result review.
+- **Done**: Human approves final result.
+
+Stages can parallelize: Researcher gathers context for future tasks; QA tests in parallel with Reviewer reviewing completed modules; Scribe documents continuously.
 
 ## File Structure
 
@@ -49,8 +48,6 @@ Stages can parallelize: Reviewer reviews as soon as Builder finishes a module; Q
 zerofactory-orchestration/
 ├── README.md            ← you are here
 ├── SKILL.md             ← full procedural guide
-├── references/
-│   └── team-structure.md  ← example team rosters, pipeline layouts
-└── templates/
-    └── profile-template/  ← starter for new agent profiles
+└── references/
+    └── team-structure.md  ← example team rosters, pipeline layouts
 ```
