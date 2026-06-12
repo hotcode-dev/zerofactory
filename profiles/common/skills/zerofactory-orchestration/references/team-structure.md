@@ -36,22 +36,22 @@ Used in Zero Factory: a complete software factory with pipeline-aware coordinati
 
 ### Standard Pipeline
 ```
-Goal → Triage → Todo → Running (Researcher → Builder → Reviewer → QA → Scribe) → Ready → Done
+Goal → Triage → Todo/Ready → Running (Researcher → Builder → Reviewer → QA → Scribe) → Blocked → Done
 ```
 
 ### Minimal Pipeline (2-3 agents)
 ```
-Goal → Triage → Todo → Running (Builder → Reviewer) → Ready → Done
+Goal → Triage → Todo/Ready → Running (Builder → Reviewer) → Blocked → Done
 ```
 
 ### Fast Loop
 ```
-Goal → Triage → Todo → Running (Builder + QA in parallel → Reviewer) → Ready → Done
+Goal → Triage → Todo/Ready → Running (Builder + QA in parallel → Reviewer) → Blocked → Done
 ```
 
 ### Research-First
 ```
-Goal → Triage → Todo → Running (Researcher long spec → Builder → QA) → Ready → Done
+Goal → Triage → Todo/Ready → Running (Researcher long spec → Builder → QA) → Blocked → Done
 ```
 
 ## Cost Optimization Tips

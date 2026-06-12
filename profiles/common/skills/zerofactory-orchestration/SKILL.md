@@ -41,10 +41,10 @@ Every agent profile needs exactly four files in its directory under `hermes/prof
 The workflow is managed via the **Hermes Kanban** system with explicit Human-in-the-Loop (HITL) gates:
 
 1. **Goal & Triage**: User provides a goal, triggering a cron job for the **Orchestrator** (or a user directly) to create a plan and place it in the `Triage` column.
-2. **Plan Review (HITL)**: Human reviews the task. If changes are needed, the Orchestrator edits the plan. Once approved, the human moves it to the `Todo` column.
-3. **Task Delegation**: The Orchestrator assigns the task from `Todo` to a specialized agent (`Running`).
-4. **Iterative Steps**: When an agent finishes its part, the step is evaluated. If more steps are needed, it returns to `Todo` for the Orchestrator to assign the next agent.
-5. **Result Review (HITL)**: Once all steps are completed, the task is moved to `Ready`. The human reviews the final result. If changes are needed, it returns to `Todo`. If approved, it is moved to `Done`.
+2. **Plan Review (HITL)**: Human reviews the task. If changes are needed, the Orchestrator edits the plan. Once approved, the human moves it to `Ready` (or `Todo` if waiting on dependencies).
+3. **Task Delegation**: The kanban dispatcher automatically spawns the assigned agent when the task is `Ready`. The task is moved to `Running`.
+4. **Iterative Steps & Review (HITL)**: When an agent finishes its part, it evaluates the step. If human review is needed, the agent calls `kanban_block("review-required")` and the task moves to `Blocked`.
+5. **Result Review**: The human reviews the final result in the `Blocked` column. If changes are needed, the human unblocks it (moves back to `Ready`). If approved, the human moves it to `Done`.
 
 Parallelism rules:
 - Researcher can gather context for upcoming tasks while Builder handles active implementations

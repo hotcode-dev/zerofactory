@@ -30,9 +30,9 @@ graph TD
     Triage --> HumanPlanReview{Human Reviews Plan}
     HumanPlanReview -->|Comments / Needs Edit| OrchestratorEdit[Orchestrator Edits Plan]
     OrchestratorEdit --> Triage
-    HumanPlanReview -->|Approves & Moves| Todo[Kanban: Todo]:::kanban
+    HumanPlanReview -->|Approves & Unblocks| Ready[Kanban: Ready / Todo]:::kanban
     
-    Todo -->|Orchestrator Assigns| Running[Kanban: Running]:::kanban
+    Ready -->|Dispatcher Auto-Assigns| Running[Kanban: Running]:::kanban
     
     Running --> AgentWork{Specialized Agent}
     
@@ -44,20 +44,20 @@ graph TD
         AgentWork -.-> Scribe
     end
     
-    Researcher --> StepCheck
-    Builder --> StepCheck
-    Reviewer --> StepCheck
-    QA --> StepCheck
-    Scribe --> StepCheck
+    Researcher --> TaskComplete
+    Builder --> TaskComplete
+    Reviewer --> TaskComplete
+    QA --> TaskComplete
+    Scribe --> TaskComplete
     
-    StepCheck{Task Finished?}
-    StepCheck -->|No, Next Step| Todo
+    TaskComplete{Review Required?}
+    TaskComplete -->|No / Internal Step| Done[Kanban: Done]:::kanban
     
-    StepCheck -->|Yes| Ready[Kanban: Ready]:::kanban
+    TaskComplete -->|Yes / Final Result| Blocked[Kanban: Blocked]:::kanban
     
-    Ready --> HumanResultReview{Human Reviews Result}
-    HumanResultReview -->|Comments / Needs Fix| Todo
-    HumanResultReview -->|Approves| Done[Kanban: Done]:::kanban
+    Blocked --> HumanResultReview{Human Reviews Result}
+    HumanResultReview -->|Comments / Needs Fix| Ready
+    HumanResultReview -->|Approves| Done
 ```
 
 ## Quick Start
