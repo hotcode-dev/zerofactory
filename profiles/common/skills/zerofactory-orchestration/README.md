@@ -31,13 +31,14 @@ Never duplicate information. When a rule, convention, or definition applies acro
 The workflow is managed via the **Hermes Kanban** system:
 
 ```
-Goal → Triage → Ready / Todo → Running (Agents) → Blocked → Done
+Goal → Triage → Todo → Ready → In progress (Agents) → Blocked → Done
 ```
 
-- **Triage**: Agent or User creates the initial plan.
-- **Ready / Todo**: Human approves plan. Tasks wait here. `Ready` tasks are auto-dispatched to agents.
-- **Running**: The dispatcher auto-assigns the specific agent (e.g., Researcher, Builder, QA).
-- **Blocked**: Worker calls `kanban_block("review-required")` when finished. Task awaits human review.
+- **Triage**: Raw goals enter here. The `kanban_decomposer` automatically breaks the goal down into a graph of assigned child tasks.
+- **Todo**: Auto-generated child tasks sit here. A human must review and approve the generated plan before the pipeline proceeds.
+- **Ready**: Plan approved and dependencies met. The dispatcher will automatically claim these.
+- **In progress**: The dispatcher has spawned the specific agent (e.g., Researcher, Builder) who is actively working.
+- **Blocked**: Worker calls `kanban_block("review-required")` when finished. Task halts and awaits human review.
 - **Done**: Human approves final result.
 
 Stages can parallelize: Researcher gathers context for future tasks; QA tests in parallel with Reviewer reviewing completed modules; Scribe documents continuously.

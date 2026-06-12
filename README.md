@@ -23,18 +23,21 @@ graph TD
     classDef kanban fill:#f9d0c4,stroke:#333,stroke-width:2px,color:#000;
     
     User([User]) -->|Provides Goal| Cron((Cron Trigger))
-    Cron -->|Orchestrator Creates Plan| Triage[Kanban: Triage]:::kanban
+    Cron -->|Creates Goal Task| Triage[Kanban: Triage]:::kanban
     
-    User -->|Directly Creates Plan| Triage
+    User -->|Directly Creates Goal| Triage
     
-    Triage --> HumanPlanReview{Human Reviews Plan}
-    HumanPlanReview -->|Comments / Needs Edit| OrchestratorEdit[Orchestrator Edits Plan]
-    OrchestratorEdit --> Triage
-    HumanPlanReview -->|Approves & Unblocks| Ready[Kanban: Ready / Todo]:::kanban
+    Triage -->|Auto-decomposes| Decomposer[kanban_decomposer]
+    Decomposer -->|Auto-generates child tasks| Todo[Kanban: Todo]:::kanban
     
-    Ready -->|Dispatcher Auto-Assigns| Running[Kanban: Running]:::kanban
+    Todo --> HumanPlanReview{Human Reviews Plan}
+    HumanPlanReview -->|Needs Edit| OrchestratorEdit[Orchestrator Edits Plan]
+    OrchestratorEdit --> Todo
+    HumanPlanReview -->|Approves| Ready[Kanban: Ready]:::kanban
     
-    Running --> AgentWork{Specialized Agent}
+    Ready -->|Dispatcher Auto-Assigns| InProgress[Kanban: In progress]:::kanban
+    
+    InProgress --> AgentWork{Specialized Agent}
     
     subgraph Zero Factory
         AgentWork -.-> Researcher
@@ -56,7 +59,7 @@ graph TD
     TaskComplete -->|Yes / Final Result| Blocked[Kanban: Blocked]:::kanban
     
     Blocked --> HumanResultReview{Human Reviews Result}
-    HumanResultReview -->|Comments / Needs Fix| Ready
+    HumanResultReview -->|Needs Fix| Ready
     HumanResultReview -->|Approves| Done
 ```
 

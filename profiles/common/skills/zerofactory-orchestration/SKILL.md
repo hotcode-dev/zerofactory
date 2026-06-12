@@ -40,11 +40,12 @@ Every agent profile needs exactly four files in its directory under `hermes/prof
 
 The workflow is managed via the **Hermes Kanban** system with explicit Human-in-the-Loop (HITL) gates:
 
-1. **Goal & Triage**: User provides a goal, triggering a cron job for the **Orchestrator** (or a user directly) to create a plan and place it in the `Triage` column.
-2. **Plan Review (HITL)**: Human reviews the task. If changes are needed, the Orchestrator edits the plan. Once approved, the human moves it to `Ready` (or `Todo` if waiting on dependencies).
-3. **Task Delegation**: The kanban dispatcher automatically spawns the assigned agent when the task is `Ready`. The task is moved to `Running`.
-4. **Iterative Steps & Review (HITL)**: When an agent finishes its part, it evaluates the step. If human review is needed, the agent calls `kanban_block("review-required")` and the task moves to `Blocked`.
-5. **Result Review**: The human reviews the final result in the `Blocked` column. If changes are needed, the human unblocks it (moves back to `Ready`). If approved, the human moves it to `Done`.
+1. **Goal & Triage**: User or cron job drops a goal in `Triage`. The `kanban_decomposer` automatically breaks the goal into child tasks and routes them to specialist agents.
+2. **Plan Review (HITL)**: The auto-generated child tasks enter `Todo`. A human must review the generated plan. If changes are needed, the human or Orchestrator edits them. Once approved, the tasks are unblocked.
+3. **Ready Queue**: Approved tasks whose dependencies are met are automatically promoted to `Ready`.
+4. **Task Delegation**: The kanban dispatcher automatically spawns the assigned agent for any `Ready` tasks, moving them to `In progress`.
+5. **Iterative Steps & Review (HITL)**: When an agent finishes its work, it evaluates the step. If human review is needed, the agent calls `kanban_block("review-required")` and the task moves to `Blocked`.
+6. **Result Review**: The human reviews the final result in the `Blocked` column. If changes are needed, the human unblocks it (moves back to `Ready`). If approved, the human moves it to `Done`.
 
 Parallelism rules:
 - Researcher can gather context for upcoming tasks while Builder handles active implementations
