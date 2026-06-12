@@ -98,10 +98,10 @@ Every agent **must** push their work and create a pull request to the git remote
 **Required steps:**
 1. Commit changes with clear, descriptive messages
 2. Push to the remote repository
-3. Open a pull request against the target branch
-4. Reference the PR URL in task completion notes
+3. Open a pull request against the target branch using the `gh pr create` terminal command
+4. Reference the PR URL in task completion notes or when calling `kanban_block("review-required")` if human review is needed
 
-> **Important:** Never finish a task without pushing to remote and creating a PR.
+> **Important:** Never finish a task or block for human review without pushing to remote and creating a PR via `gh`.
 
 ## Git Directory Structure
 
@@ -155,3 +155,9 @@ Every agent **must** push their work and create a pull request to the git remote
 - Reference task IDs in all comments and notes
 - Use structured metadata in task completion
 - Keep summaries concise and actionable
+
+## Tool Management
+- If a task requires an MCP server that's not available, add it in `profiles/<agent>/config.custom.yaml`, then run `make config-merge`
+- If a skill is needed for a task, add it: create `profiles/<agent>/skills/<skill-name>/SKILL.md`
+- Always inform the human before adding new tools — explain why they're needed and what task they enable
+- Do not add tools without a clear task-driven reason
