@@ -109,7 +109,14 @@ graph TD
 
 The agent roles, toolsets, and configuration patterns are explicitly defined in the [zerofactory-orchestration](./profiles/common/skills/zerofactory-orchestration/SKILL.md) skill document. Please refer to it as the single source of truth for agent capabilities.
 
-### 3. Kanban Board
+Zero Factory uses a multi-layered configuration approach:
+
+- **Base config shared by all agents**: `profiles/common/config.yaml`
+- **Profile-specific overrides**: `profiles/<profile>/config.custom.yaml`
+
+For specific configurations, toolsets, dispatch logic, and agent parameters, please consult the actual configuration files and the skill document.
+
+### 2. Kanban Board
 
 Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key states:
 
@@ -224,15 +231,6 @@ After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server 
 ```bash
 make merge-all
 ```
-
-## Configuration & Agent Profiles
-
-Zero Factory uses a multi-layered configuration approach.
-
-- **Base config shared by all agents**: `profiles/common/config.yaml`
-- **Profile-specific overrides**: `profiles/<profile>/config.custom.yaml`
-
-For specific configurations, toolsets, dispatch logic, and agent parameters, please consult the actual configuration files and the skill document.
 
 ## License
 
