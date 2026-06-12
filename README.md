@@ -107,7 +107,7 @@ graph TD
 
 ### 1. Agent Profiles & Configuration
 
-The agent roles, toolsets, and configuration patterns are explicitly defined in the [zerofactory-orchestration](../profiles/common/skills/zerofactory-orchestration/SKILL.md) skill document. Please refer to it as the single source of truth for agent capabilities.
+The agent roles, toolsets, and configuration patterns are explicitly defined in the [zerofactory-orchestration](./profiles/common/skills/zerofactory-orchestration/SKILL.md) skill document. Please refer to it as the single source of truth for agent capabilities.
 
 ### 3. Kanban Board
 
@@ -224,6 +224,7 @@ After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server 
 ```bash
 make merge-all
 ```
+
 ## Configuration & Agent Profiles
 
 Zero Factory uses a multi-layered configuration approach.
@@ -232,9 +233,6 @@ Zero Factory uses a multi-layered configuration approach.
 - **Profile-specific overrides**: `profiles/<profile>/config.custom.yaml`
 
 For specific configurations, toolsets, dispatch logic, and agent parameters, please consult the actual configuration files and the skill document.
-
-> [!IMPORTANT]
-> The single source of truth for agent capabilities, dispatch routing, and toolsets is the **[zerofactory-orchestration](../profiles/common/skills/zerofactory-orchestration/SKILL.md)** skill document. Do not duplicate agent capability mappings here.
 
 ## License
 
