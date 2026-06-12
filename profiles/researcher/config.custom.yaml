@@ -1,4 +1,5 @@
 toolsets:
+- kanban
 - file
 - terminal
 - search_files

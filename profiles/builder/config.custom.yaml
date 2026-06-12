@@ -1,9 +1,9 @@
 toolsets:
+- kanban
 - file
 - terminal
 - search_files
 - web
-- kanban
 - skills
 - mcp
 agent:
