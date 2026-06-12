@@ -44,8 +44,8 @@ The workflow is managed via the **Hermes Kanban** system with explicit Human-in-
 2. **Plan Review (HITL)**: The auto-generated child tasks enter `Todo`. A human must review the generated plan. If changes are needed, the human or Orchestrator edits them. Once approved, the tasks are unblocked.
 3. **Ready Queue**: Approved tasks whose dependencies are met are automatically promoted to `Ready`.
 4. **Task Delegation**: The kanban dispatcher automatically spawns the assigned agent for any `Ready` tasks, moving them to `In progress`.
-5. **Iterative Steps & Review (HITL)**: When an agent finishes its work, it evaluates the step. If human review is needed, the agent calls `kanban_block("review-required")` and the task moves to `Blocked`.
-6. **Result Review**: The human reviews the final result in the `Blocked` column. If changes are needed, the human unblocks it (moves back to `Ready`). If approved, the human moves it to `Done`.
+5. **Iterative Steps & Review (HITL)**: When an agent finishes its work, it evaluates the step. If human review is needed, the agent opens a GitHub Pull Request and calls `kanban_block("review-required")`. The task moves to `Blocked`.
+6. **Result Review**: The human reviews the PR or final result in the `Blocked` column. If changes are needed, the human requests changes on the PR and unblocks the task (moves back to `Ready`). If approved, the human merges the PR and moves the task to `Done`.
 
 Parallelism rules:
 - Researcher can gather context for upcoming tasks while Builder handles active implementations

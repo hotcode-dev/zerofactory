@@ -38,7 +38,7 @@ Goal → Triage → Todo → Ready → In progress (Agents) → Blocked → Done
 - **Todo**: Auto-generated child tasks sit here. A human must review and approve the generated plan before the pipeline proceeds.
 - **Ready**: Plan approved and dependencies met. The dispatcher will automatically claim these.
 - **In progress**: The dispatcher has spawned the specific agent (e.g., Researcher, Builder) who is actively working.
-- **Blocked**: Worker calls `kanban_block("review-required")` when finished. Task halts and awaits human review.
+- **Blocked**: Worker opens a GitHub Pull Request and calls `kanban_block("review-required")` when finished. Task halts and awaits human review.
 - **Done**: Human approves final result.
 
 Stages can parallelize: Researcher gathers context for future tasks; QA tests in parallel with Reviewer reviewing completed modules; Scribe documents continuously.

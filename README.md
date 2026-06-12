@@ -58,7 +58,7 @@ graph TD
     
     TaskComplete -->|Yes / Final Result| Blocked[Kanban: Blocked]:::kanban
     
-    Blocked --> HumanResultReview{Human Reviews Result}
+    Blocked --> HumanResultReview{Human Reviews PR / Result}
     HumanResultReview -->|Needs Fix| Ready
     HumanResultReview -->|Approves| Done
 ```
