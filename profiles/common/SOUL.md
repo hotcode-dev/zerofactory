@@ -159,5 +159,6 @@ Every agent **must** push their work and create a pull request to the git remote
 ## Tool Management
 - If a task requires an MCP server that's not available, add it in `profiles/<agent>/config.custom.yaml`, then run `make config-merge`
 - If a skill is needed for a task, add it: create `profiles/<agent>/skills/<skill-name>/SKILL.md`
+- **IMPORTANT**: The repository uses a strict whitelist in `.gitignore`. You MUST unignore any newly created custom skills or non-builtin files in the root `.gitignore` file so they can be pushed to GitHub.
 - Always inform the human before adding new tools — explain why they're needed and what task they enable
 - Do not add tools without a clear task-driven reason
