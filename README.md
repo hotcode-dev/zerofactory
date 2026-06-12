@@ -10,9 +10,55 @@ A 24/7 AI multi-agent orchestration system built on Hermes Agent. Six specialize
 | **Productivity & Automation** | Multi-agent workflows that automate routine tasks end-to-end |
 | **Quality & Reliability** | High-quality, maintainable, secure software with layered review |
 | **Cost Efficiency** | Optimized token usage — each agent has only the skills it needs |
-| **Hybrid Review** | Human insight combined with AI-assisted review at every stage |
+| **Hybrid Review** | AI-assisted review at every stage, with human-in-the-loop insight for important decisions |
 | **Single Source of Truth** | One canonical location for shared info. Link, don't copy. |
 | **Minimalist** | Everything as small, simple, clean, and usable as possible |
+
+## Workflow
+
+The workflow is based on the [Hermes Kanban](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/kanban.md) system.
+
+```mermaid
+graph TD
+    classDef kanban fill:#f9d0c4,stroke:#333,stroke-width:2px,color:#000;
+    
+    User([User]) -->|Provides Goal| Cron((Cron Trigger))
+    Cron -->|Orchestrator Creates Plan| Triage[Kanban: Triage]:::kanban
+    
+    User -->|Directly Creates Plan| Triage
+    
+    Triage --> HumanPlanReview{Human Reviews Plan}
+    HumanPlanReview -->|Comments / Needs Edit| OrchestratorEdit[Orchestrator Edits Plan]
+    OrchestratorEdit --> Triage
+    HumanPlanReview -->|Approves & Moves| Todo[Kanban: Todo]:::kanban
+    
+    Todo -->|Orchestrator Assigns| Running[Kanban: Running]:::kanban
+    
+    Running --> AgentWork{Specialized Agent}
+    
+    subgraph Zero Factory
+        AgentWork -.-> Researcher
+        AgentWork -.-> Builder
+        AgentWork -.-> Reviewer
+        AgentWork -.-> QA
+        AgentWork -.-> Scribe
+    end
+    
+    Researcher --> StepCheck
+    Builder --> StepCheck
+    Reviewer --> StepCheck
+    QA --> StepCheck
+    Scribe --> StepCheck
+    
+    StepCheck{Task Finished?}
+    StepCheck -->|No, Next Step| Todo
+    
+    StepCheck -->|Yes| Ready[Kanban: Ready]:::kanban
+    
+    Ready --> HumanResultReview{Human Reviews Result}
+    HumanResultReview -->|Comments / Needs Fix| Todo
+    HumanResultReview -->|Approves| Done[Kanban: Done]:::kanban
+```
 
 ## Quick Start
 
