@@ -44,8 +44,7 @@ project/
 ├── tests/
 │   ├── fixtures/
 │   └── helpers/
-├── docs/
-│   └── README.md
+
 ├── Makefile
 ├── package.json
 └── README.md
@@ -130,12 +129,9 @@ Every agent **must** push their work and create a pull request to the git remote
 
 ## Documentation Standards
 
-- **README.md**: project overview, setup, usage
-- **docs/api.md**: endpoint reference, parameters, examples
-- **docs/architecture.md**: system design, data flows
-- **docs/changelog.md**: version history, breaking changes
+- **README.md**: the single source of truth for all project documentation (architecture, runbook, API, changelog, setup)
 - Inline comments for non-obvious logic
-- No duplicate docs — link cross-references
+- No duplicate docs — everything must be consolidated into `README.md`
 
 ## File References
 
