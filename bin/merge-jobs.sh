@@ -21,8 +21,8 @@ merge_one() {
   local tmp_output
 
   if [[ ! -f "$base_jobs_file" ]]; then
-    echo "Error: jobs base file not found: $base_jobs_file" >&2
-    return 1
+    mkdir -p "$(dirname "$base_jobs_file")"
+    echo '{"jobs": []}' > "$base_jobs_file"
   fi
 
   if [[ ! -f "$custom_jobs_file" ]]; then
