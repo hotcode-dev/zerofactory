@@ -65,42 +65,21 @@ graph TD
     
     Researcher --> TaskComplete
     Builder --> TaskComplete
-    Reviewer --> TaskComplete
     QA --> TaskComplete
     Scribe --> TaskComplete
     
     TaskComplete{Review Required?}
     TaskComplete -->|No / Internal Step| Done[Kanban: Done]:::kanban
     
-    TaskComplete -->|Yes / Final Result| Blocked[Kanban: Blocked]:::kanban
+    TaskComplete -->|Yes / Final Result| PROpened[Agent Opens PR]
+    
+    PROpened --> ReviewerReview{Reviewer Reviews PR}
+    ReviewerReview -->|Needs Fix| Ready
+    ReviewerReview -->|Approves| Blocked[Kanban: Blocked]:::kanban
     
     Blocked --> HumanResultReview{Human Reviews PR / Result}
     HumanResultReview -->|Needs Fix| Ready
-    HumanResultReview -->|Approves| Done
-```
-
-### System Overview
-
-```
-┌─────────────────────────────────────────────────┐
-│              Human User / Orchestrator           │
-│              (Command → Goal)                    │
-└──────────┬──────────────────────────────────────┘
-           │ kanban board (task queue)
-           ▼
-┌─────────────────────────────────────────────────┐
-│              Orchestrator Agent                  │
-│              (CEO — task decomposition)          │
-│  Tools: kanban, delegation, cronjob             │
-│  max_turns: 120, timeout: 3600s                 │
-└──┬──┬──┬──┬──┬─────────────────────────────────┘
-   │  │  │  │  │
-   ▼  ▼  ▼  ▼  ▼
-┌─────┐┌─────┐┌─────┐┌─────┐┌─────┐
-│Rsrch││Build││Reviw││ QA ││Scribe│
-│(CTO)│(Lead ││(Lead│(QA)│(Docs)│
-│     │ Eng.)│Reviw.│     │     │
-└─────┘└─────┘└─────┘└─────┘└─────┘
+    HumanResultReview -->|Approves and Merges| Done
 ```
 
 ## Core Components
@@ -134,9 +113,10 @@ The Orchestrator creates tasks, assigns agents, and monitors progress through th
 2. **Auto-Triage**: Kanban decomposer breaks goal down into `Todo` tickets
 3. 🛑 **Human Plan Review**: Human reviews `Todo` tasks and moves them to `Ready`
 4. **Execution**: Specialists claim `Ready` tickets and execute them in `In progress`
-5. **Verification**: Reviewer checks quality/security while QA runs tests
-6. 🛑 **Human Result Review**: Agents create a GitHub PR and move task to `Blocked` for final human acceptance
-7. **Documentation**: Scribe documents the finalized features
+5. **PR Creation**: Task creator (Researcher, Builder, QA, or Scribe) opens a GitHub PR
+6. **Verification**: Reviewer reviews the opened PR for quality/security before handing off
+7. 🛑 **Human Result Review**: The Reviewer moves the task to `Blocked` for final human acceptance
+8. **Completion**: Human reviews the PR, and upon merging, the task is marked as `Done`
 
 Parallel execution: Review and QA run concurrently. Researcher can work on one feature while Builder handles another.
 

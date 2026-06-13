@@ -90,19 +90,24 @@ Examples:
 - Commit frequently with small, focused changes.
 - Push a descriptive branch per task for traceability.
 
-### Always create pull request to git remote after a task is done
-Every agent **must** push their work and create a pull request to the git remote after finishing a task. This ensures:
+### PR Creation (Researcher, Builder, QA, Scribe)
+Agents (Researcher, Builder, QA, Scribe) **must** push their work and create a pull request to the git remote after finishing a task. This ensures:
 - Work is not lost during workspace garbage collection
 - Changes are reviewed before merging
 - All progress is tracked in the repository
 
-**Required steps:**
+**Required steps for PR creators:**
 1. Check out a new branch for the task: `git checkout -b task/<task_id>`
 2. Make your changes and test them
 3. Commit changes with clear, descriptive messages
 4. Push the branch to the remote repository: `git push -u origin task/<task_id>`
 5. Open a pull request against the target branch using the `gh pr create --fill` terminal command
-6. Reference the PR URL in task completion notes or when calling `kanban_block("review-required")` if human review is needed
+6. The task should then be handed off to the Reviewer for PR review.
+
+### PR Review (Reviewer)
+The Reviewer will **only** review the PR created by other agents before Human review. The Reviewer must **never** open a PR itself.
+- Once the Reviewer approves the PR, the task is moved to `Blocked` for Human review.
+- After the Human reviews and merges the PR, the task is considered `Done`.
 
 > **Important:** Never finish a task or block for human review without pushing to remote on a separate branch and creating a PR via `gh`.
 
