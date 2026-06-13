@@ -188,7 +188,6 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 - Python 3.11+
 - Bun 1.1+
 - Hermes Agent installed
-- GPU (optional, for LLM inference)
 
 ### 1. Clone and Setup
 
@@ -214,7 +213,7 @@ After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server 
 make merge-all
 ```
 
-| ## Makefile Targets
+## Makefile Targets
 
 All automation lives in the Makefile at the repository root. Each target is self-contained and idempotent.
 
@@ -228,6 +227,7 @@ All automation lives in the Makefile at the repository root. Each target is self
 | `merge-all` | Meta-target: runs `config-merge jobs-merge soul-merge skills-link` in sequence | `make merge-all` |
 
 > **Note:** After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, run `make merge-all` to regenerate all runtime configurations.
-| ## License
+
+## License
 
 See [LICENSE](LICENSE).
