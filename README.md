@@ -213,6 +213,14 @@ After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server 
 make merge-all
 ```
 
+### 4. Running the Gateway
+
+You only need to run the orchestrator gateway, because the cron jobs will schedule only on the running gateway:
+
+```bash
+hermes --profile orchestrator gateway run --replace
+```
+
 ## Makefile Targets
 
 All automation lives in the Makefile at the repository root. Each target is self-contained and idempotent.
