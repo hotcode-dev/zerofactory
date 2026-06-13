@@ -9,7 +9,7 @@ hermes-link:
 	@rm -rf "$(HERMES_DEST)/profiles"
 	@ln -sfnT "$(HERMES_SRC)/profiles" "$(HERMES_DEST)/profiles"
 	@rm -rf "$(HERMES_DEST)/plugins"
-	@ln -sfnT "$(HERMES_SRC)/plugins" "$(HERMES_DEST)/plugins"
+	@ln -sfnT "$(HERMES_SRC)/profiles/common/plugins" "$(HERMES_DEST)/plugins"
 	@echo "Linked Hermes profiles and plugins to $(HERMES_DEST)"
 
 merge-all: config-merge jobs-merge soul-merge skills-link

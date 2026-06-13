@@ -40,5 +40,5 @@ profiles/*/**
 # Example: !profiles/*/skills/my-new-skill
 
 # unignore plugins
-!plugins/
-!plugins/**
+!profiles/common/plugins/
+!profiles/common/plugins/**
