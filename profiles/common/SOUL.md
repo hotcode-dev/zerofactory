@@ -84,6 +84,8 @@ Examples:
 
 ## Git Workflow
 
+- **NEVER commit directly to the `main` branch.**
+- **Always create and checkout a new branch BEFORE making any changes** (e.g., `git checkout -b task/<task_id>`).
 - **Always push to git remote after finishing a task.** Work stored only in a local worktree or scratch directory is lost if the run is reclaimed or the workspace is garbage-collected. Push commits to the remote before marking a task complete so work survives.
 - Commit frequently with small, focused changes.
 - Push a descriptive branch per task for traceability.
@@ -95,12 +97,14 @@ Every agent **must** push their work and create a pull request to the git remote
 - All progress is tracked in the repository
 
 **Required steps:**
-1. Commit changes with clear, descriptive messages
-2. Push to the remote repository
-3. Open a pull request against the target branch using the `gh pr create` terminal command
-4. Reference the PR URL in task completion notes or when calling `kanban_block("review-required")` if human review is needed
+1. Check out a new branch for the task: `git checkout -b task/<task_id>`
+2. Make your changes and test them
+3. Commit changes with clear, descriptive messages
+4. Push the branch to the remote repository: `git push -u origin task/<task_id>`
+5. Open a pull request against the target branch using the `gh pr create --fill` terminal command
+6. Reference the PR URL in task completion notes or when calling `kanban_block("review-required")` if human review is needed
 
-> **Important:** Never finish a task or block for human review without pushing to remote and creating a PR via `gh`.
+> **Important:** Never finish a task or block for human review without pushing to remote on a separate branch and creating a PR via `gh`.
 
 ## Git Directory Structure
 
