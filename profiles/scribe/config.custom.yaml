@@ -18,20 +18,6 @@ agent:
   image_input_mode: auto
   disabled_toolsets:
   - image_gen
-  - tts
-  - discord
-  - slack
-  - telegram
-  - whatsapp
-  - mattermost
-  - matrix
-  - x_search
-  - spotify
-  - homeassistant
-  - cronjob
-  - delegation
-  verbose: false
-  reasoning_effort: medium
   personalities: {}
 skills:
   external_dirs: []
