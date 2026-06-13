@@ -85,7 +85,7 @@ Examples:
 ## Git Workflow
 
 - **NEVER commit directly to the `main` branch.**
-- **Always create and checkout a new branch BEFORE making any changes** (e.g., `git checkout -b task/<task_id>`).
+- **Always use `git worktree` to create an isolated environment BEFORE making any changes.** This prevents concurrent agent runs from clobbering each other.
 - **Always push to git remote after finishing a task.** Work stored only in a local worktree or scratch directory is lost if the run is reclaimed or the workspace is garbage-collected. Push commits to the remote before marking a task complete so work survives.
 - Commit frequently with small, focused changes.
 - Push a descriptive branch per task for traceability.
@@ -97,12 +97,16 @@ Agents (Researcher, Builder, QA, Scribe) **must** push their work and create a p
 - All progress is tracked in the repository
 
 **Required steps for PR creators:**
-1. Check out a new branch for the task: `git checkout -b task/<task_id>`
-2. Make your changes and test them
-3. Commit changes with clear, descriptive messages
-4. Push the branch to the remote repository: `git push -u origin task/<task_id>`
-5. Open a pull request against the target branch using the `gh pr create --fill` terminal command
-6. The task should then be handed off to the Reviewer for PR review.
+1. Navigate to the base repository: `cd ~/git/<gituser>/<reponame>`
+2. Fetch the latest changes: `git fetch --all`
+3. Create an isolated worktree for the task: `git worktree add ../<reponame>-<task_id> -b task/<task_id> origin/main`
+4. Navigate into the worktree: `cd ../<reponame>-<task_id>`
+5. Make your changes and test them within the worktree.
+6. Commit changes with clear, descriptive messages.
+7. Push the branch to the remote repository: `git push -u origin task/<task_id>`
+8. Open a pull request against the target branch using the `gh pr create --fill` terminal command.
+9. Cleanup the worktree to save disk space: `cd ~/git/<gituser>/<reponame>` then `git worktree remove ../<reponame>-<task_id> --force`
+10. The task should then be handed off to the Reviewer for PR review.
 
 ### PR Review (Reviewer)
 The Reviewer will **only** review the PR created by other agents before Human review. The Reviewer must **never** open a PR itself.
