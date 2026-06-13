@@ -106,7 +106,8 @@ Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key 
 - **Blocked** — Human review required (GitHub PR)
 - **Done** — Completed
 
-The Orchestrator creates tasks, assigns agents, and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done`.
+The Orchestrator creates tasks and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done` (handled automatically by the kanban-dispatcher plugin). Task assignment is also handled automatically by the kanban-dispatcher plugin.
+
 ## Data Flow
 
 1. **Goal Formulation**: User submits a goal via CLI (`hermes -p orchestrator -m "..."`)
@@ -180,10 +181,12 @@ Old completed tasks can be archived:
 hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 ```
 
+
 ## Setup Guide
 
 - Linux machine (Raspberry Pi or x86_64)
 - Python 3.11+
+- Bun 1.1+
 - Hermes Agent installed
 
 ### 1. Clone and Setup

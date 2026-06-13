@@ -38,3 +38,7 @@ profiles/*/**
 # IMPORTANT: If you create a new custom skill or add anything not built-in to Hermes,
 # you must explicitly unignore it here before you can commit and push it to GitHub!
 # Example: !profiles/*/skills/my-new-skill
+
+# unignore plugins
+!profiles/common/plugins/
+!profiles/common/plugins/**
