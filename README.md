@@ -184,9 +184,7 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 
 - Linux machine (Raspberry Pi or x86_64)
 - Python 3.11+
-- Node.js (for hermes-workspace)
 - Hermes Agent installed
-- GPU (optional, for LLM inference)
 
 ### 1. Clone and Setup
 
@@ -211,6 +209,21 @@ After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server 
 ```bash
 make merge-all
 ```
+
+## Makefile Targets
+
+All automation lives in the Makefile at the repository root. Each target is self-contained and idempotent.
+
+| Target | Description | Usage |
+|--------|-------------|-------|
+| `hermes-link` | Symlinks `profiles/` to `~/.hermes/profiles` so Hermes Agent reads them | `make hermes-link` |
+| `config-merge` | Runs `bin/merge-config.sh` to merge base config + profile overrides into runtime config | `make config-merge` |
+| `jobs-merge` | Runs `bin/merge-jobs.sh` to sync cron jobs across profiles | `make jobs-merge` |
+| `soul-merge` | Runs `bin/merge-soul.sh` to merge SOUL files for each profile | `make soul-merge` |
+| `skills-link` | Runs `bin/link-skills.sh` to link common skills (e.g. research-paper-writing) to all profiles | `make skills-link` |
+| `merge-all` | Meta-target: runs `config-merge jobs-merge soul-merge skills-link` in sequence | `make merge-all` |
+
+> **Note:** After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, run `make merge-all` to regenerate all runtime configurations.
 
 ## License
 
