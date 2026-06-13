@@ -186,12 +186,11 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 | Requirement | Minimum Version | Notes |
 |-------------|---------|-------|
 | **OS** | Linux (x86_64 or arm64 / Raspberry Pi) | macOS not officially supported |
-| **Python** | 3.11 | Bundled in the default Docker image (`python3.11-nodejs20`) |
-| **Node.js** | 20.x | Provided by the Docker image; Bun is **not** required — standard Node.js is sufficient for all project scripts |
-| **Bun** | Not required | The project conventions reference Bun, but the actual runtime environment uses Node.js. No `package.json` or Bun dependencies exist in the repository. |
-| **Hermes Agent** | Latest stable | Install from `npm` or `pip` per the [Hermes Agent docs](https://hermes-agent.nousresearch.com) |
+| **Python** | 3.11 | Bundled in the default Docker image |
+| **Bun** | 1.1+ | Required for Hermes workspace and JS scripting. |
+| **Hermes Agent** | Latest stable | Install from `bun` or `pip` per the [Hermes Agent docs](https://hermes-agent.nousresearch.com) |
 
-**Primary language: Python.** Despite the conventions file mentioning TypeScript, the repository contains no `package.json`, no `.ts` source files, and no build tooling. Python 3.11+ is the sole programming language. The TypeScript/Bun reference in the shared conventions is a documentation artifact that has not been applied here.
+**Primary language: Python.** Python 3.11+ is the primary programming language for plugins and skills. Bun is used as the JS runtime.
 
 | Component | Purpose |
 |-----------|---------|
@@ -201,7 +200,7 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 
 - Linux machine (Raspberry Pi or x86_64)
 - Python 3.11+
-- Node.js 20.x
+- Bun 1.1+
 - Hermes Agent installed
 - GPU (optional, for LLM inference)
 
