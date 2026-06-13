@@ -181,20 +181,6 @@ Old completed tasks can be archived:
 hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 ```
 
-## Prerequisites
-
-| Requirement | Minimum Version | Notes |
-|-------------|---------|-------|
-| **OS** | Linux (x86_64 or arm64 / Raspberry Pi) | macOS not officially supported |
-| **Python** | 3.11 | Bundled in the default Docker image |
-| **Bun** | 1.1+ | Required for Hermes workspace and JS scripting. |
-| **Hermes Agent** | Latest stable | Install from `bun` or `pip` per the [Hermes Agent docs](https://hermes-agent.nousresearch.com) |
-
-**Primary language: Python.** Python 3.11+ is the primary programming language for plugins and skills. Bun is used as the JS runtime.
-
-| Component | Purpose |
-|-----------|---------|
-| GPU | Optional — only needed if running local LLM inference |
 
 ## Setup Guide
 
