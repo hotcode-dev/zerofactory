@@ -106,7 +106,8 @@ Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key 
 - **Blocked** — Human review required (GitHub PR)
 - **Done** — Completed
 
-The Orchestrator creates tasks, assigns agents, and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done`.
+The Orchestrator creates tasks and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done` (handled automatically by the kanban-dispatcher plugin). Task assignment is also handled automatically by the kanban-dispatcher plugin.
+
 ## Data Flow
 
 1. **Goal Formulation**: User submits a goal via CLI (`hermes -p orchestrator -m "..."`)
@@ -180,11 +181,27 @@ Old completed tasks can be archived:
 hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 ```
 
+## Prerequisites
+
+| Requirement | Minimum Version | Notes |
+|-------------|---------|-------|
+| **OS** | Linux (x86_64 or arm64 / Raspberry Pi) | macOS not officially supported |
+| **Python** | 3.11 | Bundled in the default Docker image (`python3.11-nodejs20`) |
+| **Node.js** | 20.x | Provided by the Docker image; Bun is **not** required — standard Node.js is sufficient for all project scripts |
+| **Bun** | Not required | The project conventions reference Bun, but the actual runtime environment uses Node.js. No `package.json` or Bun dependencies exist in the repository. |
+| **Hermes Agent** | Latest stable | Install from `npm` or `pip` per the [Hermes Agent docs](https://hermes-agent.nousresearch.com) |
+
+**Primary language: Python.** Despite the conventions file mentioning TypeScript, the repository contains no `package.json`, no `.ts` source files, and no build tooling. Python 3.11+ is the sole programming language. The TypeScript/Bun reference in the shared conventions is a documentation artifact that has not been applied here.
+
+| Component | Purpose |
+|-----------|---------|
+| GPU | Optional — only needed if running local LLM inference |
+
 ## Setup Guide
 
 - Linux machine (Raspberry Pi or x86_64)
 - Python 3.11+
-- Node.js (for hermes-workspace)
+- Node.js 20.x
 - Hermes Agent installed
 - GPU (optional, for LLM inference)
 
@@ -212,6 +229,20 @@ After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server 
 make merge-all
 ```
 
-## License
+| ## Makefile Targets
+
+All automation lives in the Makefile at the repository root. Each target is self-contained and idempotent.
+
+| Target | Description | Usage |
+|--------|-------------|-------|
+| `hermes-link` | Symlinks `profiles/` to `~/.hermes/profiles` so Hermes Agent reads them | `make hermes-link` |
+| `config-merge` | Runs `bin/merge-config.sh` to merge base config + profile overrides into runtime config | `make config-merge` |
+| `jobs-merge` | Runs `bin/merge-jobs.sh` to sync cron jobs across profiles | `make jobs-merge` |
+| `soul-merge` | Runs `bin/merge-soul.sh` to merge SOUL files for each profile | `make soul-merge` |
+| `skills-link` | Runs `bin/link-skills.sh` to link common skills (e.g. research-paper-writing) to all profiles | `make skills-link` |
+| `merge-all` | Meta-target: runs `config-merge jobs-merge soul-merge skills-link` in sequence | `make merge-all` |
+
+> **Note:** After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, run `make merge-all` to regenerate all runtime configurations.
+| ## License
 
 See [LICENSE](LICENSE).
