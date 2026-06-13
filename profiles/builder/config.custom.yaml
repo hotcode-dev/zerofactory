@@ -18,20 +18,6 @@ agent:
   gateway_notify_interval: 180
   gateway_auto_continue_freshness: 3600
   image_input_mode: auto
-  disabled_toolsets:
-  - image_gen
-  - tts
-  - discord
-  - slack
-  - telegram
-  - whatsapp
-  - mattermost
-  - matrix
-  - x_search
-  - spotify
-  - homeassistant
-  - cronjob
-  - delegation
   verbose: false
   reasoning_effort: medium
   personalities: {}
