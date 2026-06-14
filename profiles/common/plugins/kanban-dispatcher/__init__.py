@@ -36,7 +36,7 @@ def run_dispatch_cycle():
             # 2. Auto-Assign Ready tasks
             cursor.execute("""
                 SELECT id, title FROM tasks
-                WHERE status = 'ready' AND (assignee IS NULL OR assignee = '')
+                WHERE status = 'ready' AND (assignee IS NULL OR assignee = '' OR assignee = 'unassigned')
             """)
             unassigned = cursor.fetchall()
             for row in unassigned:
@@ -53,7 +53,7 @@ def run_dispatch_cycle():
                     assignee = "builder" # default to builder
                 
                 print(f"[kanban-dispatcher] Auto-assigning task {row['id']} to {assignee}")
-                cursor.execute("UPDATE tasks SET assignee = ?, status = 'in_progress' WHERE id = ?", (assignee, row['id']))
+                cursor.execute("UPDATE tasks SET assignee = ? WHERE id = ?", (assignee, row['id']))
             
             conn.commit()
     except Exception as e:
