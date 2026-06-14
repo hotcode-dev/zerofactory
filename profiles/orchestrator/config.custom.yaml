@@ -8,6 +8,17 @@ toolsets:
   - web
   - skills
   - mcp
+  - web_search
+  - web_extract
+  - process
+  - read_file
+  - patch
+  - todo
+  - clarify
+  - execute_code
+  - delegate_task
+  - memory
+  - session_search
 agent:
   max_turns: 120
   gateway_timeout: 3600
