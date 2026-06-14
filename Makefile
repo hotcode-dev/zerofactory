@@ -3,14 +3,14 @@ SHELL := /bin/bash
 HERMES_SRC := $(CURDIR)
 HERMES_DEST := $(HOME)/.hermes
 
-.PHONY: hermes-link merge-all soul-merge config-merge jobs-merge skills-link plugins-link
+.PHONY: hermes-link merge-all config-merge jobs-merge soul-merge skills-link plugins-link
 hermes-link:
 	@mkdir -p "$(HERMES_DEST)"
 	@rm -rf "$(HERMES_DEST)/profiles"
 	@ln -sfnT "$(HERMES_SRC)/profiles" "$(HERMES_DEST)/profiles"
 	@echo "Linked Hermes profiles to $(HERMES_DEST)"
 
-merge-all: soul-merge config-merge jobs-merge skills-link plugins-link
+merge-all: config-merge jobs-merge soul-merge skills-link plugins-link
 	@echo "Merged config, jobs, and SOUL, and linked skills and plugins for all profiles"
 
 config-merge:
