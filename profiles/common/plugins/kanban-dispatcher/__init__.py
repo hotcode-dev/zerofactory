@@ -49,8 +49,10 @@ def run_dispatch_cycle():
                     assignee = "scribe"
                 elif "[reviewer]" in title:
                     assignee = "reviewer"
+                elif "[builder]" in title:
+                    assignee = "builder"
                 else:
-                    assignee = "builder" # default to builder
+                    continue # leave unassigned
                 
                 print(f"[kanban-dispatcher] Auto-assigning task {row['id']} to {assignee}")
                 cursor.execute("UPDATE tasks SET assignee = ? WHERE id = ?", (assignee, row['id']))
