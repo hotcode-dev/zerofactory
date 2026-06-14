@@ -1,9 +1,9 @@
 toolsets:
-- kanban
-- file
-- terminal
-- search_files
-- web
+  - kanban
+  - file
+  - terminal
+  - search_files
+  - web
 agent:
   max_turns: 60
   gateway_timeout: 1800
@@ -17,7 +17,7 @@ agent:
   gateway_auto_continue_freshness: 3600
   image_input_mode: auto
   disabled_toolsets:
-  - image_gen
+    - image_gen
   personalities: {}
 skills:
   external_dirs: []
@@ -26,64 +26,52 @@ skills:
   inline_shell_timeout: 10
   guard_agent_created: false
   disabled:
-  - airtable
-  - architecture-diagram
-  - arxiv
-  - ascii-art
-  - ascii-video
-  - audiocraft-audio-generation
-  - baoyu-article-illustrator
-  - baoyu-comic
-  - baoyu-infographic
-  - blogwatcher
-  - claude-code
-  - claude-design
-  - codex
-  - comfyui
-  - debugging-hermes-tui-commands
-  - design-md
-  - dogfood
-  - dspy
-  - evaluating-llms-harness
-  - excalidraw
-  - gif-search
-  - godmode
-  - google-workspace
-  - heartmula
-  - humanizer
-  - jupyter-live-kernel
-  - linear
-  - llama-cpp
-  - llm-wiki
-  - manim-video
-  - maps
-  - minecraft-modpack-server
-  - notion
-  - obliteratus
-  - obsidian
-  - openhue
-  - pixel-art
-  - pokemon-player
-  - powerpoint
-  - sketch
-  - songsee
-  - songwriting-and-ai-music
-  - spotify
-  - touchdesigner-mcp
-  - youtube-content
-  - yuanbao
-system_prompt: "You are Scribe, the technical writer at Zero Factory.\nYour role:\n\
-  \  - Create and maintain technical documentation\n  - Write API reference docs,\
-  \ READMEs, user guides, and architecture docs\n  - Update changelogs with version\
-  \ history and change descriptions\n  - Create tutorials and step-by-step guides\n\
-  \  - Maintain internal knowledge base and runbooks\nWriting Standards:\n  - Clear\
-  \ structure with logical flow and proper headings\n  - Consistent terminology and\
-  \ formatting throughout\n  - Code examples with explanations\n  - Version-aware\
-  \ documentation\nStyle: Clear, concise, structured. Prioritize accuracy over completeness.\
-  \ Keep docs focused and scannable. Update docs alongside code changes. Avoid speculation.\n\
-  Output format: Well-structured markdown with clear sections, code examples, and\
-  \ consistent formatting. When human review is needed: 1. Run `git worktree add ../<reponame>-worktrees/<task_id> -b task/<task_id> origin/main`. 2. cd into it, commit your work, and push. 3. Use `gh pr create --fill` to open a GitHub PR. 4. cd back and run `git worktree remove ../<reponame>-worktrees/<task_id> --force`. 5. Call kanban_block.\n"
+    - airtable
+    - architecture-diagram
+    - arxiv
+    - ascii-art
+    - ascii-video
+    - audiocraft-audio-generation
+    - baoyu-article-illustrator
+    - baoyu-comic
+    - baoyu-infographic
+    - blogwatcher
+    - claude-code
+    - claude-design
+    - codex
+    - comfyui
+    - debugging-hermes-tui-commands
+    - design-md
+    - dogfood
+    - dspy
+    - evaluating-llms-harness
+    - excalidraw
+    - gif-search
+    - godmode
+    - google-workspace
+    - heartmula
+    - humanizer
+    - jupyter-live-kernel
+    - linear
+    - llama-cpp
+    - llm-wiki
+    - manim-video
+    - maps
+    - minecraft-modpack-server
+    - notion
+    - obliteratus
+    - obsidian
+    - openhue
+    - pixel-art
+    - pokemon-player
+    - powerpoint
+    - sketch
+    - songsee
+    - songwriting-and-ai-music
+    - spotify
+    - touchdesigner-mcp
+    - youtube-content
+    - yuanbao
 description: Technical writer & documentation specialist
-
 default:
   temperature: 0.2

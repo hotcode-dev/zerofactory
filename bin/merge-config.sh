@@ -37,6 +37,11 @@ merge_one() {
     "$COMMON_CONFIG" \
     "$profile_custom_config" > "$output_file"
 
+  local soul_file="$ROOT_DIR/profiles/$profile_name/SOUL.md"
+  if [[ -f "$soul_file" ]]; then
+    SOUL_CONTENT="$(cat "$soul_file")" yq eval '.system_prompt = env(SOUL_CONTENT)' -i "$output_file"
+  fi
+
   echo "Merged config written to: $output_file"
 }
 
