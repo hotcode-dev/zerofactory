@@ -68,8 +68,6 @@ def run_dispatch_cycle():
                         assignee = "researcher"
                     elif "[qa]" in title:
                         assignee = "qa"
-                    elif "[scribe]" in title:
-                        assignee = "scribe"
                     elif "[reviewer]" in title:
                         assignee = "reviewer"
                     elif "[builder]" in title:
