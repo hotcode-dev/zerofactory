@@ -1,7 +1,7 @@
 ---
 name: zerofactory-orchestration
 category: architecture
-description: Set up specialized AI agent teams with role-specific tools, identities, and continuous agile workflows.
+description: Set up specialized AI agent teams with role-specific toolsets, identities, and continuous agile workflows.
 ---
 
 # Multi-Agent Orchestration
@@ -19,7 +19,7 @@ Set up a team of specialized AI agents that operate in a continuous 24/7 agile l
 The following agents are pre-defined in the `./profiles` directory. They can be customized by editing their `SOUL.custom.md` and `config.custom.yaml`:
 
 | Role | Identity / Behavior |
-|------|----------|
+|------|-------------------|
 | **Orchestrator** | CEO/coordinator — delegates, tracks progress, manages kanban |
 | **Researcher** | Architect — researches APIs, designs specs |
 | **Builder** | Engineer — writes code, implements features |
@@ -54,11 +54,10 @@ Parallelism rules:
 
 ## Single Source of Truth
 
-Never duplicate information. When the same concept or rule applies across multiple agent profiles (e.g. naming, file structure, commit format, review criteria), store the canonical version in one place and reference it — do not copy-paste and edit independently.
+Never duplicate information. When the same concept or rule applies across multiple agent profiles (e.g., naming, file structure, commit format, review criteria), store the canonical version in one place and reference it — do not copy-paste and edit independently.
 
 - **Edit one, update all**: When a rule changes, update the source file — linked profiles auto-see it.
-- **No forks of truth**: If you must customize (e.g. a role needs a different toolset), extend, don't duplicate the whole block.
-
+- **No forks of truth**: If you must customize (e.g., a role needs a different toolset), extend, don't duplicate the whole block.
 
 1. **General Rules** — code-first, small changes, type checks, no TODOs
 2. **Naming Conventions** — kebab-case files, PascalCase classes, camelCase variables
@@ -69,16 +68,6 @@ Never duplicate information. When the same concept or rule applies across multip
 7. **Documentation Standards** — where docs go, no duplicates
 8. **File References** — index of all shared files and their paths
 
-## Config Patterns
-
-- **Model**: Each agent should use the same model unless specialization demands otherwise
-- **Toolsets**: Only include tools relevant to the agent's role. Exclude social, media, and admin tools.
-- **disabled_toolsets**: For non-orchestrator agents, disable: image_gen, tts, discord, slack, telegram, whatsapp, mattermost, matrix, x_search, spotify, homeassistant, cronjob, delegation
-- **max_turns**: Keep low (60-90) to minimize token waste per agent
-- **compression**: Enable (target_ratio: 0.2)
-- **prompt_caching**: Enable (cache_ttl: 5m)
-- **skills.disabled**: Large list of irrelevant skills — only enable per-role
-- **temperature**: Customize temperature under `default:` in `config.custom.yaml` based on the profile (e.g., `0.0` for Orchestrator/QA/Reviewer/Researcher for deterministic output, `0.1` for Builder for structured creativity, `0.2` for Scribe for documentation phrasing).
 
 ## Pitfalls
 
@@ -98,6 +87,7 @@ Never duplicate information. When the same concept or rule applies across multip
   ```
   Then run `python3 <script>` via terminal. This is specific to the builder profile since it is the default active workspace.
 - **Skills must be tracked in git**: Uncomment `!*/skills/` and `!*/skills/**` in `hermes/profiles/.gitignore` so skills are versioned. Skills are code — they should be in git alongside SOUL.md and config.
+- **execute_code `-c` flag can hang**: When using `execute_code` or terminal with the `-c` flag for Python snippets, commands can hang in `pending_approval` state. Writing to a file first and executing via `python3 /path/to/script.py` is more reliable than inline `-c` for anything longer than a few lines.
 
 ## Support Files
 
