@@ -91,8 +91,8 @@ def run_dispatch_cycle(db_path):
                     else:
                         assignee = "builder" # Default to builder
                     
-                    print(f"[zerofactory-kanban-dispatcher] Auto-assigning task {task_id} to {assignee}")
-                    cursor.execute("UPDATE tasks SET assignee = ? WHERE id = ?", (assignee, task_id))
+                    print(f"[zerofactory-kanban-dispatcher] Auto-assigning task {task_id} to {assignee} and clearing hallucinated skills")
+                    cursor.execute("UPDATE tasks SET assignee = ?, skills = '[]' WHERE id = ?", (assignee, task_id))
                 
                 # Create programmatic worktree if not set
                 if not workspace_path:
