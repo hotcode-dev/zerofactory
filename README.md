@@ -46,12 +46,9 @@ graph TD
     Triage -->|Auto-decomposes| Decomposer[kanban_decomposer]
     Decomposer -->|Auto-generates child tasks| Todo[Kanban: Todo]:::kanban
     
-    Todo --> HumanPlanReview{Human Reviews Plan}
-    HumanPlanReview -->|Needs Edit| OrchestratorEdit[Orchestrator Edits Plan]
-    OrchestratorEdit --> Todo
-    HumanPlanReview -->|Approves| Ready[Kanban: Ready]:::kanban
+    Todo -->|Dispatcher Auto-Promotes| Ready[Kanban: Ready]:::kanban
     
-    Ready -->|Dispatcher Auto-Assigns| InProgress[Kanban: In progress]:::kanban
+    Ready -->|Dispatcher Auto-Assigns & Creates Worktree| InProgress[Kanban: In progress]:::kanban
     
     InProgress --> AgentWork{Specialized Agent}
     
@@ -71,9 +68,9 @@ graph TD
     TaskComplete{Review Required?}
     TaskComplete -->|No / Internal Step| Done[Kanban: Done]:::kanban
     
-    TaskComplete -->|Yes / Final Result| PROpened[Agent Opens PR]
+    TaskComplete -->|Yes / Final Result| PR[Dispatcher Auto-Opens PR]
     
-    PROpened --> ReviewerReview{Reviewer Reviews PR}
+    PR --> ReviewerReview{Reviewer Reviews PR}
     ReviewerReview -->|Needs Fix| Ready
     ReviewerReview -->|Approves| Blocked[Kanban: Blocked]:::kanban
     
@@ -100,9 +97,9 @@ For specific configurations, toolsets, dispatch logic, and agent parameters, ple
 Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key states:
 
 - **Triage** — Initial goals, auto-decomposing
-- **Todo** — Waiting for human plan review
+- **Todo** — Waiting for dispatcher to auto-promote
 - **Ready** — Ready for agent pickup
-- **In progress** — Actively being worked on
+- **In progress** — Actively being worked on (in isolated git worktree)
 - **Blocked** — Human review required (GitHub PR)
 - **Done** — Completed
 
@@ -112,12 +109,13 @@ The Orchestrator creates tasks and monitors progress through this board. Tasks c
 
 1. **Goal Formulation**: User submits a goal via CLI (`hermes -p orchestrator -m "..."`)
 2. **Auto-Triage**: Kanban decomposer breaks goal down into `Todo` tickets
-3. 🛑 **Human Plan Review**: Human reviews `Todo` tasks and moves them to `Ready`
-4. **Execution**: Specialists claim `Ready` tickets and execute them in `In progress`
-5. **PR Creation**: Task creator (Researcher, Builder, QA, or Scribe) opens a GitHub PR
-6. **Verification**: Reviewer reviews the opened PR for quality/security before handing off
-7. 🛑 **Human Result Review**: The Reviewer moves the task to `Blocked` for final human acceptance
-8. **Completion**: Human reviews the PR, and upon merging, the task is marked as `Done`
+3. **Auto-Promotion**: Kanban Dispatcher automatically promotes `Todo` tasks to `Ready`
+4. **Execution Setup**: Kanban Dispatcher assigns the task and creates an isolated Git worktree for the agent
+5. **Execution**: Specialists execute their tasks in `In progress`
+6. **PR Creation**: When an agent finishes, Kanban Dispatcher automatically pushes the branch and opens a GitHub PR
+7. **Verification**: Reviewer reviews the opened PR for quality/security before handing off
+8. 🛑 **Human Result Review**: The Reviewer moves the task to `Blocked` for final human acceptance
+9. **Completion**: Human reviews the PR, and upon merging, the task is marked as `Done`
 
 Parallel execution: Review and QA run concurrently. Researcher can work on one feature while Builder handles another.
 
@@ -161,8 +159,8 @@ Triage → Todo → Ready → In progress → Blocked → Done
 | State | Description | Action |
 |-------|-------------|--------|
 | `Triage` | Initial goal received | Auto-decompose |
-| `Todo` | Sub-tasks generated | Human reviews plan |
-| `Ready` | Approved for work | Dispatcher assigns |
+| `Todo` | Sub-tasks generated | Auto-promoted to Ready |
+| `Ready` | Approved for work | Dispatcher assigns & configures worktree |
 | `In progress` | Agent actively working | Monitor progress |
 | `Blocked` | PR created / Waiting on human | Review PR / Unblock |
 | `Done` | Task completed | Archive |
