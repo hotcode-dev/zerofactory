@@ -126,7 +126,7 @@ def run_dispatch_cycle(db_path):
                         else:
                             print(f"[zerofactory-kanban-dispatcher] Creating new git worktree branch {branch_name} at {worktree_dir}")
                             subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, "origin/main"], check=True, cwd=repo_path)
-                        cursor.execute("UPDATE tasks SET workspace_kind = 'path', workspace_path = ? WHERE id = ?", (str(worktree_dir), task_id))
+                        cursor.execute("UPDATE tasks SET workspace_kind = 'dir', workspace_path = ? WHERE id = ?", (str(worktree_dir), task_id))
                     except subprocess.CalledProcessError as e:
                         print(f"[zerofactory-kanban-dispatcher] Failed to create worktree for task {task_id} in {repo_path}: {e}")
 
