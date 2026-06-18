@@ -31,7 +31,7 @@
         "kanban"
       ],
       "workdir": null,
-      "profile": null
+      "profile": "orchestrator"
     },
     {
       "id": "zero-factory-daily-report",
@@ -64,7 +64,7 @@
         "kanban"
       ],
       "workdir": null,
-      "profile": null
+      "profile": "orchestrator"
     },
     {
       "id": "zero-factory-improvement-scanner",
@@ -101,7 +101,7 @@
         "kanban"
       ],
       "workdir": null,
-      "profile": null
+      "profile": "orchestrator"
     }
   ]
 }
