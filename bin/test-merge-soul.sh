@@ -4,7 +4,7 @@ set -euo pipefail
 
 PASS=0
 FAIL=0
-TEST_DIR=$(mktemp -d)
+TEST_DIR=$(mktemp -d -p "$(pwd)")
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
@@ -22,7 +22,8 @@ cat > "$TEST_DIR/profiles/worker/SOUL.custom.md" << 'EOF'
 Worker-specific personality
 EOF
 
-cp ~/git/hotcode-dev/zerofactory/hermes/bin/merge-soul.sh "$TEST_DIR/bin/merge-soul.sh"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cp "$SCRIPT_DIR/merge-soul.sh" "$TEST_DIR/bin/merge-soul.sh"
 
 echo "Testing merge-soul.sh..."
 

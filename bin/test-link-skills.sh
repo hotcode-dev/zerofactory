@@ -42,7 +42,7 @@ else
   echo "  ✗ link-skills.sh uses symbolic links"
 fi
 
-if grep -q 'skip common profile' "$SCRIPT" || grep -q '"common"' "$SCRIPT" || grep -q '\'common\'' "$SCRIPT"; then
+if grep -q 'skip common profile' "$SCRIPT" || grep -q '"common"' "$SCRIPT" || grep -q "'common'" "$SCRIPT"; then
   PASS=$((PASS + 1))
   echo "  ✓ link-skills.sh excludes common profile"
 else

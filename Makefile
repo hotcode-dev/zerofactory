@@ -3,7 +3,7 @@ SHELL := /bin/bash
 HERMES_SRC := $(CURDIR)
 HERMES_DEST := $(HOME)/.hermes
 
-.PHONY: hermes-link merge-all config-merge jobs-merge soul-merge skills-link plugins-link
+.PHONY: hermes-link merge-all config-merge jobs-merge soul-merge skills-link plugins-link test
 hermes-link:
 	@mkdir -p "$(HERMES_DEST)"
 	@rm -rf "$(HERMES_DEST)/profiles"
@@ -32,3 +32,8 @@ skills-link:
 plugins-link:
 	@./bin/link-plugins.sh
 	@echo "Linked common plugins to all profiles"
+
+test:
+	@bash ./bin/test-runner.sh
+
+

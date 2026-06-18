@@ -4,7 +4,7 @@ set -euo pipefail
 
 PASS=0
 FAIL=0
-TEST_DIR=$(mktemp -d)
+TEST_DIR=$(mktemp -d -p "$(pwd)")
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
@@ -51,7 +51,8 @@ tools:
 EOF
 
 # Copy the actual script
-cp ~/git/hotcode-dev/zerofactory/hermes/bin/merge-config.sh "$TEST_DIR/bin/merge-config.sh"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cp "$SCRIPT_DIR/merge-config.sh" "$TEST_DIR/bin/merge-config.sh"
 
 echo "Testing merge-config.sh..."
 
@@ -113,8 +114,8 @@ else
 fi
 
 # Test 7: Merged file contains content from both common and custom
-if grep -q '"common"' "profiles/worker/config.yaml" 2>/dev/null && \
-   grep -q '"worker"' "profiles/worker/config.yaml" 2>/dev/null; then
+if grep -q 'gpt-4' "profiles/worker/config.yaml" 2>/dev/null && \
+   grep -q 'worker' "profiles/worker/config.yaml" 2>/dev/null; then
   PASS=$((PASS + 1))
   echo "  ✓ Merged config contains both base and custom values"
 else

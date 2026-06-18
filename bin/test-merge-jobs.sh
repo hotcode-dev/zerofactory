@@ -4,7 +4,7 @@ set -euo pipefail
 
 PASS=0
 FAIL=0
-TEST_DIR=$(mktemp -d)
+TEST_DIR=$(mktemp -d -p "$(pwd)")
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
@@ -32,7 +32,8 @@ cat > "$TEST_DIR/profiles/worker/cron/jobs.custom.json" << 'EOF'
 ]}
 EOF
 
-cp ~/git/hotcode-dev/zerofactory/hermes/bin/merge-jobs.sh "$TEST_DIR/bin/merge-jobs.sh"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cp "$SCRIPT_DIR/merge-jobs.sh" "$TEST_DIR/bin/merge-jobs.sh"
 
 echo "Testing merge-jobs.sh..."
 
