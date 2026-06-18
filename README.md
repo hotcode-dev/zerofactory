@@ -72,7 +72,7 @@ graph TD
     
     PR --> ReviewerReview{Reviewer Reviews PR}
     ReviewerReview -->|Needs Fix| Ready
-    ReviewerReview -->|Approves| Blocked[Kanban: Blocked]:::kanban
+    ReviewerReview -->|Approves| Blocked[Kanban: Blocked + Human Review]:::kanban
     
     Blocked --> HumanResultReview{Human Reviews PR / Result}
     HumanResultReview -->|Needs Fix| Ready
@@ -105,6 +105,13 @@ Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key 
 
 The Orchestrator creates tasks and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done` (handled automatically by the kanban-dispatcher plugin). Task assignment is also handled automatically by the kanban-dispatcher plugin.
 
+### 3. Automated Operations (Cron Jobs)
+
+Zero Factory includes several automated maintenance and reporting tasks configured via Hermes cron jobs. These jobs are executed by the Orchestrator to ensure the factory runs smoothly around the clock.
+
+For the exact list of automated tasks, their schedules, and behaviors, please refer to the [`profiles/orchestrator/cron/jobs.custom.json`](./profiles/orchestrator/cron/jobs.custom.json) file.
+
+
 ## Data Flow
 
 1. **Goal Formulation**: User submits a goal via CLI (`hermes -p orchestrator -m "..."`)
@@ -112,9 +119,9 @@ The Orchestrator creates tasks and monitors progress through this board. Tasks c
 3. **Auto-Promotion**: Kanban Dispatcher automatically promotes `Todo` tasks to `Ready`
 4. **Execution Setup**: Kanban Dispatcher assigns the task and creates an isolated Git worktree for the agent
 5. **Execution**: Specialists execute their tasks in `In progress`
-6. **PR Creation**: When an agent finishes, Kanban Dispatcher automatically pushes the branch and opens a GitHub PR
-7. **Verification**: Reviewer reviews the opened PR for quality/security before handing off
-8. 🛑 **Human Result Review**: The Reviewer moves the task to `Blocked` for final human acceptance
+6. **PR Creation**: When an agent finishes, Kanban Dispatcher automatically pushes the branch, opens a GitHub PR, and hands it off to the Reviewer
+7. **Verification**: Reviewer reviews the opened PR using `gh pr review`. If changes are requested, the Dispatcher loops it back to the original author.
+8. 🛑 **Human Result Review**: When the Reviewer approves, the Dispatcher adds `[Human Review]` to the task and leaves it `Blocked` for final human acceptance
 9. **Completion**: Human reviews the PR, and upon merging, the task is marked as `Done`
 
 Parallel execution: Review and QA run concurrently. Researcher can work on one feature while Builder handles another.

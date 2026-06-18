@@ -32,7 +32,7 @@
     {
       "id": "zero-factory-task-queue-check",
       "name": "Zero Factory task queue check",
-      "prompt": "Check Zero Factory task queue - any tasks stuck in 'running' too long? Any tasks stuck in 'triage' or 'blocked' waiting for human review? Report on task throughput and bottlenecks.",
+      "prompt": "Check Zero Factory task queue - any tasks stuck in 'running' too long? Any tasks stuck in 'blocked' with '[Human Review]'? Any PRs stuck waiting for Reviewer feedback? Report on task throughput and bottlenecks.",
       "skills": [],
       "skill": null,
       "model": null,
