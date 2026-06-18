@@ -21,7 +21,7 @@ The following agents are pre-defined in the `./profiles` directory. They can be 
 | Role | Identity / Behavior |
 |------|-------------------|
 | **Orchestrator** | CEO/coordinator — delegates, tracks progress, manages kanban |
-| **Researcher** | Architect — researches APIs, designs specs |
+
 | **Builder** | Engineer — writes code, implements features |
 | **Reviewer** | Code reviewer — quality gate, security, architecture review |
 | **QA** | Quality engineer — test design, regression, performance |
@@ -48,7 +48,7 @@ The workflow is managed via the **Hermes Kanban** system with explicit Human-in-
 6. **Result Review**: The human reviews the PR or final result in the `Blocked` column. If changes are needed, the human requests changes on the PR and unblocks the task (moves back to `Ready`). If approved, the human merges the PR and moves the task to `Done`.
 
 Parallelism rules:
-- Researcher can gather context for upcoming tasks while Builder handles active implementations
+
 - Reviewer and QA can operate in parallel to verify completed code blocks
 - Builder documents as work progresses, not just at the very end
 
