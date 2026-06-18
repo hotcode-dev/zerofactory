@@ -25,7 +25,7 @@ The following agents are pre-defined in the `./profiles` directory. They can be 
 | **Builder** | Engineer — writes code, implements features |
 | **Reviewer** | Code reviewer — quality gate, security, architecture review |
 | **QA** | Quality engineer — test design, regression, performance |
-| **Scribe** | Technical writer — docs, API reference, changelogs |
+
 
 ## 4-File Per Profile Structure
 
@@ -50,7 +50,7 @@ The workflow is managed via the **Hermes Kanban** system with explicit Human-in-
 Parallelism rules:
 - Researcher can gather context for upcoming tasks while Builder handles active implementations
 - Reviewer and QA can operate in parallel to verify completed code blocks
-- Scribe documents as work progresses, not just at the very end
+- Builder documents as work progresses, not just at the very end
 
 ## Single Source of Truth
 
