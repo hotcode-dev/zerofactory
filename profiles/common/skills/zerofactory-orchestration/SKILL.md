@@ -71,24 +71,12 @@ Never duplicate information. When the same concept or rule applies across multip
 
 ## Pitfalls
 
-- **Active profile protection**: The profile currently being used (active session) may have protected config.yaml. If `write_file` fails with "protected system/credential file", use `terminal` with `cp` and `rm` to overwrite it, or edit via `terminal` directly.
+
 - **Avoid toolset creep**: Don't add tools agents don't need. Each agent should have only its relevant tools — this saves tokens and reduces distraction.
 - **Distinct identities**: Every agent must have a unique SOUL.md. Don't reuse templates without customization — agents need distinct roles to avoid conflicting behavior.
 - **Cost awareness**: Short max_turns + disabled skills + compression = lower cost. Review every profile for unnecessary tools/skills.
 - **MCP servers live in config.custom.yaml**: Add or update MCP servers in `config.custom.yaml`, then run `make config-merge` to regenerate `config.yaml`.
 - **Four files minimum**: Every profile needs SOUL.md, SOUL.custom.md, config.custom.yaml, and config.yaml.
-- **Active profile is write-protected**: The profile currently running as the active session blocks `write_file` from overwriting its `config.yaml`. If `write_file` fails with "protected system/credential file", use `terminal` with a Python script to write the file directly:
-  ```python
-  import os
-  config_path = '/path/to/hermes/profiles/<name>/config.yaml'
-  with open(config_path, 'w') as f:
-      f.write('''<YAML content>''')
-  os.chmod(config_path, 0o600)
-  ```
-  Then run `python3 <script>` via terminal. This is specific to the builder profile since it is the default active workspace.
+
 - **Skills must be tracked in git**: Uncomment `!*/skills/` and `!*/skills/**` in `hermes/profiles/.gitignore` so skills are versioned. Skills are code — they should be in git alongside SOUL.md and config.
 - **execute_code `-c` flag can hang**: When using `execute_code` or terminal with the `-c` flag for Python snippets, commands can hang in `pending_approval` state. Writing to a file first and executing via `python3 /path/to/script.py` is more reliable than inline `-c` for anything longer than a few lines.
-
-## Support Files
-
-- **references/team-structure.md** — Example team rosters, pipeline layouts, agent identities
