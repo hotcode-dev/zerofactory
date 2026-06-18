@@ -70,13 +70,10 @@ graph TD
     
     TaskComplete -->|Yes / Final Result| PR[Dispatcher Auto-Opens PR]
     
-    PR --> ReviewerReview{Reviewer Reviews PR}
-    ReviewerReview -->|Needs Fix| Ready
-    ReviewerReview -->|Approves| Blocked[Kanban: Blocked + Human Review]:::kanban
+    PR --> ReviewerLoop{Reviewer Never Approves}
+    ReviewerLoop -->|Requests Changes| Ready
     
-    Blocked --> HumanResultReview{Human Reviews PR / Result}
-    HumanResultReview -->|Needs Fix| Ready
-    HumanResultReview -->|Approves and Merges| Done
+    PR -.->|Human Manually Merges PR| Done
 ```
 
 ## Core Components
@@ -120,9 +117,9 @@ For the exact list of automated tasks, their schedules, and behaviors, please re
 4. **Execution Setup**: Kanban Dispatcher assigns the task and creates an isolated Git worktree for the agent
 5. **Execution**: Specialists execute their tasks in `In progress`
 6. **PR Creation**: When an agent finishes, Kanban Dispatcher automatically pushes the branch, opens a GitHub PR, and hands it off to the Reviewer
-7. **Verification**: Reviewer reviews the opened PR using `gh pr review`. If changes are requested, the Dispatcher loops it back to the original author.
-8. 🛑 **Human Result Review**: When the Reviewer approves, the Dispatcher adds `[Human Review]` to the task and leaves it `Blocked` for final human acceptance
-9. **Completion**: Human reviews the PR, and upon merging, the task is marked as `Done`
+7. **Continuous Polish**: The Reviewer acts as an infinite improvement engine. It is instructed to **never approve**, but to constantly find ways to refactor, optimize, and enhance the code. The Dispatcher routes it back to the original author for fixes.
+8. 🛑 **Human Merge**: The PR bounces between the author and Reviewer indefinitely (taking advantage of free local compute) until you step in on GitHub and manually merge the PR.
+9. **Completion**: The Kanban Dispatcher detects the `MERGED` state on GitHub and automatically marks the task as `Done`
 
 Parallel execution: Review and QA run concurrently. Researcher can work on one feature while Builder handles another.
 

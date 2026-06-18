@@ -100,8 +100,8 @@ def run_dispatch_cycle():
                 workspace_path = row['workspace_path']
                 assignee = row['assignee']
                 
-                if assignee != 'reviewer':
-                    # Author finished coding -> Push, PR, and Route to Reviewer
+                if assignee not in ('reviewer', 'qa'):
+                    # Author finished coding -> Push, PR, and Route to QA
                     print(f"[kanban-dispatcher] Programmatically opening/updating PR for task {task_id}")
                     try:
                         # Git commit and push
@@ -119,12 +119,12 @@ def run_dispatch_cycle():
                         # Cleanup worktree
                         subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=True, cwd=os.getcwd())
                         
-                        # Route to Reviewer
+                        # Route to QA first
                         import re
                         new_title = title
                         if not re.search(r'\[PR Opened by .*?\]', title):
                             new_title = f"{title} [PR Opened by {assignee}]"
-                        cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch', assignee = 'reviewer', status = 'ready' WHERE id = ?", (new_title, task_id))
+                        cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch', assignee = 'qa', status = 'ready' WHERE id = ?", (new_title, task_id))
                         
                     except subprocess.CalledProcessError as e:
                         print(f"[kanban-dispatcher] Failed to process blocked task {task_id} (Author): {e}")
@@ -139,26 +139,36 @@ def run_dispatch_cycle():
                         # Check PR State
                         import json
                         import re
-                        result = subprocess.run(["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision"], capture_output=True, text=True, cwd=os.getcwd())
+                        result = subprocess.run(["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state"], capture_output=True, text=True, cwd=os.getcwd())
                         if result.returncode == 0:
                             data = json.loads(result.stdout)
+                            pr_state = data.get("state")
                             decision = data.get("reviewDecision")
                             
+                            if pr_state == "MERGED":
+                                print(f"[kanban-dispatcher] PR for task {task_id} was MERGED by human. Marking task as done.")
+                                cursor.execute("UPDATE tasks SET status = 'done', workspace_path = NULL, workspace_kind = 'scratch' WHERE id = ?", (task_id,))
+                                continue
+                                
                             if decision == "CHANGES_REQUESTED":
-                                print(f"[kanban-dispatcher] Changes requested for task {task_id}. Routing back to author.")
+                                print(f"[kanban-dispatcher] Changes requested by {assignee} for task {task_id}. Routing back to author and lowering priority.")
                                 # Find original author from title
                                 match = re.search(r'\[PR Opened by (.*?)\]', title)
                                 prev_author = match.group(1) if match else 'builder'
                                 
-                                cursor.execute("UPDATE tasks SET workspace_path = NULL, workspace_kind = 'scratch', assignee = ?, status = 'ready' WHERE id = ?", (prev_author, task_id))
+                                cursor.execute("UPDATE tasks SET priority = priority - 1, workspace_path = NULL, workspace_kind = 'scratch', assignee = ?, status = 'ready' WHERE id = ?", (prev_author, task_id))
                             
                             elif decision == "APPROVED":
-                                print(f"[kanban-dispatcher] Task {task_id} approved. Sending to Human Review.")
-                                new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
-                                cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch' WHERE id = ?", (new_title, task_id))
+                                if assignee == 'qa':
+                                    print(f"[kanban-dispatcher] QA approved task {task_id}. Routing to Reviewer.")
+                                    cursor.execute("UPDATE tasks SET workspace_path = NULL, workspace_kind = 'scratch', assignee = 'reviewer', status = 'ready' WHERE id = ?", (task_id,))
+                                else:
+                                    print(f"[kanban-dispatcher] Reviewer approved task {task_id}. Sending to Human Review.")
+                                    new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
+                                    cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch' WHERE id = ?", (new_title, task_id))
                                 
                             else:
-                                print(f"[kanban-dispatcher] Task {task_id} reviewed but no decision found. Bouncing back to reviewer.")
+                                print(f"[kanban-dispatcher] Task {task_id} reviewed by {assignee} but no decision found. Bouncing back.")
                                 cursor.execute("UPDATE tasks SET workspace_path = NULL, workspace_kind = 'scratch', status = 'ready' WHERE id = ?", (task_id,))
                         else:
                             print(f"[kanban-dispatcher] Could not fetch PR state for task {task_id}: {result.stderr}")
