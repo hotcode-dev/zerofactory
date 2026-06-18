@@ -100,7 +100,7 @@ Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key 
 - **Blocked** — Human review required (GitHub PR)
 - **Done** — Completed
 
-The Orchestrator creates tasks and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done` (handled automatically by the kanban-dispatcher plugin). Task assignment is also handled automatically by the kanban-dispatcher plugin.
+The Orchestrator creates tasks and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done` (handled automatically by the [zerofactory-kanban-dispatcher](./profiles/common/plugins/zerofactory-kanban-dispatcher/) plugin). Task assignment is also handled automatically by the [zerofactory-kanban-dispatcher](./profiles/common/plugins/zerofactory-kanban-dispatcher/) plugin.
 
 ### 3. Automated Operations (Cron Jobs)
 
