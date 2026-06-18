@@ -85,35 +85,15 @@ Examples:
 ## Git Workflow
 
 - **NEVER commit directly to the `main` branch.**
-- **Always use `git worktree` to create an isolated environment BEFORE making any changes.** This prevents concurrent agent runs from clobbering each other.
-- **Always push to git remote after finishing a task.** Work stored only in a local worktree or scratch directory is lost if the run is reclaimed or the workspace is garbage-collected. Push commits to the remote before marking a task complete so work survives.
-- Commit frequently with small, focused changes.
-- Push a descriptive branch per task for traceability.
-
-### PR Creation (Researcher, Builder, QA, Scribe)
-Agents (Researcher, Builder, QA, Scribe) **must** push their work and create a pull request to the git remote after finishing a task. This ensures:
-- Work is not lost during workspace garbage collection
-- Changes are reviewed before merging
-- All progress is tracked in the repository
-
-**Required steps for PR creators:**
-1. Navigate to the base repository: `cd ~/git/<gituser>/<reponame>`
-2. Fetch the latest changes: `git fetch --all`
-3. Create an isolated worktree for the task: `git worktree add ../<reponame>-worktrees/<task_id> -b task/<task_id> origin/main`
-4. Navigate into the worktree: `cd ../<reponame>-worktrees/<task_id>`
-5. Make your changes and test them within the worktree.
-6. Commit changes with clear, descriptive messages.
-7. Push the branch to the remote repository: `git push -u origin task/<task_id>`
-8. Open a pull request against the target branch using the `gh pr create --fill` terminal command.
-9. Cleanup the worktree to save disk space: `cd ~/git/<gituser>/<reponame>` then `git worktree remove ../<reponame>-worktrees/<task_id> --force`
-10. The task should then be handed off to the Reviewer for PR review.
+- **Git Worktrees and PRs are fully automated.** When you are assigned a task, the orchestrator automatically creates an isolated git worktree for you.
+- You do not need to run `git` or `gh` commands yourself.
+- Focus on writing code, testing it, and verifying it works in your assigned directory.
+- When you are done, simply call `kanban_block('review-required')`. The system will automatically detect your changes, commit them, push the branch, and open a GitHub PR for you.
 
 ### PR Review (Reviewer)
-The Reviewer will **only** review the PR created by other agents before Human review. The Reviewer must **never** open a PR itself.
-- Once the Reviewer approves the PR, the task is moved to `Blocked` for Human review.
+The Reviewer will **only** review the PRs created automatically by the system before Human review. The Reviewer must **never** open a PR itself.
+- Once the Reviewer approves the PR, the task remains `Blocked` for Human review.
 - After the Human reviews and merges the PR, the task is considered `Done`.
-
-> **Important:** Never finish a task or block for human review without pushing to remote on a separate branch and creating a PR via `gh`.
 
 ## Git Directory Structure
 

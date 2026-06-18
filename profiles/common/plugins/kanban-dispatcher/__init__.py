@@ -3,6 +3,8 @@
 import sqlite3
 import threading
 import time
+import os
+import subprocess
 from pathlib import Path
 
 DB_PATH = Path.home() / ".hermes" / "kanban.db"
@@ -33,29 +35,95 @@ def run_dispatch_cycle():
                 print(f"[kanban-dispatcher] Unblocking task {row['id']}: {row['title']}")
                 cursor.execute("UPDATE tasks SET status = 'ready' WHERE id = ?", (row['id'],))
             
-            # 2. Auto-Assign Ready tasks
+            # 2. Auto-promote Todo to Ready (skip human planning review)
+            cursor.execute("SELECT id FROM tasks WHERE status = 'todo'")
+            todos = cursor.fetchall()
+            for row in todos:
+                print(f"[kanban-dispatcher] Auto-promoting Todo task {row['id']} to Ready")
+                cursor.execute("UPDATE tasks SET status = 'ready' WHERE id = ?", (row['id'],))
+
+            # 3. Auto-Assign Ready tasks and setup git worktree
             cursor.execute("""
-                SELECT id, title FROM tasks
-                WHERE status = 'ready' AND (assignee IS NULL OR assignee = '' OR assignee = 'unassigned')
+                SELECT id, title, workspace_path, assignee FROM tasks
+                WHERE status = 'ready'
             """)
-            unassigned = cursor.fetchall()
-            for row in unassigned:
+            ready_tasks = cursor.fetchall()
+            for row in ready_tasks:
+                task_id = row['id']
                 title = row['title'].lower()
-                if "[researcher]" in title:
-                    assignee = "researcher"
-                elif "[qa]" in title:
-                    assignee = "qa"
-                elif "[scribe]" in title:
-                    assignee = "scribe"
-                elif "[reviewer]" in title:
-                    assignee = "reviewer"
-                elif "[builder]" in title:
-                    assignee = "builder"
-                else:
-                    continue # leave unassigned
+                assignee = row['assignee']
+                workspace_path = row['workspace_path']
                 
-                print(f"[kanban-dispatcher] Auto-assigning task {row['id']} to {assignee}")
-                cursor.execute("UPDATE tasks SET assignee = ? WHERE id = ?", (assignee, row['id']))
+                # Assign if unassigned
+                if not assignee or assignee == 'unassigned':
+                    if "[researcher]" in title:
+                        assignee = "researcher"
+                    elif "[qa]" in title:
+                        assignee = "qa"
+                    elif "[scribe]" in title:
+                        assignee = "scribe"
+                    elif "[reviewer]" in title:
+                        assignee = "reviewer"
+                    elif "[builder]" in title:
+                        assignee = "builder"
+                    elif "[orchestrator]" in title:
+                        assignee = "orchestrator"
+                    else:
+                        assignee = "builder" # Default to builder
+                    
+                    print(f"[kanban-dispatcher] Auto-assigning task {task_id} to {assignee}")
+                    cursor.execute("UPDATE tasks SET assignee = ? WHERE id = ?", (assignee, task_id))
+                
+                # Create programmatic worktree if not set
+                if not workspace_path:
+                    # Resolve to absolute path for Hermes
+                    reponame = Path(os.getcwd()).name
+                    worktree_dir = Path(os.getcwd()).parent / f"{reponame}-worktrees" / task_id
+                    worktree_dir.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    try:
+                        print(f"[kanban-dispatcher] Creating git worktree for task {task_id} at {worktree_dir}")
+                        subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", f"task/{task_id}", "origin/main"], check=True, cwd=os.getcwd())
+                        cursor.execute("UPDATE tasks SET workspace_kind = 'path', workspace_path = ? WHERE id = ?", (str(worktree_dir), task_id))
+                    except subprocess.CalledProcessError as e:
+                        print(f"[kanban-dispatcher] Failed to create worktree for task {task_id}: {e}")
+
+            # 4. Programmatic PR Creation for Blocked tasks
+            cursor.execute("""
+                SELECT id, title, workspace_path FROM tasks
+                WHERE status = 'blocked' AND workspace_path IS NOT NULL AND title NOT LIKE '%[PR Opened]%'
+            """)
+            blocked_tasks = cursor.fetchall()
+            for row in blocked_tasks:
+                task_id = row['id']
+                title = row['title']
+                workspace_path = row['workspace_path']
+                
+                print(f"[kanban-dispatcher] Programmatically opening PR for task {task_id}")
+                try:
+                    # Git commit and push
+                    subprocess.run(["git", "add", "."], check=True, cwd=workspace_path)
+                    
+                    # Ignore error if nothing to commit
+                    res = subprocess.run(["git", "commit", "-m", f"Complete task {task_id}"], cwd=workspace_path)
+                    
+                    # Push branch
+                    subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path)
+                    
+                    # Create PR
+                    pr_title = f"Task {task_id}: {title}"
+                    pr_body = f"Automated PR for task {task_id}"
+                    subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path)
+                    
+                    # Cleanup worktree
+                    subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=True, cwd=os.getcwd())
+                    
+                    # Mark PR opened
+                    new_title = f"{title} [PR Opened]"
+                    cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch' WHERE id = ?", (new_title, task_id))
+                    
+                except subprocess.CalledProcessError as e:
+                    print(f"[kanban-dispatcher] Failed to programmatically open PR for task {task_id}: {e}")
             
             conn.commit()
     except Exception as e:
