@@ -17,7 +17,7 @@ A 24/7 AI multi-agent orchestration system built on Hermes Agent. Six specialize
 
 ## The Team
 
-Zero Factory operates using a specialized team of 6 AI agents, each with a distinct role, isolated toolset, and dedicated personality. By separating concerns, we ensure that agents don't get distracted by tasks outside their expertise, maximizing parallel efficiency and output quality.
+Zero Factory operates using a specialized team of 4 AI agents, each with a distinct role, isolated toolset, and dedicated personality. By separating concerns, we ensure that agents don't get distracted by tasks outside their expertise, maximizing parallel efficiency and output quality.
 
 | Agent & Configs | Role | Core Responsibilities |
 | :--- | :--- | :--- |
@@ -194,6 +194,7 @@ Zero Factory automatically discovers and manages multiple projects. To add a new
 - Linux machine (Raspberry Pi or x86_64)
 - Python 3.11+
 - Bun 1.1+
+- sqlite3
 - Hermes Agent installed
 
 ### 1. Clone and Setup

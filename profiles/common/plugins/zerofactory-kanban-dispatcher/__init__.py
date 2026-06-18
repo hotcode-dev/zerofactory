@@ -84,11 +84,17 @@ def run_dispatch_cycle():
                 if not workspace_path:
                     # Resolve to repository based on tenant
                     if tenant and tenant.lower() != 'default':
-                        reponame = tenant
+                        tenant_path = Path(os.path.expanduser(tenant))
+                        if tenant_path.is_absolute():
+                            repo_path = tenant_path
+                            reponame = tenant_path.name
+                        else:
+                            reponame = tenant
+                            repo_path = Path(os.getcwd()).parent / reponame
                     else:
                         reponame = Path(os.getcwd()).name
+                        repo_path = Path(os.getcwd()).parent / reponame
                         
-                    repo_path = Path(os.getcwd()).parent / reponame
                     if not repo_path.exists():
                         repo_path = Path(os.getcwd())
                         reponame = repo_path.name
@@ -125,11 +131,17 @@ def run_dispatch_cycle():
                 
                 # Resolve to repository based on tenant
                 if tenant and tenant.lower() != 'default':
-                    reponame = tenant
+                    tenant_path = Path(os.path.expanduser(tenant))
+                    if tenant_path.is_absolute():
+                        repo_path = tenant_path
+                        reponame = tenant_path.name
+                    else:
+                        reponame = tenant
+                        repo_path = Path(os.getcwd()).parent / reponame
                 else:
                     reponame = Path(os.getcwd()).name
+                    repo_path = Path(os.getcwd()).parent / reponame
                     
-                repo_path = Path(os.getcwd()).parent / reponame
                 if not repo_path.exists():
                     repo_path = Path(os.getcwd())
                 
