@@ -183,6 +183,14 @@ Old completed tasks can be archived:
 hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 ```
 
+## Adding a New Project
+
+Zero Factory automatically discovers and manages multiple projects. To add a new codebase to the factory:
+
+1. Open the Hermes web UI and create a new **Kanban Board** (e.g., `zerohub`).
+2. Add the remote Git URL of the repository into the **Description** field of the new board.
+3. The `zero-factory-improvement-scanner` background cron job will automatically detect the new board, clone the repository into `~/git/` if it doesn't already exist, and begin scanning it for improvements.
+
 
 ## Setup Guide
 
