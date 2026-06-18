@@ -7,15 +7,28 @@ import os
 import subprocess
 from pathlib import Path
 
-DB_PATH = Path.home() / ".hermes" / "kanban.db"
+def get_all_kanban_dbs():
+    dbs = []
+    default_db = Path.home() / ".hermes" / "kanban.db"
+    if default_db.exists():
+        dbs.append(default_db)
+        
+    boards_dir = Path.home() / ".hermes" / "kanban" / "boards"
+    if boards_dir.exists():
+        for board in boards_dir.iterdir():
+            if board.is_dir():
+                board_db = board / "kanban.db"
+                if board_db.exists():
+                    dbs.append(board_db)
+    return dbs
 
-def run_dispatch_cycle():
+def run_dispatch_cycle(db_path):
     """Run a single dispatch cycle to auto-assign tasks and unblock dependencies."""
-    if not DB_PATH.exists():
+    if not db_path.exists():
         return
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
@@ -62,11 +75,12 @@ def run_dispatch_cycle():
                 workspace_path = row['workspace_path']
                 tenant = row['tenant']
                 
-                # Assign if unassigned
-                if not assignee or assignee == 'unassigned':
-                    if "[researcher]" in title:
-                        assignee = "researcher"
-                    elif "[qa]" in title:
+                # Sanitize assignee - protect against LLM hallucination (e.g. 'researcher-a')
+                valid_profiles = ('builder', 'reviewer', 'qa', 'orchestrator')
+                
+                # Assign if unassigned or invalid
+                if not assignee or assignee == 'unassigned' or assignee not in valid_profiles:
+                    if "[qa]" in title:
                         assignee = "qa"
                     elif "[reviewer]" in title:
                         assignee = "reviewer"
@@ -228,7 +242,8 @@ def run_dispatch_cycle():
 def kanban_dispatcher_loop():
     """Background loop."""
     while True:
-        run_dispatch_cycle()
+        for db in get_all_kanban_dbs():
+            run_dispatch_cycle(db)
         time.sleep(30)
 
 def register(ctx):
@@ -246,7 +261,9 @@ def register(ctx):
         
     def cmd_run(args):
         print("Running zerofactory-kanban-dispatcher cycle once...")
-        run_dispatch_cycle()
+        for db in get_all_kanban_dbs():
+            print(f"Processing DB: {db}")
+            run_dispatch_cycle(db)
         print("Done.")
         
     ctx.register_cli_command(
