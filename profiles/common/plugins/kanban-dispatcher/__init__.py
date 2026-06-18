@@ -88,42 +88,83 @@ def run_dispatch_cycle():
                     except subprocess.CalledProcessError as e:
                         print(f"[kanban-dispatcher] Failed to create worktree for task {task_id}: {e}")
 
-            # 4. Programmatic PR Creation for Blocked tasks
+            # 4. Handle Blocked tasks (Programmatic PRs and Reviewer Loop)
             cursor.execute("""
-                SELECT id, title, workspace_path FROM tasks
-                WHERE status = 'blocked' AND workspace_path IS NOT NULL AND title NOT LIKE '%[PR Opened]%'
+                SELECT id, title, workspace_path, assignee FROM tasks
+                WHERE status = 'blocked' AND workspace_path IS NOT NULL
             """)
             blocked_tasks = cursor.fetchall()
             for row in blocked_tasks:
                 task_id = row['id']
                 title = row['title']
                 workspace_path = row['workspace_path']
+                assignee = row['assignee']
                 
-                print(f"[kanban-dispatcher] Programmatically opening PR for task {task_id}")
-                try:
-                    # Git commit and push
-                    subprocess.run(["git", "add", "."], check=True, cwd=workspace_path)
-                    
-                    # Ignore error if nothing to commit
-                    res = subprocess.run(["git", "commit", "-m", f"Complete task {task_id}"], cwd=workspace_path)
-                    
-                    # Push branch
-                    subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path)
-                    
-                    # Create PR
-                    pr_title = f"Task {task_id}: {title}"
-                    pr_body = f"Automated PR for task {task_id}"
-                    subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path)
-                    
-                    # Cleanup worktree
-                    subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=True, cwd=os.getcwd())
-                    
-                    # Mark PR opened
-                    new_title = f"{title} [PR Opened]"
-                    cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch' WHERE id = ?", (new_title, task_id))
-                    
-                except subprocess.CalledProcessError as e:
-                    print(f"[kanban-dispatcher] Failed to programmatically open PR for task {task_id}: {e}")
+                if assignee != 'reviewer':
+                    # Author finished coding -> Push, PR, and Route to Reviewer
+                    print(f"[kanban-dispatcher] Programmatically opening/updating PR for task {task_id}")
+                    try:
+                        # Git commit and push
+                        subprocess.run(["git", "add", "."], check=True, cwd=workspace_path)
+                        # Ignore error if nothing to commit
+                        subprocess.run(["git", "commit", "-m", f"Complete task {task_id}"], cwd=workspace_path)
+                        subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path)
+                        
+                        # Create PR if title doesn't have [PR Opened]
+                        if "[PR Opened" not in title:
+                            pr_title = f"Task {task_id}: {title}"
+                            pr_body = f"Automated PR for task {task_id}"
+                            subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], cwd=workspace_path)
+                        
+                        # Cleanup worktree
+                        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=True, cwd=os.getcwd())
+                        
+                        # Route to Reviewer
+                        import re
+                        new_title = title
+                        if not re.search(r'\[PR Opened by .*?\]', title):
+                            new_title = f"{title} [PR Opened by {assignee}]"
+                        cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch', assignee = 'reviewer', status = 'ready' WHERE id = ?", (new_title, task_id))
+                        
+                    except subprocess.CalledProcessError as e:
+                        print(f"[kanban-dispatcher] Failed to process blocked task {task_id} (Author): {e}")
+
+                else:
+                    # Reviewer finished reviewing -> Check GitHub PR State
+                    print(f"[kanban-dispatcher] Checking Reviewer decision for task {task_id}")
+                    try:
+                        # Cleanup Reviewer's worktree
+                        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=True, cwd=os.getcwd())
+                        
+                        # Check PR State
+                        import json
+                        import re
+                        result = subprocess.run(["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision"], capture_output=True, text=True, cwd=os.getcwd())
+                        if result.returncode == 0:
+                            data = json.loads(result.stdout)
+                            decision = data.get("reviewDecision")
+                            
+                            if decision == "CHANGES_REQUESTED":
+                                print(f"[kanban-dispatcher] Changes requested for task {task_id}. Routing back to author.")
+                                # Find original author from title
+                                match = re.search(r'\[PR Opened by (.*?)\]', title)
+                                prev_author = match.group(1) if match else 'builder'
+                                
+                                cursor.execute("UPDATE tasks SET workspace_path = NULL, workspace_kind = 'scratch', assignee = ?, status = 'ready' WHERE id = ?", (prev_author, task_id))
+                            
+                            elif decision == "APPROVED":
+                                print(f"[kanban-dispatcher] Task {task_id} approved. Sending to Human Review.")
+                                new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
+                                cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch' WHERE id = ?", (new_title, task_id))
+                                
+                            else:
+                                print(f"[kanban-dispatcher] Task {task_id} reviewed but no decision found. Bouncing back to reviewer.")
+                                cursor.execute("UPDATE tasks SET workspace_path = NULL, workspace_kind = 'scratch', status = 'ready' WHERE id = ?", (task_id,))
+                        else:
+                            print(f"[kanban-dispatcher] Could not fetch PR state for task {task_id}: {result.stderr}")
+                            
+                    except subprocess.CalledProcessError as e:
+                        print(f"[kanban-dispatcher] Failed to process blocked task {task_id} (Reviewer): {e}")
             
             conn.commit()
     except Exception as e:
