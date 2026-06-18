@@ -1,38 +1,9 @@
 {
   "jobs": [
     {
-      "id": "zero-factory-board-sync",
-      "name": "Zero Factory board sync",
-      "prompt": "Sync the kanban board - check for any orphaned tasks, and ensure all pipeline stages are represented. Report board health status.",
-      "skills": [],
-      "skill": null,
-      "model": null,
-      "provider": null,
-      "base_url": null,
-      "script": null,
-      "no_agent": false,
-      "context_from": null,
-      "schedule": {
-        "kind": "interval",
-        "minutes": 60,
-        "display": "every 60m"
-      },
-      "schedule_display": "every 60m",
-      "enabled": true,
-      "state": "scheduled",
-      "paused_at": null,
-      "paused_reason": null,
-      "created_at": "2026-05-27T03:32:51.061594+07:00",
-      "deliver": null,
-      "origin": null,
-      "enabled_toolsets": null,
-      "workdir": null,
-      "profile": null
-    },
-    {
       "id": "zero-factory-task-queue-check",
       "name": "Zero Factory task queue check",
-      "prompt": "Check Zero Factory task queue - any tasks stuck in 'running' too long? Any tasks stuck in 'blocked' with '[Human Review]'? Any PRs stuck waiting for Reviewer feedback? Report on task throughput and bottlenecks.",
+      "prompt": "Check Zero Factory task queue - any tasks stuck in 'running' too long? Any tasks stuck in 'blocked' with '[Human Review]'? Any PRs stuck waiting for Reviewer feedback? Create a new Kanban task in the 'Default' board titled '[Report] Queue Health' and place your bottleneck report in the task description.",
       "skills": [],
       "skill": null,
       "model": null,
@@ -54,14 +25,18 @@
       "created_at": "2026-05-27T03:33:55.582320+07:00",
       "deliver": null,
       "origin": null,
-      "enabled_toolsets": null,
+      "enabled_toolsets": [
+        "terminal",
+        "file",
+        "kanban"
+      ],
       "workdir": null,
       "profile": null
     },
     {
       "id": "zero-factory-daily-report",
       "name": "Zero Factory daily report",
-      "prompt": "Generate a comprehensive daily report for Zero Factory. Include: total tasks completed, tasks currently running, tasks blocked, agent performance, and any issues. Summarize with actionable items.",
+      "prompt": "Generate a comprehensive daily report for Zero Factory. Include: total tasks completed, tasks currently running, tasks blocked, agent performance, and any issues. Summarize with actionable items. Create a new Kanban task in the 'Default' board titled '[Report] Daily Report' and place your full report in the task description.",
       "skills": [],
       "skill": null,
       "model": null,
@@ -83,7 +58,11 @@
       "created_at": "2026-05-27T03:35:15.996896+07:00",
       "deliver": null,
       "origin": null,
-      "enabled_toolsets": null,
+      "enabled_toolsets": [
+        "terminal",
+        "file",
+        "kanban"
+      ],
       "workdir": null,
       "profile": null
     },
