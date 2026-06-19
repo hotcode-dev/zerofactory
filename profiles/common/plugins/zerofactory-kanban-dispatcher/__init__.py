@@ -76,13 +76,11 @@ def run_dispatch_cycle(db_path):
                 tenant = row['tenant']
                 
                 # Sanitize assignee - protect against LLM hallucination (e.g. 'researcher-a')
-                valid_profiles = ('builder', 'reviewer', 'qa', 'orchestrator')
+                valid_profiles = ('builder', 'reviewer', 'orchestrator')
                 
                 # Assign if unassigned or invalid
                 if not assignee or assignee == 'unassigned' or assignee not in valid_profiles:
-                    if "[qa]" in title:
-                        assignee = "qa"
-                    elif "[reviewer]" in title:
+                    if "[reviewer]" in title:
                         assignee = "reviewer"
                     elif "[builder]" in title:
                         assignee = "builder"
@@ -166,8 +164,8 @@ def run_dispatch_cycle(db_path):
                     repo_path = Path(os.getcwd())
                     reponame = repo_path.name
                 
-                if assignee not in ('reviewer', 'qa'):
-                    # Author finished coding -> Push, PR, and Route to QA
+                if assignee != 'reviewer':
+                    # Author finished coding -> Push, PR, and Route to Reviewer
                     print(f"[zerofactory-kanban-dispatcher] Programmatically opening/updating PR for task {task_id}")
                     try:
                         # Git commit and push
@@ -185,12 +183,12 @@ def run_dispatch_cycle(db_path):
                         # Cleanup worktree ONLY if everything above succeeded
                         subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=True, cwd=repo_path)
                         
-                        # Route to QA first
+                        # Route to Reviewer
                         import re
                         new_title = title
                         if not re.search(r'\[PR Opened by .*?\]', title):
                             new_title = f"{title} [PR Opened by {assignee}]"
-                        cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch', assignee = 'qa', status = 'ready' WHERE id = ?", (new_title, task_id))
+                        cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch', assignee = 'reviewer', status = 'ready' WHERE id = ?", (new_title, task_id))
                         
                     except subprocess.CalledProcessError as e:
                         print(f"[zerofactory-kanban-dispatcher] Failed to process blocked task {task_id} (Author): {e}. Worktree preserved for debugging.")
@@ -225,14 +223,10 @@ def run_dispatch_cycle(db_path):
                                 cursor.execute("UPDATE tasks SET priority = priority - 1, workspace_path = NULL, workspace_kind = 'scratch', assignee = ?, status = 'ready' WHERE id = ?", (prev_author, task_id))
                             
                             elif decision == "APPROVED":
-                                if assignee == 'qa':
-                                    print(f"[zerofactory-kanban-dispatcher] QA approved task {task_id}. Routing to Reviewer.")
-                                    cursor.execute("UPDATE tasks SET workspace_path = NULL, workspace_kind = 'scratch', assignee = 'reviewer', status = 'ready' WHERE id = ?", (task_id,))
-                                else:
-                                    print(f"[zerofactory-kanban-dispatcher] Reviewer approved task {task_id}. Sending to Human Review.")
-                                    new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
-                                    cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch' WHERE id = ?", (new_title, task_id))
-                                
+                                print(f"[zerofactory-kanban-dispatcher] Reviewer approved task {task_id}. Sending to Human Review.")
+                                new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
+                                cursor.execute("UPDATE tasks SET title = ?, status = 'blocked' WHERE id = ?", (new_title, task_id))
+                            
                             else:
                                 print(f"[zerofactory-kanban-dispatcher] Task {task_id} reviewed by {assignee} but no decision found. Bouncing back.")
                                 cursor.execute("UPDATE tasks SET workspace_path = NULL, workspace_kind = 'scratch', status = 'ready' WHERE id = ?", (task_id,))
