@@ -106,7 +106,10 @@ def run_dispatch_cycle(db_path):
                             reponame = tenant
                             repo_path = Path(os.getcwd()).parent / reponame
                     else:
-                        reponame = Path(os.getcwd()).name
+                        if "boards" in db_path.parts:
+                            reponame = db_path.parent.name
+                        else:
+                            reponame = Path(os.getcwd()).name
                         repo_path = Path(os.getcwd()).parent / reponame
                         
                     if not repo_path.exists():
@@ -153,11 +156,15 @@ def run_dispatch_cycle(db_path):
                         reponame = tenant
                         repo_path = Path(os.getcwd()).parent / reponame
                 else:
-                    reponame = Path(os.getcwd()).name
+                    if "boards" in db_path.parts:
+                        reponame = db_path.parent.name
+                    else:
+                        reponame = Path(os.getcwd()).name
                     repo_path = Path(os.getcwd()).parent / reponame
                     
                 if not repo_path.exists():
                     repo_path = Path(os.getcwd())
+                    reponame = repo_path.name
                 
                 if assignee not in ('reviewer', 'qa'):
                     # Author finished coding -> Push, PR, and Route to QA
