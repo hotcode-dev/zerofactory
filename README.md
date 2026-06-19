@@ -112,7 +112,7 @@ For the exact list of automated tasks, their schedules, and behaviors, please re
 8. 🛑 **Human Merge**: The PR bounces between the author and Reviewer indefinitely (taking advantage of free local compute) until you step in on GitHub and manually merge the PR.
 9. **Completion**: The Kanban Dispatcher detects the `MERGED` state on GitHub and automatically marks the task as `Done`
 
-Parallel execution: Review and QA run concurrently.
+
 
 ## Communication Channels
 

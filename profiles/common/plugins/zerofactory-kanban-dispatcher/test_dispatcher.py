@@ -107,7 +107,7 @@ def test_kanban_dispatcher_full_lifecycle(mock_db_path):
         
     task = get_task()
     assert task['status'] == 'ready'
-    assert task['assignee'] == 'qa'
+    assert task['assignee'] == 'reviewer'
     assert "[PR Opened by builder]" in task['title']
 
     # Helper for simulating GH CLI reviews
@@ -128,7 +128,7 @@ def test_kanban_dispatcher_full_lifecycle(mock_db_path):
         with patch("subprocess.run", side_effect=mock_subprocess_run):
             dispatcher.run_dispatch_cycle()
 
-    # Step 3: QA Rejects
+    # Step 3: Reviewer Rejects
     simulate_agent_work("CHANGES_REQUESTED")
     task = get_task()
     assert task['status'] == 'ready'
@@ -142,37 +142,15 @@ def test_kanban_dispatcher_full_lifecycle(mock_db_path):
             conn.commit()
         dispatcher.run_dispatch_cycle()
     task = get_task()
-    assert task['assignee'] == 'qa'
-
-    # Step 5: QA Approves
-    simulate_agent_work("APPROVED")
-    task = get_task()
-    assert task['status'] == 'ready'
     assert task['assignee'] == 'reviewer'
 
-    # Step 6: Reviewer Rejects
-    simulate_agent_work("CHANGES_REQUESTED")
-    task = get_task()
-    assert task['assignee'] == 'builder'
-    assert task['priority'] == -2
-
-    # Step 7: Builder fixes, QA approves
-    with patch("subprocess.run", return_value=MockProcess()):
-        with sqlite3.connect(mock_db_path) as conn:
-            conn.execute("UPDATE tasks SET status = 'blocked', workspace_path = ? WHERE id = ?", (f"/tmp/wt", task_id))
-            conn.commit()
-        dispatcher.run_dispatch_cycle()
-    simulate_agent_work("APPROVED")
-    task = get_task()
-    assert task['assignee'] == 'reviewer'
-
-    # Step 8: Reviewer Approves
+    # Step 5: Reviewer Approves
     simulate_agent_work("APPROVED")
     task = get_task()
     assert task['status'] == 'blocked'
     assert "[Human Review]" in task['title']
 
-    # Step 9: Human Merges
+    # Step 6: Human Merges
     simulate_agent_work("APPROVED", mock_state="MERGED")
     task = get_task()
     assert task['status'] == 'done'
