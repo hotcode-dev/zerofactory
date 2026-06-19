@@ -172,17 +172,17 @@ def run_dispatch_cycle(db_path):
                     try:
                         # Git commit and push
                         subprocess.run(["git", "add", "."], check=True, cwd=workspace_path)
-                        # Ignore error if nothing to commit
-                        subprocess.run(["git", "commit", "-m", f"Complete task {task_id}"], cwd=workspace_path)
+                        # Require commits. If nothing to commit (agent escaped or hallucinated), this will intentionally fail and preserve worktree!
+                        subprocess.run(["git", "commit", "-m", f"Complete task {task_id}"], check=True, cwd=workspace_path)
                         subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path)
                         
                         # Create PR if title doesn't have [PR Opened]
                         if "[PR Opened" not in title:
                             pr_title = f"Task {task_id}: {title}"
                             pr_body = f"Automated PR for task {task_id}"
-                            subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], cwd=workspace_path)
+                            subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path)
                         
-                        # Cleanup worktree
+                        # Cleanup worktree ONLY if everything above succeeded
                         subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=True, cwd=repo_path)
                         
                         # Route to QA first
@@ -193,7 +193,7 @@ def run_dispatch_cycle(db_path):
                         cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch', assignee = 'qa', status = 'ready' WHERE id = ?", (new_title, task_id))
                         
                     except subprocess.CalledProcessError as e:
-                        print(f"[zerofactory-kanban-dispatcher] Failed to process blocked task {task_id} (Author): {e}")
+                        print(f"[zerofactory-kanban-dispatcher] Failed to process blocked task {task_id} (Author): {e}. Worktree preserved for debugging.")
 
                 else:
                     # Reviewer finished reviewing -> Check GitHub PR State
