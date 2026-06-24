@@ -64,7 +64,7 @@ def run_dispatch_cycle(db_path):
 
             # 3. Auto-Assign Ready tasks and setup git worktree
             cursor.execute("""
-                SELECT id, title, workspace_path, assignee, tenant FROM tasks
+                SELECT id, title, workspace_path, workspace_kind, assignee, tenant FROM tasks
                 WHERE status = 'ready'
             """)
             ready_tasks = cursor.fetchall()
@@ -73,6 +73,7 @@ def run_dispatch_cycle(db_path):
                 title = row['title'] or ""
                 assignee = row['assignee']
                 workspace_path = row['workspace_path']
+                workspace_kind = row['workspace_kind']
                 tenant = row['tenant']
                 
                 # Sanitize assignee - protect against LLM hallucination (e.g. 'researcher-a')
@@ -92,8 +93,8 @@ def run_dispatch_cycle(db_path):
                     print(f"[zerofactory-kanban-dispatcher] Auto-assigning task {task_id} to {assignee} and clearing hallucinated skills")
                     cursor.execute("UPDATE tasks SET assignee = ?, skills = '[]' WHERE id = ?", (assignee, task_id))
                 
-                # Create programmatic worktree if not set
-                if not workspace_path:
+                # Create programmatic worktree if not set or if it's a scratch workspace
+                if not workspace_path or workspace_kind == 'scratch':
                     # Resolve to repository based on tenant
                     if tenant and tenant.lower() != 'default':
                         tenant_path = Path(os.path.expanduser(tenant))
@@ -131,10 +132,10 @@ def run_dispatch_cycle(db_path):
                     except subprocess.CalledProcessError as e:
                         print(f"[zerofactory-kanban-dispatcher] Failed to create worktree for task {task_id} in {repo_path}: {e}")
 
-            # 4. Handle Blocked tasks (Programmatic PRs and Reviewer Loop)
+            # 4. Handle Blocked/Done tasks (Programmatic PRs and Reviewer Loop)
             cursor.execute("""
                 SELECT id, title, workspace_path, assignee, tenant FROM tasks
-                WHERE status = 'blocked' AND workspace_path IS NOT NULL
+                WHERE status IN ('blocked', 'done') AND workspace_path IS NOT NULL AND workspace_kind = 'dir'
             """)
             blocked_tasks = cursor.fetchall()
             for row in blocked_tasks:
@@ -191,7 +192,7 @@ def run_dispatch_cycle(db_path):
                         cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch', assignee = 'reviewer', status = 'ready' WHERE id = ?", (new_title, task_id))
                         
                     except subprocess.CalledProcessError as e:
-                        print(f"[zerofactory-kanban-dispatcher] Failed to process blocked task {task_id} (Author): {e}. Worktree preserved for debugging.")
+                        print(f"[zerofactory-kanban-dispatcher] Failed to process blocked/done task {task_id} (Author): {e}. Worktree preserved for debugging.")
 
                 else:
                     # Reviewer finished reviewing -> Check GitHub PR State
@@ -234,7 +235,7 @@ def run_dispatch_cycle(db_path):
                             print(f"[zerofactory-kanban-dispatcher] Could not fetch PR state for task {task_id}: {result.stderr}")
                             
                     except subprocess.CalledProcessError as e:
-                        print(f"[zerofactory-kanban-dispatcher] Failed to process blocked task {task_id} (Reviewer): {e}")
+                        print(f"[zerofactory-kanban-dispatcher] Failed to process blocked/done task {task_id} (Reviewer): {e}")
             
             conn.commit()
     except Exception as e:
