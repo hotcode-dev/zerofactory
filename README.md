@@ -45,9 +45,9 @@ graph TD
     
     Todo -->|Dispatcher Auto-Promotes| Ready[Kanban: Ready]:::kanban
     
-    Ready -->|Dispatcher Auto-Assigns & Creates Worktree| InProgress[Kanban: In progress]:::kanban
+    Ready -->|Dispatcher Auto-Assigns & Creates Worktree| Running[Kanban: Running]:::kanban
     
-    InProgress --> AgentWork{Specialized Agent}
+    Running --> AgentWork{Specialized Agent}
     
     subgraph Zero Factory
         AgentWork -.-> Builder
@@ -87,7 +87,7 @@ Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key 
 - **Triage** — Initial goals, auto-decomposing
 - **Todo** — Waiting for dispatcher to auto-promote
 - **Ready** — Ready for agent pickup
-- **In progress** — Actively being worked on (in isolated git worktree)
+- **Running** — Actively being worked on (in isolated git worktree)
 - **Blocked** — Human review required (GitHub PR)
 - **Done** — Completed
 
@@ -106,10 +106,10 @@ For the exact list of automated tasks, their schedules, and behaviors, please re
 2. **Auto-Triage**: Kanban decomposer breaks goal down into `Todo` tickets
 3. **Auto-Promotion**: Kanban Dispatcher automatically promotes `Todo` tasks to `Ready`
 4. **Execution Setup**: Kanban Dispatcher assigns the task and creates an isolated Git worktree for the agent
-5. **Execution**: Specialists execute their tasks in `In progress`
+5. **Execution**: Specialists execute their tasks in `Running`
 6. **PR Creation**: When an agent finishes, Kanban Dispatcher automatically pushes the branch, opens a GitHub PR, and hands it off to the Reviewer
-7. **Continuous Polish**: The Reviewer acts as an infinite improvement engine. It is instructed to **never approve**, but to constantly find ways to refactor, optimize, and enhance the code. The Dispatcher routes it back to the original author for fixes.
-8. 🛑 **Human Merge**: The PR bounces between the author and Reviewer indefinitely (taking advantage of free local compute) until you step in on GitHub and manually merge the PR.
+7. **Continuous Polish**: The Reviewer acts as an improvement engine. It is instructed to iteratively find ways to refactor, optimize, and enhance the code. After a cap of 3 rounds, it will formally approve the PR to prevent over-engineering. The Dispatcher routes it back to the original author for fixes.
+8. 🛑 **Human Merge**: The PR bounces between the author and Reviewer up to 3 times (taking advantage of free local compute) until it is approved for you to manually merge on GitHub.
 9. **Completion**: The Kanban Dispatcher detects the `MERGED` state on GitHub and automatically marks the task as `Done`
 
 
@@ -146,7 +146,7 @@ Each agent has a `description` field in its `config.custom.yaml` for quick ident
 ### States
 
 ```
-Triage → Todo → Ready → In progress → Blocked → Done
+Triage → Todo → Ready → Running → Blocked → Done
 ```
 
 ### Task States Explained
@@ -156,7 +156,7 @@ Triage → Todo → Ready → In progress → Blocked → Done
 | `Triage` | Initial goal received | Auto-decompose |
 | `Todo` | Sub-tasks generated | Auto-promoted to Ready |
 | `Ready` | Approved for work | Dispatcher assigns & configures worktree |
-| `In progress` | Agent actively working | Monitor progress |
+| `Running` | Agent actively working | Monitor progress |
 | `Blocked` | PR created / Waiting on human | Review PR / Unblock |
 | `Done` | Task completed | Archive |
 

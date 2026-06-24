@@ -48,38 +48,9 @@ def run_dispatch_cycle(db_path):
                 print(f"[zerofactory-kanban-dispatcher] Unblocking task {row['id']}: {row['title']}")
                 cursor.execute("UPDATE tasks SET status = 'ready' WHERE id = ?", (row['id'],))
             
-            # 2. Auto-promote Todo to Ready (WIP Limit enforced)
-            MAX_ACTIVE_TASKS = 3
-            
-            cursor.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'in progress')")
-            active_count = cursor.fetchone()[0]
-            
-            if active_count < MAX_ACTIVE_TASKS:
-                limit = MAX_ACTIVE_TASKS - active_count
-                cursor.execute("SELECT id FROM tasks WHERE status = 'todo' ORDER BY priority DESC LIMIT ?", (limit,))
-                todos = cursor.fetchall()
-                for row in todos:
-                    print(f"[zerofactory-kanban-dispatcher] Auto-promoting Todo task {row['id']} to Ready (WIP Slot Available)")
-                    cursor.execute("UPDATE tasks SET status = 'ready' WHERE id = ?", (row['id'],))
-
-            # 3. Auto-Assign Ready tasks and setup git worktree
-            cursor.execute("""
-                SELECT id, title, workspace_path, workspace_kind, assignee, tenant FROM tasks
-                WHERE status = 'ready'
-            """)
-            ready_tasks = cursor.fetchall()
-            for row in ready_tasks:
-                task_id = row['id']
-                title = row['title'] or ""
-                assignee = row['assignee']
-                workspace_path = row['workspace_path']
-                workspace_kind = row['workspace_kind']
-                tenant = row['tenant']
-                
-                # Sanitize assignee - protect against LLM hallucination (e.g. 'researcher-a')
+            def setup_worktree(cursor, task_id, title, assignee, tenant, db_path):
+                # Sanitize assignee
                 valid_profiles = ('builder', 'reviewer', 'orchestrator')
-                
-                # Assign if unassigned or invalid
                 if not assignee or assignee == 'unassigned' or assignee not in valid_profiles:
                     if "[reviewer]" in title:
                         assignee = "reviewer"
@@ -88,49 +59,68 @@ def run_dispatch_cycle(db_path):
                     elif "[orchestrator]" in title:
                         assignee = "orchestrator"
                     else:
-                        assignee = "builder" # Default to builder
-                    
+                        assignee = "builder"
                     print(f"[zerofactory-kanban-dispatcher] Auto-assigning task {task_id} to {assignee} and clearing hallucinated skills")
                     cursor.execute("UPDATE tasks SET assignee = ?, skills = '[]' WHERE id = ?", (assignee, task_id))
                 
-                # Create programmatic worktree if not set or if it's a scratch workspace
-                if not workspace_path or workspace_kind == 'scratch':
-                    # Resolve to repository based on tenant
-                    if tenant and tenant.lower() != 'default':
-                        tenant_path = Path(os.path.expanduser(tenant))
-                        if tenant_path.is_absolute():
-                            repo_path = tenant_path
-                            reponame = tenant_path.name
-                        else:
-                            reponame = tenant
-                            repo_path = Path(os.getcwd()).parent / reponame
+                # Resolve repo path
+                if tenant and tenant.lower() != 'default':
+                    tenant_path = Path(os.path.expanduser(tenant))
+                    if tenant_path.is_absolute():
+                        repo_path = tenant_path
+                        reponame = tenant_path.name
                     else:
-                        if "boards" in db_path.parts:
-                            reponame = db_path.parent.name
-                        else:
-                            reponame = Path(os.getcwd()).name
+                        reponame = tenant
                         repo_path = Path(os.getcwd()).parent / reponame
-                        
-                    if not repo_path.exists():
-                        repo_path = Path(os.getcwd())
-                        reponame = repo_path.name
-                        
-                    worktree_dir = repo_path.parent / f"{reponame}-worktrees" / task_id
-                    worktree_dir.parent.mkdir(parents=True, exist_ok=True)
+                else:
+                    if "boards" in db_path.parts:
+                        reponame = db_path.parent.name
+                    else:
+                        reponame = Path(os.getcwd()).name
+                    repo_path = Path(os.getcwd()).parent / reponame
                     
-                    try:
-                        branch_name = f"task/{task_id}"
-                        # Check if branch exists locally in the target repo
-                        res = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"], cwd=repo_path)
-                        if res.returncode == 0:
-                            print(f"[zerofactory-kanban-dispatcher] Creating git worktree for existing branch {branch_name} at {worktree_dir}")
-                            subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path)
-                        else:
-                            print(f"[zerofactory-kanban-dispatcher] Creating new git worktree branch {branch_name} at {worktree_dir}")
-                            subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, "origin/main"], check=True, cwd=repo_path)
-                        cursor.execute("UPDATE tasks SET workspace_kind = 'dir', workspace_path = ? WHERE id = ?", (str(worktree_dir), task_id))
-                    except subprocess.CalledProcessError as e:
-                        print(f"[zerofactory-kanban-dispatcher] Failed to create worktree for task {task_id} in {repo_path}: {e}")
+                if not repo_path.exists():
+                    repo_path = Path(os.getcwd())
+                    reponame = repo_path.name
+                    
+                worktree_dir = repo_path.parent / f"{reponame}-worktrees" / task_id
+                worktree_dir.parent.mkdir(parents=True, exist_ok=True)
+                
+                try:
+                    branch_name = f"task/{task_id}"
+                    res = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"], cwd=repo_path)
+                    if res.returncode == 0:
+                        print(f"[zerofactory-kanban-dispatcher] Creating git worktree for existing branch {branch_name} at {worktree_dir}")
+                        subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path)
+                    else:
+                        print(f"[zerofactory-kanban-dispatcher] Creating new git worktree branch {branch_name} at {worktree_dir}")
+                        subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, "origin/main"], check=True, cwd=repo_path)
+                    cursor.execute("UPDATE tasks SET workspace_kind = 'dir', workspace_path = ? WHERE id = ?", (str(worktree_dir), task_id))
+                    return str(worktree_dir)
+                except subprocess.CalledProcessError as e:
+                    print(f"[zerofactory-kanban-dispatcher] Failed to create worktree for task {task_id} in {repo_path}: {e}")
+                    return None
+
+            # 2 & 3. Auto-Assign, Setup Worktree, and Promote Todo to Ready (WIP Limit enforced)
+            MAX_ACTIVE_TASKS = 3
+            
+            cursor.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')")
+            active_count = cursor.fetchone()[0]
+            
+            if active_count < MAX_ACTIVE_TASKS:
+                limit = MAX_ACTIVE_TASKS - active_count
+                cursor.execute("""
+                    SELECT id, title, workspace_path, workspace_kind, assignee, tenant FROM tasks
+                    WHERE status = 'todo' ORDER BY priority DESC LIMIT ?
+                """, (limit,))
+                todos = cursor.fetchall()
+                for row in todos:
+                    task_id = row['id']
+                    
+                    setup_worktree(cursor, task_id, row['title'] or "", row['assignee'], row['tenant'], db_path)
+
+                    print(f"[zerofactory-kanban-dispatcher] Auto-promoting Todo task {task_id} to Ready (WIP Slot Available)")
+                    cursor.execute("UPDATE tasks SET status = 'ready' WHERE id = ?", (task_id,))
 
             # 4. Handle Blocked/Done tasks (Programmatic PRs and Reviewer Loop)
             cursor.execute("""
@@ -189,7 +179,11 @@ def run_dispatch_cycle(db_path):
                         new_title = title
                         if not re.search(r'\[PR Opened by .*?\]', title):
                             new_title = f"{title} [PR Opened by {assignee}]"
-                        cursor.execute("UPDATE tasks SET title = ?, workspace_path = NULL, workspace_kind = 'scratch', assignee = 'reviewer', status = 'ready' WHERE id = ?", (new_title, task_id))
+                        
+                        # Set up worktree for Reviewer and mark ready
+                        cursor.execute("UPDATE tasks SET title = ?, assignee = 'reviewer' WHERE id = ?", (new_title, task_id))
+                        setup_worktree(cursor, task_id, new_title, 'reviewer', tenant, db_path)
+                        cursor.execute("UPDATE tasks SET status = 'ready' WHERE id = ?", (task_id,))
                         
                     except subprocess.CalledProcessError as e:
                         print(f"[zerofactory-kanban-dispatcher] Failed to process blocked/done task {task_id} (Author): {e}. Worktree preserved for debugging.")
@@ -221,7 +215,9 @@ def run_dispatch_cycle(db_path):
                                 match = re.search(r'\[PR Opened by (.*?)\]', title)
                                 prev_author = match.group(1) if match else 'builder'
                                 
-                                cursor.execute("UPDATE tasks SET priority = priority - 1, workspace_path = NULL, workspace_kind = 'scratch', assignee = ?, status = 'ready' WHERE id = ?", (prev_author, task_id))
+                                cursor.execute("UPDATE tasks SET priority = priority - 1, assignee = ? WHERE id = ?", (prev_author, task_id))
+                                setup_worktree(cursor, task_id, title, prev_author, tenant, db_path)
+                                cursor.execute("UPDATE tasks SET status = 'ready' WHERE id = ?", (task_id,))
                             
                             elif decision == "APPROVED":
                                 print(f"[zerofactory-kanban-dispatcher] Reviewer approved task {task_id}. Sending to Human Review.")
@@ -230,7 +226,8 @@ def run_dispatch_cycle(db_path):
                             
                             else:
                                 print(f"[zerofactory-kanban-dispatcher] Task {task_id} reviewed by {assignee} but no decision found. Bouncing back.")
-                                cursor.execute("UPDATE tasks SET workspace_path = NULL, workspace_kind = 'scratch', status = 'ready' WHERE id = ?", (task_id,))
+                                setup_worktree(cursor, task_id, title, assignee, tenant, db_path)
+                                cursor.execute("UPDATE tasks SET status = 'ready' WHERE id = ?", (task_id,))
                         else:
                             print(f"[zerofactory-kanban-dispatcher] Could not fetch PR state for task {task_id}: {result.stderr}")
                             

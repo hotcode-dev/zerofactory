@@ -63,8 +63,8 @@ def mock_db_path(tmp_path):
         """)
         conn.commit()
     
-    # Patch the global DB_PATH in the dispatcher module
-    with patch.object(dispatcher, 'DB_PATH', db_file):
+    # Patch the global get_all_kanban_dbs in the dispatcher module
+    with patch.object(dispatcher, 'get_all_kanban_dbs', return_value=[db_file]):
         yield db_file
 
 class MockProcess:
@@ -92,7 +92,8 @@ def test_kanban_dispatcher_full_lifecycle(mock_db_path):
             return dict(conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone())
 
     # Step 1: Promote and assign
-    dispatcher.run_dispatch_cycle()
+    with patch("subprocess.run", return_value=MockProcess()):
+        dispatcher.run_dispatch_cycle(mock_db_path)
     task = get_task()
     assert task['status'] == 'ready'
     assert task['assignee'] == 'builder'
@@ -103,7 +104,7 @@ def test_kanban_dispatcher_full_lifecycle(mock_db_path):
         with sqlite3.connect(mock_db_path) as conn:
             conn.execute("UPDATE tasks SET status = 'blocked' WHERE id = ?", (task_id,))
             conn.commit()
-        dispatcher.run_dispatch_cycle()
+        dispatcher.run_dispatch_cycle(mock_db_path)
         
     task = get_task()
     assert task['status'] == 'ready'
@@ -126,7 +127,7 @@ def test_kanban_dispatcher_full_lifecycle(mock_db_path):
             conn.commit()
             
         with patch("subprocess.run", side_effect=mock_subprocess_run):
-            dispatcher.run_dispatch_cycle()
+            dispatcher.run_dispatch_cycle(mock_db_path)
 
     # Step 3: Reviewer Rejects
     simulate_agent_work("CHANGES_REQUESTED")
@@ -140,7 +141,7 @@ def test_kanban_dispatcher_full_lifecycle(mock_db_path):
         with sqlite3.connect(mock_db_path) as conn:
             conn.execute("UPDATE tasks SET status = 'blocked', workspace_path = ? WHERE id = ?", (f"/tmp/wt", task_id))
             conn.commit()
-        dispatcher.run_dispatch_cycle()
+        dispatcher.run_dispatch_cycle(mock_db_path)
     task = get_task()
     assert task['assignee'] == 'reviewer'
 
