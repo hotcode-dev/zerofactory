@@ -236,7 +236,7 @@ All automation lives in the Makefile at the repository root. Each target is self
 | `skills-link` | Runs `bin/link-skills.sh` to link common skills (e.g. research-paper-writing) to all profiles | `make skills-link` |
 | `merge-all` | Meta-target: runs `config-merge jobs-merge soul-merge skills-link` in sequence | `make merge-all` |
 
-> **Note:** After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, run `make merge-all` to regenerate all runtime configurations.
+> **CRITICAL RULE FOR AI AGENTS:** NEVER FORGET TO RUN `make merge-all`! After ANY edit to ANY configuration file in the `profiles/` directory (including `config.custom.yaml`, `jobs.custom.json`, `SOUL.custom.md`, or custom skills), you MUST run `make merge-all` to regenerate all runtime configurations. Failure to do so will result in the active agent using stale, uncompiled prompts and configurations!
 
 ## License
 

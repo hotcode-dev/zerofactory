@@ -80,8 +80,12 @@ def run_dispatch_cycle(db_path):
                     repo_path = Path(os.getcwd()).parent / reponame
                     
                 if not repo_path.exists():
-                    repo_path = Path(os.getcwd())
-                    reponame = repo_path.name
+                    git_dir_path = Path.home() / "git" / reponame
+                    if git_dir_path.exists():
+                        repo_path = git_dir_path
+                    else:
+                        repo_path = Path(os.getcwd())
+                        reponame = repo_path.name
                     
                 worktree_dir = repo_path.parent / f"{reponame}-worktrees" / task_id
                 worktree_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -90,7 +94,7 @@ def run_dispatch_cycle(db_path):
                     branch_name = f"task/{task_id}"
                     res = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"], cwd=repo_path)
                     if res.returncode == 0:
-                        print(f"[zerofactory-kanban-dispatcher] Creating git worktree for existing branch {branch_name} at {worktree_dir}")
+                        print(f"[zerofactory-kanban-dispatcher] Creating git worktree for existing branch {branch_name} at {worktree_dir}", flush=True)
                         subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path)
                     else:
                         print(f"[zerofactory-kanban-dispatcher] Creating new git worktree branch {branch_name} at {worktree_dir}")
@@ -98,7 +102,7 @@ def run_dispatch_cycle(db_path):
                     cursor.execute("UPDATE tasks SET workspace_kind = 'dir', workspace_path = ? WHERE id = ?", (str(worktree_dir), task_id))
                     return str(worktree_dir)
                 except subprocess.CalledProcessError as e:
-                    print(f"[zerofactory-kanban-dispatcher] Failed to create worktree for task {task_id} in {repo_path}: {e}")
+                    print(f"[zerofactory-kanban-dispatcher] Failed to create worktree for task {task_id} in {repo_path}: {e}", flush=True)
                     return None
 
             # 2 & 3. Auto-Assign, Setup Worktree, and Promote Todo to Ready (WIP Limit enforced)
@@ -152,8 +156,12 @@ def run_dispatch_cycle(db_path):
                     repo_path = Path(os.getcwd()).parent / reponame
                     
                 if not repo_path.exists():
-                    repo_path = Path(os.getcwd())
-                    reponame = repo_path.name
+                    git_dir_path = Path.home() / "git" / reponame
+                    if git_dir_path.exists():
+                        repo_path = git_dir_path
+                    else:
+                        repo_path = Path(os.getcwd())
+                        reponame = repo_path.name
                 
                 if assignee != 'reviewer':
                     # Author finished coding -> Push, PR, and Route to Reviewer
