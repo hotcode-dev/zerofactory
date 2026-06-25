@@ -115,7 +115,8 @@ def run_dispatch_cycle(db_path):
                 limit = MAX_ACTIVE_TASKS - active_count
                 cursor.execute("""
                     SELECT id, title, workspace_path, workspace_kind, assignee, tenant FROM tasks
-                    WHERE status = 'todo' ORDER BY priority DESC LIMIT ?
+                    WHERE status = 'todo' OR (status = 'ready' AND assignee = 'unassigned')
+                    ORDER BY priority DESC LIMIT ?
                 """, (limit,))
                 todos = cursor.fetchall()
                 for row in todos:

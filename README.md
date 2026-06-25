@@ -43,9 +43,9 @@ graph TD
     Triage -->|Auto-decomposes| Decomposer[kanban_decomposer]
     Decomposer -->|Auto-generates child tasks| Todo[Kanban: Todo]:::kanban
     
-    Todo -->|Dispatcher Auto-Promotes| Ready[Kanban: Ready]:::kanban
+    Todo -->|Dispatcher Auto-Assigns & Creates Worktree| Ready[Kanban: Ready]:::kanban
     
-    Ready -->|Dispatcher Auto-Assigns & Creates Worktree| Running[Kanban: Running]:::kanban
+    Ready -->|Agent Automatically Picks Up Task| Running[Kanban: Running]:::kanban
     
     Running --> AgentWork{Specialized Agent}
     
@@ -104,8 +104,8 @@ For the exact list of automated tasks, their schedules, and behaviors, please re
 
 1. **Goal Formulation**: User submits a goal via CLI (`hermes -p orchestrator -m "..."`)
 2. **Auto-Triage**: Kanban decomposer breaks goal down into `Todo` tickets
-3. **Auto-Promotion**: Kanban Dispatcher automatically promotes `Todo` tasks to `Ready`
-4. **Execution Setup**: Kanban Dispatcher assigns the task and creates an isolated Git worktree for the agent
+3. **Execution Setup**: Kanban Dispatcher automatically assigns the `Todo` task, creates an isolated Git worktree, and promotes it to `Ready`
+4. **Agent Pickup**: The assigned specialist agent automatically detects the task in `Ready` and moves it to `Running`
 5. **Execution**: Specialists execute their tasks in `Running`
 6. **PR Creation**: When an agent finishes, Kanban Dispatcher automatically pushes the branch, opens a GitHub PR, and hands it off to the Reviewer
 7. **Continuous Polish**: The Reviewer acts as an improvement engine. It is instructed to iteratively find ways to refactor, optimize, and enhance the code. After a cap of 3 rounds, it will formally approve the PR to prevent over-engineering. The Dispatcher routes it back to the original author for fixes.
@@ -154,8 +154,8 @@ Triage → Todo → Ready → Running → Blocked → Done
 | State | Description | Action |
 |-------|-------------|--------|
 | `Triage` | Initial goal received | Auto-decompose |
-| `Todo` | Sub-tasks generated | Auto-promoted to Ready |
-| `Ready` | Approved for work | Dispatcher assigns & configures worktree |
+| `Todo` | Sub-tasks generated | Dispatcher assigns & configures worktree |
+| `Ready` | Approved for work | Agent automatically picks up task |
 | `Running` | Agent actively working | Monitor progress |
 | `Blocked` | PR created / Waiting on human | Review PR / Unblock |
 | `Done` | Task completed | Archive |
