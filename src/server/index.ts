@@ -117,9 +117,26 @@ Bun.serve({
       );
     }
 
-    return new Response("Zero Factory API Running", {
-        headers: { "Access-Control-Allow-Origin": "*" }
-    });
+    // Serve Static Astro Dashboard
+    if (!url.pathname.startsWith("/api")) {
+      let filePath = `../dashboard/dist${url.pathname}`;
+      if (url.pathname === "/") {
+        filePath = "../dashboard/dist/index.html";
+      }
+
+      const file = Bun.file(filePath);
+      if (await file.exists()) {
+        return new Response(file);
+      } else {
+        // Fallback for SPA routing
+        const indexFile = Bun.file("../dashboard/dist/index.html");
+        if (await indexFile.exists()) {
+          return new Response(indexFile);
+        }
+      }
+    }
+
+    return new Response("Not Found", { status: 404 });
   },
 });
 

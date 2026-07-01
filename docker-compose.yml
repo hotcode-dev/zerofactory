@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  zerofactory:
+    build: .
+    ports:
+      - "10000:10000"
+    environment:
+      - PORT=10000
+      # Add API keys below in production or load from .env
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      # Optional: mount a local SQLite database for persistence once checkpointer is implemented
+      - ./.data:/app/.data
+    restart: unless-stopped

@@ -294,7 +294,7 @@ import Layout from '../layouts/Layout.astro';
 		}
 
 		try {
-			const res = await fetch('http://localhost:10000/api/start', {
+			const res = await fetch('/api/start', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ goal })
@@ -304,7 +304,7 @@ import Layout from '../layouts/Layout.astro';
 			const threadId = data.threadId;
 			appendLog(`[SYSTEM] Goal initialized. Thread ID: ${threadId}`, 'system');
 			
-			eventSource = new EventSource(`http://localhost:10000/api/stream?threadId=${threadId}`);
+			eventSource = new EventSource(`/api/stream?threadId=${threadId}`);
 			
 			eventSource.onmessage = (event) => {
 				const streamData = JSON.parse(event.data);
