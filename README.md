@@ -1,6 +1,6 @@
 # Zero Factory
 
-A 24/7 AI multi-agent orchestration system built on Hermes Agent. Six specialized agents form a complete software factory — from research to deployment.
+A 24/7 AI multi-agent orchestration system built on **LangGraph.js (TypeScript)** and **Bun**. Specialized agents form a complete software factory — from research to deployment, orchestrated by a robust state machine and monitored via a real-time Astro dashboard.
 
 ## Core Principles
 
@@ -9,234 +9,127 @@ A 24/7 AI multi-agent orchestration system built on Hermes Agent. Six specialize
 | **24/7 Development** | Continuous iterations with frequent reprioritization, rolling handoffs, and parallel execution |
 | **Productivity & Automation** | Multi-agent workflows that automate routine tasks end-to-end |
 | **Quality & Reliability** | High-quality, maintainable, secure software with layered review |
-| **Cost Efficiency** | Optimized token usage — each agent has only the skills it needs |
+| **Cost Efficiency** | Optimized token usage via dynamic LLM routing and focused state-graph nodes |
 | **Hybrid Review** | AI-assisted review at every stage, with human-in-the-loop insight for important decisions |
 | **Single Source of Truth** | One canonical location for shared info. Link, don't copy. |
 | **Minimalist** | Everything as small, simple, clean, and usable as possible |
-| **Living Documentation** | Always update the documentation in the same PR as the code changes. |
 
-## The Team
+## The Team (LangGraph Nodes)
 
-Zero Factory operates using a specialized team of 4 AI agents, each with a distinct role, isolated toolset, and dedicated personality. By separating concerns, we ensure that agents don't get distracted by tasks outside their expertise, maximizing parallel efficiency and output quality.
+Zero Factory operates using a specialized team of AI agent nodes, orchestrated by a Supervisor graph. By separating concerns, we ensure that agents don't get distracted by tasks outside their expertise.
 
-| Agent & Configs | Role | Core Responsibilities |
+| Node | Role | Core Responsibilities |
 | :--- | :--- | :--- |
-| **Orchestrator**<br>[SOUL](profiles/orchestrator/SOUL.custom.md) \| [Config](profiles/orchestrator/config.custom.yaml) | Pipeline Overseer | Monitors the Kanban board, oversees the `kanban_decomposer` task breakdown, manages handoffs, and escalates blockers to the human. |
-| **Builder**<br>[SOUL](profiles/builder/SOUL.custom.md) \| [Config](profiles/builder/config.custom.yaml) | Senior Software Engineer | Writes the code and tests. Focuses heavily on speed, type-safety, test coverage, and shipping features. |
-| **Reviewer**<br>[SOUL](profiles/reviewer/SOUL.custom.md) \| [Config](profiles/reviewer/config.custom.yaml) | Quality Gatekeeper | Reviews PRs, checks for bugs, performance issues, security flaws, and verifies edge cases and tests. |
+| **Orchestrator** | Pipeline Overseer | Receives the initial goal, decomposes it into sub-tasks (Todo List), manages handoffs, and tracks state via LangGraph persistence. |
+| **Builder** | Senior Software Engineer | Writes the code and tests. Executes tool calls in a ReAct loop using `modelcontextprotocol/sdk` to run terminal commands, modify files, and create Git worktrees. |
+| **Reviewer** | Quality Gatekeeper | Reviews PRs, checks for bugs, performance issues, and security flaws. Can bounce tasks back to the Builder iteratively. |
 
-> **Note on modifications:** If you want to customize an agent's prompt (`SOUL.custom.md`), configuration or MCP servers (`config.custom.yaml`), or add custom skills, make your edits and then run `make merge-all` to regenerate the runtime configurations and links.
+## Architecture & Workflow
 
-## Workflow & Architecture
-
-The workflow is based on the [Hermes Kanban](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/kanban.md) system.
+The workflow uses a native **LangGraph State Machine** combined with SQLite-based persistence (`MemorySaver` / Checkpointer).
 
 ```mermaid
 graph TD
     classDef kanban fill:#f9d0c4,stroke:#333,stroke-width:2px,color:#000;
     
-    User([User]) -->|Provides Goal| Cron((Cron Trigger))
-    Cron -->|Creates Goal Task| Triage[Kanban: Triage]:::kanban
+    User([User]) -->|Dashboard Input| Start[Goal Submitted]
+    Start --> Triage[State: Triage]:::kanban
     
-    User -->|Directly Creates Goal| Triage
+    Triage -->|Orchestrator Node Decomposes| Todo[State: Todo]:::kanban
     
-    Triage -->|Auto-decomposes| Decomposer[kanban_decomposer]
-    Decomposer -->|Auto-generates child tasks| Todo[Kanban: Todo]:::kanban
+    Todo -->|Picks next subtask| Ready[State: Ready]:::kanban
     
-    Todo -->|Dispatcher Auto-Assigns & Creates Worktree| Ready[Kanban: Ready]:::kanban
+    Ready -->|Agent Execution| BuilderNode[Builder Node]
     
-    Ready -->|Agent Automatically Picks Up Task| Running[Kanban: Running]:::kanban
-    
-    Running --> AgentWork{Specialized Agent}
-    
-    subgraph Zero Factory
-        AgentWork -.-> Builder
-        AgentWork -.-> Reviewer
+    subgraph Execution Loop
+        BuilderNode -->|Executes MCP Tools| ToolNode[Tool Execution]
+        ToolNode --> BuilderNode
     end
     
-    Builder --> TaskComplete
+    BuilderNode -->|Creates PR & Worktree| Blocked[State: Blocked]:::kanban
     
-    TaskComplete{Review Required?}
-    TaskComplete -->|No / Internal Step| Done[Kanban: Done]:::kanban
+    Blocked --> ReviewerNode[Reviewer Node]
     
-    TaskComplete -->|Yes / Final Result| PR[Dispatcher Auto-Opens PR]
+    ReviewerNode -->|Requests Changes| Ready
+    ReviewerNode -->|Approves PR| Done[State: Done]:::kanban
     
-    PR --> ReviewerLoop{Reviewer Never Approves}
-    ReviewerLoop -->|Requests Changes| Ready
-    
-    PR -.->|Human Manually Merges PR| Done
+    Done -->|Next Subtask| Todo
 ```
 
 ## Core Components
 
-### 1. Agent Profiles & Configuration
+### 1. LangGraph Backend (`src/`)
+Built with **Bun** and **LangGraph.js**, the backend exposes an API (`/api/start`, `/api/stream`) that manages the execution threads, preserves state via checkpoints, and dynamically binds MCP tools to the agent LLMs.
 
-The agent roles, toolsets, and configuration patterns are explicitly defined in the [zerofactory-orchestration](./profiles/common/skills/zerofactory-orchestration/SKILL.md) skill document. Please refer to it as the single source of truth for agent capabilities.
+### 2. Astro Dashboard (`dashboard/`)
+A real-time, premium frontend built with **Astro**. It connects to the Bun API via **Server-Sent Events (SSE)** to stream real-time logs, execution loops, and agent status directly to the browser.
 
-Zero Factory uses a multi-layered configuration approach:
-
-- **Base config shared by all agents**: `profiles/common/config.yaml`
-- **Profile-specific overrides**: `profiles/<profile>/config.custom.yaml`
-
-For specific configurations, toolsets, dispatch logic, and agent parameters, please consult the actual configuration files and the skill document.
-
-### 2. Kanban Board
-
-Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key states:
-
-- **Triage** — Initial goals, auto-decomposing
-- **Todo** — Waiting for dispatcher to auto-promote
-- **Ready** — Ready for agent pickup
-- **Running** — Actively being worked on (in isolated git worktree)
-- **Blocked** — Human review required (GitHub PR)
-- **Done** — Completed
-
-The Orchestrator creates tasks and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done` (handled automatically by the [zerofactory-kanban-dispatcher](./profiles/common/plugins/zerofactory-kanban-dispatcher/) plugin). Task assignment is also handled automatically by the [zerofactory-kanban-dispatcher](./profiles/common/plugins/zerofactory-kanban-dispatcher/) plugin.
-
-### 3. Automated Operations (Cron Jobs)
-
-Zero Factory includes several automated maintenance and reporting tasks configured via Hermes cron jobs. These jobs are executed by the Orchestrator to ensure the factory runs smoothly around the clock.
-
-For the exact list of automated tasks, their schedules, and behaviors, please refer to the [`profiles/orchestrator/cron/jobs.custom.json`](./profiles/orchestrator/cron/jobs.custom.json) file.
-
+### 3. Model Context Protocol (MCP) Tools
+The Builder node uses the `@modelcontextprotocol/sdk` to dynamically wrap local MCP servers (like the filesystem and terminal) into standard LangChain `DynamicTool` instances.
 
 ## Data Flow
 
-1. **Goal Formulation**: User submits a goal via CLI (`hermes -p orchestrator -m "..."`)
-2. **Auto-Triage**: Kanban decomposer breaks goal down into `Todo` tickets
-3. **Execution Setup**: Kanban Dispatcher automatically assigns the `Todo` task, creates an isolated Git worktree, and promotes it to `Ready`
-4. **Agent Pickup**: The assigned specialist agent automatically detects the task in `Ready` and moves it to `Running`
-5. **Execution**: Specialists execute their tasks in `Running`
-6. **PR Creation**: When an agent finishes, Kanban Dispatcher automatically pushes the branch, opens a GitHub PR, and hands it off to the Reviewer
-7. **Continuous Polish**: The Reviewer acts as an improvement engine. It is instructed to iteratively find ways to refactor, optimize, and enhance the code. After a cap of 3 rounds, it will formally approve the PR to prevent over-engineering. The Dispatcher routes it back to the original author for fixes.
-8. 🛑 **Human Merge**: The PR bounces between the author and Reviewer up to 3 times (taking advantage of free local compute) until it is approved for you to manually merge on GitHub.
-9. **Completion**: The Kanban Dispatcher detects the `MERGED` state on GitHub and automatically marks the task as `Done`
-
-
-
-## Communication Channels
-
-| Channel | Purpose |
-|---------|---------|
-| Kanban Board | Task handoffs, status tracking, dependency management |
-| File System | Shared output files, configuration, documentation |
-| Gateway API | Real-time messaging between agents |
-
-## Cost Optimization
-
-| Technique | Setting | Purpose |
-|-----------|---------|---------|
-| Toolsets | Per-profile | Each agent has only the tools it needs |
-| Compression | enabled, threshold 0.5 | Reduces context window usage |
-| Prompt caching | cache_ttl: 5m | Reuses system prompt tokens |
-| max_turns limits | Per profile (60-120) | Caps token consumption per task |
-| Short-lived tasks | Task-based lifecycle | No idle agents burning resources |
-
-## Agent Communication Protocol
-
-Agents communicate through:
-1. **Kanban board** — task status and handoffs
-2. **Files** — shared output, configs, documentation
-3. **Gateway** — real-time messaging
-
-Each agent has a `description` field in its `config.custom.yaml` for quick identification by the Orchestrator.
-
-## Task Lifecycle
-
-### States
-
-```
-Triage → Todo → Ready → Running → Blocked → Done
-```
-
-### Task States Explained
-
-| State | Description | Action |
-|-------|-------------|--------|
-| `Triage` | Initial goal received | Auto-decompose |
-| `Todo` | Sub-tasks generated | Dispatcher assigns & configures worktree |
-| `Ready` | Approved for work | Agent automatically picks up task |
-| `Running` | Agent actively working | Monitor progress |
-| `Blocked` | PR created / Waiting on human | Review PR / Unblock |
-| `Done` | Task completed | Archive |
-
-### Task Dependencies
-
-Tasks can have parent-child relationships:
-- Child tasks stay in `blocked` until **all** parents are `done`
-- Use `--parent` flag when creating dependent tasks
-- The Orchestrator manages dependency chains automatically
-
-### Archiving
-
-Old completed tasks can be archived:
-```bash
-hermes -p orchestrator -m "Archive all 'done' tasks from last month"
-```
-
-## Adding a New Project
-
-Zero Factory automatically discovers and manages multiple projects. To add a new codebase to the factory:
-
-1. Open the Hermes web UI and create a new **Kanban Board** (e.g., `zerohub`).
-2. Add the remote Git URL of the repository into the **Description** field of the new board.
-3. The `zero-factory-improvement-scanner` background cron job will automatically detect the new board, clone the repository into `~/git/` if it doesn't already exist, and begin scanning it for improvements.
-
+1. **Goal Formulation**: User submits a goal via the Astro Dashboard.
+2. **Auto-Triage**: The Orchestrator node uses structured LLM output (Zod) to break the goal down into `Todo` sub-tasks.
+3. **Execution Setup**: The StateGraph promotes the task to `Ready`.
+4. **Builder Execution**: The Builder picks up the task, provisions an isolated Git worktree, and enters a **ReAct loop** to execute tools.
+5. **PR Creation**: When the Builder finishes, it pushes the branch and simulates/opens a GitHub PR, entering the `Blocked` state.
+6. **Continuous Polish**: The Reviewer analyzes the work. If it finds issues, it bounces the state back to `Ready` for the Builder. If approved, it moves to `Done`.
 
 ## Setup Guide
 
 - Linux machine (Raspberry Pi or x86_64)
-- Python 3.11+
 - Bun 1.1+
-- sqlite3
-- Hermes Agent installed
+- Node.js 22+
 
 ### 1. Clone and Setup
 
 ```bash
-cd ~
 git clone <repo-url> zerofactory
 cd zerofactory
 ```
 
-### 2. Link Hermes Profiles
-
-Link profiles to the standard Hermes location:
+### 2. Install Dependencies
 
 ```bash
-make hermes-link
+# Install backend dependencies
+cd src
+bun install
+
+# Install dashboard dependencies
+cd ../dashboard
+bun install
 ```
 
-### 3. Merge Config
+### 3. Configure Environment
+Set your API keys in the `src/.env` file:
+```env
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-...
+```
 
-After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, regenerate merged runtime files and links:
+### 4. Running the System (Development)
 
+Run the backend API (Port 10000):
 ```bash
-make merge-all
+cd src
+PORT=10000 bun run index.ts
 ```
 
-### 4. Running the Gateway
-
-You only need to run the orchestrator gateway, because the cron jobs will schedule only on the running gateway:
-
+Run the Astro Dashboard (Port 10002):
 ```bash
-hermes --profile orchestrator gateway run --replace
+cd dashboard
+bun run dev --host --port 10002
 ```
 
-## Makefile Targets
-
-All automation lives in the Makefile at the repository root. Each target is self-contained and idempotent.
-
-| Target | Description | Usage |
-|--------|-------------|-------|
-| `hermes-link` | Symlinks `profiles/` to `~/.hermes/profiles` so Hermes Agent reads them | `make hermes-link` |
-| `config-merge` | Runs `bin/merge-config.sh` to merge base config + profile overrides into runtime config | `make config-merge` |
-| `jobs-merge` | Runs `bin/merge-jobs.sh` to sync cron jobs across profiles | `make jobs-merge` |
-| `soul-merge` | Runs `bin/merge-soul.sh` to merge SOUL files for each profile | `make soul-merge` |
-| `skills-link` | Runs `bin/link-skills.sh` to link common skills (e.g. research-paper-writing) to all profiles | `make skills-link` |
-| `merge-all` | Meta-target: runs `config-merge jobs-merge soul-merge skills-link` in sequence | `make merge-all` |
-
-> **CRITICAL RULE FOR AI AGENTS:** NEVER FORGET TO RUN `make merge-all`! After ANY edit to ANY configuration file in the `profiles/` directory (including `config.custom.yaml`, `jobs.custom.json`, `SOUL.custom.md`, or custom skills), you MUST run `make merge-all` to regenerate all runtime configurations. Failure to do so will result in the active agent using stale, uncompiled prompts and configurations!
+### 5. Running as Systemd Services (Production)
+We provide `zerofactory-api.service` and `zerofactory-dashboard.service` files in the root repository.
+```bash
+sudo ln -s $(pwd)/zerofactory-api.service /etc/systemd/system/
+sudo ln -s $(pwd)/zerofactory-dashboard.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now zerofactory-api.service zerofactory-dashboard.service
+```
 
 ## License
 
