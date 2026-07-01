@@ -47,6 +47,19 @@ export async function orchestratorNode(state: typeof AgentState.State) {
     // If we have an LLM configured (API key exists), use it to decompose tasks
     if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
       try {
+        let enhancedGoal = state.goal;
+        
+        // Auto-fetch GitHub Issue context if a URL is provided
+        if (state.goal.includes("github.com") && state.goal.includes("/issues/")) {
+          try {
+            console.log(`Fetching GitHub Issue context for: ${state.goal}`);
+            const { stdout } = await execAsync(`gh issue view ${state.goal}`);
+            enhancedGoal = `Original Goal: ${state.goal}\n\nGitHub Issue Context:\n${stdout}`;
+          } catch (ghErr: any) {
+            console.warn("Failed to fetch GitHub issue, proceeding with raw URL:", ghErr.message);
+          }
+        }
+        
         const TaskSchema = z.object({
           todoList: z.array(z.string()).describe("A list of decomposed subtasks to achieve the goal"),
         });
@@ -54,7 +67,7 @@ export async function orchestratorNode(state: typeof AgentState.State) {
         const structuredLlm = llm.withStructuredOutput(TaskSchema);
         const result = await structuredLlm.invoke([
           new SystemMessage("You are the Orchestrator. Break down the user's goal into a sequential list of concrete subtasks."),
-          new HumanMessage(`Goal: ${state.goal}`)
+          new HumanMessage(`Goal: ${enhancedGoal}`)
         ]);
         
         return {

@@ -256,7 +256,13 @@ import Layout from '../layouts/Layout.astro';
 		if (logContainer) {
 			const logEntry = document.createElement('div');
 			logEntry.className = `log-entry ${type}`;
-			logEntry.textContent = message;
+			
+			// Simple syntax highlighting for brackets and JSON-like strings
+			let formattedMsg = message
+				.replace(/\[([^\]]+)\]/g, '<span style="color: #6366f1; font-weight: 600;">[$1]</span>')
+				.replace(/\{([^}]+)\}/g, '<span style="color: #10b981;">{$1}</span>');
+				
+			logEntry.innerHTML = formattedMsg;
 			logContainer.appendChild(logEntry);
 			logContainer.scrollTop = logContainer.scrollHeight;
 		}
