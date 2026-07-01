@@ -226,13 +226,30 @@ export async function reviewerNode(state: typeof AgentState.State) {
       ]);
       
       const content = response.content as string;
+      
+      let ghCommand = "";
       if (content.startsWith("CHANGES_REQUESTED")) {
         resultStatus = "Ready"; // Bounce back to builder
-        reviewerAction = `Requested changes: ${content.substring(17).trim()}`;
+        const feedback = content.substring(17).trim();
+        reviewerAction = `Requested changes: ${feedback}`;
+        ghCommand = `gh pr review ${state.prUrl} --request-changes -b "Zero Factory AI Review:\n\n${feedback.replace(/"/g, '\\"')}"`;
       } else {
         resultStatus = "Done";
-        reviewerAction = `Approved PR: ${content.substring(8).trim()}`;
+        const feedback = content.substring(8).trim();
+        reviewerAction = `Approved PR: ${feedback}`;
+        ghCommand = `gh pr review ${state.prUrl} --approve -b "Zero Factory AI Review:\n\nApproved! ${feedback.replace(/"/g, '\\"')}"`;
       }
+      
+      // Execute the GitHub Review if it's a real URL
+      if (state.prUrl.startsWith("http") && !state.prUrl.includes("mock")) {
+        try {
+          await execAsync(ghCommand);
+          reviewerAction += " (Pushed to GitHub)";
+        } catch (ghErr: any) {
+          console.warn("Could not post review to GitHub:", ghErr.message);
+        }
+      }
+      
     } catch (e: any) {
       console.error("Reviewer LLM Error:", e.message);
       resultStatus = "Done";
