@@ -1,11 +1,12 @@
 import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
 import { AgentState } from "../state.js";
-import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
+import { SystemMessage, HumanMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { loadMcpTools } from "../tools/mcp.js";
 
 const execAsync = promisify(exec);
 
@@ -43,12 +44,35 @@ export async function orchestratorNode(state: typeof AgentState.State) {
   console.log("Orchestrator: analyzing current state...", state.status);
   
   if (state.status === "Triage") {
-    // In a real implementation, we would call the LLM to decompose the goal
-    // For now, we will simulate the LLM decomposing it into subtasks
+    // If we have an LLM configured (API key exists), use it to decompose tasks
+    if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
+      try {
+        const TaskSchema = z.object({
+          todoList: z.array(z.string()).describe("A list of decomposed subtasks to achieve the goal"),
+        });
+        
+        const structuredLlm = llm.withStructuredOutput(TaskSchema);
+        const result = await structuredLlm.invoke([
+          new SystemMessage("You are the Orchestrator. Break down the user's goal into a sequential list of concrete subtasks."),
+          new HumanMessage(`Goal: ${state.goal}`)
+        ]);
+        
+        return {
+          status: "Todo",
+          todoList: result.todoList,
+          messages: [new AIMessage(`I have decomposed the goal into ${result.todoList.length} tasks using the LLM.`)]
+        };
+      } catch (e: any) {
+        console.error("LLM Error:", e.message);
+        // Fallback if LLM fails
+      }
+    }
+    
+    // Mock fallback
     return {
       status: "Todo",
       todoList: ["Setup project structure", "Implement feature logic", "Write unit tests"],
-      messages: [new AIMessage("I have decomposed the goal into tasks.")]
+      messages: [new AIMessage("I have decomposed the goal into tasks (Mock).")]
     };
   }
 
@@ -73,17 +97,80 @@ export async function builderNode(state: typeof AgentState.State) {
   console.log("Builder: working on task", state.currentTask);
   
   // Create worktree for task isolation
-  const safeTaskName = state.currentTask?.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+  const safeTaskName = state.currentTask?.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase() || "default";
   const branchName = `task/${safeTaskName}-${Date.now()}`;
   const worktreePath = `../.worktrees/${branchName}`;
   
   await createWorktreeTool.invoke({ branchName, path: worktreePath });
+
+  let actionLog = "";
+  const builderMessages = [];
+  
+  if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
+    try {
+      const mcpTools = await loadMcpTools("npx", ["-y", "@modelcontextprotocol/server-filesystem", "/"]);
+      const allTools = [createWorktreeTool, ...mcpTools];
+      const builderLlm = llm.bindTools(allTools);
+      
+      let contextMessages: any[] = [
+        new SystemMessage("You are the Builder. Use the provided tools to implement the task. When you are finished, return a standard text response explaining what you did."),
+        new HumanMessage(`Task: ${state.currentTask}. Please implement this in ${worktreePath}.`)
+      ];
+      
+      let response = await builderLlm.invoke(contextMessages);
+      contextMessages.push(response);
+      builderMessages.push(new AIMessage(`Started task execution...`));
+      
+      // ReAct Loop for Tool Execution
+      let executionCount = 0;
+      while (response.tool_calls && response.tool_calls.length > 0 && executionCount < 10) {
+        executionCount++;
+        actionLog = `Executing ${response.tool_calls.length} tool calls...`;
+        console.log(actionLog);
+        
+        for (const toolCall of response.tool_calls) {
+          const tool = allTools.find((t) => t.name === toolCall.name);
+          if (tool) {
+            try {
+              const toolResult = await tool.invoke(toolCall.args);
+              contextMessages.push(new ToolMessage({
+                content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+                name: toolCall.name,
+                tool_call_id: toolCall.id,
+              }));
+              builderMessages.push(new AIMessage(`Tool [${toolCall.name}] succeeded.`));
+            } catch (err: any) {
+              contextMessages.push(new ToolMessage({
+                content: `Error executing tool: ${err.message}`,
+                name: toolCall.name,
+                tool_call_id: toolCall.id,
+              }));
+              builderMessages.push(new AIMessage(`Tool [${toolCall.name}] failed.`));
+            }
+          }
+        }
+        
+        // Re-invoke the LLM with the tool results
+        response = await builderLlm.invoke(contextMessages);
+        contextMessages.push(response);
+      }
+      
+      actionLog = `LLM completed after ${executionCount} tool execution rounds.`;
+    } catch (e: any) {
+      console.error("MCP LLM Error:", e.message);
+      actionLog = "Mock builder execution (MCP failed to load or LLM error).";
+    }
+  } else {
+    actionLog = "Mock builder execution.";
+  }
   
   return {
     status: "Blocked",
     prUrl: `https://github.com/ntsd/zerofactory/pull/${Math.floor(Math.random()*1000)}`,
     messages: [
       new AIMessage(`Created worktree at ${worktreePath}`),
+      ...builderMessages,
+      new AIMessage(`Builder Final Action: ${actionLog}`),
       new AIMessage(`Created PR for task: ${state.currentTask}`)
     ]
   };

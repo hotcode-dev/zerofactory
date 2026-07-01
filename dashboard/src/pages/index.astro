@@ -183,49 +183,87 @@ import Layout from '../layouts/Layout.astro';
 </style>
 
 <script>
-	const startBtn = document.getElementById('start-btn');
+	const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 	const goalInput = document.getElementById('goal-input') as HTMLInputElement;
 	const statusDisplay = document.getElementById('status-display');
 	const currentStatus = document.getElementById('current-status');
 	const logContainer = document.getElementById('log-container');
+
+	let eventSource: EventSource | null = null;
+
+	function appendLog(message: string, isError = false) {
+		if (logContainer) {
+			const logEntry = document.createElement('div');
+			logEntry.style.color = isError ? '#ef4444' : '#94a3b8';
+			logEntry.textContent = message;
+			logContainer.appendChild(logEntry);
+			logContainer.scrollTop = logContainer.scrollHeight;
+		}
+	}
 
 	startBtn?.addEventListener('click', async () => {
 		const goal = goalInput?.value;
 		if (!goal) return;
 
 		statusDisplay?.classList.remove('hidden');
-		if (currentStatus) currentStatus.textContent = 'Running';
-		if (startBtn) (startBtn as HTMLButtonElement).disabled = true;
+		if (currentStatus) currentStatus.textContent = 'Initializing...';
+		if (startBtn) startBtn.disabled = true;
+		
+		if (logContainer) logContainer.innerHTML = '';
+		
+		// Close existing stream
+		if (eventSource) {
+			eventSource.close();
+		}
 
 		try {
-			// In development, you would proxy this request to the bun server
-			// Using localhost:3000 assuming backend runs there
-			const res = await fetch('http://localhost:3000/api/start', {
+			const res = await fetch('http://localhost:10000/api/start', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ goal })
 			});
 			
 			const data = await res.json();
+			const threadId = data.threadId;
+			appendLog(`> Goal started. Thread ID: ${threadId}`);
 			
-			if (currentStatus) currentStatus.textContent = data.result?.status || 'Done';
+			// Connect to SSE stream
+			eventSource = new EventSource(`http://localhost:10000/api/stream?threadId=${threadId}`);
 			
-			if (logContainer) {
-				const logEntry = document.createElement('div');
-				logEntry.textContent = `> Thread ${data.threadId} initialized. Result state: ${JSON.stringify(data.result, null, 2)}`;
-				logContainer.appendChild(logEntry);
-			}
+			eventSource.onmessage = (event) => {
+				const streamData = JSON.parse(event.data);
+				
+				if (streamData.type === 'connected') {
+					appendLog(`> Connected to live stream for thread: ${streamData.threadId}`);
+				} else if (streamData.type === 'state') {
+					const state = streamData.values;
+					if (currentStatus) currentStatus.textContent = state.status || 'Running';
+					
+					// Just log the latest message to avoid flooding, or format it nicely
+					const lastMsg = state.messages && state.messages.length > 0 
+						? state.messages[state.messages.length - 1].kwargs?.content
+						: 'State updated...';
+					
+					appendLog(`[${state.status}] ${lastMsg}`);
+					
+					if (state.status === 'Done') {
+						appendLog(`> Workflow complete.`);
+						eventSource?.close();
+						if (startBtn) startBtn.disabled = false;
+					}
+				}
+			};
+
+			eventSource.onerror = () => {
+				appendLog(`> Lost connection to stream.`, true);
+				eventSource?.close();
+				if (startBtn) startBtn.disabled = false;
+			};
 
 		} catch (err: any) {
 			if (currentStatus) currentStatus.textContent = 'Error';
-			if (logContainer) {
-				const logEntry = document.createElement('div');
-				logEntry.style.color = '#ef4444';
-				logEntry.textContent = `> Error connecting to backend: ${err.message}`;
-				logContainer.appendChild(logEntry);
-			}
-		} finally {
-			if (startBtn) (startBtn as HTMLButtonElement).disabled = false;
+			appendLog(`> Error connecting to backend: ${err.message}`, true);
+			if (startBtn) startBtn.disabled = false;
 		}
 	});
 </script>

@@ -74,6 +74,49 @@ Bun.serve({
         });
     }
 
+    // Server-Sent Events (SSE) for real-time status updates
+    if (url.pathname === "/api/stream" && req.method === "GET") {
+      const threadId = url.searchParams.get("threadId");
+      if (!threadId) {
+        return new Response("Missing threadId", { status: 400 });
+      }
+
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            // Send initial connection message
+            controller.enqueue(`data: ${JSON.stringify({ type: 'connected', threadId })}\n\n`);
+
+            // Poll state every 2 seconds and stream it (in a real app, you'd use graph.stream)
+            const interval = setInterval(async () => {
+              try {
+                const state = await app.getState({ configurable: { thread_id: threadId } });
+                if (state && state.values) {
+                  controller.enqueue(`data: ${JSON.stringify({ type: 'state', values: state.values })}\n\n`);
+                }
+              } catch (e) {
+                // Ignore state fetch errors (thread might not exist yet)
+              }
+            }, 2000);
+
+            // Cleanup on disconnect
+            req.signal.addEventListener("abort", () => {
+              clearInterval(interval);
+              controller.close();
+            });
+          }
+        }),
+        {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*"
+          },
+        }
+      );
+    }
+
     return new Response("Zero Factory API Running", {
         headers: { "Access-Control-Allow-Origin": "*" }
     });
