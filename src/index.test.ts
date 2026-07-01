@@ -1,7 +1,5 @@
-import { expect, test, describe, mock } from "bun:test";
-import { AgentState } from "./state.js";
-import { orchestratorNode, reviewerNode } from "./agents/index.js";
-import { HumanMessage } from "@langchain/core/messages";
+import { expect, test, describe } from "bun:test";
+import { orchestratorNode, reviewerNode, testerNode } from "./agents/index.js";
 
 describe("Zero Factory Agents", () => {
   test("Orchestrator Node - Triage -> Todo", async () => {
@@ -40,6 +38,24 @@ describe("Zero Factory Agents", () => {
     expect(result.status).toBe("Ready");
     expect(result.currentTask).toBe("Task 1");
     expect(result.todoList).toEqual(["Task 2"]);
+  });
+
+  test("Tester Node - Passes", async () => {
+    const testingState = {
+      goal: "Test goal",
+      status: "Testing",
+      todoList: [],
+      currentTask: "Task 1",
+      prUrl: "http://github.com/mock/1",
+      reviewCount: 0,
+      messages: []
+    };
+
+    const result = await testerNode(testingState);
+    
+    // Testing node runs `bun test`. Since this IS a bun test, it should pass!
+    expect(result.status).toBe("Blocked");
+    expect(result.messages.length).toBeGreaterThan(0);
   });
 
   test("Reviewer Node - Mock Fallback", async () => {

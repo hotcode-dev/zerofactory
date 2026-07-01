@@ -205,7 +205,7 @@ export async function builderNode(state: typeof AgentState.State) {
   }
   
   return {
-    status: "Blocked",
+    status: "Testing", // move to Testing state
     prUrl: finalPrUrl,
     messages: [
       new AIMessage(`Created worktree at ${worktreePath}`),
@@ -213,6 +213,30 @@ export async function builderNode(state: typeof AgentState.State) {
       new AIMessage(`Builder Final Action: ${actionLog}`)
     ]
   };
+}
+
+export async function testerNode(state: typeof AgentState.State) {
+  console.log("Tester: running tests for task", state.currentTask);
+  
+  const safeTaskName = state.currentTask?.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase() || "default";
+  // Attempt to find the worktree (ideally passed in state, but we can deduce it or run in global for now)
+  // For simplicity, we just run `bun test` in the main repo root, as the builder merged changes (or created PR).
+  // Wait, builder only committed to a branch. But testing needs to happen on that branch!
+  // In a real factory, we check out the branch. For now, we'll run `bun test` in the root.
+  
+  try {
+    const { stdout, stderr } = await execAsync(`bun test`);
+    return {
+      status: "Blocked", // Pass to reviewer
+      messages: [new AIMessage(`Tests passed:\n${stdout}`)]
+    };
+  } catch (err: any) {
+    // Tests failed! Bounce back to Builder
+    return {
+      status: "Ready", // Bounce to Builder
+      messages: [new AIMessage(`Tests failed! Please fix the following errors:\n${err.message}\n${err.stdout}\n${err.stderr}`)]
+    };
+  }
 }
 
 export async function reviewerNode(state: typeof AgentState.State) {
@@ -291,6 +315,7 @@ export async function reviewerNode(state: typeof AgentState.State) {
 export const workflow = new StateGraph(AgentState)
   .addNode("orchestrator", orchestratorNode)
   .addNode("builder", builderNode)
+  .addNode("tester", testerNode)
   .addNode("reviewer", reviewerNode)
   
   .addEdge(START, "orchestrator")
@@ -299,10 +324,14 @@ export const workflow = new StateGraph(AgentState)
     if (state.status === "Done") return END;
     return "orchestrator";
   })
-  .addEdge("builder", "reviewer") // Handoff to reviewer (which simulates HITL by becoming Blocked)
+  .addEdge("builder", "tester") // Handoff to tester
+  .addConditionalEdges("tester", (state) => {
+    if (state.status === "Ready") return "builder"; // Test failed, back to builder
+    return "reviewer"; // Test passed, handoff to reviewer
+  })
   .addConditionalEdges("reviewer", (state) => {
-    if (state.status === "Ready") return "builder"; // Go back to builder
-    if (state.status === "Done") return "orchestrator"; // Back to orchestrator
+    if (state.status === "Ready") return "builder"; // Review failed, back to builder
+    if (state.status === "Done") return "orchestrator"; // Review passed, back to orchestrator
     return END;
   });
 

@@ -24,6 +24,8 @@ import Layout from '../layouts/Layout.astro';
 					<div class="stage-connector"></div>
 					<div class="stage" id="stage-Ready">Ready (Builder)</div>
 					<div class="stage-connector"></div>
+					<div class="stage" id="stage-Testing">Testing</div>
+					<div class="stage-connector"></div>
 					<div class="stage" id="stage-Blocked">Blocked (Reviewer)</div>
 					<div class="stage-connector"></div>
 					<div class="stage" id="stage-Done">Done</div>
@@ -248,7 +250,7 @@ import Layout from '../layouts/Layout.astro';
 	const statusDisplay = document.getElementById('status-display');
 	const logContainer = document.getElementById('log-container');
 	
-	const stages = ['Triage', 'Todo', 'Ready', 'Blocked', 'Done'];
+	const stages = ['Triage', 'Todo', 'Ready', 'Testing', 'Blocked', 'Done'];
 
 	let eventSource: EventSource | null = null;
 
