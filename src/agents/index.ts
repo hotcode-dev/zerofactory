@@ -1,4 +1,5 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { AgentState } from "../state.js";
 import { SystemMessage, HumanMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
@@ -145,61 +146,31 @@ export async function builderNode(state: typeof AgentState.State) {
     try {
       const mcpTools = await loadMcpTools("npx", ["-y", "@modelcontextprotocol/server-filesystem", worktreePath]);
       const allTools = [...mcpTools];
-      const builderLlm = llm.bindTools(allTools);
+      const builderAgent = createReactAgent({ llm, tools: allTools });
       
       let contextMessages: any[] = [
         new SystemMessage("You are the Builder. Use the provided tools to implement the task. When you are finished, return a standard text response explaining what you did."),
         new HumanMessage(`Task: ${state.currentTask}. Please implement this in ${worktreePath}.`)
       ];
       
-      let response = await builderLlm.invoke(contextMessages);
-      contextMessages.push(response);
-      builderMessages.push(new AIMessage(`Started task execution...`));
+      builderMessages.push(new AIMessage(`Started deterministic agent execution...`));
       
-      // ReAct Loop for Tool Execution
-      let executionCount = 0;
-      while (response.tool_calls && response.tool_calls.length > 0 && executionCount < 10) {
-        executionCount++;
-        actionLog = `Executing ${response.tool_calls.length} tool calls...`;
-        console.log(actionLog);
-        
-        for (const toolCall of response.tool_calls) {
-          const tool = allTools.find((t) => t.name === toolCall.name);
-          if (tool) {
-            try {
-              const toolResult = await tool.invoke(toolCall.args);
-              contextMessages.push(new ToolMessage({
-                content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
-                name: toolCall.name,
-                tool_call_id: toolCall.id,
-              }));
-              builderMessages.push(new AIMessage(`Tool [${toolCall.name}] succeeded.`));
-            } catch (err: any) {
-              contextMessages.push(new ToolMessage({
-                content: `Error executing tool: ${err.message}`,
-                name: toolCall.name,
-                tool_call_id: toolCall.id,
-              }));
-              builderMessages.push(new AIMessage(`Tool [${toolCall.name}] failed.`));
-            }
-          }
-        }
-        
-        // Re-invoke the LLM with the tool results
-        response = await builderLlm.invoke(contextMessages);
-        contextMessages.push(response);
-      }
+      // Use deterministic prebuilt LangGraph agent for tool execution instead of manual loop
+      const agentState = await builderAgent.invoke({ messages: contextMessages });
       
-      actionLog = `LLM completed after ${executionCount} tool execution rounds.`;
+      const finalMsg = agentState.messages[agentState.messages.length - 1];
+      actionLog = `LLM completed successfully: ${finalMsg.content}`;
+      builderMessages.push(new AIMessage(actionLog));
+      
     } catch (e: any) {
       console.error("MCP LLM Error:", e.message);
-      actionLog = "Mock builder execution (MCP failed to load or LLM error).";
+      actionLog = `Builder execution failed: ${e.message}`;
     }
   } else {
     actionLog = "Mock builder execution.";
   }
   
-  let finalPrUrl = `https://github.com/ntsd/zerofactory/pull/${Math.floor(Math.random()*1000)}`;
+  let finalPrUrl = `https://github.com/ntsd/zerofactory/pull/${branchName.length * 42}`;
   
   // Attempt to actually commit, push, and create a PR
   try {
@@ -323,10 +294,10 @@ export async function reviewerNode(state: typeof AgentState.State) {
       reviewerAction = "Mock Reviewer Approved (LLM Failed)";
     }
   } else {
-    // Mock random decision
-    if (Math.random() > 0.5) {
+    // Deterministic mock decision based on reviewCount to ensure predictable tests
+    if (state.reviewCount < 1) {
       resultStatus = "Ready";
-      reviewerAction = "Mock Reviewer found issues, bouncing back to Builder.";
+      reviewerAction = `Mock Reviewer found issues (Review ${state.reviewCount + 1}), bouncing back to Builder.`;
     } else {
       resultStatus = "Done";
       reviewerAction = "Mock Reviewer approved.";
@@ -335,6 +306,7 @@ export async function reviewerNode(state: typeof AgentState.State) {
   
   return {
     status: resultStatus,
+    reviewCount: state.reviewCount + 1,
     messages: [
       new AIMessage(reviewerAction)
     ]
