@@ -34,6 +34,16 @@ import Layout from '../layouts/Layout.astro';
 				<div class="log-container" id="log-container">
 					<!-- Logs will appear here -->
 				</div>
+
+				<div id="pr-container" class="pr-card hidden">
+					<div class="pr-icon">
+						<svg height="24" viewBox="0 0 16 16" version="1.1" width="24" fill="currentColor"><path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1.25 9.5a.75.75 0 100-1.5.75.75 0 000 1.5z"></path></svg>
+					</div>
+					<div class="pr-details">
+						<h3 id="pr-title">Pull Request Created</h3>
+						<a id="pr-link" href="#" target="_blank">View on GitHub ↗</a>
+					</div>
+				</div>
 			</div>
 		</section>
 	</main>
@@ -233,6 +243,48 @@ import Layout from '../layouts/Layout.astro';
 	.log-entry.error { color: #ef4444; }
 	.log-entry.success { color: #10b981; }
 
+	.pr-card {
+		margin-top: 1.5rem;
+		background: rgba(99, 102, 241, 0.1);
+		border: 1px solid var(--accent);
+		border-radius: 12px;
+		padding: 1.25rem;
+		display: flex;
+		align-items: center;
+		gap: 1.25rem;
+		animation: fade-in 0.5s ease-out;
+		box-shadow: 0 4px 20px var(--accent-glow);
+	}
+
+	.pr-icon {
+		background: rgba(99, 102, 241, 0.2);
+		color: #a5b4fc;
+		padding: 1rem;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.pr-details h3 {
+		margin: 0 0 0.25rem 0;
+		color: #fff;
+		font-size: 1.1rem;
+	}
+
+	.pr-details a {
+		color: #a5b4fc;
+		text-decoration: none;
+		font-weight: 500;
+		font-size: 0.9rem;
+		transition: color 0.2s;
+	}
+
+	.pr-details a:hover {
+		color: #c7d2fe;
+		text-decoration: underline;
+	}
+
 	@keyframes fade-in {
 		from { opacity: 0; transform: translateY(10px); }
 		to { opacity: 1; transform: translateY(0); }
@@ -294,6 +346,9 @@ import Layout from '../layouts/Layout.astro';
 		statusDisplay?.classList.remove('hidden');
 		if (startBtn) startBtn.disabled = true;
 		
+		const prContainer = document.getElementById('pr-container');
+		if (prContainer) prContainer.classList.add('hidden');
+		
 		if (logContainer) logContainer.innerHTML = '';
 		updatePipeline('Triage');
 		
@@ -324,6 +379,16 @@ import Layout from '../layouts/Layout.astro';
 					
 					if (state.status) {
 						updatePipeline(state.status);
+					}
+					
+					// Handle PR URL UI update
+					if (state.prUrl) {
+						const prContainer = document.getElementById('pr-container');
+						const prLink = document.getElementById('pr-link') as HTMLAnchorElement;
+						if (prContainer && prLink && prContainer.classList.contains('hidden')) {
+							prContainer.classList.remove('hidden');
+							prLink.href = state.prUrl;
+						}
 					}
 					
 					const lastMsg = state.messages && state.messages.length > 0 
