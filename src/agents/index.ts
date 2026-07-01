@@ -164,14 +164,40 @@ export async function builderNode(state: typeof AgentState.State) {
     actionLog = "Mock builder execution.";
   }
   
+  let finalPrUrl = `https://github.com/ntsd/zerofactory/pull/${Math.floor(Math.random()*1000)}`;
+  
+  // Attempt to actually commit, push, and create a PR
+  try {
+    console.log(`Committing and pushing worktree: ${worktreePath}`);
+    // Check if there are changes
+    const { stdout: status } = await execAsync(`git -C ${worktreePath} status --porcelain`);
+    if (status.trim().length > 0) {
+      await execAsync(`git -C ${worktreePath} add .`);
+      await execAsync(`git -C ${worktreePath} commit -m "Automated implementation for: ${state.currentTask}"`);
+      await execAsync(`git -C ${worktreePath} push origin ${branchName}`);
+      
+      // Attempt to use GitHub CLI to create the PR
+      const { stdout: prOutput } = await execAsync(`gh pr create --title "${state.currentTask}" --body "Automated PR created by Zero Factory Builder." --head ${branchName}`);
+      
+      if (prOutput && prOutput.trim().startsWith("http")) {
+        finalPrUrl = prOutput.trim();
+        actionLog += ` | Successfully created PR: ${finalPrUrl}`;
+      }
+    } else {
+      actionLog += " | No code changes were made to commit.";
+    }
+  } catch (e: any) {
+    console.warn("Could not push or create PR (possibly missing gh CLI or permissions):", e.message);
+    actionLog += ` | Git/GH failed, using mock PR: ${finalPrUrl}`;
+  }
+  
   return {
     status: "Blocked",
-    prUrl: `https://github.com/ntsd/zerofactory/pull/${Math.floor(Math.random()*1000)}`,
+    prUrl: finalPrUrl,
     messages: [
       new AIMessage(`Created worktree at ${worktreePath}`),
       ...builderMessages,
-      new AIMessage(`Builder Final Action: ${actionLog}`),
-      new AIMessage(`Created PR for task: ${state.currentTask}`)
+      new AIMessage(`Builder Final Action: ${actionLog}`)
     ]
   };
 }
