@@ -11,6 +11,8 @@ describe("Zero Factory Agents", () => {
       currentTask: "",
       prUrl: "",
       reviewCount: 0,
+      repoUrl: null,
+      repoPath: null,
       messages: []
     };
 
@@ -30,6 +32,8 @@ describe("Zero Factory Agents", () => {
       currentTask: "",
       prUrl: "",
       reviewCount: 0,
+      repoUrl: null,
+      repoPath: null,
       messages: []
     };
 
@@ -48,6 +52,8 @@ describe("Zero Factory Agents", () => {
       currentTask: "Task 1",
       prUrl: "http://github.com/mock/1",
       reviewCount: 0,
+      repoUrl: null,
+      repoPath: null,
       messages: []
     };
 
@@ -66,6 +72,8 @@ describe("Zero Factory Agents", () => {
       currentTask: "Task 1",
       prUrl: "http://github.com/mock/1",
       reviewCount: 0,
+      repoUrl: null,
+      repoPath: null,
       messages: []
     };
 

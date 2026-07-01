@@ -12,12 +12,14 @@ Bun.serve({
     if (url.pathname === "/api/start" && req.method === "POST") {
       const body = await req.json();
       const goal = body.goal || "Default goal";
+      const repoUrl = body.repoUrl;
       const threadId = crypto.randomUUID();
       
-      console.log(`Starting new thread ${threadId} for goal: ${goal}`);
+      console.log(`Starting new thread ${threadId} for goal: ${goal}, repo: ${repoUrl}`);
       
       const initialState = {
         goal,
+        repoUrl,
         status: "Triage",
         messages: [new HumanMessage(goal)]
       };

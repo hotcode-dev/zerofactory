@@ -42,5 +42,17 @@ export const AgentState = Annotation.Root({
   reviewCount: Annotation<number>({
     reducer: (x, y) => (y !== undefined ? y : x),
     default: () => 0
+  }),
+
+  // Target GitHub Repository URL
+  repoUrl: Annotation<string | null>({
+    reducer: (x, y) => y !== undefined ? y : x,
+    default: () => null
+  }),
+
+  // Local path where the repository is cloned
+  repoPath: Annotation<string | null>({
+    reducer: (x, y) => y !== undefined ? y : x,
+    default: () => null
   })
 });

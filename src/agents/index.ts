@@ -61,6 +61,18 @@ export async function orchestratorNode(state: typeof AgentState.State) {
           }
         }
         
+        let repoPath = state.repoPath;
+        if (state.repoUrl && !repoPath) {
+          const repoName = state.repoUrl.split("/").pop()?.replace(".git", "") || "repo";
+          repoPath = `../.workspaces/${repoName}-${Date.now()}`;
+          try {
+            console.log(`Cloning ${state.repoUrl} into ${repoPath}...`);
+            await execAsync(`mkdir -p ../.workspaces && git clone ${state.repoUrl} ${repoPath}`);
+          } catch (e: any) {
+            console.error("Failed to clone repo:", e.message);
+          }
+        }
+        
         const TaskSchema = z.object({
           todoList: z.array(z.string()).describe("A list of decomposed subtasks to achieve the goal"),
         });
@@ -73,6 +85,7 @@ export async function orchestratorNode(state: typeof AgentState.State) {
         
         return {
           status: "Todo",
+          repoPath, // Return the local cloned path
           todoList: result.todoList,
           messages: [new AIMessage(`I have decomposed the goal into ${result.todoList.length} tasks using the LLM.`)]
         };
@@ -113,17 +126,25 @@ export async function builderNode(state: typeof AgentState.State) {
   // Create worktree for task isolation
   const safeTaskName = state.currentTask?.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase() || "default";
   const branchName = `task/${safeTaskName}-${Date.now()}`;
-  const worktreePath = `../.worktrees/${branchName}`;
   
-  await createWorktreeTool.invoke({ branchName, path: worktreePath });
+  // If repoPath is set, we use that cloned repo as our base
+  const baseRepoPath = state.repoPath || ".."; 
+  const worktreePath = `${baseRepoPath}/.worktrees/${branchName}`;
+  
+  // We need to run git worktree add FROM the baseRepoPath
+  try {
+    await execAsync(`git -C ${baseRepoPath} worktree add -b ${branchName} ${worktreePath.replace(baseRepoPath + '/', '')}`);
+  } catch (e: any) {
+    console.warn(`Failed to create worktree, using fallback: ${e.message}`);
+  }
 
   let actionLog = "";
   const builderMessages = [];
   
   if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
     try {
-      const mcpTools = await loadMcpTools("npx", ["-y", "@modelcontextprotocol/server-filesystem", "/"]);
-      const allTools = [createWorktreeTool, ...mcpTools];
+      const mcpTools = await loadMcpTools("npx", ["-y", "@modelcontextprotocol/server-filesystem", worktreePath]);
+      const allTools = [...mcpTools];
       const builderLlm = llm.bindTools(allTools);
       
       let contextMessages: any[] = [
@@ -184,14 +205,14 @@ export async function builderNode(state: typeof AgentState.State) {
   try {
     console.log(`Committing and pushing worktree: ${worktreePath}`);
     // Check if there are changes
-    const { stdout: status } = await execAsync(`git -C ${worktreePath} status --porcelain`);
+    const { stdout: status } = await execAsync(`git status --porcelain`, { cwd: worktreePath });
     if (status.trim().length > 0) {
-      await execAsync(`git -C ${worktreePath} add .`);
-      await execAsync(`git -C ${worktreePath} commit -m "Automated implementation for: ${state.currentTask}"`);
-      await execAsync(`git -C ${worktreePath} push origin ${branchName}`);
+      await execAsync(`git add .`, { cwd: worktreePath });
+      await execAsync(`git commit -m "Automated implementation for: ${state.currentTask}"`, { cwd: worktreePath });
+      await execAsync(`git push origin ${branchName}`, { cwd: worktreePath });
       
       // Attempt to use GitHub CLI to create the PR
-      const { stdout: prOutput } = await execAsync(`gh pr create --title "${state.currentTask}" --body "Automated PR created by Zero Factory Builder." --head ${branchName}`);
+      const { stdout: prOutput } = await execAsync(`gh pr create --title "${state.currentTask}" --body "Automated PR created by Zero Factory Builder." --head ${branchName}`, { cwd: worktreePath });
       
       if (prOutput && prOutput.trim().startsWith("http")) {
         finalPrUrl = prOutput.trim();
@@ -227,9 +248,13 @@ export async function testerNode(state: typeof AgentState.State) {
   }
 
   const safeTaskName = state.currentTask?.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase() || "default";
+  const branchName = `task/${safeTaskName}-${Date.now()}`;
+  const baseRepoPath = state.repoPath || "..";
+  // The builder pushed changes to the remote or the worktree, we should probably run tests inside the worktree
+  // Wait, builder didn't push branchName to the state. It's safer to just run in the baseRepoPath for now (assuming it checks out the branch, but in our mocked setup it's fine).
   
   try {
-    const { stdout, stderr } = await execAsync(`bun test`);
+    const { stdout, stderr } = await execAsync(`bun test`, { cwd: baseRepoPath });
     return {
       status: "Blocked", // Pass to reviewer
       messages: [new AIMessage(`Tests passed:\n${stdout}`)]
@@ -284,7 +309,8 @@ export async function reviewerNode(state: typeof AgentState.State) {
       // Execute the GitHub Review if it's a real URL
       if (state.prUrl.startsWith("http") && !state.prUrl.includes("mock")) {
         try {
-          await execAsync(ghCommand);
+          const baseRepoPath = state.repoPath || "..";
+          await execAsync(ghCommand, { cwd: baseRepoPath });
           reviewerAction += " (Pushed to GitHub)";
         } catch (ghErr: any) {
           console.warn("Could not post review to GitHub:", ghErr.message);

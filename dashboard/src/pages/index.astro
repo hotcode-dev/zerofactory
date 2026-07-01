@@ -12,6 +12,9 @@ import Layout from '../layouts/Layout.astro';
 		<section class="glass-panel orchestrator-panel">
 			<h2>Launch Goal</h2>
 			<div class="input-group">
+				<input type="text" id="repo-input" placeholder="Repository URL (e.g. https://github.com/user/repo)" />
+			</div>
+			<div class="input-group">
 				<input type="text" id="goal-input" placeholder="e.g. Build a new feature for user authentication..." />
 				<button id="start-btn" class="glow-btn">Start Execution</button>
 			</div>
@@ -326,6 +329,7 @@ import Layout from '../layouts/Layout.astro';
 <script>
 	const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 	const goalInput = document.getElementById('goal-input') as HTMLInputElement;
+	const repoInput = document.getElementById('repo-input') as HTMLInputElement;
 	const statusDisplay = document.getElementById('status-display');
 	const logContainer = document.getElementById('log-container');
 	
@@ -368,7 +372,11 @@ import Layout from '../layouts/Layout.astro';
 
 	startBtn?.addEventListener('click', async () => {
 		const goal = goalInput?.value;
-		if (!goal) return;
+		const repoUrl = repoInput?.value;
+		if (!goal || !repoUrl) {
+			alert("Please enter both a Repository URL and a Goal.");
+			return;
+		}
 
 		statusDisplay?.classList.remove('hidden');
 		if (startBtn) startBtn.disabled = true;
@@ -387,7 +395,7 @@ import Layout from '../layouts/Layout.astro';
 			const res = await fetch('/api/start', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ goal })
+				body: JSON.stringify({ goal, repoUrl })
 			});
 			
 			const data = await res.json();
