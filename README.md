@@ -117,16 +117,16 @@ ANTHROPIC_API_KEY=sk-...
 
 ### 4. Running the System (Development)
 
-Run the backend API (Port 10000):
+Run the backend API (Port 18780):
 ```bash
 cd src
-PORT=10000 bun run index.ts
+PORT=18780 bun run index.ts
 ```
 
-Run the Astro Dashboard (Port 10002):
+Run the Astro Dashboard (Port 18781):
 ```bash
 cd dashboard
-bun run dev --host --port 10002
+bun run dev --host --port 18781
 ```
 
 ### 5. Running as Systemd Services (Production)
@@ -136,6 +136,15 @@ sudo ln -s $(pwd)/zerofactory-api.service /etc/systemd/system/
 sudo ln -s $(pwd)/zerofactory-dashboard.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now zerofactory-api.service zerofactory-dashboard.service
+```
+
+To view the live logs for the services, use `journalctl`:
+```bash
+# View backend API logs
+sudo journalctl -u zerofactory-api.service -f
+
+# View dashboard logs
+sudo journalctl -u zerofactory-dashboard.service -f
 ```
 
 ## License

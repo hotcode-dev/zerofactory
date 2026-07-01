@@ -9,7 +9,7 @@ WorkingDirectory=/home/ntsd/git/hotcode-dev/zerofactory/src
 # Use the full path to bun executable; assuming it's in ~/.bun/bin/bun or similar
 # If bun is installed system-wide, this might just be /usr/local/bin/bun
 ExecStart=/home/ntsd/.bun/bin/bun run index.ts
-Environment="PORT=10000"
+Environment="PORT=18780"
 Environment="NODE_ENV=production"
 Restart=always
 RestartSec=3

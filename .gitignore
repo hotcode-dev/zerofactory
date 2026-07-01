@@ -42,3 +42,6 @@ profiles/*/**
 # unignore plugins
 !profiles/common/plugins/
 !profiles/common/plugins/**
+
+.data
+.workspace

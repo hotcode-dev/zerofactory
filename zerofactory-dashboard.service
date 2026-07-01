@@ -7,7 +7,7 @@ Type=simple
 User=ntsd
 WorkingDirectory=/home/ntsd/git/hotcode-dev/zerofactory/dashboard
 # Use the full path to bun executable
-ExecStart=/home/ntsd/.bun/bin/bun run dev --host --port 18789
+ExecStart=/home/ntsd/.bun/bin/bun run dev --host --port 18781
 Restart=always
 RestartSec=3
 

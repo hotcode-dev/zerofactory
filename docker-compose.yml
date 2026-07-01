@@ -4,9 +4,9 @@ services:
   zerofactory:
     build: .
     ports:
-      - "10000:10000"
+      - "18780:18780"
     environment:
-      - PORT=10000
+      - PORT=18780
       # Add API keys below in production or load from .env
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
