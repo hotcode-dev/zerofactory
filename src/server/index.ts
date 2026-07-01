@@ -13,21 +13,43 @@ Bun.serve({
       const body = await req.json();
       const goal = body.goal || "Default goal";
       const repoUrl = body.repoUrl;
-      const threadId = crypto.randomUUID();
       
-      console.log(`Starting new thread ${threadId} for goal: ${goal}, repo: ${repoUrl}`);
+      if (!repoUrl) {
+        return new Response("Missing repoUrl", { status: 400 });
+      }
+
+      // Generate a deterministic thread ID for this repository
+      const threadId = "repo-" + Buffer.from(repoUrl).toString('base64url');
       
-      const initialState = {
-        goal,
-        repoUrl,
-        status: "Triage",
-        messages: [new HumanMessage(goal)]
-      };
+      console.log(`Starting/updating thread ${threadId} for repo: ${repoUrl} with goal: ${goal}`);
       
-      // We invoke the graph asynchronously. In a real scenario, this runs in the background
-      // and we just return the threadId immediately.
-      // But for the dashboard to see immediate triage, we will run the first step synchronously.
-      // The graph is compiled with a checkpointer in agents/index.ts.
+      let existingState = null;
+      try {
+        existingState = await app.getState({ configurable: { thread_id: threadId } });
+      } catch (e) {
+        // Ignored
+      }
+      
+      let initialState;
+      if (existingState && existingState.values && existingState.values.status) {
+        // Append to existing repo thread
+        const updatedGoal = existingState.values.goal ? `${existingState.values.goal} | ${goal}` : goal;
+        initialState = {
+          goal: updatedGoal,
+          status: "Triage",
+          messages: [new HumanMessage(`New Goal Added: ${goal}`)]
+        };
+      } else {
+        // Create new thread
+        initialState = {
+          goal,
+          repoUrl,
+          status: "Triage",
+          messages: [new HumanMessage(goal)]
+        };
+      }
+      
+      // We invoke the graph asynchronously
       const result = await app.invoke(initialState, { configurable: { thread_id: threadId } });
 
       return new Response(JSON.stringify({ threadId, result }), {

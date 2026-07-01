@@ -482,9 +482,23 @@ import Layout from '../layouts/Layout.astro';
 			const data = await res.json();
 			const threadId = data.threadId;
 			
-			const board = createBoard(threadId, repoUrl, goal);
+			let board = document.getElementById(`board-${threadId}`);
+			if (board) {
+				// Board already exists, update goal text
+				const goalEl = board.querySelector('.goal-text');
+				if (goalEl) {
+					goalEl.textContent = goalEl.textContent ? `${goalEl.textContent} | ${goal}` : goal;
+				}
+				// Append a log locally so user sees immediate feedback
+				const logContainer = board.querySelector('.log-container') as HTMLElement;
+				appendLog(logContainer, `[SYSTEM] Added new goal: ${goal}`, 'system');
+			} else {
+				// Create new board
+				board = createBoard(threadId, repoUrl, goal);
+				connectStream(threadId, board);
+			}
+			
 			updatePipeline(board, 'Triage');
-			connectStream(threadId, board);
 			
 			goalInput.value = '';
 
