@@ -116,6 +116,54 @@ Bun.serve({
         });
     }
 
+    // API to add a specific task to the Todo list
+    if (url.pathname === "/api/task" && req.method === "POST") {
+      const body = await req.json();
+      const threadId = body.threadId;
+      const task = body.task;
+      
+      if (!threadId || !task) {
+        return new Response("Missing threadId or task", { status: 400 });
+      }
+
+      console.log(`Adding manual task to thread ${threadId}: ${task}`);
+      
+      try {
+        const state = await app.getState({ configurable: { thread_id: threadId } });
+        if (state && state.values) {
+          const currentTodoList = state.values.todoList || [];
+          const updatedTodoList = [...currentTodoList, task];
+          
+          const wasDone = state.values.status === "Done";
+          const newStatus = wasDone ? "Todo" : state.values.status;
+
+          // If the graph was at END, we need to push a state update as if from the orchestrator node, or just update the state
+          // and invoke. The easiest way to forcefully change state and resume is app.updateState.
+          await app.updateState({ configurable: { thread_id: threadId } }, { 
+            todoList: updatedTodoList, 
+            status: newStatus,
+            messages: [new HumanMessage(`Manual task added: ${task}`)]
+          });
+
+          // If it was done, we need to invoke it to start the loop again
+          if (wasDone) {
+            // Because it reached END, we can kick it back off by invoking a fake orchestrator call or just invoking it?
+            // Actually, if we update state to Todo, we might need to route it. 
+            // In LangGraph, if you reach END, you can resume by updating state with a specific node target, 
+            // but let's just invoke it and let our state graph handle it if possible.
+            // Wait, if it's at END, we just invoke it with the new state payload, and it starts from START -> orchestrator.
+            await app.invoke({ status: "Todo", todoList: updatedTodoList }, { configurable: { thread_id: threadId } });
+          }
+
+          return new Response(JSON.stringify({ success: true }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+      } catch (e: any) {
+        return new Response(`Error: ${e.message}`, { status: 500 });
+      }
+    }
+
     // Handle Preflight OPTIONS
     if (req.method === "OPTIONS") {
         return new Response(null, {

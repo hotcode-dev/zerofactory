@@ -57,6 +57,11 @@ import Layout from '../layouts/Layout.astro';
 						<a class="pr-link" href="#" target="_blank">View on GitHub ↗</a>
 					</div>
 				</div>
+
+				<div class="add-task-group input-group" style="margin-top: 1.5rem; margin-bottom: 0;">
+					<input type="text" class="manual-task-input" placeholder="Quickly add a specific task to the Todo list..." />
+					<button class="add-task-btn glow-btn">Add Task</button>
+				</div>
 			</div>
 		</template>
 	</main>
@@ -399,6 +404,31 @@ import Layout from '../layouts/Layout.astro';
 		board.querySelector('.repo-name')!.textContent = repoUrl;
 		board.querySelector('.goal-text')!.textContent = goal;
 		
+		const taskInput = board.querySelector('.manual-task-input') as HTMLInputElement;
+		const addTaskBtn = board.querySelector('.add-task-btn') as HTMLButtonElement;
+		
+		addTaskBtn.addEventListener('click', async () => {
+			const task = taskInput.value;
+			if (!task) return;
+			
+			addTaskBtn.disabled = true;
+			addTaskBtn.textContent = "...";
+			
+			try {
+				await fetch('/api/task', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ threadId, task })
+				});
+				taskInput.value = '';
+			} catch (e: any) {
+				alert(`Failed to add task: ${e.message}`);
+			} finally {
+				addTaskBtn.disabled = false;
+				addTaskBtn.textContent = "Add Task";
+			}
+		});
+
 		boardsContainer?.prepend(board);
 		return board;
 	}
