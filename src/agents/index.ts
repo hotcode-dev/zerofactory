@@ -18,10 +18,10 @@ export const checkpointer = new DiskMemorySaver("../.data/checkpoints.json");
 
 // Initialize LLM (defaults to local vLLM if OPENAI_API_BASE is not set)
 const llm = new ChatOpenAI({
-  modelName: process.env.MODEL_NAME || "default", // vLLM usually ignores this if only one model is loaded, but it's good to be configurable
+  modelName: process.env.MODEL_NAME || "qwen36-fast",
   temperature: 0,
   configuration: {
-    baseURL: process.env.OPENAI_API_BASE || "http://spark.ntsd.dev/v1",
+    baseURL: process.env.OPENAI_API_BASE || "http://spark.ntsd.dev:8000/v1",
   },
   apiKey: process.env.OPENAI_API_KEY || "empty", // vLLM doesn't require a real API key by default
 });
@@ -128,19 +128,19 @@ export async function orchestratorNode(state: typeof AgentState.State) {
 export async function builderNode(state: typeof AgentState.State) {
   console.log("Builder: working on task", state.currentTask);
   
-  // Create worktree for task isolation
+  // Reuse worktree if it exists in state, otherwise create one
   const safeTaskName = state.currentTask?.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase() || "default";
-  const branchName = `task/${safeTaskName}-${Date.now()}`;
-  
-  // If repoPath is set, we use that cloned repo as our base
+  const branchName = state.branchName || `task/${safeTaskName}-${Date.now()}`;
   const baseRepoPath = state.repoPath || ".."; 
-  const worktreePath = `${baseRepoPath}/.worktrees/${branchName}`;
+  const worktreePath = state.worktreePath || `${baseRepoPath}/.worktrees/${branchName}`;
   
-  // We need to run git worktree add FROM the baseRepoPath
-  try {
-    await execAsync(`git -C ${baseRepoPath} worktree add -b ${branchName} ${worktreePath.replace(baseRepoPath + '/', '')}`);
-  } catch (e: any) {
-    console.warn(`Failed to create worktree, using fallback: ${e.message}`);
+  // We need to run git worktree add FROM the baseRepoPath if it doesn't exist
+  if (!state.worktreePath) {
+    try {
+      await execAsync(`git -C ${baseRepoPath} worktree add -b ${branchName} ${worktreePath.replace(baseRepoPath + '/', '')}`);
+    } catch (e: any) {
+      console.warn(`Failed to create worktree, using fallback: ${e.message}`);
+    }
   }
 
   let actionLog = "";
@@ -154,7 +154,8 @@ export async function builderNode(state: typeof AgentState.State) {
       
       let contextMessages: any[] = [
         new SystemMessage("You are the Builder. Use the provided tools to implement the task. When you are finished, return a standard text response explaining what you did."),
-        new HumanMessage(`Task: ${state.currentTask}. Please implement this in ${worktreePath}.`)
+        ...state.messages.filter(m => m instanceof AIMessage || m instanceof HumanMessage),
+        new HumanMessage(`Task: ${state.currentTask}. Please implement this in ${worktreePath}. If you are retrying after a test or review failure, read the history above to fix the issues.`)
       ];
       
       builderMessages.push(new AIMessage(`Started deterministic agent execution...`));
@@ -174,9 +175,9 @@ export async function builderNode(state: typeof AgentState.State) {
     actionLog = "Mock builder execution.";
   }
   
-  let finalPrUrl = `https://github.com/ntsd/zerofactory/pull/${branchName.length * 42}`;
+  let finalPrUrl = state.prUrl || `https://github.com/ntsd/zerofactory/pull/${branchName.length * 42}`;
   
-  // Attempt to actually commit, push, and create a PR
+  // Attempt to actually commit, push, and create/update a PR
   try {
     console.log(`Committing and pushing worktree: ${worktreePath}`);
     // Check if there are changes
@@ -186,12 +187,20 @@ export async function builderNode(state: typeof AgentState.State) {
       await execAsync(`git commit -m "Automated implementation for: ${state.currentTask}"`, { cwd: worktreePath });
       await execAsync(`git push origin ${branchName}`, { cwd: worktreePath });
       
-      // Attempt to use GitHub CLI to create the PR
-      const { stdout: prOutput } = await execAsync(`gh pr create --title "${state.currentTask}" --body "Automated PR created by Zero Factory Builder." --head ${branchName}`, { cwd: worktreePath });
-      
-      if (prOutput && prOutput.trim().startsWith("http")) {
-        finalPrUrl = prOutput.trim();
-        actionLog += ` | Successfully created PR: ${finalPrUrl}`;
+      // Attempt to use GitHub CLI to create the PR only if it doesn't exist
+      if (!state.prUrl || state.prUrl.includes("mock")) {
+        try {
+          const { stdout: prOutput } = await execAsync(`gh pr create --title "${state.currentTask}" --body "Automated PR created by Zero Factory Builder." --head ${branchName}`, { cwd: worktreePath });
+          if (prOutput && prOutput.trim().startsWith("http")) {
+            finalPrUrl = prOutput.trim();
+            actionLog += ` | Successfully created PR: ${finalPrUrl}`;
+          }
+        } catch (e: any) {
+          console.warn("Could not create PR:", e.message);
+          actionLog += ` | PR creation failed, using mock PR: ${finalPrUrl}`;
+        }
+      } else {
+        actionLog += ` | Successfully updated existing PR: ${finalPrUrl}`;
       }
     } else {
       actionLog += " | No code changes were made to commit.";
@@ -204,6 +213,8 @@ export async function builderNode(state: typeof AgentState.State) {
   return {
     status: "Testing", // move to Testing state
     prUrl: finalPrUrl,
+    branchName,
+    worktreePath,
     messages: [
       new AIMessage(`Created worktree at ${worktreePath}`),
       ...builderMessages,
@@ -222,14 +233,11 @@ export async function testerNode(state: typeof AgentState.State) {
     };
   }
 
-  const safeTaskName = state.currentTask?.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase() || "default";
-  const branchName = `task/${safeTaskName}-${Date.now()}`;
-  const baseRepoPath = state.repoPath || "..";
-  // The builder pushed changes to the remote or the worktree, we should probably run tests inside the worktree
-  // Wait, builder didn't push branchName to the state. It's safer to just run in the baseRepoPath for now (assuming it checks out the branch, but in our mocked setup it's fine).
+  // Run tests inside the isolated worktree where the changes actually exist!
+  const targetTestPath = state.worktreePath || state.repoPath || "..";
   
   try {
-    const { stdout, stderr } = await execAsync(`bun test`, { cwd: baseRepoPath });
+    const { stdout, stderr } = await execAsync(`bun test`, { cwd: targetTestPath });
     return {
       status: "Blocked", // Pass to reviewer
       messages: [new AIMessage(`Tests passed:\n${stdout}`)]

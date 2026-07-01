@@ -54,5 +54,17 @@ export const AgentState = Annotation.Root({
   repoPath: Annotation<string | null>({
     reducer: (x, y) => y !== undefined ? y : x,
     default: () => null
+  }),
+
+  // Current active worktree path for the task
+  worktreePath: Annotation<string | null>({
+    reducer: (x, y) => y !== undefined ? y : x,
+    default: () => null
+  }),
+
+  // Current active branch name
+  branchName: Annotation<string | null>({
+    reducer: (x, y) => y !== undefined ? y : x,
+    default: () => null
   })
 });
