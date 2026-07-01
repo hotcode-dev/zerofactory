@@ -22,7 +22,8 @@ Zero Factory operates using a specialized team of AI agent nodes, orchestrated b
 | :--- | :--- | :--- |
 | **Orchestrator** | Pipeline Overseer | Receives the initial goal, decomposes it into sub-tasks (Todo List), manages handoffs, and tracks state via LangGraph persistence. |
 | **Builder** | Senior Software Engineer | Writes the code and tests. Executes tool calls in a ReAct loop using `modelcontextprotocol/sdk` to run terminal commands, modify files, and create Git worktrees. |
-| **Reviewer** | Quality Gatekeeper | Reviews PRs, checks for bugs, performance issues, and security flaws. Can bounce tasks back to the Builder iteratively. |
+| **Tester** | QA Automation | Executes `bun test` autonomously. If tests fail, bounces the code back to the Builder. If they pass, hands off to the Reviewer. |
+| **Reviewer** | Quality Gatekeeper | Reviews PRs, checks for bugs, performance issues, and security flaws. Comments directly on GitHub and can bounce tasks back to the Builder. |
 
 ## Architecture & Workflow
 
@@ -46,12 +47,17 @@ graph TD
         ToolNode --> BuilderNode
     end
     
-    BuilderNode -->|Creates PR & Worktree| Blocked[State: Blocked]:::kanban
+    BuilderNode -->|Creates PR & Worktree| Testing[State: Testing]:::kanban
+    
+    Testing --> TesterNode[Tester Node]
+    
+    TesterNode -->|Tests Failed| Ready
+    TesterNode -->|Tests Passed| Blocked[State: Blocked]:::kanban
     
     Blocked --> ReviewerNode[Reviewer Node]
     
-    ReviewerNode -->|Requests Changes| Ready
-    ReviewerNode -->|Approves PR| Done[State: Done]:::kanban
+    ReviewerNode -->|Requests Changes via GitHub| Ready
+    ReviewerNode -->|Approves PR via GitHub| Done[State: Done]:::kanban
     
     Done -->|Next Subtask| Todo
 ```
@@ -59,28 +65,29 @@ graph TD
 ## Core Components
 
 ### 1. LangGraph Backend (`src/`)
-Built with **Bun** and **LangGraph.js**, the backend exposes an API (`/api/start`, `/api/stream`) that manages the execution threads, preserves state via checkpoints, and dynamically binds MCP tools to the agent LLMs.
+Built with **Bun** and **LangGraph.js**, the backend exposes an API (`/api/start`, `/api/stream`) that manages the execution threads, preserves state via checkpoints, and dynamically binds MCP tools to the agent LLMs. It also statically serves the compiled Astro Dashboard.
 
 ### 2. Astro Dashboard (`dashboard/`)
-A real-time, premium frontend built with **Astro**. It connects to the Bun API via **Server-Sent Events (SSE)** to stream real-time logs, execution loops, and agent status directly to the browser.
+A real-time, premium frontend built with **Astro**. It connects to the Bun API via **Server-Sent Events (SSE)** to stream real-time logs, syntax-highlighted tool calls, and visual pipeline states directly to the browser.
 
 ### 3. Model Context Protocol (MCP) Tools
 The Builder node uses the `@modelcontextprotocol/sdk` to dynamically wrap local MCP servers (like the filesystem and terminal) into standard LangChain `DynamicTool` instances.
 
 ## Data Flow
 
-1. **Goal Formulation**: User submits a goal via the Astro Dashboard.
+1. **Goal Formulation**: User submits a goal or a **GitHub Issue URL** via the Astro Dashboard. If an issue URL is provided, the Orchestrator fetches the issue context directly.
 2. **Auto-Triage**: The Orchestrator node uses structured LLM output (Zod) to break the goal down into `Todo` sub-tasks.
 3. **Execution Setup**: The StateGraph promotes the task to `Ready`.
 4. **Builder Execution**: The Builder picks up the task, provisions an isolated Git worktree, and enters a **ReAct loop** to execute tools.
-5. **PR Creation**: When the Builder finishes, it pushes the branch and simulates/opens a GitHub PR, entering the `Blocked` state.
-6. **Continuous Polish**: The Reviewer analyzes the work. If it finds issues, it bounces the state back to `Ready` for the Builder. If approved, it moves to `Done`.
+5. **PR Creation & Testing**: The Builder pushes the branch and creates a real GitHub PR, moving to `Testing`. The Tester Node runs `bun test`. If tests fail, it loops back to the Builder.
+6. **Continuous Polish**: The Reviewer analyzes the work and posts feedback via `gh pr review`. If it requests changes, it bounces back to `Ready`. If approved, it moves to `Done`.
 
 ## Setup Guide
 
 - Linux machine (Raspberry Pi or x86_64)
 - Bun 1.1+
 - Node.js 22+
+- Docker & Docker Compose (Optional)
 
 ### 1. Clone and Setup
 
