@@ -16,10 +16,14 @@ const execAsync = promisify(exec);
 export const checkpointer = new DiskMemorySaver("../.data/checkpoints.json");
 
 
-// Mock LLM or real LLM if key is present
+// Initialize LLM (defaults to local vLLM if OPENAI_API_BASE is not set)
 const llm = new ChatOpenAI({
-  modelName: "gpt-4o-mini",
+  modelName: process.env.MODEL_NAME || "default", // vLLM usually ignores this if only one model is loaded, but it's good to be configurable
   temperature: 0,
+  configuration: {
+    baseURL: process.env.OPENAI_API_BASE || "http://spark.ntsd.dev/v1",
+  },
+  apiKey: process.env.OPENAI_API_KEY || "empty", // vLLM doesn't require a real API key by default
 });
 
 // A tool to create a git worktree
@@ -46,8 +50,8 @@ export async function orchestratorNode(state: typeof AgentState.State) {
   console.log("Orchestrator: analyzing current state...", state.status);
   
   if (state.status === "Triage") {
-    // If we have an LLM configured (API key exists), use it to decompose tasks
-    if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
+    // Default to using the LLM (vLLM) unless specifically mocked
+    if (process.env.USE_MOCK !== 'true') {
       try {
         let enhancedGoal = state.goal;
         
@@ -142,7 +146,7 @@ export async function builderNode(state: typeof AgentState.State) {
   let actionLog = "";
   const builderMessages = [];
   
-  if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
+  if (process.env.USE_MOCK !== 'true') {
     try {
       const mcpTools = await loadMcpTools("npx", ["-y", "@modelcontextprotocol/server-filesystem", worktreePath]);
       const allTools = [...mcpTools];
@@ -245,7 +249,7 @@ export async function reviewerNode(state: typeof AgentState.State) {
   let resultStatus = "Done";
   let reviewerAction = "";
   
-  if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
+  if (process.env.USE_MOCK !== 'true') {
     try {
       const reviewerLlm = llm;
       const reviewSystemPrompt = `

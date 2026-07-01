@@ -1,4 +1,8 @@
 import { expect, test, describe } from "bun:test";
+
+// Enforce mock logic for fast, deterministic unit tests
+process.env.USE_MOCK = 'true';
+
 import { orchestratorNode, reviewerNode, testerNode } from "./agents/index.js";
 
 describe("Zero Factory Agents", () => {
