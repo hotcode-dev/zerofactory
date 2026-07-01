@@ -35,6 +35,35 @@ Bun.serve({
       });
     }
 
+    // API to get all threads
+    if (url.pathname === "/api/threads" && req.method === "GET") {
+      const { checkpointer } = await import("../agents/index.js");
+      const threads = checkpointer.getAllThreads();
+      const threadsData = [];
+      
+      for (const threadId of threads) {
+        try {
+          const state = await app.getState({ configurable: { thread_id: threadId } });
+          if (state && state.values) {
+            threadsData.push({
+              threadId,
+              goal: state.values.goal,
+              repoUrl: state.values.repoUrl,
+              status: state.values.status
+            });
+          }
+        } catch (e) {
+          // Ignore state fetch errors for individual threads
+        }
+      }
+      
+      // Sort newest first based on threadId (which is Date.now().toString() or UUID)
+      // Actually UUIDs aren't chronological, but we changed it to crypto.randomUUID() earlier.
+      return new Response(JSON.stringify(threadsData), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
     // API to get thread status
     if (url.pathname === "/api/status" && req.method === "GET") {
       const threadId = url.searchParams.get("threadId");

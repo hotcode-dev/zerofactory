@@ -12,7 +12,7 @@ import { DiskMemorySaver } from "../checkpointer.js";
 const execAsync = promisify(exec);
 
 // Initialize persistence (saves to disk so server restarts don't lose state)
-const checkpointer = new DiskMemorySaver("../.data/checkpoints.json");
+export const checkpointer = new DiskMemorySaver("../.data/checkpoints.json");
 
 
 // Mock LLM or real LLM if key is present

@@ -65,4 +65,15 @@ export class DiskMemorySaver extends MemorySaver {
     await super.putWrites(config, writes, taskId);
     this.save();
   }
+
+  getAllThreads(): string[] {
+    const threadIds = new Set<string>();
+    // this.storage is typed as Record<string, Record<string, SerializedCheckpoint>>
+    if (this.storage) {
+      for (const threadId of Object.keys(this.storage)) {
+        threadIds.add(threadId);
+      }
+    }
+    return Array.from(threadIds);
+  }
 }
