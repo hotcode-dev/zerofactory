@@ -1,3 +1,0 @@
-name: zerofactory-kanban-dispatcher
-version: "1.0"
-description: Programmatically assigns tasks and unblocks dependencies in the Kanban board.

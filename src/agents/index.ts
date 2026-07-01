@@ -179,19 +179,56 @@ export async function builderNode(state: typeof AgentState.State) {
 export async function reviewerNode(state: typeof AgentState.State) {
   console.log("Reviewer: reviewing PR", state.prUrl);
   
-  const reviews = state.reviewCount || 0;
-  if (reviews < 1) {
-    return {
-      status: "Ready",
-      reviewCount: reviews + 1,
-      messages: [new AIMessage("Requested changes on PR.")]
-    };
+  let resultStatus = "Done";
+  let reviewerAction = "";
+  
+  if (process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY) {
+    try {
+      const reviewerLlm = llm;
+      const reviewSystemPrompt = `
+      You are the Reviewer — the senior code reviewer and quality gatekeeper of Zero Factory.
+      Your core responsibilities are code review, architecture, security, performance, and documentation.
+      
+      Review the task: ${state.currentTask}
+      
+      Decide if this work needs improvement or if it is approved. If you request changes, reply with 'CHANGES_REQUESTED' as the first word of your response. Otherwise, reply with 'APPROVED'.
+      `;
+      
+      const response = await reviewerLlm.invoke([
+        new SystemMessage(reviewSystemPrompt),
+        new HumanMessage("Please review the PR and decide if it meets quality standards.")
+      ]);
+      
+      const content = response.content as string;
+      if (content.startsWith("CHANGES_REQUESTED")) {
+        resultStatus = "Ready"; // Bounce back to builder
+        reviewerAction = `Requested changes: ${content.substring(17).trim()}`;
+      } else {
+        resultStatus = "Done";
+        reviewerAction = `Approved PR: ${content.substring(8).trim()}`;
+      }
+    } catch (e: any) {
+      console.error("Reviewer LLM Error:", e.message);
+      resultStatus = "Done";
+      reviewerAction = "Mock Reviewer Approved (LLM Failed)";
+    }
   } else {
-    return {
-      status: "Done",
-      messages: [new AIMessage("PR approved and merged!")]
-    };
+    // Mock random decision
+    if (Math.random() > 0.5) {
+      resultStatus = "Ready";
+      reviewerAction = "Mock Reviewer found issues, bouncing back to Builder.";
+    } else {
+      resultStatus = "Done";
+      reviewerAction = "Mock Reviewer approved.";
+    }
   }
+  
+  return {
+    status: resultStatus,
+    messages: [
+      new AIMessage(reviewerAction)
+    ]
+  };
 }
 
 // Build the graph
