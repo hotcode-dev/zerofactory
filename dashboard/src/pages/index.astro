@@ -15,8 +15,20 @@ import Layout from '../layouts/Layout.astro';
 				<input type="text" id="goal-input" placeholder="e.g. Build a new feature for user authentication..." />
 				<button id="start-btn" class="glow-btn">Start Execution</button>
 			</div>
+			
 			<div id="status-display" class="status-box hidden">
-				<h3>Status: <span id="current-status" class="badge">Idle</span></h3>
+				<div class="pipeline">
+					<div class="stage" id="stage-Triage">Triage</div>
+					<div class="stage-connector"></div>
+					<div class="stage" id="stage-Todo">Todo</div>
+					<div class="stage-connector"></div>
+					<div class="stage" id="stage-Ready">Ready (Builder)</div>
+					<div class="stage-connector"></div>
+					<div class="stage" id="stage-Blocked">Blocked (Reviewer)</div>
+					<div class="stage-connector"></div>
+					<div class="stage" id="stage-Done">Done</div>
+				</div>
+				
 				<div class="log-container" id="log-container">
 					<!-- Logs will appear here -->
 				</div>
@@ -32,6 +44,7 @@ import Layout from '../layouts/Layout.astro';
 		--text-muted: #94a3b8;
 		--accent: #6366f1;
 		--accent-glow: rgba(99, 102, 241, 0.4);
+		--success: #10b981;
 		--glass-bg: rgba(255, 255, 255, 0.03);
 		--glass-border: rgba(255, 255, 255, 0.08);
 	}
@@ -87,11 +100,6 @@ import Layout from '../layouts/Layout.astro';
 		transition: transform 0.3s ease;
 	}
 
-	.glass-panel:hover {
-		transform: translateY(-2px);
-		border-color: rgba(255, 255, 255, 0.12);
-	}
-
 	h2 {
 		margin-top: 0;
 		font-size: 1.5rem;
@@ -134,51 +142,103 @@ import Layout from '../layouts/Layout.astro';
 		box-shadow: 0 4px 14px 0 var(--accent-glow);
 	}
 
-	.glow-btn:hover {
+	.glow-btn:hover:not(:disabled) {
 		transform: translateY(-1px);
 		box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
 		background: #7174ff;
 	}
 
-	.glow-btn:active {
-		transform: translateY(1px);
+	.glow-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.status-box {
 		border-top: 1px solid var(--glass-border);
 		padding-top: 2rem;
+		animation: fade-in 0.5s ease-out;
 	}
 
 	.hidden {
 		display: none;
 	}
-
-	.badge {
-		background: rgba(99, 102, 241, 0.2);
-		color: #a5b4fc;
-		padding: 0.25rem 0.75rem;
-		border-radius: 999px;
-		font-size: 0.875rem;
+	
+	.pipeline {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 2rem;
+		padding: 1rem;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 12px;
+	}
+	
+	.stage {
+		padding: 0.5rem 1rem;
+		border-radius: 8px;
+		background: rgba(255, 255, 255, 0.05);
+		color: var(--text-muted);
+		font-size: 0.85rem;
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
+		transition: all 0.4s ease;
+		border: 1px solid transparent;
+	}
+	
+	.stage.active {
+		background: rgba(99, 102, 241, 0.15);
+		color: #a5b4fc;
+		border-color: var(--accent);
+		box-shadow: 0 0 15px var(--accent-glow);
+		transform: scale(1.05);
+	}
+	
+	.stage.completed {
+		background: rgba(16, 185, 129, 0.15);
+		color: var(--success);
+		border-color: rgba(16, 185, 129, 0.3);
+	}
+
+	.stage-connector {
+		flex: 1;
+		height: 2px;
+		background: rgba(255, 255, 255, 0.1);
+		margin: 0 10px;
+		position: relative;
 	}
 
 	.log-container {
-		margin-top: 1rem;
 		background: rgba(0, 0, 0, 0.4);
 		border-radius: 8px;
 		padding: 1rem;
 		font-family: 'Fira Code', monospace;
 		font-size: 0.875rem;
 		color: #94a3b8;
-		min-height: 150px;
-		max-height: 300px;
+		min-height: 200px;
+		max-height: 400px;
 		overflow-y: auto;
+		border: 1px solid var(--glass-border);
 	}
+	
+	.log-entry {
+		margin-bottom: 0.5rem;
+		line-height: 1.4;
+		animation: slide-in 0.3s ease-out;
+	}
+	
+	.log-entry.system { color: #a5b4fc; }
+	.log-entry.error { color: #ef4444; }
+	.log-entry.success { color: #10b981; }
 
 	@keyframes fade-in {
-		from { opacity: 0; transform: translateY(20px); }
+		from { opacity: 0; transform: translateY(10px); }
 		to { opacity: 1; transform: translateY(0); }
+	}
+	
+	@keyframes slide-in {
+		from { opacity: 0; transform: translateX(-10px); }
+		to { opacity: 1; transform: translateX(0); }
 	}
 </style>
 
@@ -186,18 +246,36 @@ import Layout from '../layouts/Layout.astro';
 	const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 	const goalInput = document.getElementById('goal-input') as HTMLInputElement;
 	const statusDisplay = document.getElementById('status-display');
-	const currentStatus = document.getElementById('current-status');
 	const logContainer = document.getElementById('log-container');
+	
+	const stages = ['Triage', 'Todo', 'Ready', 'Blocked', 'Done'];
 
 	let eventSource: EventSource | null = null;
 
-	function appendLog(message: string, isError = false) {
+	function appendLog(message: string, type = 'normal') {
 		if (logContainer) {
 			const logEntry = document.createElement('div');
-			logEntry.style.color = isError ? '#ef4444' : '#94a3b8';
+			logEntry.className = `log-entry ${type}`;
 			logEntry.textContent = message;
 			logContainer.appendChild(logEntry);
 			logContainer.scrollTop = logContainer.scrollHeight;
+		}
+	}
+	
+	function updatePipeline(currentStage: string) {
+		let foundCurrent = false;
+		for (const stage of stages) {
+			const el = document.getElementById(`stage-${stage}`);
+			if (!el) continue;
+			
+			el.classList.remove('active', 'completed');
+			
+			if (stage === currentStage) {
+				el.classList.add('active');
+				foundCurrent = true;
+			} else if (!foundCurrent) {
+				el.classList.add('completed');
+			}
 		}
 	}
 
@@ -206,12 +284,11 @@ import Layout from '../layouts/Layout.astro';
 		if (!goal) return;
 
 		statusDisplay?.classList.remove('hidden');
-		if (currentStatus) currentStatus.textContent = 'Initializing...';
 		if (startBtn) startBtn.disabled = true;
 		
 		if (logContainer) logContainer.innerHTML = '';
+		updatePipeline('Triage');
 		
-		// Close existing stream
 		if (eventSource) {
 			eventSource.close();
 		}
@@ -225,29 +302,31 @@ import Layout from '../layouts/Layout.astro';
 			
 			const data = await res.json();
 			const threadId = data.threadId;
-			appendLog(`> Goal started. Thread ID: ${threadId}`);
+			appendLog(`[SYSTEM] Goal initialized. Thread ID: ${threadId}`, 'system');
 			
-			// Connect to SSE stream
 			eventSource = new EventSource(`http://localhost:10000/api/stream?threadId=${threadId}`);
 			
 			eventSource.onmessage = (event) => {
 				const streamData = JSON.parse(event.data);
 				
 				if (streamData.type === 'connected') {
-					appendLog(`> Connected to live stream for thread: ${streamData.threadId}`);
+					appendLog(`[SYSTEM] Connected to live event stream.`, 'system');
 				} else if (streamData.type === 'state') {
 					const state = streamData.values;
-					if (currentStatus) currentStatus.textContent = state.status || 'Running';
 					
-					// Just log the latest message to avoid flooding, or format it nicely
+					if (state.status) {
+						updatePipeline(state.status);
+					}
+					
 					const lastMsg = state.messages && state.messages.length > 0 
 						? state.messages[state.messages.length - 1].kwargs?.content
-						: 'State updated...';
+						: 'State transition...';
 					
-					appendLog(`[${state.status}] ${lastMsg}`);
+					const logType = state.status === 'Done' ? 'success' : 'normal';
+					appendLog(`[${state.status}] ${lastMsg}`, logType);
 					
 					if (state.status === 'Done') {
-						appendLog(`> Workflow complete.`);
+						appendLog(`[SYSTEM] Workflow complete.`, 'success');
 						eventSource?.close();
 						if (startBtn) startBtn.disabled = false;
 					}
@@ -255,14 +334,13 @@ import Layout from '../layouts/Layout.astro';
 			};
 
 			eventSource.onerror = () => {
-				appendLog(`> Lost connection to stream.`, true);
+				appendLog(`[ERROR] Lost connection to stream.`, 'error');
 				eventSource?.close();
 				if (startBtn) startBtn.disabled = false;
 			};
 
 		} catch (err: any) {
-			if (currentStatus) currentStatus.textContent = 'Error';
-			appendLog(`> Error connecting to backend: ${err.message}`, true);
+			appendLog(`[ERROR] connecting to backend: ${err.message}`, 'error');
 			if (startBtn) startBtn.disabled = false;
 		}
 	});
