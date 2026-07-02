@@ -147,6 +147,11 @@ sudo journalctl -u zerofactory-api.service -f
 sudo journalctl -u zerofactory-dashboard.service -f
 ```
 
+To stop and disable the services from starting on boot:
+```bash
+sudo systemctl disable --now zerofactory-api.service zerofactory-dashboard.service
+```
+
 ## License
 
 See [LICENSE](LICENSE).
