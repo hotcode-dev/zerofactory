@@ -471,10 +471,11 @@ secrets:
 paste_collapse_threshold: 5
 paste_collapse_threshold_fallback: 0
 _config_version: 24
+# Edit this with your provider
 custom_providers:
-- name: Spark.ntsd.dev:8000
-  base_url: http://spark.ntsd.dev:8000/v1
-  model: qwen36-fast
+- name: Spark.ntsd.dev:8001
+  base_url: https://spark.ntsd.dev:8001/v1
+  model: qwen38-27b-unsloth-nvfp4-dflash2
 default:
   temperature: 0.1
 provider: ''
