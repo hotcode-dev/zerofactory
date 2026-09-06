@@ -1,5 +1,5 @@
 model:
-  default: qwen36-fast
+  default: qwen38-27b-unsloth-nvfp4-dflash2
   provider: custom
 providers: {}
 fallback_providers: []
