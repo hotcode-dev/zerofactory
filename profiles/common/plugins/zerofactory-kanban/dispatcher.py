@@ -185,86 +185,86 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if not (repo_path / ".git").exists():
                             repo_path = Path(os.getcwd())
 
-                    if assignee != "reviewer":
-                        # Author finished work -> git commit, push, create PR, hand off to reviewer
-                        try:
-                            subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
-                            subprocess.run(["git", "commit", "-m", f"Complete task {task_id}: {title}"], check=True, cwd=workspace_path, capture_output=True)
-                            subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True)
+                        if assignee != "reviewer":
+                            # Author finished work -> git commit, push, create PR, hand off to reviewer
+                            try:
+                                subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
+                                subprocess.run(["git", "commit", "-m", f"Complete task {task_id}: {title}"], check=True, cwd=workspace_path, capture_output=True)
+                                subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True)
 
-                            if "[PR Opened" not in title:
-                                pr_title = f"Task {task_id}: {title}"
-                                pr_body = f"Automated PR for task {task_id}\n\nCompleted by: @{assignee}"
-                                pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True)
-                                pr_url = pr_res.stdout.strip()
-                            else:
-                                pr_url = row["pr_url"] or ""
+                                if "[PR Opened" not in title:
+                                    pr_title = f"Task {task_id}: {title}"
+                                    pr_body = f"Automated PR for task {task_id}\n\nCompleted by: @{assignee}"
+                                    pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True)
+                                    pr_url = pr_res.stdout.strip()
+                                else:
+                                    pr_url = row["pr_url"] or ""
 
-                            # Cleanup author worktree
-                            subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
+                                # Cleanup author worktree
+                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
 
-                            new_title = title
-                            if not re.search(r"\[PR Opened by .*?\]", title):
-                                new_title = f"{title} [PR Opened by {assignee}]"
+                                new_title = title
+                                if not re.search(r"\[PR Opened by .*?\]", title):
+                                    new_title = f"{title} [PR Opened by {assignee}]"
 
-                            cursor.execute(
-                                "UPDATE tasks SET title = ?, assignee = 'reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
-                                (new_title, pr_url, now, task_id)
-                            )
-                            setup_worktree(cursor, task_id, new_title, "reviewer", tenant, db_path)
-                            cursor.execute(
-                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
-                                (task_id, f"PR created, routed to reviewer: {pr_url}", now)
-                            )
-                            prs_opened += 1
-                        except Exception as e:
-                            _log.info("Task %s commit/PR skipped: %s", task_id, e)
-                    else:
-                        # Reviewer finished review -> inspect GitHub PR state
-                        try:
-                            subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
-                            res = subprocess.run(
-                                ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url"],
-                                capture_output=True, text=True, cwd=repo_path
-                            )
-                            if res.returncode == 0:
-                                pr_data = json.loads(res.stdout)
-                                pr_state = pr_data.get("state")
-                                decision = pr_data.get("reviewDecision")
+                                cursor.execute(
+                                    "UPDATE tasks SET title = ?, assignee = 'reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
+                                    (new_title, pr_url, now, task_id)
+                                )
+                                setup_worktree(cursor, task_id, new_title, "reviewer", tenant, db_path)
+                                cursor.execute(
+                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
+                                    (task_id, f"PR created, routed to reviewer: {pr_url}", now)
+                                )
+                                prs_opened += 1
+                            except Exception as e:
+                                _log.info("Task %s commit/PR skipped: %s", task_id, e)
+                        else:
+                            # Reviewer finished review -> inspect GitHub PR state
+                            try:
+                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
+                                res = subprocess.run(
+                                    ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url"],
+                                    capture_output=True, text=True, cwd=repo_path
+                                )
+                                if res.returncode == 0:
+                                    pr_data = json.loads(res.stdout)
+                                    pr_state = pr_data.get("state")
+                                    decision = pr_data.get("reviewDecision")
 
-                                if pr_state == "MERGED":
-                                    cursor.execute(
-                                        "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                        (now, task_id)
-                                    )
-                                    cursor.execute(
-                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
-                                        (task_id, now)
-                                    )
-                                elif decision == "CHANGES_REQUESTED":
-                                    match = re.search(r"\[PR Opened by (.*?)\]", title)
-                                    author = match.group(1) if match else "builder"
-                                    cursor.execute(
-                                        "UPDATE tasks SET assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
-                                        (author, now, task_id)
-                                    )
-                                    setup_worktree(cursor, task_id, title, author, tenant, db_path)
-                                    cursor.execute(
-                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', 'Changes requested by reviewer, routed back to author', ?)",
-                                        (task_id, now)
-                                    )
-                                elif decision == "APPROVED":
-                                    new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
-                                    cursor.execute(
-                                        "UPDATE tasks SET title = ?, status = 'blocked', updated_at = ? WHERE id = ?",
-                                        (new_title, now, task_id)
-                                    )
-                                    cursor.execute(
-                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved, waiting for human merge', ?)",
-                                        (task_id, now)
-                                    )
-                        except Exception as e:
-                            _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
+                                    if pr_state == "MERGED":
+                                        cursor.execute(
+                                            "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                            (now, task_id)
+                                        )
+                                        cursor.execute(
+                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
+                                            (task_id, now)
+                                        )
+                                    elif decision == "CHANGES_REQUESTED":
+                                        match = re.search(r"\[PR Opened by (.*?)\]", title)
+                                        author = match.group(1) if match else "builder"
+                                        cursor.execute(
+                                            "UPDATE tasks SET assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
+                                            (author, now, task_id)
+                                        )
+                                        setup_worktree(cursor, task_id, title, author, tenant, db_path)
+                                        cursor.execute(
+                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', 'Changes requested by reviewer, routed back to author', ?)",
+                                            (task_id, now)
+                                        )
+                                    elif decision == "APPROVED":
+                                        new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
+                                        cursor.execute(
+                                            "UPDATE tasks SET title = ?, status = 'blocked', updated_at = ? WHERE id = ?",
+                                            (new_title, now, task_id)
+                                        )
+                                        cursor.execute(
+                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved, waiting for human merge', ?)",
+                                            (task_id, now)
+                                        )
+                            except Exception as e:
+                                _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
 
                 conn.commit()
 
