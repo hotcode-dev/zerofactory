@@ -6,7 +6,7 @@ toolsets:
   - hermes-cli
 plugins:
   enabled:
-    - zerofactory-kanban-dispatcher
+    - zerofactory-kanban
 agent:
   max_turns: 90
   gateway_timeout: 1800

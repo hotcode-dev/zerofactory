@@ -37,7 +37,7 @@ Every agent profile needs exactly four files in its directory under `hermes/prof
 
 ## Pipeline Architecture
 
-The workflow is managed via the **Hermes Kanban** system with explicit Human-in-the-Loop (HITL) gates:
+The workflow is managed via the **Zero Factory Kanban** (`zerofactory-kanban`) system with explicit Human-in-the-Loop (HITL) gates:
 
 1. **Goal & Triage**: User or cron job drops a goal in `Triage`. The `kanban_decomposer` automatically breaks the goal into child tasks and routes them to specialist agents.
 2. **Plan Review (HITL)**: The auto-generated child tasks enter `Todo`. A human must review the generated plan. If changes are needed, the human or Orchestrator edits them. Once approved, the tasks are unblocked.

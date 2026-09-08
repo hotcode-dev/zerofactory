@@ -28,4 +28,8 @@ echo "--- link-skills.sh ---"
 bash "$TEST_DIR/test-link-skills.sh"
 
 echo ""
+echo "--- link-plugins.sh ---"
+bash "$TEST_DIR/test-link-plugins.sh"
+
+echo ""
 echo "=== All Test Suites Completed Successfully ==="

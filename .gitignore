@@ -42,3 +42,12 @@ profiles/*/**
 # unignore plugins
 !profiles/common/plugins/
 !profiles/common/plugins/**
+
+# Python cache & bytecode
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+

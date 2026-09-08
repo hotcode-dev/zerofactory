@@ -29,7 +29,7 @@ Zero Factory operates using a specialized team of 4 AI agents, each with a disti
 
 ## Workflow & Architecture
 
-The workflow is based on the [Hermes Kanban](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/kanban.md) system.
+The workflow is coordinated through the **Zero Factory Kanban** system ([`zerofactory-kanban`](./profiles/common/plugins/zerofactory-kanban/)), a dedicated, high-performance, and durable Kanban board plugin with a custom web dashboard UI designed specifically for Zero Factory lifecycle states and automated agent pipelines.
 
 ```mermaid
 graph TD
@@ -80,18 +80,28 @@ Zero Factory uses a multi-layered configuration approach:
 
 For specific configurations, toolsets, dispatch logic, and agent parameters, please consult the actual configuration files and the skill document.
 
-### 2. Kanban Board
+### 2. Zero Factory Kanban Board
 
-Task coordination uses a SQLite-based kanban board (`~/.hermes/kanban.db`). Key states:
+Task coordination is powered by the custom **Zero Factory Kanban** plugin ([`zerofactory-kanban`](./profiles/common/plugins/zerofactory-kanban/)), providing a resilient, durable SQLite backend (`~/.hermes/zerofactory_kanban.db` with WAL mode) and a high-performance web dashboard.
 
-- **Triage** — Initial goals, auto-decomposing
-- **Todo** — Waiting for dispatcher to auto-promote
-- **Ready** — Ready for agent pickup
-- **Running** — Actively being worked on (in isolated git worktree)
-- **Blocked** — Human review required (GitHub PR)
-- **Done** — Completed
-
-The Orchestrator creates tasks and monitors progress through this board. Tasks can have parent → child dependencies: a child stays `blocked` until all parents are `done` (handled automatically by the [zerofactory-kanban-dispatcher](./profiles/common/plugins/zerofactory-kanban-dispatcher/) plugin). Task assignment is also handled automatically by the [zerofactory-kanban-dispatcher](./profiles/common/plugins/zerofactory-kanban-dispatcher/) plugin.
+- **Web Dashboard UI**: Embedded directly into the Hermes Agent Gateway at `/zerofactory-kanban` (e.g. `http://localhost:9119/zerofactory-kanban`), featuring drag-and-drop task movements, multi-board switching, priority filtering, task detail modals with activity feeds and comment threads.
+- **Workflow Lifecycle States**:
+  - **`Triage`** — Newly arrived goals and raw requests awaiting decomposition.
+  - **`Todo`** — Granular sub-tasks ready for dispatching and worktree creation.
+  - **`Ready`** — Approved tasks with all dependencies satisfied, queued for specialist pickup.
+  - **`Running`** — Actively being executed by a specialist agent in an isolated Git worktree.
+  - **`Blocked`** — Awaiting human review (e.g., active GitHub PR) or dependent on unfinished parent tasks.
+  - **`Done`** — Completed and verified (PR merged).
+- **Automated Dispatching Engine**: Built directly into `zerofactory-kanban`, automatically evaluating dependencies, enforcing WIP limits, assigning agents, provisioning isolated git worktrees, managing GitHub PRs, and routing reviewer feedback loops.
+- **CLI Management**:
+  ```bash
+  hermes zerofactory-kanban list                  # View all tasks by column
+  hermes zerofactory-kanban create "Task Title"   # Create a new ticket
+  hermes zerofactory-kanban move <id> ready       # Move task across columns
+  hermes zerofactory-kanban stats                 # View board health & throughput
+  hermes zerofactory-kanban dispatch              # Trigger dispatcher evaluation pass
+  ```
+- **Legacy Migration**: Easily migrate legacy tasks from upstream Hermes Kanban (`~/.hermes/kanban.db`) using the web UI button or `POST /api/plugins/zerofactory-kanban/import-legacy`.
 
 ### 3. Automated Operations (Cron Jobs)
 
@@ -178,7 +188,7 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 
 Zero Factory automatically discovers and manages multiple projects. To add a new codebase to the factory:
 
-1. Open the Hermes web UI and create a new **Kanban Board** (e.g., `zerohub`).
+1. Open the Hermes web UI and navigate to the **Zero Factory Kanban** board tab (`/zerofactory-kanban`) to create a new board (e.g., `zerohub`).
 2. Add the remote Git URL of the repository into the **Description** field of the new board.
 3. The `zero-factory-improvement-scanner` background cron job will automatically detect the new board, clone the repository into `~/git/` if it doesn't already exist, and begin scanning it for improvements.
 
@@ -207,9 +217,9 @@ Link profiles to the standard Hermes location:
 make hermes-link
 ```
 
-### 3. Merge Config
+### 3. Merge Config & Link Plugins
 
-After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server changes) or when adding custom skills, regenerate merged runtime files and links:
+After any edit to `profiles/<profile>/config.custom.yaml` (including MCP server changes), custom skills, or custom plugins, regenerate merged runtime files and links:
 
 ```bash
 make merge-all
@@ -233,10 +243,12 @@ All automation lives in the Makefile at the repository root. Each target is self
 | `config-merge` | Runs `bin/merge-config.sh` to merge base config + profile overrides into runtime config | `make config-merge` |
 | `jobs-merge` | Runs `bin/merge-jobs.sh` to sync cron jobs across profiles | `make jobs-merge` |
 | `soul-merge` | Runs `bin/merge-soul.sh` to merge SOUL files for each profile | `make soul-merge` |
-| `skills-link` | Runs `bin/link-skills.sh` to link common skills (e.g. research-paper-writing) to all profiles | `make skills-link` |
-| `merge-all` | Meta-target: runs `config-merge jobs-merge soul-merge skills-link` in sequence | `make merge-all` |
+| `skills-link` | Runs `bin/link-skills.sh` to link common skills to all profiles | `make skills-link` |
+| `plugins-link` | Runs `bin/link-plugins.sh` to link common plugins (such as `zerofactory-kanban`) to all profiles and `~/.hermes/plugins/` | `make plugins-link` |
+| `merge-all` | Meta-target: runs `config-merge jobs-merge soul-merge skills-link plugins-link` in sequence | `make merge-all` |
+| `test` | Runs the test suite via `bin/test-runner.sh` | `make test` |
 
-> **CRITICAL RULE FOR AI AGENTS:** NEVER FORGET TO RUN `make merge-all`! After ANY edit to ANY configuration file in the `profiles/` directory (including `config.custom.yaml`, `jobs.custom.json`, `SOUL.custom.md`, or custom skills), you MUST run `make merge-all` to regenerate all runtime configurations. Failure to do so will result in the active agent using stale, uncompiled prompts and configurations!
+> **CRITICAL RULE FOR AI AGENTS:** NEVER FORGET TO RUN `make merge-all`! After ANY edit to ANY configuration file in the `profiles/` directory (including `config.custom.yaml`, `jobs.custom.json`, `SOUL.custom.md`, or custom skills/plugins), you MUST run `make merge-all` to regenerate all runtime configurations. Failure to do so will result in the active agent using stale, uncompiled prompts and configurations!
 
 ## License
 

@@ -1,0 +1,3 @@
+name: zerofactory-kanban
+version: "1.0.0"
+description: "Durable, high-performance Kanban board and task orchestration plugin for Zero Factory."

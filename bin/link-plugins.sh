@@ -29,3 +29,13 @@ for profile_dir in "$ROOT_DIR"/profiles/*; do
     echo "Linked $plugin_name to $profile_name profile"
   done
 done
+
+# Also link all common plugins directly to ~/.hermes/plugins for dashboard discovery
+HERMES_PLUGINS_DIR="${HOME}/.hermes/plugins"
+mkdir -p "$HERMES_PLUGINS_DIR"
+for plugin_dir in "$COMMON_PLUGINS_DIR"/*; do
+  [[ -d "$plugin_dir" ]] || continue
+  plugin_name="$(basename "$plugin_dir")"
+  ln -sfn "$plugin_dir" "$HERMES_PLUGINS_DIR/$plugin_name"
+  echo "Linked $plugin_name to $HERMES_PLUGINS_DIR"
+done
