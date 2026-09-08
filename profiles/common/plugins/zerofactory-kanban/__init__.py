@@ -69,7 +69,7 @@ def register(ctx: Any):
         p_create.add_argument("--status", default="triage", help="Initial status")
         p_create.add_argument("--priority", default="P2", help="Priority (P0, P1, P2, P3)")
         p_create.add_argument("--assignee", default="unassigned", help="Assignee (orchestrator, builder, reviewer)")
-        p_create.add_argument("--board", default="default", help="Board slug")
+        p_create.add_argument("--board", default=None, help="Board slug (defaults to first available board)")
         p_create.add_argument("--parent", default=None, help="Parent task ID")
 
         # move

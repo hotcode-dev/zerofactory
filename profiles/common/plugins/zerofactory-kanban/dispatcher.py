@@ -54,7 +54,7 @@ def setup_worktree(cursor: sqlite3.Cursor, task_id: str, title: str, assignee: s
         return None
 
     # Resolve repo path
-    if tenant and tenant.lower() != "default":
+    if tenant:
         tenant_path = Path(os.path.expanduser(tenant))
         if tenant_path.is_absolute():
             repo_path = tenant_path

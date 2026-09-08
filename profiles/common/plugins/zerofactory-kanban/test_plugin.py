@@ -30,12 +30,15 @@ class TestZeroFactoryKanban(unittest.TestCase):
     def setUp(self):
         init_db()
 
-    def test_01_init_and_default_board(self):
+    def test_01_init_and_boards(self):
+        req = BoardCreate(slug="zerofactory", name="ZeroFactory", description="AI workflow", git_url="https://github.com/hotcode-dev/zerofactory")
+        create_board(req)
         res = list_boards()
         self.assertTrue(res["ok"])
         boards = res["boards"]
         self.assertGreaterEqual(len(boards), 1)
-        self.assertEqual(boards[0]["slug"], "default")
+        slugs = [b["slug"] for b in boards]
+        self.assertIn("zerofactory", slugs)
 
     def test_02_create_board(self):
         req = BoardCreate(slug="zerohub", name="ZeroHub Project", description="Hub project", git_url="https://github.com/example/zerohub")
@@ -53,7 +56,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
         req = TaskCreate(
             title="Implement OAuth Login",
             description="Add GitHub and Google OAuth2 providers",
-            board_slug="default",
+            board_slug="zerofactory",
             status="triage",
             priority="P1",
             assignee="builder",

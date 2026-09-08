@@ -47,7 +47,7 @@ Database location: `~/.hermes/zerofactory_kanban.db` (can be overridden via `ZER
 ### 1. `boards`
 | Column | Type | Description |
 |---|---|---|
-| `id` | `TEXT PRIMARY KEY` | Unique board identifier (default: `'default'`) |
+| `slug` | `TEXT PRIMARY KEY` | Unique board identifier (slug) |
 | `name` | `TEXT NOT NULL` | Human-readable board name |
 | `description` | `TEXT` | Board description or target Git repository URL |
 | `created_at` | `TEXT` | ISO 8601 timestamp |
@@ -109,20 +109,20 @@ All routes are mounted on the Hermes Gateway at: `/api/plugins/zerofactory-kanba
 
 ### Tasks
 - `GET /tasks`: Query tasks.
-  - Query params: `board_id` (default: `'default'`), `status`, `assignee`, `search`.
+  - Query params: `board` (board slug), `status`, `assignee`, `search`.
 - `POST /tasks`: Create a new task.
-  - Body: `{"title": "...", "board_id": "default", "description": "...", "status": "todo", "priority": "medium", "assignee": "builder", "parent_id": null, "tags": [], "skills": []}`
+  - Body: `{"title": "...", "board_slug": "zerofactory", "description": "...", "status": "todo", "priority": "P2", "assignee": "builder", "parent_id": null, "tags": [], "skills": []}`
 - `GET /tasks/{task_id}`: Retrieve a task with all comments, links, and activity logs.
 - `PATCH /tasks/{task_id}`: Partial update (e.g. title, description, status, priority, assignee, pr_url).
 - `DELETE /tasks/{task_id}`: Delete a task and associated activity/comments.
 - `POST /tasks/{task_id}/move`: Move a task to a new status (supports optional `position` ordering).
   - Body: `{"status": "ready"}`
 - `POST /tasks/{task_id}/comments`: Add a comment or progress update.
-  - Body: `{"comment": "...", "author": "reviewer"}`
+  - Body: `{"body": "...", "author": "reviewer"}`
 
 ### Operations & Metrics
-- `GET /stats?board_id=default`: Return column counts, total tasks, and completion metrics.
-- `POST /dispatch/run`: Trigger an evaluation run of the built-in dispatcher engine.
+- `GET /stats?board=zerofactory`: Return column counts, total tasks, and completion metrics.
+- `POST /dispatch`: Trigger an evaluation run of the built-in dispatcher engine.
 - `POST /import-legacy`: Import legacy tasks from `~/.hermes/kanban.db` into `~/.hermes/zerofactory_kanban.db`.
 
 ---

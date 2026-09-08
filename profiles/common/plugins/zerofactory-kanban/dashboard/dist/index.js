@@ -39,7 +39,7 @@
 
   function ZeroFactoryKanbanApp() {
     const [boards, setBoards] = useState([]);
-    const [selectedBoard, setSelectedBoard] = useState("default");
+    const [selectedBoard, setSelectedBoard] = useState("");
     const [tasks, setTasks] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -58,24 +58,21 @@
     const [newCommentText, setNewCommentText] = useState("");
 
     // Form States
-    const [newTaskForm, setNewTaskForm] = useState({
-      title: "",
-      description: "",
-      status: "triage",
-      priority: "P2",
-      assignee: "unassigned",
-      tenant: ""
-    });
+    const [newTaskTitle, setNewTaskTitle] = useState("");
+    const [newTaskDesc, setNewTaskDesc] = useState("");
+    const [newTaskPrio, setNewTaskPrio] = useState("P2");
+    const [newTaskAssignee, setNewTaskAssignee] = useState("unassigned");
+    const [newTaskTenant, setNewTaskTenant] = useState("");
+    const [newTaskParent, setNewTaskParent] = useState("");
 
-    const [newBoardForm, setNewBoardForm] = useState({
-      name: "",
-      slug: "",
-      description: "",
-      git_url: ""
-    });
+    const [newBoardName, setNewBoardName] = useState("");
+    const [newBoardSlug, setNewBoardSlug] = useState("");
+    const [newBoardDesc, setNewBoardDesc] = useState("");
+    const [newBoardGitUrl, setNewBoardGitUrl] = useState("");
 
-    const showToast = useCallback((message, type = "info") => {
-      setToast({ message, type });
+    // Toast helper
+    const showToast = useCallback((msg, type = "info") => {
+      setToast({ msg, type });
       setTimeout(() => setToast(null), 3500);
     }, []);
 
@@ -85,6 +82,12 @@
         const data = await fetchJSON(API_BASE + "/boards");
         if (data && data.boards) {
           setBoards(data.boards);
+          if (data.boards.length > 0) {
+            setSelectedBoard(prev => {
+              if (prev && data.boards.some(b => b.slug === prev)) return prev;
+              return data.boards[0].slug;
+            });
+          }
         }
       } catch (err) {
         console.error("Failed to fetch boards:", err);
@@ -93,6 +96,7 @@
 
     // Load Tasks & Stats
     const loadTasksAndStats = useCallback(async (boardSlug = selectedBoard) => {
+      if (!boardSlug) return;
       try {
         const [tasksData, statsData] = await Promise.all([
           fetchJSON(API_BASE + "/tasks?board=" + encodeURIComponent(boardSlug)),

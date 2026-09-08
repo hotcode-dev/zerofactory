@@ -51,7 +51,7 @@ def get_db_conn():
         conn.close()
 
 def init_db():
-    """Idempotently initialize all database tables and seed default board."""
+    """Idempotently initialize all database tables."""
     with get_db_conn() as conn:
         with conn:
             conn.executescript("""
@@ -66,7 +66,7 @@ def init_db():
 
             CREATE TABLE IF NOT EXISTS tasks (
                 id TEXT PRIMARY KEY,
-                board_slug TEXT NOT NULL DEFAULT 'default',
+                board_slug TEXT NOT NULL DEFAULT '',
                 title TEXT NOT NULL,
                 description TEXT DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'triage',
@@ -122,15 +122,6 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_activity_task ON task_activity(task_id, created_at);
             """)
 
-            now = int(time.time())
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM boards WHERE slug = 'default'")
-            if not cursor.fetchone():
-                cursor.execute(
-                    "INSERT INTO boards (slug, name, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    ("default", "Default Board", "Primary Zero Factory development board", "", now, now)
-                )
-
 # Initialize on import
 try:
     init_db()
@@ -149,7 +140,7 @@ class BoardCreate(BaseModel):
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     description: Optional[str] = ""
-    board_slug: Optional[str] = "default"
+    board_slug: Optional[str] = None
     status: Optional[str] = "triage"
     assignee: Optional[str] = "unassigned"
     priority: Optional[str] = "P2"
@@ -265,11 +256,9 @@ def create_board(req: BoardCreate):
 @router.delete("/boards/{slug}")
 def delete_board(slug: str):
     """Delete a board and its associated tasks."""
-    if slug == "default":
-        raise HTTPException(status_code=400, detail="Cannot delete default board")
-
     with get_db_conn() as conn:
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM tasks WHERE board_slug = ?", (slug,))
         cursor.execute("DELETE FROM boards WHERE slug = ?", (slug,))
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
@@ -377,7 +366,6 @@ def create_task(req: TaskCreate):
     status_val = req.status if req.status in VALID_STATUSES else "triage"
     priority_val = req.priority if req.priority in VALID_PRIORITIES else "P2"
     assignee_val = req.assignee if req.assignee in VALID_ASSIGNEES else "unassigned"
-    board_slug = req.board_slug or "default"
     tags_json = json.dumps(req.tags or [])
     metadata_json = "{}"
 
@@ -386,10 +374,15 @@ def create_task(req: TaskCreate):
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        # Verify board exists
-        cursor.execute("SELECT slug FROM boards WHERE slug = ?", (board_slug,))
-        if not cursor.fetchone():
-            board_slug = "default"
+        board_slug = req.board_slug
+        if board_slug:
+            cursor.execute("SELECT slug FROM boards WHERE slug = ?", (board_slug,))
+            if not cursor.fetchone():
+                board_slug = None
+        if not board_slug:
+            cursor.execute("SELECT slug FROM boards ORDER BY created_at ASC LIMIT 1")
+            row = cursor.fetchone()
+            board_slug = row[0] if row else ""
 
         cursor.execute("""
             INSERT INTO tasks (
@@ -749,6 +742,10 @@ def import_legacy():
         now = int(time.time())
         with get_db_conn() as conn:
             cursor = conn.cursor()
+            cursor.execute("SELECT slug FROM boards ORDER BY created_at ASC LIMIT 1")
+            target_board_row = cursor.fetchone()
+            target_board = target_board_row[0] if target_board_row else "zerofactory"
+
             for t in legacy_tasks:
                 keys = t.keys()
                 t_id = t["id"]
@@ -768,6 +765,9 @@ def import_legacy():
                         prio_str = "P2"
                     else:
                         prio_str = "P3"
+                elif isinstance(raw_prio, str):
+                    if raw_prio in ("P0", "P1", "P2", "P3"):
+                        prio_str = raw_prio
 
                 raw_status = t["status"] if "status" in keys else "triage"
                 status_val = raw_status if raw_status in VALID_STATUSES else "triage"
@@ -782,9 +782,10 @@ def import_legacy():
                         id, board_slug, title, description, status, assignee, priority,
                         workspace_path, workspace_kind, branch_name, pr_url, tenant,
                         skills, tags, metadata, created_at, updated_at
-                    ) VALUES (?, 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', ?, ?)
                 """, (
                     t_id,
+                    target_board,
                     (t["title"] if "title" in keys else None) or "Untitled Task",
                     desc_val,
                     status_val,
