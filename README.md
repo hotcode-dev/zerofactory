@@ -25,7 +25,7 @@ Zero Factory operates using a specialized team of 4 AI agents, each with a disti
 | **Builder**<br>[SOUL](profiles/builder/SOUL.custom.md) \| [Config](profiles/builder/config.custom.yaml) | Senior Software Engineer | Writes the code and tests. Focuses heavily on speed, type-safety, test coverage, and shipping features. |
 | **Reviewer**<br>[SOUL](profiles/reviewer/SOUL.custom.md) \| [Config](profiles/reviewer/config.custom.yaml) | Quality Gatekeeper | Reviews PRs, checks for bugs, performance issues, security flaws, and verifies edge cases and tests. |
 
-> **Note on modifications:** If you want to customize an agent's prompt (`SOUL.custom.md`), configuration or MCP servers (`config.custom.yaml`), or add custom skills, make your edits and then run `npm run sync` (or `npx hpm sync`) to regenerate the runtime configurations and links.
+> **Note on modifications:** If you want to customize an agent's prompt (`SOUL.custom.md`), configuration or MCP servers (`config.custom.yaml`), or add custom skills, make your edits and then run `npx hermes-profile-manager sync` to regenerate the runtime configurations and links.
 
 ## Workflow & Architecture
 
@@ -245,20 +245,20 @@ hermes --profile orchestrator gateway run --replace
 
 ## Profile Management & Automation
  
-Profile synchronization is powered by [`hermes-profile-manager`](https://github.com/hotcode-dev/hermes-profile-manager) (`hpm`), accessible via npm scripts or the `hpm` CLI.
+Profile synchronization is powered by [`hermes-profile-manager`](https://github.com/hotcode-dev/hermes-profile-manager), accessible via npm scripts or directly via `npx hermes-profile-manager`.
  
-| Action | Description | npm Script | CLI Command |
-|--------|-------------|------------|-------------|
-| **Sync All** | Merges configs, jobs, and SOUL, and links skills and plugins | `npm run sync` | `npx hpm sync` |
-| **Config Merge** | Merges base config + profile overrides into runtime config | `npm run config-merge` | `npx hpm merge config` |
-| **Jobs Merge** | Syncs cron jobs across profiles | `npm run jobs-merge` | `npx hpm merge jobs` |
-| **SOUL Merge** | Merges SOUL files for each profile | `npm run soul-merge` | `npx hpm merge soul` |
-| **Skills Link** | Links common skills to all profiles | `npm run skills-link` | `npx hpm link skills` |
-| **Plugins Link** | Links common plugins to all profiles and `~/.hermes/plugins/` | `npm run plugins-link` | `npx hpm link plugins` |
-| **Hermes Link** | Symlinks `profiles/` to `~/.hermes/profiles` so Hermes Agent reads them | `npm run hermes-link` | `npx hpm link hermes` |
-| **Validate / Test** | Dry-run validation of profile merges and links | `npm test` | `npx hpm sync --dry-run` |
+| Action | Description | CLI Command | npm Script |
+|--------|-------------|-------------|------------|
+| **Sync All** | Merges configs, jobs, and SOUL, and links skills and plugins | `npx hermes-profile-manager sync` | `npm run sync` |
+| **Config Merge** | Merges base config + profile overrides into runtime config | `npx hermes-profile-manager merge config` | `npm run config-merge` |
+| **Jobs Merge** | Syncs cron jobs across profiles | `npx hermes-profile-manager merge jobs` | `npm run jobs-merge` |
+| **SOUL Merge** | Merges SOUL files for each profile | `npx hermes-profile-manager merge soul` | `npm run soul-merge` |
+| **Skills Link** | Links common skills to all profiles | `npx hermes-profile-manager link skills` | `npm run skills-link` |
+| **Plugins Link** | Links common plugins to all profiles and `~/.hermes/plugins/` | `npx hermes-profile-manager link plugins` | `npm run plugins-link` |
+| **Hermes Link** | Symlinks `profiles/` to `~/.hermes/profiles` so Hermes Agent reads them | `npx hermes-profile-manager link hermes` | `npm run hermes-link` |
+| **Validate / Test** | Dry-run validation of profile merges and links | `npx hermes-profile-manager sync --dry-run` | `npm test` |
  
-> **CRITICAL RULE FOR AI AGENTS:** NEVER FORGET TO RUN `npm run sync`! After ANY edit to ANY configuration file in the `profiles/` directory (including `config.custom.yaml`, `jobs.custom.json`, `SOUL.custom.md`, or custom skills/plugins), you MUST run `npm run sync` (or `npx hpm sync`) to regenerate all runtime configurations. Failure to do so will result in the active agent using stale, uncompiled prompts and configurations!
+> **CRITICAL RULE FOR AI AGENTS:** NEVER FORGET TO RUN `npx hermes-profile-manager sync`! After ANY edit to ANY configuration file in the `profiles/` directory (including `config.custom.yaml`, `jobs.custom.json`, `SOUL.custom.md`, or custom skills/plugins), you MUST run `npx hermes-profile-manager sync` to regenerate all runtime configurations. Failure to do so will result in the active agent using stale, uncompiled prompts and configurations!
 
 ## License
 

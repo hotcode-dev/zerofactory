@@ -74,7 +74,7 @@ Never duplicate information. When the same concept or rule applies across multip
 - **Avoid toolset creep**: Don't add tools agents don't need. Each agent should have only its relevant tools — this saves tokens and reduces distraction.
 - **Distinct identities**: Every agent must have a unique SOUL.md. Don't reuse templates without customization — agents need distinct roles to avoid conflicting behavior.
 - **Cost awareness**: Short max_turns + disabled skills + compression = lower cost. Review every profile for unnecessary tools/skills.
-- **MCP servers live in config.custom.yaml**: Add or update MCP servers in `config.custom.yaml`, then run `npm run config-merge` to regenerate `config.yaml`.
+- **MCP servers live in config.custom.yaml**: Add or update MCP servers in `config.custom.yaml`, then run `npx hermes-profile-manager merge config` to regenerate `config.yaml`.
 - **Four files minimum**: Every profile needs SOUL.md, SOUL.custom.md, config.custom.yaml, and config.yaml.
 
 - **Skills must be tracked in git**: Uncomment `!*/skills/` and `!*/skills/**` in `hermes/profiles/.gitignore` so skills are versioned. Skills are code — they should be in git alongside SOUL.md and config.
