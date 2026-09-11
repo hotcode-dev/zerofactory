@@ -42,7 +42,6 @@ def get_db_conn():
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), timeout=10.0)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
     conn.execute("PRAGMA busy_timeout=5000;")
     try:
@@ -53,6 +52,10 @@ def get_db_conn():
 def init_db():
     """Idempotently initialize all database tables."""
     with get_db_conn() as conn:
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+        except Exception:
+            pass
         with conn:
             conn.executescript("""
             CREATE TABLE IF NOT EXISTS boards (
@@ -211,6 +214,260 @@ def log_activity(conn: sqlite3.Connection, task_id: str, actor: str, action: str
         (task_id, actor, action, details, now)
     )
 
+def get_profile_state_db(assignee: str) -> Optional[Path]:
+    """Find the SQLite state.db for an agent profile."""
+    # 1. ~/.hermes/profiles/{assignee}/state.db
+    p1 = Path.home() / ".hermes" / "profiles" / assignee / "state.db"
+    if p1.exists():
+        return p1
+    # 2. Path relative to plugin: profiles/{assignee}/state.db
+    try:
+        resolved_parents = Path(__file__).resolve().parents
+        if len(resolved_parents) > 4:
+            p2 = resolved_parents[4] / assignee / "state.db"
+            if p2.exists():
+                return p2
+    except Exception:
+        pass
+    p2_fallback = Path(__file__).resolve().parent.parent.parent / assignee / "state.db"
+    if p2_fallback.exists():
+        return p2_fallback
+    # 3. Local profiles directory
+    p3 = Path("profiles") / assignee / "state.db"
+    if p3.exists():
+        return p3.resolve()
+    # 4. ~/.hermes/state.db (default fallback)
+    p4 = Path.home() / ".hermes" / "state.db"
+    if p4.exists():
+        return p4
+    return None
+
+def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -> Dict[str, Any]:
+    """Extract real-time execution progress, turn counts, tool calls, and logs for a task."""
+    meta = task.get("metadata") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+
+    assignee = task.get("assignee") or "builder"
+    task_id = task.get("id") or ""
+    worker_pid = meta.get("worker_pid")
+    session_id = meta.get("session_id")
+    task_status = task.get("status")
+
+    # Check worker process liveness
+    is_alive = False
+    if worker_pid:
+        try:
+            os.kill(int(worker_pid), 0)
+            is_alive = True
+        except (OSError, ValueError):
+            is_alive = False
+
+    state_db_path = get_profile_state_db(assignee)
+
+    # Read worker log tail
+    log_tail = ""
+    log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
+    if log_path.exists():
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as lf:
+                lines = lf.readlines()
+                log_tail = "".join(lines[-30:])
+        except Exception:
+            pass
+
+    if not state_db_path:
+        return {
+            "has_session": False,
+            "session_id": session_id,
+            "assignee": assignee,
+            "worker_pid": worker_pid,
+            "is_alive": is_alive,
+            "model": None,
+            "started_at": None,
+            "last_active": None,
+            "message_count": 0,
+            "turn_count": 0,
+            "tool_calls_count": 0,
+            "last_action": "Agent active" if is_alive else None,
+            "recent_steps": [],
+            "log_tail": log_tail
+        }
+
+    try:
+        resolved_state = state_db_path.resolve()
+        uri = resolved_state.as_uri() + "?mode=ro"
+        try:
+            s_conn = sqlite3.connect(uri, uri=True, timeout=5.0)
+        except Exception:
+            s_conn = sqlite3.connect(str(resolved_state), timeout=5.0)
+
+        with closing(s_conn) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # If session_id is missing, auto-detect it
+            if not session_id:
+                cursor.execute("""
+                    SELECT id, title, started_at FROM sessions
+                    ORDER BY started_at DESC LIMIT 5
+                """)
+                cand_rows = cursor.fetchall()
+                for cand in cand_rows:
+                    cand_id = cand["id"]
+                    cand_title = cand["title"] or ""
+                    if task_id in cand_title or (task.get("title") and any(w.lower() in cand_title.lower() for w in task["title"].split() if len(w) > 3)):
+                        session_id = cand_id
+                        break
+                if not session_id and cand_rows and task_status in ("running", "blocked", "done"):
+                    session_id = cand_rows[0]["id"]
+
+                # Auto-backfill into tasks metadata in the kanban DB
+                if session_id and backfill and task_id:
+                    try:
+                        with get_db_conn() as k_conn:
+                            meta["session_id"] = session_id
+                            k_conn.execute("UPDATE tasks SET metadata = ? WHERE id = ?", (json.dumps(meta), task_id))
+                            k_conn.commit()
+                    except Exception:
+                        pass
+
+            if not session_id:
+                return {
+                    "has_session": False,
+                    "session_id": None,
+                    "assignee": assignee,
+                    "worker_pid": worker_pid,
+                    "is_alive": is_alive,
+                    "model": None,
+                    "started_at": None,
+                    "last_active": None,
+                    "message_count": 0,
+                    "turn_count": 0,
+                    "tool_calls_count": 0,
+                    "last_action": "Awaiting agent session",
+                    "recent_steps": [],
+                    "log_tail": log_tail
+                }
+
+            cursor.execute("""
+                SELECT id, model, started_at, ended_at, last_activity_at, last_activity_description
+                FROM sessions WHERE id = ?
+            """, (session_id,))
+            sess_row = cursor.fetchone()
+            model = sess_row["model"] if sess_row else None
+            started_at = sess_row["started_at"] if sess_row else None
+            last_active = sess_row["last_activity_at"] if sess_row else None
+            last_activity_desc = sess_row["last_activity_description"] if sess_row else None
+
+            cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?", (session_id,))
+            message_count = cursor.fetchone()["cnt"]
+
+            cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'assistant'", (session_id,))
+            turn_count = cursor.fetchone()["cnt"]
+
+            cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'tool'", (session_id,))
+            tool_calls_count = cursor.fetchone()["cnt"]
+
+            cursor.execute("""
+                SELECT id, role, tool_name, tool_calls, content, reasoning_content, timestamp
+                FROM messages
+                WHERE session_id = ?
+                ORDER BY timestamp DESC, id DESC
+                LIMIT 8
+            """, (session_id,))
+            recent_rows = cursor.fetchall()
+
+            recent_steps = []
+            last_action = None
+            for r in reversed(recent_rows):
+                r_role = r["role"]
+                r_tool = r["tool_name"]
+                snippet = ""
+                if r_tool:
+                    snippet = f"tool: {r_tool}"
+                elif r_role == "assistant":
+                    if r["tool_calls"]:
+                        try:
+                            tc = json.loads(r["tool_calls"])
+                            if isinstance(tc, list) and tc:
+                                fn_name = tc[0].get("function", {}).get("name") or tc[0].get("name", "tool")
+                                snippet = f"executing {fn_name}"
+                            elif isinstance(tc, dict):
+                                fn_name = tc.get("function", {}).get("name") or tc.get("name", "tool")
+                                snippet = f"executing {fn_name}"
+                        except Exception:
+                            snippet = "tool calling"
+                    elif r["reasoning_content"]:
+                        snippet = (r["reasoning_content"][:90] + "...") if len(r["reasoning_content"]) > 90 else r["reasoning_content"]
+                    elif r["content"]:
+                        snippet = (r["content"][:90] + "...") if len(r["content"]) > 90 else r["content"]
+                    else:
+                        snippet = "thinking..."
+                elif r_role == "tool":
+                    cnt = r["content"] or ""
+                    snippet = (cnt[:120] + "...") if len(cnt) > 120 else cnt
+                elif r_role == "user":
+                    snippet = "user prompt"
+
+                if not last_action and snippet:
+                    last_action = snippet
+
+                recent_steps.append({
+                    "id": r["id"],
+                    "role": r_role,
+                    "tool_name": r_tool,
+                    "snippet": snippet,
+                    "timestamp": r["timestamp"]
+                })
+
+            if not last_action:
+                if last_activity_desc:
+                    last_action = last_activity_desc
+                elif turn_count > 0:
+                    last_action = f"Turn {turn_count}"
+                else:
+                    last_action = "Active"
+
+            return {
+                "has_session": True,
+                "session_id": session_id,
+                "assignee": assignee,
+                "worker_pid": worker_pid,
+                "is_alive": is_alive,
+                "model": model,
+                "started_at": started_at,
+                "last_active": last_active or started_at,
+                "message_count": message_count,
+                "turn_count": turn_count,
+                "tool_calls_count": tool_calls_count,
+                "last_action": last_action,
+                "recent_steps": recent_steps,
+                "log_tail": log_tail
+            }
+    except Exception as e:
+        _log.warning("Error resolving session progress for %s: %s", task_id, e)
+        return {
+            "has_session": bool(session_id),
+            "session_id": session_id,
+            "assignee": assignee,
+            "worker_pid": worker_pid,
+            "is_alive": is_alive,
+            "model": None,
+            "started_at": None,
+            "last_active": None,
+            "message_count": 0,
+            "turn_count": 0,
+            "tool_calls_count": 0,
+            "last_action": "Agent active" if is_alive else None,
+            "recent_steps": [],
+            "log_tail": log_tail,
+            "error": str(e)
+        }
+
 
 # --- Board Endpoints ---------------------------------------------------------
 
@@ -248,7 +505,7 @@ def create_board(req: BoardCreate):
 
         cursor.execute(
             "INSERT INTO boards (slug, name, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (slug, req.name.strip(), req.description.strip(), req.git_url.strip(), now, now)
+            (slug, req.name.strip(), (req.description or "").strip(), (req.git_url or "").strip(), now, now)
         )
         conn.commit()
     return {"ok": True, "slug": slug}
@@ -352,6 +609,16 @@ def list_tasks(
                 t["blocking_parent_count"] = blocking_counts.get(t_id, 0)
                 t["child_count"] = child_counts.get(t_id, 0)
                 t["comment_count"] = comment_counts.get(t_id, 0)
+                if t.get("status") == "running":
+                    prog = resolve_task_session_progress(t, backfill=False)
+                    t["session_progress"] = {
+                        "has_session": prog["has_session"],
+                        "session_id": prog.get("session_id"),
+                        "is_alive": prog.get("is_alive", False),
+                        "turn_count": prog.get("turn_count", 0),
+                        "message_count": prog.get("message_count", 0),
+                        "last_action": prog.get("last_action")
+                    }
 
         return {"ok": True, "tasks": tasks, "count": len(tasks)}
 
@@ -448,7 +715,24 @@ def get_task(task_id: str):
         cursor.execute("SELECT * FROM task_activity WHERE task_id = ? ORDER BY created_at DESC LIMIT 50", (task_id,))
         task["activity"] = [dict(r) for r in cursor.fetchall()]
 
+        # Resolve live agent session progress
+        task["session_progress"] = resolve_task_session_progress(task, backfill=True)
+
         return {"ok": True, "task": task}
+
+@router.get("/tasks/{task_id}/session")
+def get_task_session(task_id: str):
+    """Get real-time agent session execution progress, turns, active tool calls, and logs."""
+    init_db()
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(task_row)
+        prog = resolve_task_session_progress(task, backfill=True)
+        return {"ok": True, "session_progress": prog}
 
 @router.patch("/tasks/{task_id}")
 def update_task(task_id: str, req: TaskUpdate):

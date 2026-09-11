@@ -244,6 +244,57 @@
       }
     };
 
+    // Refresh Session Progress
+    const refreshSessionProgress = async (taskId) => {
+      try {
+        let prog = null;
+        try {
+          const res = await fetchJSON(API_BASE + "/tasks/" + taskId + "/session");
+          if (res && res.session_progress) {
+            prog = res.session_progress;
+          }
+        } catch (subErr) {
+          // Fallback to task details if /session endpoint is unavailable
+          const tRes = await fetchJSON(API_BASE + "/tasks/" + taskId);
+          if (tRes && tRes.task && tRes.task.session_progress) {
+            prog = tRes.task.session_progress;
+          }
+        }
+
+        if (prog) {
+          setSelectedTask(prev => prev && prev.id === taskId ? { ...prev, session_progress: prog } : prev);
+          showToast("Session progress updated", "success");
+        } else {
+          showToast("No active session details found", "info");
+        }
+      } catch (err) {
+        showToast("Failed to refresh session: " + (err.message || err), "error");
+      }
+    };
+
+    // Auto-poll session progress while modal is open for a running task
+    const activeRunningTaskId = (selectedTask && selectedTask.status === "running") ? selectedTask.id : null;
+    useEffect(() => {
+      if (!activeRunningTaskId) return;
+      const timer = setInterval(async () => {
+        try {
+          const res = await fetchJSON(API_BASE + "/tasks/" + activeRunningTaskId + "/session");
+          if (res && res.session_progress) {
+            setSelectedTask(prev => prev && prev.id === activeRunningTaskId ? { ...prev, session_progress: res.session_progress } : prev);
+          }
+        } catch (e) {
+          // Fallback poll
+          try {
+            const tRes = await fetchJSON(API_BASE + "/tasks/" + activeRunningTaskId);
+            if (tRes && tRes.task && tRes.task.session_progress) {
+              setSelectedTask(prev => prev && prev.id === activeRunningTaskId ? { ...prev, session_progress: tRes.task.session_progress } : prev);
+            }
+          } catch (_) {}
+        }
+      }, 3500);
+      return () => clearInterval(timer);
+    }, [activeRunningTaskId]);
+
     // Create Task
     const handleCreateTaskSubmit = async (e) => {
       e.preventDefault();
@@ -656,6 +707,20 @@
                             "⏳ " + t.blocking_parent_count + " blocker"
                           )
                       ),
+                      (t.status === "running" || (t.session_progress && t.session_progress.has_session)) &&
+                        React.createElement(
+                          "div",
+                          { className: "zfk-card-progress" },
+                          React.createElement("span", {
+                            className: "zfk-pulse-dot" + (t.session_progress && t.session_progress.is_alive ? " zfk-pulse-active" : " zfk-pulse-idle")
+                          }),
+                          React.createElement(
+                            "span",
+                            { className: "zfk-progress-text" },
+                            (t.session_progress && t.session_progress.turn_count ? t.session_progress.turn_count + " turns" : "Executing") +
+                            (t.session_progress && t.session_progress.last_action ? " • " + t.session_progress.last_action : "")
+                          )
+                        ),
                       React.createElement(
                         "div",
                         { className: "zfk-card-footer" },
@@ -850,6 +915,148 @@
                   React.createElement("code", { style: { color: "#a5b4fc" } }, selectedTask.workspace_path),
                   selectedTask.branch_name &&
                     React.createElement("div", { style: { marginTop: "0.25rem", color: "var(--zfk-text-secondary)" } }, "Branch: " + selectedTask.branch_name)
+                ),
+
+              // Agent Session Progress Panel
+              (selectedTask.status === "running" || (selectedTask.session_progress && selectedTask.session_progress.has_session)) &&
+                React.createElement(
+                  "div",
+                  { className: "zfk-session-panel" },
+                  React.createElement(
+                    "div",
+                    { className: "zfk-session-header" },
+                    React.createElement(
+                      "div",
+                      { style: { display: "flex", alignItems: "center", gap: "0.5rem" } },
+                      React.createElement("span", {
+                        className: "zfk-pulse-dot" + (selectedTask.session_progress && selectedTask.session_progress.is_alive ? " zfk-pulse-active" : " zfk-pulse-idle")
+                      }),
+                      React.createElement(
+                        "span",
+                        { style: { fontWeight: "600", fontSize: "0.875rem", color: "#f8fafc" } },
+                        selectedTask.session_progress && selectedTask.session_progress.is_alive
+                          ? "⚡ Active Agent Execution"
+                          : "⏹ Agent Session"
+                      ),
+                      selectedTask.session_progress && selectedTask.session_progress.worker_pid &&
+                        React.createElement("span", { className: "zfk-pill-badge" }, "PID: " + selectedTask.session_progress.worker_pid)
+                    ),
+                    React.createElement(
+                      "div",
+                      { style: { display: "flex", gap: "0.5rem", alignItems: "center" } },
+                      selectedTask.session_progress && selectedTask.session_progress.session_id &&
+                        React.createElement(
+                          "a",
+                          {
+                            href: "#/chat?session=" + selectedTask.session_progress.session_id,
+                            className: "zfk-btn-session-link",
+                            target: "_blank",
+                            rel: "noreferrer",
+                            title: "Open session in Hermes Chat"
+                          },
+                          "Open Chat ↗"
+                        ),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "zfk-btn-mini",
+                          onClick: () => refreshSessionProgress(selectedTask.id),
+                          title: "Refresh session status"
+                        },
+                        "🔄 Refresh"
+                      )
+                    )
+                  ),
+
+                  // Session Stats Summary Grid
+                  selectedTask.session_progress &&
+                    React.createElement(
+                      "div",
+                      { className: "zfk-session-stats-grid" },
+                      React.createElement(
+                        "div",
+                        { className: "zfk-session-stat" },
+                        React.createElement("span", { className: "zfk-session-stat-lbl" }, "Session ID"),
+                        React.createElement("code", { className: "zfk-session-stat-val", style: { color: "#a5b4fc" } }, selectedTask.session_progress.session_id || "Detecting...")
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "zfk-session-stat" },
+                        React.createElement("span", { className: "zfk-session-stat-lbl" }, "Model"),
+                        React.createElement("span", { className: "zfk-session-stat-val" }, selectedTask.session_progress.model || "Default")
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "zfk-session-stat" },
+                        React.createElement("span", { className: "zfk-session-stat-lbl" }, "Turns / Msgs"),
+                        React.createElement(
+                          "span",
+                          { className: "zfk-session-stat-val", style: { color: "#34d399", fontWeight: "600" } },
+                          (selectedTask.session_progress.turn_count || 0) + " turns (" + (selectedTask.session_progress.message_count || 0) + " msgs)"
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "zfk-session-stat" },
+                        React.createElement("span", { className: "zfk-session-stat-lbl" }, "Last Activity"),
+                        React.createElement("span", { className: "zfk-session-stat-val" }, timeAgo(selectedTask.session_progress.last_active) || "Just now")
+                      )
+                    ),
+
+                  // Recent Agent Execution Steps
+                  selectedTask.session_progress && selectedTask.session_progress.recent_steps && selectedTask.session_progress.recent_steps.length > 0 &&
+                    React.createElement(
+                      "div",
+                      { style: { marginTop: "0.75rem" } },
+                      React.createElement(
+                        "div",
+                        { style: { fontSize: "0.75rem", fontWeight: "600", color: "var(--zfk-text-secondary)", marginBottom: "0.35rem" } },
+                        "Recent Agent Actions & Tool Executions"
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "zfk-steps-timeline" },
+                        selectedTask.session_progress.recent_steps.map((st) =>
+                          React.createElement(
+                            "div",
+                            { key: st.id, className: "zfk-step-item" },
+                            React.createElement(
+                              "div",
+                              { style: { display: "flex", alignItems: "center", gap: "0.4rem" } },
+                              React.createElement(
+                                "span",
+                                { className: "zfk-step-role-badge zfk-step-" + (st.tool_name ? "tool" : st.role) },
+                                st.tool_name ? "tool: " + st.tool_name : st.role
+                              ),
+                              React.createElement(
+                                "span",
+                                { style: { fontSize: "0.6875rem", color: "var(--zfk-text-muted)" } },
+                                timeAgo(st.timestamp)
+                              )
+                            ),
+                            React.createElement("div", { className: "zfk-step-snippet" }, st.snippet)
+                          )
+                        )
+                      )
+                    ),
+
+                  // Worker Log Tail (Collapsible)
+                  selectedTask.session_progress && selectedTask.session_progress.log_tail &&
+                    React.createElement(
+                      "details",
+                      { style: { marginTop: "0.75rem", fontSize: "0.75rem" } },
+                      React.createElement(
+                        "summary",
+                        { style: { cursor: "pointer", color: "var(--zfk-text-secondary)", fontWeight: "500" } },
+                        "📄 Show Worker Process Log Output"
+                      ),
+                      React.createElement(
+                        "pre",
+                        { className: "zfk-log-tail" },
+                        selectedTask.session_progress.log_tail
+                      )
+                    )
                 ),
 
               // Dependencies List

@@ -46,10 +46,10 @@ def spawn_agent_worker(
     assignee: str,
     workspace_path: Optional[str],
     branch_name: Optional[str]
-) -> Optional[int]:
+) -> tuple[Optional[int], Optional[str]]:
     """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
     if os.environ.get("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"):
-        return None
+        return None, None
 
     import shutil
     hermes_bin = shutil.which("hermes") or "/home/ntsd/.local/bin/hermes"
@@ -81,7 +81,6 @@ def spawn_agent_worker(
         "--cli",
         "--accept-hooks",
         "chat",
-        "-Q",
         "-q", prompt
     ]
 
@@ -94,6 +93,7 @@ def spawn_agent_worker(
     env["HERMES_KANBAN_WORKSPACE"] = str(workdir)
     env["TERMINAL_CWD"] = str(workdir)
     env["HERMES_PROFILE"] = assignee
+    env["PYTHONUNBUFFERED"] = "1"
 
     try:
         log_f = open(log_file_path, "ab")
@@ -109,10 +109,42 @@ def spawn_agent_worker(
         log_f.close()
         _active_workers[task_id] = proc
         _log.info("Spawned %s worker for task %s (PID: %d, cwd: %s)", assignee, task_id, proc.pid, workdir)
-        return proc.pid
+
+        # Detect session_id from profile's state.db
+        session_id = None
+        state_db_path = Path.home() / ".hermes" / "profiles" / assignee / "state.db"
+        if not state_db_path.exists():
+            try:
+                resolved_parents = Path(__file__).resolve().parents
+                if len(resolved_parents) > 3:
+                    p_repo = resolved_parents[3] / assignee / "state.db"
+                    if p_repo.exists():
+                        state_db_path = p_repo
+            except Exception:
+                pass
+        if not state_db_path.exists():
+            state_db_path = Path(__file__).resolve().parent.parent.parent / assignee / "state.db"
+        if state_db_path.exists():
+            try:
+                resolved_state = state_db_path.resolve()
+                uri = resolved_state.as_uri() + "?mode=ro"
+                try:
+                    s_conn = sqlite3.connect(uri, uri=True, timeout=2.0)
+                except Exception:
+                    s_conn = sqlite3.connect(str(resolved_state), timeout=2.0)
+                with closing(s_conn) as s_conn:
+                    s_cur = s_conn.cursor()
+                    s_cur.execute("SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1")
+                    s_row = s_cur.fetchone()
+                    if s_row:
+                        session_id = s_row[0]
+            except Exception:
+                pass
+
+        return proc.pid, session_id
     except Exception as e:
         _log.error("Failed to spawn %s worker for task %s: %s", assignee, task_id, e)
-        return None
+        return None, None
 
 
 def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
@@ -326,7 +358,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             if wt:
                                 workspace_path = wt
 
-                        pid = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
+                        pid, session_id = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
 
                         meta = {}
                         try:
@@ -335,6 +367,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             pass
                         if pid:
                             meta["worker_pid"] = pid
+                        if session_id:
+                            meta["session_id"] = session_id
 
                         cursor.execute(
                             "UPDATE tasks SET status = 'running', metadata = ?, updated_at = ? WHERE id = ?",
@@ -342,7 +376,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         )
                         cursor.execute(
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', ?, ?)",
-                            (task_id, f"Agent {assignee} dispatched to work on task (PID: {pid or 'skipped'})", now)
+                            (task_id, f"Agent {assignee} dispatched to work on task (PID: {pid or 'skipped'}, Session: {session_id or 'auto'})", now)
                         )
                         dispatched += 1
 

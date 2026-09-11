@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from dashboard.plugin_api import (
     router, init_db, get_db_conn,
     BoardCreate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
-    list_boards, create_board, list_tasks, create_task, get_task, update_task, move_task,
+    list_boards, create_board, list_tasks, create_task, get_task, get_task_session, update_task, move_task,
     add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch
 )
 from fastapi import FastAPI
@@ -241,6 +241,49 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(t_data_fail["status"], "blocked")
 
         os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+
+    def test_09_session_progress_resolution(self):
+        # 1. Create board with omitted optional description/git_url (tests None coalesce)
+        res_b = client.post("/api/plugins/zerofactory-kanban/boards", json={
+            "slug": "test-omitted-fields",
+            "name": "Omitted Fields Board"
+        })
+        self.assertEqual(res_b.status_code, 200)
+
+        # 2. Create a running task with metadata containing session and pid
+        t_id = create_task(TaskCreate(
+            title="Session Progress Test Task",
+            status="running",
+            priority="P0",
+            assignee="builder"
+        ))["id"]
+
+        # 3. Query session endpoint
+        res = client.get(f"/api/plugins/zerofactory-kanban/tasks/{t_id}/session")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        prog = data["session_progress"]
+        self.assertIn("has_session", prog)
+        self.assertIn("is_alive", prog)
+        self.assertIn("turn_count", prog)
+        self.assertIn("message_count", prog)
+        self.assertIn("recent_steps", prog)
+        self.assertIn("log_tail", prog)
+
+        # 4. Verify get_task also includes session_progress
+        res_task = client.get(f"/api/plugins/zerofactory-kanban/tasks/{t_id}")
+        self.assertEqual(res_task.status_code, 200)
+        task_data = res_task.json()["task"]
+        self.assertIn("session_progress", task_data)
+
+        # 5. Verify list_tasks includes compact session_progress for running task
+        res_list = client.get("/api/plugins/zerofactory-kanban/tasks?status=running")
+        self.assertEqual(res_list.status_code, 200)
+        tasks = res_list.json()["tasks"]
+        target = next((t for t in tasks if t["id"] == t_id), None)
+        self.assertIsNotNone(target)
+        self.assertIn("session_progress", target)
 
 
 if __name__ == "__main__":
