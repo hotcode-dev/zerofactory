@@ -1,4 +1,5 @@
 model:
+  base_url: https://spark.ntsd.dev:8001/v1
   default: qwen38-27b-unsloth-nvfp4-dflash2
   provider: custom
 fallback_providers: []

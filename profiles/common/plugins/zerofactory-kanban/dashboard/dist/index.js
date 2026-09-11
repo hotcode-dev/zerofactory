@@ -343,21 +343,6 @@
       }
     };
 
-    // Import Legacy Tasks
-    const handleImportLegacy = async () => {
-      try {
-        const res = await fetchJSON(API_BASE + "/import-legacy", { method: "POST" });
-        if (res.ok) {
-          showToast(res.message || "Imported legacy tasks!", "success");
-          loadTasksAndStats();
-        } else {
-          showToast(res.message || "Import skipped", "info");
-        }
-      } catch (err) {
-        showToast("Import failed: " + err.message, "error");
-      }
-    };
-
     return React.createElement(
       "div",
       { className: "zfk-container" },
@@ -451,15 +436,6 @@
                 onClick: () => setShowNewTaskModal(true)
               },
               "+ New Task"
-            ),
-            React.createElement(
-              "button",
-              {
-                className: "zfk-btn zfk-btn-secondary",
-                onClick: handleImportLegacy,
-                title: "Import tasks from ~/.hermes/kanban.db"
-              },
-              "📥 Import Legacy"
             ),
             React.createElement(
               "button",

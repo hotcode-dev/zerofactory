@@ -83,6 +83,47 @@ TASK_QUEUE_CHECK_PROMPT = """Check the Zero Factory Kanban board (using `hermes 
 
 DAILY_REPORT_PROMPT = """Generate a comprehensive daily report for Zero Factory using `hermes zerofactory-kanban stats` and querying `~/.hermes/zerofactory_kanban.db`. Include: total tasks completed, tasks currently running, tasks blocked, agent throughput, and open issues. Summarize with actionable items. Create a new task using `hermes zerofactory-kanban create "[Report] Daily Report" --description "..." --status done` with your full report."""
 
+def _load_env_defaults() -> tuple[str, str, str]:
+    """Resolve default model, provider, and base_url from env or configs."""
+    model = os.getenv("HERMES_MODEL")
+    provider = os.getenv("HERMES_INFERENCE_PROVIDER")
+    base_url = os.getenv("CUSTOM_BASE_URL")
+
+    search_files = [
+        Path(os.path.expanduser("~/.hermes/profiles/orchestrator/.env")),
+        Path(__file__).resolve().parent.parent.parent / "common" / ".env",
+        Path("/home/ntsd/hermes.env"),
+        Path(os.path.expanduser("~/.hermes/.env")),
+    ]
+    for env_file in search_files:
+        if model and provider and base_url:
+            break
+        if env_file.exists():
+            try:
+                for line in env_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip().strip('"').strip("'")
+                    if k == "HERMES_MODEL" and not model:
+                        model = v
+                    elif k == "HERMES_INFERENCE_PROVIDER" and not provider:
+                        provider = v
+                    elif k == "CUSTOM_BASE_URL" and not base_url:
+                        base_url = v
+            except Exception:
+                pass
+
+    return (
+        model or "qwen38-27b-unsloth-nvfp4-dflash2",
+        provider or "custom",
+        base_url or "https://spark.ntsd.dev:8001/v1",
+    )
+
+
+DEFAULT_CRON_MODEL, DEFAULT_CRON_PROVIDER, DEFAULT_CRON_BASE_URL = _load_env_defaults()
+
 BUILTIN_CRON_JOBS: Dict[str, Dict[str, Any]] = {
     "zero-factory-task-queue-check": {
         "id": "zero-factory-task-queue-check",
@@ -90,9 +131,9 @@ BUILTIN_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "prompt": TASK_QUEUE_CHECK_PROMPT,
         "skills": [],
         "skill": None,
-        "model": None,
-        "provider": None,
-        "base_url": None,
+        "model": DEFAULT_CRON_MODEL,
+        "provider": DEFAULT_CRON_PROVIDER,
+        "base_url": DEFAULT_CRON_BASE_URL,
         "script": None,
         "no_agent": False,
         "context_from": None,
@@ -118,9 +159,9 @@ BUILTIN_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "prompt": DAILY_REPORT_PROMPT,
         "skills": [],
         "skill": None,
-        "model": None,
-        "provider": None,
-        "base_url": None,
+        "model": DEFAULT_CRON_MODEL,
+        "provider": DEFAULT_CRON_PROVIDER,
+        "base_url": DEFAULT_CRON_BASE_URL,
         "script": None,
         "no_agent": False,
         "context_from": None,
@@ -146,9 +187,9 @@ BUILTIN_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "prompt": IMPROVEMENT_SCANNER_PROMPT,
         "skills": [],
         "skill": None,
-        "model": None,
-        "provider": None,
-        "base_url": None,
+        "model": DEFAULT_CRON_MODEL,
+        "provider": DEFAULT_CRON_PROVIDER,
+        "base_url": DEFAULT_CRON_BASE_URL,
         "script": None,
         "no_agent": False,
         "context_from": None,
@@ -171,8 +212,33 @@ BUILTIN_CRON_JOBS: Dict[str, Dict[str, Any]] = {
 }
 
 
+def cleanup_duplicate_root_jobs() -> None:
+    """Ensure root ~/.hermes/cron/jobs.json does not contain duplicate Zero Factory jobs.
+
+    The Hermes dashboard aggregates jobs across all profiles (profile=all).
+    If jobs are written to both the profile store and the root (default) store,
+    they appear duplicated in the UI (e.g. 6 jobs instead of 3).
+    """
+    try:
+        hermes_root = Path(os.path.expanduser("~/.hermes"))
+        root_jobs_file = hermes_root / "cron" / "jobs.json"
+        if root_jobs_file.exists():
+            existing = load_jobs_from_file(root_jobs_file)
+            filtered = [j for j in existing if isinstance(j, dict) and j.get("id") not in BUILTIN_CRON_JOBS]
+            if len(filtered) != len(existing):
+                save_jobs_to_file(root_jobs_file, filtered)
+                _log.info("Cleaned %d duplicate Zero Factory job(s) from root cron store", len(existing) - len(filtered))
+    except Exception as e:
+        _log.warning("Failed to cleanup duplicate jobs from root store: %s", e)
+
+
 def get_target_jobs_files() -> List[Path]:
-    """Resolve all locations where jobs.json should be synced."""
+    """Resolve all locations where jobs.json should be synced.
+
+    Only targets active profile and orchestrator profile stores.
+    Root ~/.hermes/cron/jobs.json is intentionally excluded to prevent
+    duplicate listings in the dashboard's all-profiles view.
+    """
     files: List[Path] = []
     hermes_root = Path(os.path.expanduser("~/.hermes"))
 
@@ -181,7 +247,7 @@ def get_target_jobs_files() -> List[Path]:
     if active_profile_file.exists():
         try:
             profile_name = active_profile_file.read_text(encoding="utf-8").strip()
-            if profile_name:
+            if profile_name and profile_name != "default":
                 profile_jobs = hermes_root / "profiles" / profile_name / "cron" / "jobs.json"
                 files.append(profile_jobs)
         except Exception:
@@ -191,11 +257,6 @@ def get_target_jobs_files() -> List[Path]:
     orch_jobs = hermes_root / "profiles" / "orchestrator" / "cron" / "jobs.json"
     if orch_jobs not in files:
         files.append(orch_jobs)
-
-    # 3. Root hermes cron jobs.json
-    root_jobs = hermes_root / "cron" / "jobs.json"
-    if root_jobs not in files:
-        files.append(root_jobs)
 
     return files
 
@@ -233,9 +294,19 @@ def save_jobs_to_file(jobs_file: Path, jobs: List[Dict[str, Any]]) -> bool:
 
 def ensure_builtin_cron_jobs() -> Dict[str, Any]:
     """Ensure all builtin Zero Factory cron jobs are registered and up-to-date."""
+    # Ensure no duplicates in root ~/.hermes/cron/jobs.json
+    cleanup_duplicate_root_jobs()
+
     synced_targets = []
     total_added = 0
     total_updated = 0
+
+    # Dynamically refresh env defaults in case environment variables or .env changed
+    eff_model, eff_provider, eff_base_url = _load_env_defaults()
+    for bdef in BUILTIN_CRON_JOBS.values():
+        bdef["model"] = eff_model
+        bdef["provider"] = eff_provider
+        bdef["base_url"] = eff_base_url
 
     for target in get_target_jobs_files():
         existing_jobs = load_jobs_from_file(target)
@@ -252,13 +323,29 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 existing_jobs.append(new_job)
                 added_here += 1
             else:
-                # Update prompts and schedule if drifted, preserve runtime stats
+                # Update prompts, schedule, provider, model, base_url if drifted
                 curr = existing_by_id[job_id]
                 changed = False
-                for field in ("name", "prompt", "schedule", "schedule_display", "enabled_toolsets", "origin"):
+                for field in (
+                    "name", "prompt", "schedule", "schedule_display",
+                    "enabled_toolsets", "origin", "model", "provider", "base_url"
+                ):
                     if curr.get(field) != builtin_def.get(field):
                         curr[field] = builtin_def[field]
                         changed = True
+
+                # Unblock job if it was previously blocked by preflight credential missing
+                if (
+                    curr.get("last_status") == "blocked_config"
+                    or (curr.get("last_error") and "[blocked_config]" in str(curr.get("last_error")))
+                ):
+                    curr["last_status"] = None
+                    curr["last_error"] = None
+                    curr["state"] = "scheduled"
+                    curr["preflight_alerted"] = False
+                    curr["failure_streak"] = 0
+                    changed = True
+
                 if changed:
                     updated_here += 1
 
