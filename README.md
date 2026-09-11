@@ -243,6 +243,27 @@ You only need to run the orchestrator gateway, because the cron jobs will schedu
 hermes --profile orchestrator gateway run --replace
 ```
 
+### 5. Secrets & Security
+
+Gateway secrets (notably `API_SERVER_KEY`) are **never committed to git**. The repo tracks
+only the template `profiles/common/.env.example`; concrete `.env` files are gitignored
+(`.gitignore` deliberately does not unignore them).
+
+To configure a new machine:
+
+```bash
+# per-machine secrets file (untracked, mode 600)
+cp profiles/common/.env.example profiles/common/.env
+chmod 600 profiles/common/.env
+# fill API_SERVER_KEY= with a fresh random value:  openssl rand -hex 32
+```
+
+Per-profile `.env` files (`profiles/<name>/.env`) are symlinks to `profiles/common/.env`,
+so one secrets file serves every profile. The gateway authenticates every API caller with
+`API_SERVER_KEY` (default deny — `GATEWAY_ALLOW_ALL_USERS` defaults to `false`), so the key
+is the only credential that matters. If a key is ever committed or leaked, **rotate it**
+(`openssl rand -hex 32`) and treat the old value as compromised.
+
 ## Makefile Targets
 
 All automation lives in the Makefile at the repository root. Each target is self-contained and idempotent.
