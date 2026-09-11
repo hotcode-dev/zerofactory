@@ -391,31 +391,76 @@ def list_builtin_jobs() -> List[Dict[str, Any]]:
     return results
 
 
+def _cron_log_dir(profile: str) -> Path:
+    """Return the per-profile cron log directory, creating it if needed."""
+    log_dir = Path(os.path.expanduser("~/.hermes")) / "profiles" / profile / "logs" / "cron"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
+
+def _cron_log_path(job_id: str, profile: str) -> Path:
+    """Build a unique per-run log file path for a triggered builtin job."""
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    return _cron_log_dir(profile) / f"{job_id}.{stamp}.log"
+
+
 def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
-    """Immediately trigger an execution of a builtin job."""
+    """Immediately trigger an execution of a builtin job (fire-and-forget).
+
+    The child (``hermes cron run ...``) is fully detached (its own session) and
+    its stdout/stderr are redirected to a per-run log file under the job's
+    profile data dir. Output is deliberately NOT captured via pipes: a child
+    that writes many kilobytes into the ~64 KB pipe buffer would block on write
+    and deadlock (there is no reader to drain the pipes). We do not await the
+    run; the returned ``log_path`` is how the run's result stays inspectable.
+    """
     if job_id not in BUILTIN_CRON_JOBS:
         return {"ok": False, "error": f"Unknown builtin job ID: {job_id}"}
+
+    job_def = BUILTIN_CRON_JOBS[job_id]
+    profile = job_def.get("profile") or "orchestrator"
 
     # Ensure job is registered in target files before running
     ensure_builtin_cron_jobs()
 
-    # Trigger via hermes CLI
+    log_path = _cron_log_path(job_id, profile)
+
+    # Trigger via hermes CLI. Redirect both streams to the log file (never
+    # PIPE) so a verbose child can never fill a pipe buffer and hang; detach
+    # via a new session so the fire-and-forget child survives the caller.
+    try:
+        log_file = open(log_path, "w", encoding="utf-8")
+    except Exception as e:
+        _log.error("Failed to open cron log %s: %s", log_path, e)
+        return {"ok": False, "error": str(e)}
     try:
         proc = subprocess.Popen(
             ["hermes", "cron", "run", job_id, "--accept-hooks"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+            stdout=log_file,
+            stderr=log_file,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
         )
-        return {
-            "ok": True,
-            "job_id": job_id,
-            "pid": proc.pid,
-            "message": f"Triggered execution for job '{job_id}' (PID: {proc.pid})"
-        }
     except Exception as e:
         _log.error("Failed to run cron job %s: %s", job_id, e)
         return {"ok": False, "error": str(e)}
+    finally:
+        # The child holds its own duplicated fd, so releasing our handle here
+        # never truncates or closes the child's stream.
+        log_file.close()
+
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "pid": proc.pid,
+        "log_path": str(log_path),
+        "fire_and_forget": True,
+        "message": (
+            f"Triggered execution for job '{job_id}' (PID: {proc.pid}). "
+            f"Fire-and-forget: output written to {log_path}; result is not awaited."
+        ),
+    }
 
 
 def tick_builtin_cron() -> int:
