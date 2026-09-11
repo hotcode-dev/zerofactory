@@ -25,7 +25,7 @@ Zero Factory operates using a specialized team of 4 AI agents, each with a disti
 | **Builder**<br>[SOUL](profiles/builder/SOUL.custom.md) \| [Config](profiles/builder/config.custom.yaml) | Senior Software Engineer | Writes the code and tests. Focuses heavily on speed, type-safety, test coverage, and shipping features. |
 | **Reviewer**<br>[SOUL](profiles/reviewer/SOUL.custom.md) \| [Config](profiles/reviewer/config.custom.yaml) | Quality Gatekeeper | Reviews PRs, checks for bugs, performance issues, security flaws, and verifies edge cases and tests. |
 
-> **Note on modifications:** If you want to customize an agent's prompt (`SOUL.custom.md`), configuration or MCP servers (`config.custom.yaml`), or add custom skills, make your edits and then run `make merge-all` to regenerate the runtime configurations and links.
+> **Note on modifications:** If you want to customize an agent's prompt (`SOUL.custom.md`), configuration or MCP servers (`config.custom.yaml`), or add custom skills, make your edits and then run `npm run sync` (or `npx hpm sync`) to regenerate the runtime configurations and links.
 
 ## Workflow & Architecture
 
@@ -243,22 +243,22 @@ You only need to run the orchestrator gateway, because the cron jobs will schedu
 hermes --profile orchestrator gateway run --replace
 ```
 
-## Makefile Targets
-
-All automation lives in the Makefile at the repository root. Each target is self-contained and idempotent.
-
-| Target | Description | Usage |
-|--------|-------------|-------|
-| `hermes-link` | Symlinks `profiles/` to `~/.hermes/profiles` so Hermes Agent reads them | `make hermes-link` |
-| `config-merge` | Runs `bin/merge-config.sh` to merge base config + profile overrides into runtime config | `make config-merge` |
-| `jobs-merge` | Runs `bin/merge-jobs.sh` to sync cron jobs across profiles | `make jobs-merge` |
-| `soul-merge` | Runs `bin/merge-soul.sh` to merge SOUL files for each profile | `make soul-merge` |
-| `skills-link` | Runs `bin/link-skills.sh` to link common skills to all profiles | `make skills-link` |
-| `plugins-link` | Runs `bin/link-plugins.sh` to link common plugins (such as `zerofactory-kanban`) to all profiles and `~/.hermes/plugins/` | `make plugins-link` |
-| `merge-all` | Meta-target: runs `config-merge jobs-merge soul-merge skills-link plugins-link` in sequence | `make merge-all` |
-| `test` | Runs the test suite via `bin/test-runner.sh` | `make test` |
-
-> **CRITICAL RULE FOR AI AGENTS:** NEVER FORGET TO RUN `make merge-all`! After ANY edit to ANY configuration file in the `profiles/` directory (including `config.custom.yaml`, `jobs.custom.json`, `SOUL.custom.md`, or custom skills/plugins), you MUST run `make merge-all` to regenerate all runtime configurations. Failure to do so will result in the active agent using stale, uncompiled prompts and configurations!
+## Profile Management & Automation
+ 
+Profile synchronization is powered by [`hermes-profile-manager`](https://github.com/hotcode-dev/hermes-profile-manager) (`hpm`), accessible via npm scripts or the `hpm` CLI.
+ 
+| Action | Description | npm Script | CLI Command |
+|--------|-------------|------------|-------------|
+| **Sync All** | Merges configs, jobs, and SOUL, and links skills and plugins | `npm run sync` | `npx hpm sync` |
+| **Config Merge** | Merges base config + profile overrides into runtime config | `npm run config-merge` | `npx hpm merge config` |
+| **Jobs Merge** | Syncs cron jobs across profiles | `npm run jobs-merge` | `npx hpm merge jobs` |
+| **SOUL Merge** | Merges SOUL files for each profile | `npm run soul-merge` | `npx hpm merge soul` |
+| **Skills Link** | Links common skills to all profiles | `npm run skills-link` | `npx hpm link skills` |
+| **Plugins Link** | Links common plugins to all profiles and `~/.hermes/plugins/` | `npm run plugins-link` | `npx hpm link plugins` |
+| **Hermes Link** | Symlinks `profiles/` to `~/.hermes/profiles` so Hermes Agent reads them | `npm run hermes-link` | `npx hpm link hermes` |
+| **Validate / Test** | Dry-run validation of profile merges and links | `npm test` | `npx hpm sync --dry-run` |
+ 
+> **CRITICAL RULE FOR AI AGENTS:** NEVER FORGET TO RUN `npm run sync`! After ANY edit to ANY configuration file in the `profiles/` directory (including `config.custom.yaml`, `jobs.custom.json`, `SOUL.custom.md`, or custom skills/plugins), you MUST run `npm run sync` (or `npx hpm sync`) to regenerate all runtime configurations. Failure to do so will result in the active agent using stale, uncompiled prompts and configurations!
 
 ## License
 
