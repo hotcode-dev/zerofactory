@@ -164,17 +164,39 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         )
                         promoted += 1
 
-                # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
+                # 3. Handle PR lifecycle (author handoff -> PR creation; reviewer handoff -> PR state)
+                #
+                # The author branch moves a finished task to status='ready' (assigned to the
+                # reviewer) after opening the PR, so the reviewer handoff must also be
+                # reachable from 'ready' -- otherwise a task the builder finishes stalls in
+                # 'ready' forever, its PR is never checked for MERGED, and it starves a WIP slot.
                 if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_GIT"):
                     cursor.execute("""
-                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url FROM tasks
-                        WHERE status IN ('blocked', 'done') AND workspace_path IS NOT NULL
+                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, status FROM tasks
+                        WHERE status IN ('blocked', 'done', 'ready') AND workspace_path IS NOT NULL
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
+                        status = row["status"]
+                        assignee = row["assignee"]
+                        pr_url_existing = (row["pr_url"] or "").strip()
+                        has_pr = bool(pr_url_existing)
+
+                        # Only reconcile tasks that actually have PR work to do:
+                        #  - reviewer handoff: the reviewer is on it, a PR exists, and the
+                        #    task is not already 'done' (avoids re-polling merged tasks); or
+                        #  - author handoff: a non-reviewer agent finished (moved the task to
+                        #    'blocked' for review or 'done') so we commit/push/open the PR.
+                        # A plain 'ready' task still waiting for its agent is intentionally
+                        # skipped so it is never mis-handled as an author who just finished.
+                        is_reviewer_handoff = (assignee == "reviewer") and has_pr and status != "done"
+                        is_author_handoff = (assignee != "reviewer") and status in ("blocked", "done")
+
+                        if not (is_reviewer_handoff or is_author_handoff):
+                            continue
+
                         title = row["title"]
                         workspace_path = row["workspace_path"]
-                        assignee = row["assignee"]
                         tenant = row["tenant"] if "tenant" in row.keys() else None
 
                         if not workspace_path or not Path(workspace_path).exists():
@@ -185,41 +207,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if not (repo_path / ".git").exists():
                             repo_path = Path(os.getcwd())
 
-                        if assignee != "reviewer":
-                            # Author finished work -> git commit, push, create PR, hand off to reviewer
-                            try:
-                                subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
-                                subprocess.run(["git", "commit", "-m", f"Complete task {task_id}: {title}"], check=True, cwd=workspace_path, capture_output=True)
-                                subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True)
-
-                                if "[PR Opened" not in title:
-                                    pr_title = f"Task {task_id}: {title}"
-                                    pr_body = f"Automated PR for task {task_id}\n\nCompleted by: @{assignee}"
-                                    pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True)
-                                    pr_url = pr_res.stdout.strip()
-                                else:
-                                    pr_url = row["pr_url"] or ""
-
-                                # Cleanup author worktree
-                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
-
-                                new_title = title
-                                if not re.search(r"\[PR Opened by .*?\]", title):
-                                    new_title = f"{title} [PR Opened by {assignee}]"
-
-                                cursor.execute(
-                                    "UPDATE tasks SET title = ?, assignee = 'reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
-                                    (new_title, pr_url, now, task_id)
-                                )
-                                setup_worktree(cursor, task_id, new_title, "reviewer", tenant, db_path)
-                                cursor.execute(
-                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
-                                    (task_id, f"PR created, routed to reviewer: {pr_url}", now)
-                                )
-                                prs_opened += 1
-                            except Exception as e:
-                                _log.info("Task %s commit/PR skipped: %s", task_id, e)
-                        else:
+                        if is_reviewer_handoff:
                             # Reviewer finished review -> inspect GitHub PR state
                             try:
                                 subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
@@ -265,6 +253,40 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         )
                             except Exception as e:
                                 _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
+                        else:
+                            # Author finished work -> git commit, push, create PR, hand off to reviewer
+                            try:
+                                subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
+                                subprocess.run(["git", "commit", "-m", f"Complete task {task_id}: {title}"], check=True, cwd=workspace_path, capture_output=True)
+                                subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True)
+
+                                if "[PR Opened" not in title:
+                                    pr_title = f"Task {task_id}: {title}"
+                                    pr_body = f"Automated PR for task {task_id}\n\nCompleted by: @{assignee}"
+                                    pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True)
+                                    pr_url = pr_res.stdout.strip()
+                                else:
+                                    pr_url = pr_url_existing or ""
+
+                                # Cleanup author worktree
+                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
+
+                                new_title = title
+                                if not re.search(r"\[PR Opened by .*?\]", title):
+                                    new_title = f"{title} [PR Opened by {assignee}]"
+
+                                cursor.execute(
+                                    "UPDATE tasks SET title = ?, assignee = 'reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
+                                    (new_title, pr_url, now, task_id)
+                                )
+                                setup_worktree(cursor, task_id, new_title, "reviewer", tenant, db_path)
+                                cursor.execute(
+                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
+                                    (task_id, f"PR created, routed to reviewer: {pr_url}", now)
+                                )
+                                prs_opened += 1
+                            except Exception as e:
+                                _log.info("Task %s commit/PR skipped: %s", task_id, e)
 
                 conn.commit()
 

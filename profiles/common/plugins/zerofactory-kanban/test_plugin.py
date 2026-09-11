@@ -2,8 +2,10 @@
 
 import os
 import sys
+import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 # Set up test database path before importing
@@ -19,6 +21,11 @@ from dashboard.plugin_api import (
     add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch
 )
 from fastapi import FastAPI
+
+# Import the dispatcher engine directly (module, not the package __init__) so the
+# regression test can drive run_dispatch_cycle with a mocked git/gh layer.
+import dispatcher  # noqa: E402
+from dispatcher import run_dispatch_cycle  # noqa: E402
 
 app = FastAPI()
 app.include_router(router, prefix="/api/plugins/zerofactory-kanban")
@@ -179,6 +186,163 @@ class TestZeroFactoryKanban(unittest.TestCase):
         sync_resp = client.post("/api/plugins/zerofactory-kanban/cron/sync")
         self.assertEqual(sync_resp.status_code, 200)
         self.assertTrue(sync_resp.json()["ok"])
+
+    # ------------------------------------------------------------------
+    # Regression: PR lifecycle must not stall a task in 'ready'
+    # (dispatcher.py: the PR-handling SELECT previously only matched
+    #  status IN ('blocked','done'), so a task the builder finished and
+    #  the dispatcher set to status='ready' for the reviewer was never
+    #  re-polled -- MERGED was never detected and the task starved a WIP slot.)
+    # ------------------------------------------------------------------
+    def test_08_pr_lifecycle_ready_to_done(self):
+        """A builder task -> PR opened -> routed to reviewer -> MERGED -> done."""
+        # Use the plugin's canonical DB path (set by ZEROFACTORY_KANBAN_DB env at import).
+        from dashboard.plugin_api import get_db_path as _gp
+        db_path = _gp()
+
+        # Self-contained: create a dedicated board so this test does not rely on
+        # test_01 having created 'zerofactory' (tests share one temp DB).
+        create_board(BoardCreate(
+            slug="prlifecycle", name="PR Lifecycle", description="regression board",
+        ))
+
+        # Build a fake repo + worktree layout the dispatcher inspects:
+        #   workspace_path = <root>/<reponame>-worktrees/<task_id>
+        #   dispatcher sets repo_path = workspace_path.parent.parent = <root>
+        # and requires (repo_path / ".git") to exist, so we place the .git marker at
+        # <root> to keep the test fully self-contained (no os.getcwd() fallback).
+        workdir = tempfile.TemporaryDirectory()
+        root = Path(workdir.name)
+        reponame = "prlifecycle"
+        (root / ".git").mkdir()
+
+        # 1. Create a builder task in 'running' with a worktree already provisioned.
+        #    (Mirrors a real builder mid-flight before it signals 'review-required'.)
+        created = create_task(TaskCreate(
+            title="Implement payment retry",
+            status="running",
+            assignee="builder",
+            priority="P1",
+            board_slug="prlifecycle",
+        ))
+        task_id = created["id"]
+        ws = str(root / f"{reponame}-worktrees" / task_id)
+        Path(ws).mkdir(parents=True)
+        with get_db_conn() as conn:
+            conn.execute(
+                "UPDATE tasks SET workspace_path = ?, branch_name = ? WHERE id = ?",
+                (ws, f"task/{task_id}", task_id)
+            )
+            conn.commit()
+
+        # Builder signals "review-required" -> task goes to 'blocked' (per SOUL/AGENTS
+        # convention), still assigned to the builder.
+        move_task(task_id, TaskMove(status="blocked"))
+
+        gh_pr_url = f"https://github.com/hotcode-dev/{reponame}/pull/42"
+
+        class _Result:
+            """Deterministic fake for subprocess.run output."""
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def fake_run(cmd, *a, **kw):
+            """Route the dispatcher's git/gh calls to deterministic fakes."""
+            argv = [str(x) for x in cmd]
+            if argv and argv[0] == "gh":
+                if "pr" in argv and "create" in argv:
+                    r = _Result(); r.stdout = gh_pr_url + "\n"
+                    return r
+                if "pr" in argv and "view" in argv:
+                    # Simulate the human having merged the PR.
+                    r = _Result()
+                    r.stdout = json.dumps(
+                        {"state": "MERGED", "reviewDecision": "APPROVED", "url": gh_pr_url}
+                    )
+                    return r
+            return _Result()
+
+        # --- Cycle 1: author handoff (builder, blocked) -> open PR, route to reviewer.
+        #     The module sets ZEROFACTORY_KANBAN_SKIP_GIT=1 at import; override it so the
+        #     PR-handling step (step 3) actually runs in this cycle.
+        with mock.patch.dict(os.environ, {"ZEROFACTORY_KANBAN_SKIP_GIT": ""}), \
+             mock.patch.object(dispatcher.subprocess, "run", side_effect=fake_run), \
+             mock.patch.object(dispatcher, "setup_worktree", return_value=None):
+            res1 = run_dispatch_cycle(db_path)
+        self.assertTrue(res1["ok"])
+        self.assertEqual(res1["prs_opened"], 1, "author handoff should open exactly one PR")
+        t1 = get_task(task_id)["task"]
+        self.assertEqual(t1["assignee"], "reviewer", "task routed to reviewer after PR opened")
+        self.assertEqual(t1["status"], "ready", "PR handoff sets task to 'ready'")
+        self.assertEqual(t1["pr_url"], gh_pr_url)
+
+        # --- Cycle 2 (the regression): after the handoff the task sits in 'ready'
+        #     (assignee=reviewer, pr_url set) while the reviewer works and the human
+        #     merges the PR. Before the fix the PR query only matched
+        #     status IN ('blocked','done'), so this 'ready' reviewer task was NEVER
+        #     re-polled -- MERGED was undetected and the task starved a WIP slot forever.
+        #     The fix adds 'ready' to the query, so the dispatcher now inspects the PR
+        #     and auto-completes the task when it is MERGED.
+        self.assertEqual(get_task(task_id)["task"]["status"], "ready",
+                         "handoff leaves the task in 'ready' for the reviewer")
+        with mock.patch.dict(os.environ, {"ZEROFACTORY_KANBAN_SKIP_GIT": ""}), \
+             mock.patch.object(dispatcher.subprocess, "run", side_effect=fake_run), \
+             mock.patch.object(dispatcher, "setup_worktree", return_value=None):
+            res2 = run_dispatch_cycle(db_path)
+        self.assertTrue(res2["ok"])
+        t2 = get_task(task_id)["task"]
+        self.assertEqual(t2["status"], "done", "MERGED PR must auto-complete the task to 'done'")
+        self.assertIsNone(t2["workspace_path"], "worktree cleared on merge")
+        workdir.cleanup()
+
+    def test_09_plain_ready_task_not_mishandled(self):
+        """A plain 'ready' task (awaiting its agent) must NOT be treated as an author."""
+        from dashboard.plugin_api import get_db_path as _gp
+        db_path = _gp()
+
+        # Self-contained: dedicated board so FK succeeds without test_01.
+        create_board(BoardCreate(
+            slug="plainready", name="Plain Ready", description="regression board",
+        ))
+
+        # Same layout rule as test_08: .git marker at repo_path
+        # (workspace_path.parent.parent) so the dispatcher's repo resolution is deterministic.
+        workdir = tempfile.TemporaryDirectory()
+        root = Path(workdir.name)
+        reponame = "plainready"
+        (root / ".git").mkdir()
+
+        created = create_task(TaskCreate(
+            title="Fresh ready task",
+            status="ready",
+            assignee="builder",
+            priority="P2",
+            board_slug="plainready",
+        ))
+        task_id = created["id"]
+        ws = str(root / f"{reponame}-worktrees" / task_id)
+        Path(ws).mkdir(parents=True)
+        with get_db_conn() as conn:
+            conn.execute(
+                "UPDATE tasks SET workspace_path = ?, branch_name = ? WHERE id = ?",
+                (ws, f"task/{task_id}", task_id)
+            )
+            conn.commit()
+
+        # No PR exists yet, builder is on it, status 'ready' -> must be left alone.
+        with mock.patch.object(dispatcher.subprocess, "run", autospec=True) as mock_run, \
+             mock.patch.object(dispatcher, "setup_worktree", return_value=None):
+            res = run_dispatch_cycle(db_path)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["prs_opened"], 0, "a plain ready task must not open a PR")
+        # No git/gh subprocess should have been attempted for this task.
+        self.assertFalse(any("gh" in str(c.args) for c in mock_run.call_args_list),
+                         "no gh command should run for a plain ready task")
+        t = get_task(task_id)["task"]
+        self.assertEqual(t["status"], "ready", "plain ready task unchanged")
+        self.assertIsNone(t["pr_url"], "no PR assigned to a plain ready task")
+        workdir.cleanup()
 
 
 if __name__ == "__main__":
