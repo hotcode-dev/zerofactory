@@ -124,6 +124,9 @@ All routes are mounted on the Hermes Gateway at: `/api/plugins/zerofactory-kanba
 - `GET /stats?board=zerofactory`: Return column counts, total tasks, and completion metrics.
 - `POST /dispatch`: Trigger an evaluation run of the built-in dispatcher engine.
 - `POST /import-legacy`: Import legacy tasks from `~/.hermes/kanban.db` into `~/.hermes/zerofactory_kanban.db`.
+- `GET /cron`: List all built-in Zero Factory cron jobs and their current status.
+- `POST /cron/sync`: Synchronize built-in cron jobs with Hermes cron storage.
+- `POST /cron/{job_id}/run`: Immediately trigger a built-in cron job.
 
 ---
 
@@ -155,6 +158,11 @@ hermes zerofactory-kanban stats
 
 # Manually trigger the dispatcher
 hermes zerofactory-kanban dispatch
+
+# Built-in Cron Management
+hermes zerofactory-kanban cron list
+hermes zerofactory-kanban cron sync
+hermes zerofactory-kanban cron run zero-factory-improvement-scanner
 ```
 
 ---

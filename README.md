@@ -103,11 +103,21 @@ Task coordination is powered by the custom **Zero Factory Kanban** plugin ([`zer
   ```
 - **Legacy Migration**: Easily migrate legacy tasks from upstream Hermes Kanban (`~/.hermes/kanban.db`) using the web UI button or `POST /api/plugins/zerofactory-kanban/import-legacy`.
 
-### 3. Automated Operations (Cron Jobs)
+### 3. Automated Operations (Built-in Cron Engine)
 
-Zero Factory includes several automated maintenance and reporting tasks configured via Hermes cron jobs. These jobs are executed by the Orchestrator to ensure the factory runs smoothly around the clock.
+Zero Factory periodic maintenance, health checks, and scanning are natively built directly into the **Zero Factory Kanban** plugin ([`profiles/common/plugins/zerofactory-kanban/builtin_cron.py`](./profiles/common/plugins/zerofactory-kanban/builtin_cron.py)).
 
-For the exact list of automated tasks, their schedules, and behaviors, please refer to the [`profiles/orchestrator/cron/jobs.custom.json`](./profiles/orchestrator/cron/jobs.custom.json) file.
+Built-in jobs include:
+- `zero-factory-task-queue-check` (every 120m): Checks for bottlenecked or stuck tasks and generates queue health reports.
+- `zero-factory-daily-report` (`0 9 * * *`): Aggregates throughput, completions, and bottlenecks into a daily summary report.
+- `zero-factory-improvement-scanner` (every 60m): Scans active board repositories for improvements and creates backlog tasks for the Builder.
+
+The plugin automatically synchronizes these jobs into Hermes's cron registry on startup and schedules them in the background. You can inspect or trigger them anytime via CLI:
+```bash
+hermes zerofactory-kanban cron list
+hermes zerofactory-kanban cron sync
+hermes zerofactory-kanban cron run <job_id>
+```
 
 
 ## Data Flow

@@ -35,12 +35,18 @@ try:
 except ImportError:
     from dispatcher import run_dispatch_cycle, start_background_dispatcher  # type: ignore
 
+try:
+    from .builtin_cron import ensure_builtin_cron_jobs, list_builtin_jobs, trigger_builtin_job
+except ImportError:
+    from builtin_cron import ensure_builtin_cron_jobs, list_builtin_jobs, trigger_builtin_job  # type: ignore
+
 def register(ctx: Any):
     """Register plugin CLI commands and lifecycle hooks with Hermes."""
 
-    # Initialize DB & start continuous background dispatcher loop
+    # Initialize DB, sync builtin cron jobs, & start continuous background dispatcher loop
     try:
         init_db()
+        ensure_builtin_cron_jobs()
         start_background_dispatcher()
     except Exception as e:
         print(f"[zerofactory-kanban] Initialization error: {e}")
@@ -93,6 +99,14 @@ def register(ctx: Any):
 
         # dispatch
         subparsers.add_parser("dispatch", help="Trigger dispatch cycle")
+
+        # cron
+        p_cron = subparsers.add_parser("cron", help="Manage built-in Zero Factory cron jobs")
+        cron_subs = p_cron.add_subparsers(dest="cron_action", help="Cron actions")
+        cron_subs.add_parser("list", help="List built-in Zero Factory cron jobs and status")
+        cron_subs.add_parser("sync", help="Synchronize built-in cron jobs with Hermes cron storage")
+        p_cron_run = cron_subs.add_parser("run", help="Trigger immediate execution of a built-in cron job")
+        p_cron_run.add_argument("job_id", help="Job ID (e.g. zero-factory-task-queue-check, zero-factory-daily-report, zero-factory-improvement-scanner)")
 
     def cmd_run(args: argparse.Namespace):
         init_db()
@@ -155,6 +169,33 @@ def register(ctx: Any):
         elif action == "dispatch":
             res = _trigger_dispatch()
             print(f"Dispatch result: {res.get('message', res)}")
+
+        elif action == "cron":
+            cron_act = getattr(args, "cron_action", "list") or "list"
+            if cron_act == "list":
+                jobs = list_builtin_jobs()
+                print("\nZero Factory Built-in Cron Jobs:")
+                print(f"{'ID':<36} {'SCHEDULE':<14} {'STATE':<10} {'LAST STATUS':<12} {'LAST RUN'}")
+                print("-" * 90)
+                for j in jobs:
+                    jid = j["id"]
+                    sch = j.get("schedule") or "-"
+                    st = j.get("state") or "scheduled"
+                    ls = j.get("last_status") or "-"
+                    lr = j.get("last_run_at") or "-"
+                    print(f"{jid:<36} {sch:<14} {st:<10} {ls:<12} {lr}")
+                print()
+            elif cron_act == "sync":
+                res = ensure_builtin_cron_jobs()
+                print(f"Synced builtin cron jobs: added {res.get('added', 0)}, updated {res.get('updated', 0)} across {len(res.get('synced_targets', []))} targets.")
+                for t in res.get("synced_targets", []):
+                    print(f"  ✓ {t}")
+            elif cron_act == "run":
+                res = trigger_builtin_job(args.job_id)
+                if res.get("ok"):
+                    print(f"✓ {res.get('message')}")
+                else:
+                    print(f"✗ Failed to trigger job: {res.get('error')}")
 
     if hasattr(ctx, "register_cli_command"):
         ctx.register_cli_command(

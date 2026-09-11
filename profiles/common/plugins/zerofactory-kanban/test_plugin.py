@@ -164,6 +164,22 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertIn("columns", resp.json())
         self.assertIn("ready", resp.json()["columns"])
 
+    def test_07_builtin_cron(self):
+        # 1. Test GET /cron
+        resp = client.get("/api/plugins/zerofactory-kanban/cron")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        job_ids = [j["id"] for j in data["jobs"]]
+        self.assertIn("zero-factory-task-queue-check", job_ids)
+        self.assertIn("zero-factory-daily-report", job_ids)
+        self.assertIn("zero-factory-improvement-scanner", job_ids)
+
+        # 2. Test POST /cron/sync
+        sync_resp = client.post("/api/plugins/zerofactory-kanban/cron/sync")
+        self.assertEqual(sync_resp.status_code, 200)
+        self.assertTrue(sync_resp.json()["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

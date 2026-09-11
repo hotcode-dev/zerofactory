@@ -281,12 +281,22 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
 
 def _dispatcher_loop():
-    """Background polling daemon thread."""
+    """Background polling daemon thread for Kanban dispatch and periodic cron ticks."""
     while True:
         try:
             run_dispatch_cycle()
         except Exception as e:
             _log.error("Unexpected error in background dispatcher loop: %s", e)
+
+        try:
+            try:
+                from .builtin_cron import tick_builtin_cron
+            except ImportError:
+                from builtin_cron import tick_builtin_cron  # type: ignore
+            tick_builtin_cron()
+        except Exception as e:
+            _log.debug("Builtin cron tick check: %s", e)
+
         time.sleep(DISPATCH_INTERVAL_SECONDS)
 
 

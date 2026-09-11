@@ -827,3 +827,54 @@ def import_legacy():
     except Exception as e:
         _log.error("Failed to import legacy kanban tasks: %s", e)
         return {"ok": False, "error": str(e)}
+
+
+# --- Built-in Cron Controls ---------------------------------------------------
+
+@router.get("/cron")
+def get_builtin_cron_jobs():
+    """List all built-in Zero Factory cron jobs and their current runtime status."""
+    try:
+        from ..builtin_cron import list_builtin_jobs
+    except Exception:
+        import sys
+        parent_dir = str(Path(__file__).parent.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        from builtin_cron import list_builtin_jobs  # type: ignore
+
+    jobs = list_builtin_jobs()
+    return {"ok": True, "jobs": jobs, "count": len(jobs)}
+
+
+@router.post("/cron/sync")
+def sync_builtin_cron_jobs():
+    """Ensure all built-in Zero Factory cron jobs are registered and synchronized."""
+    try:
+        from ..builtin_cron import ensure_builtin_cron_jobs
+    except Exception:
+        import sys
+        parent_dir = str(Path(__file__).parent.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
+
+    res = ensure_builtin_cron_jobs()
+    return res
+
+
+@router.post("/cron/{job_id}/run")
+def run_builtin_cron_job(job_id: str):
+    """Trigger an immediate run of a built-in Zero Factory cron job."""
+    try:
+        from ..builtin_cron import trigger_builtin_job
+    except Exception:
+        import sys
+        parent_dir = str(Path(__file__).parent.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        from builtin_cron import trigger_builtin_job  # type: ignore
+
+    res = trigger_builtin_job(job_id)
+    return res
+
