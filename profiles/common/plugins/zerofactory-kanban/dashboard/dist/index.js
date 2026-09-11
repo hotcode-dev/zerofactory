@@ -945,17 +945,25 @@
                       "div",
                       { style: { display: "flex", gap: "0.5rem", alignItems: "center" } },
                       selectedTask.session_progress && selectedTask.session_progress.session_id &&
-                        React.createElement(
-                          "a",
-                          {
-                            href: "#/chat?session=" + selectedTask.session_progress.session_id,
-                            className: "zfk-btn-session-link",
-                            target: "_blank",
-                            rel: "noreferrer",
-                            title: "Open session in Hermes Chat"
-                          },
-                          "Open Chat ↗"
-                        ),
+                        (() => {
+                          const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
+                            ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
+                            : "";
+                          const sId = selectedTask.session_progress.session_id;
+                          const prof = selectedTask.session_progress.assignee || selectedTask.assignee || "";
+                          const chatUrl = basePath + "/chat?resume=" + encodeURIComponent(sId) + (prof ? "&profile=" + encodeURIComponent(prof) : "");
+                          return React.createElement(
+                            "a",
+                            {
+                              href: chatUrl,
+                              className: "zfk-btn-session-link",
+                              target: "_blank",
+                              rel: "noreferrer",
+                              title: "Open session in Hermes Chat"
+                            },
+                            "Open Chat ↗"
+                          );
+                        })(),
                       React.createElement(
                         "button",
                         {
