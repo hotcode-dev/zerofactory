@@ -92,9 +92,11 @@ def _load_env_defaults() -> tuple[str, str, str]:
     search_files = [
         Path(os.path.expanduser("~/.hermes/profiles/orchestrator/.env")),
         Path(__file__).resolve().parent.parent.parent / "common" / ".env",
-        Path("/home/ntsd/hermes.env"),
         Path(os.path.expanduser("~/.hermes/.env")),
     ]
+    env_override = os.getenv("HERMES_ENV_FILE")
+    if env_override:
+        search_files.insert(0, Path(os.path.expanduser(env_override)))
     for env_file in search_files:
         if model and provider and base_url:
             break
@@ -422,7 +424,7 @@ def tick_builtin_cron() -> int:
     """Safe periodic scheduler tick called by the background dispatcher daemon."""
     try:
         # Import lazily to avoid circular or early import issues
-        hermes_agent_dir = Path("/home/ntsd/.hermes/hermes-agent")
+        hermes_agent_dir = Path(os.getenv("HERMES_AGENT_DIR", str(Path.home() / ".hermes" / "hermes-agent")))
         if str(hermes_agent_dir) not in sys.path:
             sys.path.insert(0, str(hermes_agent_dir))
 

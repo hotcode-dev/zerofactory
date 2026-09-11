@@ -52,7 +52,12 @@ def spawn_agent_worker(
         return None, None
 
     import shutil
-    hermes_bin = shutil.which("hermes") or "/home/ntsd/.local/bin/hermes"
+    local_hermes = Path.home() / ".local" / "bin" / "hermes"
+    hermes_bin = (
+        os.environ.get("HERMES_BIN")
+        or shutil.which("hermes")
+        or (str(local_hermes) if local_hermes.exists() else "hermes")
+    )
 
     workdir = workspace_path if (workspace_path and Path(workspace_path).exists()) else os.getcwd()
 
