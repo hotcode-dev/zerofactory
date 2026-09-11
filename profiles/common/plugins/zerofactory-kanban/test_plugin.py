@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from dashboard.plugin_api import (
     router, init_db, get_db_conn,
     BoardCreate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
-    list_boards, create_board, list_tasks, create_task, get_task, update_task, move_task,
+    list_boards, create_board, list_tasks, create_task, get_task, get_task_session, update_task, move_task,
     add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch
 )
 from fastapi import FastAPI
@@ -180,7 +180,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(sync_resp.status_code, 200)
         self.assertTrue(sync_resp.json()["ok"])
 
-    def test_08_trigger_builtin_job_fire_and_forget(self):
+    def test_10_trigger_builtin_job_fire_and_forget(self):
         """trigger_builtin_job must NOT capture stdout/stderr via pipes.
 
         Regression test for the pipe-buffer deadlock: a child spawned with
@@ -243,6 +243,111 @@ class TestZeroFactoryKanban(unittest.TestCase):
 
             # The run log file is created so the result stays inspectable.
             self.assertTrue(tmp_log.exists())
+
+    def test_08_dispatcher_worker_execution(self):
+        try:
+            from dispatcher import _active_workers
+        except ImportError:
+            from profiles.common.plugins.zerofactory_kanban.dispatcher import _active_workers  # type: ignore
+
+        # Ensure no leftover running tasks from previous tests
+        with get_db_conn() as conn:
+            conn.execute("UPDATE tasks SET status = 'done' WHERE status = 'running'")
+            conn.commit()
+
+        # 1. Create a task in 'ready'
+        t_id = create_task(TaskCreate(
+            title="Implement Builder Task",
+            status="ready",
+            priority="P0",
+            assignee="builder"
+        ))["id"]
+
+        # Run dispatch with worker spawn skipped (simulated spawn)
+        os.environ["ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"] = "1"
+        res = trigger_dispatch()
+        self.assertTrue(res["ok"])
+        self.assertGreaterEqual(res.get("dispatched", 0), 1)
+
+        # Check task moved to 'running'
+        t_data = get_task(t_id)["task"]
+        self.assertEqual(t_data["status"], "running")
+
+        # 2. Simulate worker completion (exit 0)
+        from unittest.mock import MagicMock
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        _active_workers[t_id] = mock_proc
+
+        # Trigger dispatch to reap
+        res2 = trigger_dispatch()
+        self.assertTrue(res2["ok"])
+        self.assertGreaterEqual(res2.get("reaped", 0), 1)
+
+        t_data2 = get_task(t_id)["task"]
+        self.assertEqual(t_data2["status"], "done")
+
+        # 3. Simulate worker failure (exit 1)
+        t_id_fail = create_task(TaskCreate(
+            title="Failing Task",
+            status="running",
+            priority="P1",
+            assignee="builder"
+        ))["id"]
+
+        mock_fail_proc = MagicMock()
+        mock_fail_proc.poll.return_value = 1
+        _active_workers[t_id_fail] = mock_fail_proc
+
+        res3 = trigger_dispatch()
+        self.assertTrue(res3["ok"])
+        t_data_fail = get_task(t_id_fail)["task"]
+        self.assertEqual(t_data_fail["status"], "blocked")
+
+        os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+
+    def test_09_session_progress_resolution(self):
+        # 1. Create board with omitted optional description/git_url (tests None coalesce)
+        res_b = client.post("/api/plugins/zerofactory-kanban/boards", json={
+            "slug": "test-omitted-fields",
+            "name": "Omitted Fields Board"
+        })
+        self.assertEqual(res_b.status_code, 200)
+
+        # 2. Create a running task with metadata containing session and pid
+        t_id = create_task(TaskCreate(
+            title="Session Progress Test Task",
+            status="running",
+            priority="P0",
+            assignee="builder"
+        ))["id"]
+
+        # 3. Query session endpoint
+        res = client.get(f"/api/plugins/zerofactory-kanban/tasks/{t_id}/session")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        prog = data["session_progress"]
+        self.assertIn("has_session", prog)
+        self.assertIn("is_alive", prog)
+        self.assertIn("turn_count", prog)
+        self.assertIn("message_count", prog)
+        self.assertIn("recent_steps", prog)
+        self.assertIn("log_tail", prog)
+
+        # 4. Verify get_task also includes session_progress
+        res_task = client.get(f"/api/plugins/zerofactory-kanban/tasks/{t_id}")
+        self.assertEqual(res_task.status_code, 200)
+        task_data = res_task.json()["task"]
+        self.assertIn("session_progress", task_data)
+
+        # 5. Verify list_tasks includes compact session_progress for running task
+        res_list = client.get("/api/plugins/zerofactory-kanban/tasks?status=running")
+        self.assertEqual(res_list.status_code, 200)
+        tasks = res_list.json()["tasks"]
+        target = next((t for t in tasks if t["id"] == t_id), None)
+        self.assertIsNotNone(target)
+        self.assertIn("session_progress", target)
 
 
 if __name__ == "__main__":

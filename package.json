@@ -1,0 +1,21 @@
+{
+  "name": "zerofactory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "24/7 AI multi-agent orchestration system built on Hermes Agent",
+  "type": "module",
+  "scripts": {
+    "sync": "npx hermes-profile-manager sync",
+    "merge-all": "npx hermes-profile-manager sync",
+    "config-merge": "npx hermes-profile-manager merge config",
+    "jobs-merge": "npx hermes-profile-manager merge jobs",
+    "soul-merge": "npx hermes-profile-manager merge soul",
+    "skills-link": "npx hermes-profile-manager link skills",
+    "plugins-link": "npx hermes-profile-manager link plugins",
+    "hermes-link": "npx hermes-profile-manager link hermes",
+    "test": "npx hermes-profile-manager sync --dry-run"
+  },
+  "devDependencies": {
+    "hermes-profile-manager": "file:../hermes-profile-manager"
+  }
+}
