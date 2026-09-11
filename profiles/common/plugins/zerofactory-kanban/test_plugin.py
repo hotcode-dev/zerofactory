@@ -180,6 +180,70 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(sync_resp.status_code, 200)
         self.assertTrue(sync_resp.json()["ok"])
 
+    def test_08_trigger_builtin_job_fire_and_forget(self):
+        """trigger_builtin_job must NOT capture stdout/stderr via pipes.
+
+        Regression test for the pipe-buffer deadlock: a child spawned with
+        stdout=PIPE/stderr=PIPE that never gets drained blocks on write once
+        the ~64 KB pipe buffer fills, hanging the caller (and the cron-run
+        endpoint) forever. The fix redirects both streams to a per-run log
+        file and fully detaches the child (fire-and-forget).
+        """
+        import io
+        import time as _time
+        from unittest import mock
+        import subprocess as _sp
+        import builtin_cron
+
+        tmp_log = Path(tempfile.gettempdir()) / "zf_test_cron_run.log"
+
+        with mock.patch.object(builtin_cron, "ensure_builtin_cron_jobs",
+                               return_value={"ok": True}), \
+             mock.patch.object(builtin_cron, "_cron_log_path") as mock_log_path, \
+             mock.patch.object(builtin_cron.subprocess, "Popen") as mock_popen:
+            mock_log_path.return_value = tmp_log
+            fake_proc = mock.Mock()
+            fake_proc.pid = 4242
+            mock_popen.return_value = fake_proc
+
+            start = _time.monotonic()
+            res = builtin_cron.trigger_builtin_job("zero-factory-task-queue-check")
+            elapsed = _time.monotonic() - start
+
+            # Honest fire-and-forget result (not a blanket ok just because
+            # Popen returned) and an inspectable log path.
+            self.assertTrue(res["ok"])
+            self.assertEqual(res["job_id"], "zero-factory-task-queue-check")
+            self.assertEqual(res["pid"], 4242)
+            self.assertTrue(res.get("fire_and_forget"))
+            self.assertEqual(res["log_path"], str(tmp_log))
+
+            # Popen invoked exactly once with the job id.
+            mock_popen.assert_called_once()
+            args, kwargs = mock_popen.call_args
+            cmd = args[0] if args else kwargs.get("args")
+            self.assertIn("zero-factory-task-queue-check", cmd)
+
+            # THE BUG GUARD: stdout/stderr must NOT be PIPE (a verbose child
+            # writing into an undrained pipe buffer would deadlock the caller).
+            self.assertIsNot(kwargs.get("stdout"), _sp.PIPE)
+            self.assertIsNot(kwargs.get("stderr"), _sp.PIPE)
+            # They are redirected to a file (the per-run log), not a pipe.
+            self.assertIsInstance(kwargs.get("stdout"), io.IOBase)
+            self.assertIsInstance(kwargs.get("stderr"), io.IOBase)
+
+            # Child is fully detached (survives the caller).
+            self.assertTrue(kwargs.get("start_new_session"))
+
+            # Caller is not blocked: we never drain/await the child (a
+            # full-verbose run cannot stall the API on a pipe buffer).
+            fake_proc.communicate.assert_not_called()
+            fake_proc.wait.assert_not_called()
+            self.assertLess(elapsed, 5.0)
+
+            # The run log file is created so the result stays inspectable.
+            self.assertTrue(tmp_log.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
