@@ -11,14 +11,14 @@ profiles/*
 profiles/*/**
 
 # unignore all files in common
-!profiles/common/.env
+# NOTE (zf-21718ce2): concrete .env files are NEVER unignored — they hold secrets
+# (API_SERVER_KEY, ...) and must stay out of git. Only the .env.example template is tracked.
 !profiles/common/.env.example
 !profiles/common/config.yaml
 !profiles/common/SOUL.md
 !profiles/common/skills/zerofactory-orchestration/**
 
-# unignore .env
-!profiles/*/.env
+# unignore .env templates ONLY (concrete .env files remain ignored — they are per-machine secrets)
 !profiles/*/.env.example
 
 # unignore custom SOUL.md
