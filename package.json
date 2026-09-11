@@ -5,17 +5,17 @@
   "description": "24/7 AI multi-agent orchestration system built on Hermes Agent",
   "type": "module",
   "scripts": {
-    "sync": "npx hermes-profile-manager sync",
-    "merge-all": "npx hermes-profile-manager sync",
-    "config-merge": "npx hermes-profile-manager merge config",
-    "jobs-merge": "npx hermes-profile-manager merge jobs",
-    "soul-merge": "npx hermes-profile-manager merge soul",
-    "skills-link": "npx hermes-profile-manager link skills",
-    "plugins-link": "npx hermes-profile-manager link plugins",
-    "hermes-link": "npx hermes-profile-manager link hermes",
-    "test": "npx hermes-profile-manager sync --dry-run"
+    "sync": "hpm sync",
+    "merge-all": "hpm sync",
+    "config-merge": "hpm merge config",
+    "jobs-merge": "hpm merge jobs",
+    "soul-merge": "hpm merge soul",
+    "skills-link": "hpm link skills",
+    "plugins-link": "hpm link plugins",
+    "hermes-link": "hpm link hermes",
+    "test": "hpm sync --dry-run"
   },
   "devDependencies": {
-    "hermes-profile-manager": "file:../hermes-profile-manager"
+    "hermes-profile-manager": "^0.1.0"
   }
 }
