@@ -180,6 +180,68 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(sync_resp.status_code, 200)
         self.assertTrue(sync_resp.json()["ok"])
 
+    def test_08_dispatcher_worker_execution(self):
+        try:
+            from dispatcher import _active_workers
+        except ImportError:
+            from profiles.common.plugins.zerofactory_kanban.dispatcher import _active_workers  # type: ignore
+
+        # Ensure no leftover running tasks from previous tests
+        with get_db_conn() as conn:
+            conn.execute("UPDATE tasks SET status = 'done' WHERE status = 'running'")
+            conn.commit()
+
+        # 1. Create a task in 'ready'
+        t_id = create_task(TaskCreate(
+            title="Implement Builder Task",
+            status="ready",
+            priority="P0",
+            assignee="builder"
+        ))["id"]
+
+        # Run dispatch with worker spawn skipped (simulated spawn)
+        os.environ["ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"] = "1"
+        res = trigger_dispatch()
+        self.assertTrue(res["ok"])
+        self.assertGreaterEqual(res.get("dispatched", 0), 1)
+
+        # Check task moved to 'running'
+        t_data = get_task(t_id)["task"]
+        self.assertEqual(t_data["status"], "running")
+
+        # 2. Simulate worker completion (exit 0)
+        from unittest.mock import MagicMock
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        _active_workers[t_id] = mock_proc
+
+        # Trigger dispatch to reap
+        res2 = trigger_dispatch()
+        self.assertTrue(res2["ok"])
+        self.assertGreaterEqual(res2.get("reaped", 0), 1)
+
+        t_data2 = get_task(t_id)["task"]
+        self.assertEqual(t_data2["status"], "done")
+
+        # 3. Simulate worker failure (exit 1)
+        t_id_fail = create_task(TaskCreate(
+            title="Failing Task",
+            status="running",
+            priority="P1",
+            assignee="builder"
+        ))["id"]
+
+        mock_fail_proc = MagicMock()
+        mock_fail_proc.poll.return_value = 1
+        _active_workers[t_id_fail] = mock_fail_proc
+
+        res3 = trigger_dispatch()
+        self.assertTrue(res3["ok"])
+        t_data_fail = get_task(t_id_fail)["task"]
+        self.assertEqual(t_data_fail["status"], "blocked")
+
+        os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+
 
 if __name__ == "__main__":
     unittest.main()

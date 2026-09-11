@@ -24,9 +24,11 @@ from typing import Any, Dict, List, Optional
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
 
 MAX_ACTIVE_TASKS = 3
+MAX_CONCURRENT_WORKERS = int(os.environ.get("ZEROFACTORY_MAX_RUNNING_WORKERS", "1"))
 DISPATCH_INTERVAL_SECONDS = 30
 _dispatcher_thread: Optional[threading.Thread] = None
 _dispatcher_lock = threading.Lock()
+_active_workers: Dict[str, subprocess.Popen] = {}
 
 
 def get_db_path() -> Path:
@@ -34,6 +36,134 @@ def get_db_path() -> Path:
     if env_path:
         return Path(env_path)
     return Path.home() / ".hermes" / "zerofactory_kanban.db"
+
+
+def spawn_agent_worker(
+    task_id: str,
+    title: str,
+    description: str,
+    priority: str,
+    assignee: str,
+    workspace_path: Optional[str],
+    branch_name: Optional[str]
+) -> Optional[int]:
+    """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
+    if os.environ.get("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"):
+        return None
+
+    import shutil
+    hermes_bin = shutil.which("hermes") or "/home/ntsd/.local/bin/hermes"
+
+    workdir = workspace_path if (workspace_path and Path(workspace_path).exists()) else os.getcwd()
+
+    prompt = (
+        f"Task ID: {task_id}\n"
+        f"Title: {title}\n"
+        f"Priority: {priority}\n"
+        f"Assigned Role: {assignee}\n\n"
+        f"Description:\n{description or 'No description provided.'}\n\n"
+        f"Workspace: {workdir}\n"
+        f"Git Branch: {branch_name or 'main'}\n\n"
+        f"Your goal:\n"
+        f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
+        f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
+        f"3. Verify your changes with tests, linters, or typechecks.\n"
+        f"4. When finished, mark the task as complete using:\n"
+        f"   hermes zerofactory-kanban move {task_id} done\n"
+        f"   (or if human review or external dependencies are required, run:\n"
+        f"   hermes zerofactory-kanban move {task_id} blocked --reason \"review-required\")\n"
+        f"5. Provide a summary of your changes.\n"
+    )
+
+    cmd = [
+        hermes_bin,
+        "-p", assignee,
+        "--cli",
+        "--accept-hooks",
+        "chat",
+        "-Q",
+        "-q", prompt
+    ]
+
+    log_dir = Path.home() / ".hermes" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file_path = log_dir / f"worker_{task_id}.log"
+
+    env = os.environ.copy()
+    env["HERMES_KANBAN_TASK"] = task_id
+    env["HERMES_KANBAN_WORKSPACE"] = str(workdir)
+    env["TERMINAL_CWD"] = str(workdir)
+    env["HERMES_PROFILE"] = assignee
+
+    try:
+        log_f = open(log_file_path, "ab")
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(workdir),
+            stdin=subprocess.DEVNULL,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=True,
+        )
+        log_f.close()
+        _active_workers[task_id] = proc
+        _log.info("Spawned %s worker for task %s (PID: %d, cwd: %s)", assignee, task_id, proc.pid, workdir)
+        return proc.pid
+    except Exception as e:
+        _log.error("Failed to spawn %s worker for task %s: %s", assignee, task_id, e)
+        return None
+
+
+def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
+    """Check running tasks and reap finished/crashed worker processes."""
+    cursor.execute("SELECT id, title, metadata FROM tasks WHERE status = 'running'")
+    running_rows = cursor.fetchall()
+    reaped = 0
+
+    for row in running_rows:
+        task_id = str(row["id"])
+        meta = {}
+        try:
+            meta = json.loads(row["metadata"] or "{}")
+        except Exception:
+            pass
+
+        proc = _active_workers.get(task_id)
+        pid = meta.get("worker_pid") or (proc.pid if proc else None)
+
+        if proc is not None:
+            retcode = proc.poll()
+            if retcode is not None:
+                _active_workers.pop(task_id, None)
+                if retcode == 0:
+                    cursor.execute("UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?", (now, task_id))
+                    cursor.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', 'Worker process completed successfully (exit 0)', ?)",
+                        (task_id, now)
+                    )
+                    _log.info("Worker for task %s finished successfully (exit 0); moved to done", task_id)
+                else:
+                    cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, task_id))
+                    cursor.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed', ?, ?)",
+                        (task_id, f"Worker process exited with code {retcode}", now)
+                    )
+                    _log.warning("Worker for task %s failed with exit code %d; moved to blocked", task_id, retcode)
+                reaped += 1
+        elif pid:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, task_id))
+                cursor.execute(
+                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_lost', ?, ?)",
+                    (task_id, f"Worker process PID {pid} not found; moved to blocked", now)
+                )
+                _log.warning("Worker PID %d for task %s not found; moved to blocked", pid, task_id)
+                reaped += 1
+
+    return reaped
 
 
 def setup_worktree(cursor: sqlite3.Cursor, task_id: str, title: str, assignee: str, tenant: Optional[str], db_path: Path) -> Optional[str]:
@@ -110,12 +240,15 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
     unblocked = 0
     promoted = 0
+    dispatched = 0
     prs_opened = 0
+    reaped = 0
     now = int(time.time())
 
     with _dispatcher_lock:
         try:
-            with sqlite3.connect(db_path) as conn:
+            with sqlite3.connect(str(db_path), timeout=15.0) as conn:
+                conn.execute("PRAGMA busy_timeout=15000;")
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
@@ -164,11 +297,61 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         )
                         promoted += 1
 
+                # 2.5. Reap finished workers and dispatch Ready tasks to Running
+                reaped = reap_active_workers(cursor, now)
+
+                cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'")
+                running_count = cursor.fetchone()[0]
+
+                if running_count < MAX_CONCURRENT_WORKERS:
+                    spawn_limit = MAX_CONCURRENT_WORKERS - running_count
+                    cursor.execute("""
+                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata FROM tasks
+                        WHERE status = 'ready' AND assignee != 'reviewer'
+                        ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
+                        LIMIT ?
+                    """, (spawn_limit,))
+                    for row in cursor.fetchall():
+                        task_id = str(row["id"])
+                        assignee = row["assignee"] or "builder"
+                        title = row["title"] or ""
+                        description = row["description"] or ""
+                        priority = row["priority"] or "P2"
+                        tenant = row["tenant"] if "tenant" in row.keys() else None
+                        workspace_path = row["workspace_path"]
+                        branch_name = row["branch_name"] if "branch_name" in row.keys() else None
+
+                        if not workspace_path or not Path(workspace_path).exists():
+                            wt = setup_worktree(cursor, task_id, title, assignee, tenant, db_path)
+                            if wt:
+                                workspace_path = wt
+
+                        pid = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
+
+                        meta = {}
+                        try:
+                            meta = json.loads(row["metadata"] or "{}")
+                        except Exception:
+                            pass
+                        if pid:
+                            meta["worker_pid"] = pid
+
+                        cursor.execute(
+                            "UPDATE tasks SET status = 'running', metadata = ?, updated_at = ? WHERE id = ?",
+                            (json.dumps(meta), now, task_id)
+                        )
+                        cursor.execute(
+                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', ?, ?)",
+                            (task_id, f"Agent {assignee} dispatched to work on task (PID: {pid or 'skipped'})", now)
+                        )
+                        dispatched += 1
+
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
                 if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_GIT"):
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url FROM tasks
-                        WHERE status IN ('blocked', 'done') AND workspace_path IS NOT NULL
+                        WHERE (status IN ('blocked', 'done') AND workspace_path IS NOT NULL AND (pr_url IS NULL OR pr_url = ''))
+                           OR (pr_url IS NOT NULL AND pr_url != '' AND assignee = 'reviewer')
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -272,8 +455,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 "ok": True,
                 "unblocked": unblocked,
                 "promoted": promoted,
+                "dispatched": dispatched,
+                "reaped": reaped,
                 "prs_opened": prs_opened,
-                "message": f"Dispatch cycle complete: {unblocked} unblocked, {promoted} promoted, {prs_opened} PRs opened."
+                "message": f"Dispatch cycle complete: {unblocked} unblocked, {promoted} promoted, {dispatched} dispatched to running, {reaped} reaped, {prs_opened} PRs opened."
             }
         except Exception as e:
             _log.error("Error during dispatch cycle: %s", e)
