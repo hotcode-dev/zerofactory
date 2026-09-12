@@ -1,6 +1,30 @@
+/*! Zero Factory Kanban Scoped Stylesheet - Tailwind CSS v4 */
+@keyframes zfk-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.2);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes zfk-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@scope (.zerofactory-kanban-root) {
 /*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */
 @layer properties;
-:root, :host {
+:scope, .zerofactory-kanban-root {
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial,
     sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
@@ -78,8 +102,6 @@
   --blur-md: 12px;
   --default-transition-duration: 150ms;
   --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  --default-font-family: var(--font-sans);
-  --default-mono-font-family: var(--font-mono);
 }
 .absolute {
   position: absolute;
@@ -101,6 +123,24 @@
 }
 .z-50 {
   z-index: 50;
+}
+.container {
+  width: 100%;
+  @media (width >= 40rem) {
+    max-width: 40rem;
+  }
+  @media (width >= 48rem) {
+    max-width: 48rem;
+  }
+  @media (width >= 64rem) {
+    max-width: 64rem;
+  }
+  @media (width >= 80rem) {
+    max-width: 80rem;
+  }
+  @media (width >= 96rem) {
+    max-width: 96rem;
+  }
 }
 .m-0 {
   margin: 0px;
@@ -1268,32 +1308,14 @@
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
-:root, :host {
+:scope, .zerofactory-kanban-root {
   --font-sans: var(--theme-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
 }
-@keyframes zfk-pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-  }
-  50% {
-    opacity: 0.85;
-    transform: scale(1.2);
-    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
-  }
-}
+
 .zfk-pulse-active {
   animation: zfk-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
-@keyframes zfk-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
+
 .zfk-spinning {
   display: inline-block;
   animation: zfk-spin 1s linear infinite;
@@ -1612,4 +1634,5 @@
       --tw-translate-z: 0;
     }
   }
+}
 }

@@ -471,7 +471,10 @@
 
     return React.createElement(
       "div",
-      { className: "max-w-[1600px] mx-auto p-4 md:p-6 space-y-6 text-slate-100 font-sans antialiased min-h-screen" },
+      { className: "zerofactory-kanban-root w-full" },
+      React.createElement(
+        "div",
+        { className: "max-w-[1600px] mx-auto p-4 md:p-6 space-y-6 text-slate-100 font-sans antialiased min-h-screen" },
 
       // Toast Notification
       toast &&
@@ -1601,6 +1604,7 @@
             )
           )
         )
+      )
     );
   }
 
