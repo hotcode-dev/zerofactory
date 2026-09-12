@@ -413,7 +413,56 @@ def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = No
     }
 
 
-def setup_worktree(cursor: sqlite3.Cursor, task_id: str, title: str, assignee: str, tenant: Optional[str], db_path: Path) -> Optional[str]:
+def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optional[str], tenant: Optional[str]) -> Path:
+    """Resolve the git repository root for a task given its board_slug and tenant."""
+    # 1. If board_slug is provided, query boards table and resolve repo path
+    if board_slug and cursor:
+        try:
+            cursor.execute("SELECT slug, name, description, git_url FROM boards WHERE slug = ?", (board_slug,))
+            b_row = cursor.fetchone()
+            if b_row:
+                b_dict = dict(b_row)
+                try:
+                    from .builtin_cron import resolve_board_repo_path
+                except Exception:
+                    from builtin_cron import resolve_board_repo_path
+                resolved_b = resolve_board_repo_path(b_dict)
+                if resolved_b and resolved_b.exists():
+                    return resolved_b
+        except Exception:
+            pass
+
+    # 2. If tenant path is provided
+    if tenant:
+        t_path = Path(os.path.expanduser(tenant))
+        if t_path.is_absolute() and t_path.exists():
+            return t_path
+        g_tenant = Path.home() / "git" / tenant
+        if g_tenant.exists():
+            return g_tenant
+
+    # 3. Check ~/git/<board_slug> if board_slug provided
+    if board_slug:
+        g_board = Path.home() / "git" / board_slug
+        if g_board.exists():
+            return g_board
+        for sub in (Path.home() / "git").glob(f"*/{board_slug}"):
+            if sub.is_dir():
+                return sub
+
+    # 4. Fallback to current working directory
+    return Path(os.getcwd())
+
+
+def setup_worktree(
+    cursor: sqlite3.Cursor,
+    task_id: str,
+    title: str,
+    assignee: str,
+    tenant: Optional[str],
+    db_path: Path,
+    board_slug: Optional[str] = None
+) -> Optional[str]:
     """Ensure git worktree and branch exist for task execution."""
     valid_profiles = ("builder", "reviewer", "orchestrator")
     if not assignee or assignee == "unassigned" or assignee not in valid_profiles:
@@ -431,25 +480,8 @@ def setup_worktree(cursor: sqlite3.Cursor, task_id: str, title: str, assignee: s
         return None
 
     # Resolve repo path
-    if tenant:
-        tenant_path = Path(os.path.expanduser(tenant))
-        if tenant_path.is_absolute():
-            repo_path = tenant_path
-            reponame = tenant_path.name
-        else:
-            reponame = tenant
-            repo_path = Path(os.getcwd()).parent / reponame
-    else:
-        repo_path = Path(os.getcwd())
-        reponame = repo_path.name
-
-    if not repo_path.exists():
-        git_dir = Path.home() / "git" / reponame
-        if git_dir.exists():
-            repo_path = git_dir
-        else:
-            repo_path = Path(os.getcwd())
-            reponame = repo_path.name
+    repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
+    reponame = repo_path.name
 
     worktree_dir = repo_path.parent / f"{reponame}-worktrees" / str(task_id)
     worktree_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -525,7 +557,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 if active_count < MAX_ACTIVE_TASKS:
                     limit = MAX_ACTIVE_TASKS - active_count
                     cursor.execute("""
-                        SELECT id, title, workspace_path, assignee, tenant FROM tasks
+                        SELECT id, title, workspace_path, assignee, tenant, board_slug FROM tasks
                         WHERE status = 'todo' OR (status = 'ready' AND assignee = 'unassigned')
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END
                         LIMIT ?
@@ -535,8 +567,9 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         assignee = row["assignee"]
                         title = row["title"] or ""
                         tenant = row["tenant"] if "tenant" in row.keys() else None
+                        board_slug = row["board_slug"] if "board_slug" in row.keys() else None
 
-                        setup_worktree(cursor, task_id, title, assignee, tenant, db_path)
+                        setup_worktree(cursor, task_id, title, assignee, tenant, db_path, board_slug=board_slug)
                         cursor.execute("UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = ?", (now, task_id))
                         cursor.execute(
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'promote', 'Promoted to ready (WIP slot available)', ?)",
@@ -553,7 +586,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 if running_count < MAX_CONCURRENT_WORKERS:
                     spawn_limit = MAX_CONCURRENT_WORKERS - running_count
                     cursor.execute("""
-                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata FROM tasks
+                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
                         WHERE status = 'ready' AND assignee != 'reviewer'
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
                         LIMIT ?
@@ -567,9 +600,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         tenant = row["tenant"] if "tenant" in row.keys() else None
                         workspace_path = row["workspace_path"]
                         branch_name = row["branch_name"] if "branch_name" in row.keys() else None
+                        board_slug = row["board_slug"] if "board_slug" in row.keys() else None
 
                         if not workspace_path or not Path(workspace_path).exists():
-                            wt = setup_worktree(cursor, task_id, title, assignee, tenant, db_path)
+                            wt = setup_worktree(cursor, task_id, title, assignee, tenant, db_path, board_slug=board_slug)
                             if wt:
                                 workspace_path = wt
 
@@ -599,8 +633,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
                 if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_GIT"):
                     cursor.execute("""
-                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url FROM tasks
-                        WHERE (status IN ('blocked', 'done') AND workspace_path IS NOT NULL AND (pr_url IS NULL OR pr_url = ''))
+                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug FROM tasks
+                        WHERE (status IN ('blocked', 'done') AND (pr_url IS NULL OR pr_url = ''))
                            OR (pr_url IS NOT NULL AND pr_url != '' AND assignee = 'reviewer')
                     """)
                     for row in cursor.fetchall():
@@ -609,32 +643,60 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         workspace_path = row["workspace_path"]
                         assignee = row["assignee"]
                         tenant = row["tenant"] if "tenant" in row.keys() else None
+                        board_slug = row["board_slug"] if "board_slug" in row.keys() else None
+
+                        if not workspace_path or not Path(workspace_path).exists():
+                            repo_for_task = resolve_task_repo_path(cursor, board_slug, tenant)
+                            cand_wt = repo_for_task.parent / f"{repo_for_task.name}-worktrees" / task_id
+                            if cand_wt.exists():
+                                workspace_path = str(cand_wt)
+                                cursor.execute("UPDATE tasks SET workspace_path = ? WHERE id = ?", (workspace_path, task_id))
 
                         if not workspace_path or not Path(workspace_path).exists():
                             continue
 
-                        # Determine repository root
-                        repo_path = Path(workspace_path).parent.parent
-                        if not (repo_path / ".git").exists():
-                            repo_path = Path(os.getcwd())
+                        # Determine repository root reliably from git worktree
+                        repo_path = None
+                        try:
+                            rev_res = subprocess.run(
+                                ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                cwd=workspace_path, capture_output=True, text=True, timeout=5
+                            )
+                            if rev_res.returncode == 0:
+                                common_git = Path(rev_res.stdout.strip())
+                                repo_path = common_git.parent if common_git.name == ".git" else common_git
+                        except Exception:
+                            pass
+
+                        if not repo_path or not repo_path.exists():
+                            repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
 
                         if assignee != "reviewer":
                             # Author finished work -> git commit, push, create PR, hand off to reviewer
                             try:
-                                subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
-                                subprocess.run(["git", "commit", "-m", f"Complete task {task_id}: {title}"], check=True, cwd=workspace_path, capture_output=True)
+                                status_res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True)
+                                if status_res.stdout.strip():
+                                    subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
+                                    subprocess.run(["git", "commit", "-m", f"Complete task {task_id}: {title}"], check=True, cwd=workspace_path, capture_output=True)
+
                                 subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True)
 
-                                if "[PR Opened" not in title:
-                                    pr_title = f"Task {task_id}: {title}"
-                                    pr_body = f"Automated PR for task {task_id}\n\nCompleted by: @{assignee}"
-                                    pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True)
-                                    pr_url = pr_res.stdout.strip()
-                                else:
-                                    pr_url = row["pr_url"] or ""
+                                pr_url = row["pr_url"] or ""
+                                if not pr_url:
+                                    gh_view = subprocess.run(["gh", "pr", "view", f"task/{task_id}", "--json", "url"], cwd=workspace_path, capture_output=True, text=True)
+                                    if gh_view.returncode == 0:
+                                        try:
+                                            pr_url = json.loads(gh_view.stdout).get("url") or ""
+                                        except Exception:
+                                            pr_url = ""
+                                    else:
+                                        pr_title = f"Task {task_id}: {title}"
+                                        pr_body = f"Automated PR for task {task_id}\n\nCompleted by: @{assignee}"
+                                        pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True)
+                                        pr_url = pr_res.stdout.strip()
 
                                 # Cleanup author worktree
-                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
+                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
 
                                 new_title = title
                                 if not re.search(r"\[PR Opened by .*?\]", title):
@@ -644,21 +706,24 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     "UPDATE tasks SET title = ?, assignee = 'reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
                                     (new_title, pr_url, now, task_id)
                                 )
-                                setup_worktree(cursor, task_id, new_title, "reviewer", tenant, db_path)
+                                setup_worktree(cursor, task_id, new_title, "reviewer", tenant, db_path, board_slug=board_slug)
                                 cursor.execute(
                                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
                                     (task_id, f"PR created, routed to reviewer: {pr_url}", now)
                                 )
                                 prs_opened += 1
+                            except subprocess.CalledProcessError as e:
+                                err_msg = (e.stderr or "").strip() or str(e)
+                                _log.warning("Task %s commit/PR command failed: %s", task_id, err_msg)
                             except Exception as e:
-                                _log.info("Task %s commit/PR skipped: %s", task_id, e)
+                                _log.warning("Task %s commit/PR failed: %s", task_id, e)
                         else:
                             # Reviewer finished review -> inspect GitHub PR state
                             try:
-                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=repo_path, capture_output=True)
+                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
                                 res = subprocess.run(
                                     ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url"],
-                                    capture_output=True, text=True, cwd=repo_path
+                                    capture_output=True, text=True, cwd=str(repo_path)
                                 )
                                 if res.returncode == 0:
                                     pr_data = json.loads(res.stdout)
