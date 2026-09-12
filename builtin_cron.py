@@ -378,6 +378,26 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
 get_all_builtin_cron_jobs()
 
 
+def compute_job_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = None) -> Optional[str]:
+    """Compute ISO next_run_at timestamp for a cron job schedule."""
+    try:
+        from cron.jobs import compute_next_run
+        return compute_next_run(schedule, last_run_at=last_run_at)
+    except Exception:
+        pass
+
+    now = time.time()
+    kind = schedule.get("kind") if isinstance(schedule, dict) else None
+    if kind == "interval":
+        minutes = schedule.get("minutes", 60)
+        from datetime import datetime, timezone, timedelta
+        return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
+    elif kind == "cron":
+        from datetime import datetime, timezone, timedelta
+        return (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    return None
+
+
 def cleanup_duplicate_root_jobs() -> None:
     """Ensure root ~/.hermes/cron/jobs.json does not contain duplicate Zero Factory jobs.
 
@@ -551,6 +571,8 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 # Add new job
                 new_job = dict(builtin_def)
                 new_job["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+                if not new_job.get("next_run_at") and new_job.get("enabled", True):
+                    new_job["next_run_at"] = compute_job_next_run(new_job.get("schedule", {}))
                 existing_jobs.append(new_job)
                 added_here += 1
             else:
@@ -568,6 +590,11 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                     if curr.get(field) != builtin_def.get(field):
                         curr[field] = builtin_def.get(field)
                         changed = True
+
+                # Ensure next_run_at is populated for active scheduled jobs
+                if curr.get("enabled", True) and not curr.get("next_run_at"):
+                    curr["next_run_at"] = compute_job_next_run(curr.get("schedule", builtin_def.get("schedule", {})), curr.get("last_run_at"))
+                    changed = True
 
                 # Unblock job if it was previously blocked by preflight credential missing
                 if (
