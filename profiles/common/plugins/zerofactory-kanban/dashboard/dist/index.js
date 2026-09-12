@@ -471,26 +471,19 @@
 
     return React.createElement(
       "div",
-      { className: "zfk-container" },
+      { className: "max-w-[1600px] mx-auto p-4 md:p-6 space-y-6 text-slate-100 font-sans antialiased min-h-screen" },
 
       // Toast Notification
       toast &&
         React.createElement(
           "div",
           {
-            style: {
-              position: "fixed",
-              top: "1.5rem",
-              right: "1.5rem",
-              zIndex: 9999,
-              padding: "0.75rem 1.25rem",
-              borderRadius: "0.5rem",
-              background: toast.type === "error" ? "#ef4444" : toast.type === "success" ? "#10b981" : "#6366f1",
-              color: "#fff",
-              fontWeight: 600,
-              fontSize: "0.875rem",
-              boxShadow: "0 10px 25px rgba(0,0,0,0.4)"
-            }
+            className: "fixed top-6 right-6 z-50 px-4 py-3 rounded-xl font-semibold text-sm shadow-2xl flex items-center gap-2.5 transition-all duration-200 border " +
+              (toast.type === "error"
+                ? "bg-rose-950/90 text-rose-200 border-rose-800 shadow-rose-950/50"
+                : toast.type === "success"
+                ? "bg-emerald-950/90 text-emerald-200 border-emerald-800 shadow-emerald-950/50"
+                : "bg-indigo-950/90 text-indigo-200 border-indigo-800 shadow-indigo-950/50")
           },
           toast.message
         ),
@@ -498,30 +491,29 @@
       // Header Section
       React.createElement(
         "header",
-        { className: "zfk-header" },
+        { className: "space-y-4 pb-5 border-b border-slate-800/80" },
         React.createElement(
           "div",
-          { className: "zfk-header-top" },
+          { className: "flex flex-col lg:flex-row lg:items-center justify-between gap-4" },
           React.createElement(
             "div",
-            { className: "zfk-title-group" },
-            React.createElement("div", { className: "zfk-logo-badge" }, "ZF"),
+            { className: "flex items-center gap-3.5" },
+            React.createElement("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 text-sm tracking-wider shrink-0" }, "ZF"),
             React.createElement(
               "div",
               null,
-              React.createElement("h1", { className: "zfk-title" }, "Zero Factory Kanban"),
-              React.createElement("p", { className: "zfk-subtitle" }, "Autonomous Multi-Agent Coordination Engine")
+              React.createElement("h1", { className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" }, "Zero Factory Kanban"),
+              React.createElement("p", { className: "text-xs text-slate-400 font-medium" }, "Autonomous Multi-Agent Coordination Engine")
             )
           ),
           React.createElement(
             "div",
-            { className: "zfk-actions-group" },
+            { className: "flex flex-wrap items-center gap-2.5" },
             // Board Switcher
             React.createElement(
               "select",
               {
-                className: "zfk-form-select",
-                style: { width: "auto", minWidth: "150px" },
+                className: "bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none cursor-pointer transition-colors shadow-sm",
                 value: selectedBoard,
                 onChange: (e) => setSelectedBoard(e.target.value)
               },
@@ -536,7 +528,7 @@
             React.createElement(
               "button",
               {
-                className: "zfk-btn zfk-btn-secondary",
+                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
                 onClick: () => setShowNewBoardModal(true),
                 title: "Create New Board"
               },
@@ -546,7 +538,7 @@
               React.createElement(
                 "button",
                 {
-                  className: "zfk-btn zfk-btn-secondary",
+                  className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
                   onClick: handleOpenEditBoard,
                   title: "Edit board settings and manage board"
                 },
@@ -555,7 +547,7 @@
             React.createElement(
               "button",
               {
-                className: "zfk-btn zfk-btn-dispatch" + (isDispatching ? " loading" : ""),
+                className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-60 disabled:cursor-wait" + (isDispatching ? " opacity-70 cursor-wait" : ""),
                 onClick: handleRunDispatcher,
                 disabled: isDispatching,
                 title: "Trigger Zero Factory Dispatcher Cycle"
@@ -568,7 +560,7 @@
             React.createElement(
               "button",
               {
-                className: "zfk-btn zfk-btn-primary",
+                className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer",
                 onClick: () => setShowNewTaskModal(true)
               },
               "+ New Task"
@@ -576,8 +568,7 @@
             React.createElement(
               "button",
               {
-                className: "zfk-btn zfk-btn-secondary",
-                style: { padding: "0.45rem 0.65rem" },
+                className: "inline-flex items-center justify-center p-2 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
                 onClick: () => loadTasksAndStats(),
                 title: "Refresh Board"
               },
@@ -590,60 +581,60 @@
         stats &&
           React.createElement(
             "div",
-            { className: "zfk-stats-row" },
+            { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1" },
             React.createElement(
               "div",
-              { className: "zfk-stat-card" },
-              React.createElement("div", { className: "zfk-stat-icon", style: { background: "rgba(99, 102, 241, 0.15)", color: "#818cf8" } }, "📊"),
+              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-indigo-500/15 text-indigo-400" }, "📊"),
               React.createElement(
                 "div",
-                { className: "zfk-stat-info" },
-                React.createElement("span", { className: "zfk-stat-value" }, stats.total || 0),
-                React.createElement("span", { className: "zfk-stat-label" }, "Total Tasks")
+                { className: "flex flex-col min-w-0" },
+                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.total || 0),
+                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Total Tasks")
               )
             ),
             React.createElement(
               "div",
-              { className: "zfk-stat-card" },
-              React.createElement("div", { className: "zfk-stat-icon", style: { background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24" } }, "⚡"),
+              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-amber-500/15 text-amber-400" }, "⚡"),
               React.createElement(
                 "div",
-                { className: "zfk-stat-info" },
-                React.createElement("span", { className: "zfk-stat-value" }, (stats.columns && stats.columns.running) || 0),
-                React.createElement("span", { className: "zfk-stat-label" }, "Active In Progress")
+                { className: "flex flex-col min-w-0" },
+                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.running) || 0),
+                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Active In Progress")
               )
             ),
             React.createElement(
               "div",
-              { className: "zfk-stat-card" },
-              React.createElement("div", { className: "zfk-stat-icon", style: { background: "rgba(244, 63, 94, 0.15)", color: "#f43f5e" } }, "🛑"),
+              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-rose-500/15 text-rose-400" }, "🛑"),
               React.createElement(
                 "div",
-                { className: "zfk-stat-info" },
-                React.createElement("span", { className: "zfk-stat-value" }, (stats.columns && stats.columns.blocked) || 0),
-                React.createElement("span", { className: "zfk-stat-label" }, "Blocked / Review")
+                { className: "flex flex-col min-w-0" },
+                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.blocked) || 0),
+                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Blocked / Review")
               )
             ),
             React.createElement(
               "div",
-              { className: "zfk-stat-card" },
-              React.createElement("div", { className: "zfk-stat-icon", style: { background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" } }, "✅"),
+              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, "✅"),
               React.createElement(
                 "div",
-                { className: "zfk-stat-info" },
-                React.createElement("span", { className: "zfk-stat-value" }, (stats.columns && stats.columns.done) || 0),
-                React.createElement("span", { className: "zfk-stat-label" }, "Completed")
+                { className: "flex flex-col min-w-0" },
+                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.done) || 0),
+                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Completed")
               )
             ),
             React.createElement(
               "div",
-              { className: "zfk-stat-card" },
-              React.createElement("div", { className: "zfk-stat-icon", style: { background: "rgba(16, 185, 129, 0.15)", color: "#34d399" } }, "🌿"),
+              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-emerald-500/15 text-emerald-400" }, "🌿"),
               React.createElement(
                 "div",
-                { className: "zfk-stat-info" },
-                React.createElement("span", { className: "zfk-stat-value" }, stats.active_worktrees || 0),
-                React.createElement("span", { className: "zfk-stat-label" }, "Git Worktrees")
+                { className: "flex flex-col min-w-0" },
+                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.active_worktrees || 0),
+                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Git Worktrees")
               )
             )
           )
@@ -652,14 +643,14 @@
       // Toolbar (Search & Filter)
       React.createElement(
         "div",
-        { className: "zfk-toolbar" },
+        { className: "flex flex-wrap items-center justify-between gap-3 bg-slate-900/40 backdrop-blur-sm border border-slate-800/70 p-3 rounded-xl" },
         React.createElement(
           "div",
-          { className: "zfk-search-box" },
-          React.createElement("span", { className: "zfk-search-icon" }, "🔍"),
+          { className: "flex items-center gap-2 bg-slate-950/60 border border-slate-800 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 rounded-lg px-3 py-1.5 min-w-[240px] md:w-80 transition-all" },
+          React.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, "🔍"),
           React.createElement("input", {
             type: "text",
-            className: "zfk-search-input",
+            className: "bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none w-full",
             placeholder: "Search tasks by title, description or ID...",
             value: searchQuery,
             onChange: (e) => setSearchQuery(e.target.value)
@@ -667,30 +658,38 @@
         ),
         React.createElement(
           "div",
-          { className: "zfk-filter-pills" },
-          React.createElement("span", { style: { fontSize: "0.75rem", color: "var(--zfk-text-muted)", marginRight: "0.25rem" } }, "Role:"),
+          { className: "flex items-center gap-1.5 flex-wrap" },
+          React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "Role:"),
           ["all", "builder", "reviewer", "orchestrator", "unassigned"].map((role) =>
             React.createElement(
-              "div",
+              "button",
               {
                 key: role,
-                className: "zfk-pill" + (assigneeFilter === role ? " active" : ""),
+                type: "button",
+                className: (assigneeFilter === role
+                  ? "bg-indigo-600 text-white border-indigo-500 shadow-xs shadow-indigo-600/30"
+                  : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
+                  " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center capitalize",
                 onClick: () => setAssigneeFilter(role)
               },
-              role.charAt(0).toUpperCase() + role.slice(1)
+              role
             )
           )
         ),
         React.createElement(
           "div",
-          { className: "zfk-filter-pills" },
-          React.createElement("span", { style: { fontSize: "0.75rem", color: "var(--zfk-text-muted)", marginRight: "0.25rem" } }, "Prio:"),
+          { className: "flex items-center gap-1.5 flex-wrap" },
+          React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "Prio:"),
           ["all", "P0", "P1", "P2", "P3"].map((prio) =>
             React.createElement(
-              "div",
+              "button",
               {
                 key: prio,
-                className: "zfk-pill" + (priorityFilter === prio ? " active" : ""),
+                type: "button",
+                className: (priorityFilter === prio
+                  ? "bg-indigo-600 text-white border-indigo-500 shadow-xs shadow-indigo-600/30"
+                  : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
+                  " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center",
                 onClick: () => setPriorityFilter(prio)
               },
               prio
@@ -699,9 +698,10 @@
         ),
         React.createElement(
           "label",
-          { style: { display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "var(--zfk-text-secondary)", cursor: "pointer" } },
+          { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" },
           React.createElement("input", {
             type: "checkbox",
+            className: "rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
             checked: autoRefresh,
             onChange: (e) => setAutoRefresh(e.target.checked)
           }),
@@ -712,7 +712,7 @@
       // Main Kanban Board Grid
       React.createElement(
         "div",
-        { className: "zfk-board" },
+        { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 items-start" },
         COLUMNS.map((col) => {
           const colTasks = tasksByColumn[col.id] || [];
           const isOver = dragOverCol === col.id;
@@ -721,112 +721,129 @@
             "div",
             {
               key: col.id,
-              className: "zfk-column" + (isOver ? " drag-over" : ""),
+              className: "flex flex-col gap-2.5 bg-slate-900/50 backdrop-blur-md border rounded-xl p-2.5 min-h-[520px] transition-all duration-150 " + (isOver ? "border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/30" : "border-slate-800/80"),
               onDragOver: (e) => handleDragOver(e, col.id),
               onDragLeave: handleDragLeave,
               onDrop: (e) => handleDrop(e, col.id)
             },
             React.createElement(
               "div",
-              { className: "zfk-col-header" },
+              { className: "flex items-center justify-between px-1.5 py-1 select-none" },
               React.createElement(
                 "div",
-                { className: "zfk-col-title-group" },
-                React.createElement("div", { className: "zfk-col-dot", style: { backgroundColor: col.dotColor, color: col.dotColor } }),
-                React.createElement("h3", { className: "zfk-col-title" }, col.title)
+                { className: "flex items-center gap-2 min-w-0" },
+                React.createElement("div", { className: "w-2.5 h-2.5 rounded-full shrink-0 shadow-xs", style: { backgroundColor: col.dotColor, boxShadow: "0 0 6px " + col.dotColor + "88" } }),
+                React.createElement("h3", { className: "text-xs font-semibold uppercase tracking-wider text-slate-300 truncate m-0" }, col.title)
               ),
-              React.createElement("span", { className: "zfk-col-badge" }, colTasks.length)
+              React.createElement("span", { className: "text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/60 text-slate-400 font-mono" }, colTasks.length)
             ),
 
             React.createElement(
               "div",
-              { className: "zfk-card-stack" },
+              { className: "flex flex-col gap-2.5 flex-1 min-h-[120px]" },
               colTasks.length === 0
                 ? React.createElement(
                     "div",
-                    { className: "zfk-col-empty" },
+                    { className: "flex flex-col items-center justify-center p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800/80 rounded-lg bg-slate-900/20 my-auto select-none" },
                     "No " + col.title + " tasks",
                     React.createElement("br", null),
-                    React.createElement("span", { style: { opacity: 0.6, fontSize: "0.6875rem" } }, "Drop tasks here")
+                    React.createElement("span", { className: "text-[0.6875rem] opacity-60 mt-1" }, "Drop tasks here")
                   )
                 : colTasks.map((t) => {
                     const isRunning = t.status === "running";
+                    const prioClass = t.priority === "P0"
+                      ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                      : t.priority === "P1"
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                      : t.priority === "P3"
+                      ? "bg-slate-700/40 text-slate-400 border-slate-600/30"
+                      : "bg-sky-500/15 text-sky-300 border-sky-500/30";
+
+                    const roleClass = t.assignee === "builder"
+                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                      : t.assignee === "reviewer"
+                      ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                      : t.assignee === "orchestrator"
+                      ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                      : "bg-slate-700/30 text-slate-400 border-slate-700/40";
+
                     return React.createElement(
                       "div",
                       {
                         key: t.id,
-                        className: "zfk-card" + (isRunning ? " zfk-running-glow" : ""),
+                        className: "group bg-slate-800/70 hover:bg-slate-800/95 border rounded-lg p-3 space-y-2.5 shadow-xs hover:shadow-md transition-all duration-150 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 " + (isRunning ? "border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]" : "border-slate-700/60 hover:border-slate-600"),
                         draggable: true,
                         onDragStart: (e) => handleDragStart(e, t),
                         onClick: () => loadTaskDetails(t.id)
                       },
                       React.createElement(
                         "div",
-                        { className: "zfk-card-top" },
-                        React.createElement("span", { className: "zfk-card-id" }, t.id),
+                        { className: "flex items-center justify-between gap-2" },
+                        React.createElement("span", { className: "font-mono text-[0.6875rem] font-semibold text-slate-400 tracking-wider" }, t.id),
                         React.createElement(
                           "div",
-                          { className: "zfk-card-badges" },
+                          { className: "flex items-center gap-1.5 flex-wrap" },
                           React.createElement(
                             "span",
-                            { className: "zfk-prio-badge zfk-prio-" + (t.priority ? t.priority.toLowerCase() : "p2") },
+                            { className: "text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border " + prioClass },
                             t.priority || "P2"
                           ),
                           React.createElement(
                             "span",
-                            { className: "zfk-role-badge zfk-role-" + (t.assignee || "unassigned") },
+                            { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass },
                             t.assignee || "unassigned"
                           )
                         )
                       ),
-                      React.createElement("h4", { className: "zfk-card-title" }, t.title),
+                      React.createElement("h4", { className: "text-xs font-semibold text-slate-200 leading-snug line-clamp-2 m-0 group-hover:text-white" }, t.title),
                       React.createElement(
                         "div",
-                        { className: "zfk-card-meta" },
-                        t.tenant && React.createElement("span", { className: "zfk-meta-item" }, "📁 " + t.tenant),
-                        t.branch_name && React.createElement("span", { className: "zfk-meta-item", style: { color: "#a5b4fc" } }, "🌿 " + t.branch_name),
+                        { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" },
+                        t.tenant && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant),
+                        t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name),
                         t.blocking_parent_count > 0 &&
                           React.createElement(
                             "span",
-                            { className: "zfk-dep-badge" },
+                            { className: "text-[0.625rem] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20" },
                             "⏳ " + t.blocking_parent_count + " blocker"
                           )
                       ),
                       (t.status === "running" || (t.session_progress && t.session_progress.has_session)) &&
                         React.createElement(
                           "div",
-                          { className: "zfk-card-progress" },
+                          { className: "flex items-center gap-2 p-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs" },
                           React.createElement("span", {
-                            className: "zfk-pulse-dot" + (t.session_progress && t.session_progress.is_alive ? " zfk-pulse-active" : " zfk-pulse-idle")
+                            className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
                           }),
                           React.createElement(
                             "span",
-                            { className: "zfk-progress-text" },
+                            { className: "text-[0.6875rem] truncate font-medium" },
                             (t.session_progress && t.session_progress.turn_count ? t.session_progress.turn_count + " turns" : "Executing") +
                             (t.session_progress && t.session_progress.last_action ? " • " + t.session_progress.last_action : "")
                           )
                         ),
                       React.createElement(
                         "div",
-                        { className: "zfk-card-footer" },
+                        { className: "flex items-center justify-between pt-1 border-t border-slate-700/40 text-[0.6875rem] text-slate-400" },
                         React.createElement(
                           "span",
-                          { style: { fontSize: "0.6875rem", color: "var(--zfk-text-muted)" } },
+                          { className: "text-[0.6875rem] text-slate-500" },
                           timeAgo(t.updated_at || t.created_at)
                         ),
                         React.createElement(
                           "div",
-                          { className: "zfk-card-actions" },
+                          { className: "flex items-center gap-1.5" },
                           t.comment_count > 0 &&
                             React.createElement(
                               "span",
-                              { className: "zfk-btn-mini", title: t.comment_count + " comments" },
+                              { className: "inline-flex items-center px-1.5 py-0.5 rounded text-[0.6875rem] bg-slate-700/50 text-slate-300 hover:text-white cursor-pointer", title: t.comment_count + " comments" },
                               "💬 " + t.comment_count
                             ),
                           React.createElement(
                             "button",
                             {
-                              className: "zfk-btn-mini zfk-btn-advance",
+                              type: "button",
+                              className: "inline-flex items-center justify-center w-5 h-5 rounded bg-slate-700/60 hover:bg-indigo-600 text-slate-300 hover:text-white transition-colors cursor-pointer text-xs leading-none font-bold",
                               onClick: (e) => handleAdvanceTask(t, e),
                               title: "Move to next column"
                             },
@@ -845,41 +862,44 @@
       selectedTask &&
         React.createElement(
           "div",
-          { className: "zfk-modal-backdrop", onClick: () => setSelectedTask(null) },
+          { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setSelectedTask(null) },
           React.createElement(
             "div",
-            { className: "zfk-modal", onClick: (e) => e.stopPropagation() },
+            { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
             React.createElement(
               "div",
-              { className: "zfk-modal-header" },
+              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
               React.createElement(
                 "div",
-                { style: { display: "flex", alignItems: "center", gap: "0.75rem" } },
-                React.createElement("span", { className: "zfk-card-id", style: { fontSize: "0.8125rem" } }, selectedTask.id),
-                React.createElement("h2", { className: "zfk-modal-title" }, selectedTask.title)
+                { className: "flex items-center gap-3 min-w-0" },
+                React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id),
+                React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)
               ),
               React.createElement(
                 "button",
-                { className: "zfk-modal-close", onClick: () => setSelectedTask(null) },
+                {
+                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                  onClick: () => setSelectedTask(null)
+                },
                 "✕"
               )
             ),
             React.createElement(
               "div",
-              { className: "zfk-modal-body" },
+              { className: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1" },
 
               // Status & Controls Row
               React.createElement(
                 "div",
-                { className: "zfk-form-row" },
+                { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Status"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"),
                   React.createElement(
                     "select",
                     {
-                      className: "zfk-form-select",
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
                       value: selectedTask.status,
                       onChange: async (e) => {
                         const newStatus = e.target.value;
@@ -897,12 +917,12 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Assignee"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"),
                   React.createElement(
                     "select",
                     {
-                      className: "zfk-form-select",
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
                       value: selectedTask.assignee || "unassigned",
                       onChange: async (e) => {
                         const newAssignee = e.target.value;
@@ -924,15 +944,15 @@
 
               React.createElement(
                 "div",
-                { className: "zfk-form-row" },
+                { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Priority"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Priority"),
                   React.createElement(
                     "select",
                     {
-                      className: "zfk-form-select",
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
                       value: selectedTask.priority || "P2",
                       onChange: async (e) => {
                         const newPrio = e.target.value;
@@ -950,10 +970,10 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Project / Tenant"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Project / Tenant"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none opacity-80 cursor-default",
                     value: selectedTask.tenant || "",
                     placeholder: "e.g. ~/git/hotcode-dev/zerofactory",
                     readOnly: true
@@ -964,20 +984,12 @@
               // Description
               React.createElement(
                 "div",
-                { className: "zfk-form-group" },
-                React.createElement("label", { className: "zfk-form-label" }, "Description / Acceptance Criteria"),
+                { className: "space-y-1.5" },
+                React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"),
                 React.createElement(
                   "div",
                   {
-                    style: {
-                      background: "rgba(15, 23, 42, 0.6)",
-                      border: "1px solid var(--zfk-border)",
-                      borderRadius: "0.5rem",
-                      padding: "0.75rem",
-                      fontSize: "0.875rem",
-                      lineHeight: "1.5",
-                      whiteSpace: "pre-wrap"
-                    }
+                    className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap"
                   },
                   selectedTask.description || "(No description provided)"
                 )
@@ -988,47 +1000,41 @@
                 React.createElement(
                   "div",
                   {
-                    style: {
-                      padding: "0.65rem 0.85rem",
-                      background: "rgba(16, 185, 129, 0.08)",
-                      border: "1px solid rgba(16, 185, 129, 0.25)",
-                      borderRadius: "0.5rem",
-                      fontSize: "0.75rem"
-                    }
+                    className: "p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs space-y-1"
                   },
-                  React.createElement("strong", { style: { color: "#34d399" } }, "Git Worktree Active: "),
-                  React.createElement("code", { style: { color: "#a5b4fc" } }, selectedTask.workspace_path),
+                  React.createElement("strong", { className: "text-emerald-400 font-semibold" }, "Git Worktree Active: "),
+                  React.createElement("code", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path),
                   selectedTask.branch_name &&
-                    React.createElement("div", { style: { marginTop: "0.25rem", color: "var(--zfk-text-secondary)" } }, "Branch: " + selectedTask.branch_name)
+                    React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)
                 ),
 
               // Agent Session Progress Panel
               (selectedTask.status === "running" || (selectedTask.session_progress && selectedTask.session_progress.has_session)) &&
                 React.createElement(
                   "div",
-                  { className: "zfk-session-panel" },
+                  { className: "bg-slate-950/80 border border-indigo-500/30 rounded-xl p-4 space-y-3.5 shadow-sm" },
                   React.createElement(
                     "div",
-                    { className: "zfk-session-header" },
+                    { className: "flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800/80" },
                     React.createElement(
                       "div",
-                      { style: { display: "flex", alignItems: "center", gap: "0.5rem" } },
+                      { className: "flex items-center gap-2 flex-wrap" },
                       React.createElement("span", {
-                        className: "zfk-pulse-dot" + (selectedTask.session_progress && selectedTask.session_progress.is_alive ? " zfk-pulse-active" : " zfk-pulse-idle")
+                        className: "w-2.5 h-2.5 rounded-full shrink-0 " + (selectedTask.session_progress && selectedTask.session_progress.is_alive ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
                       }),
                       React.createElement(
                         "span",
-                        { style: { fontWeight: "600", fontSize: "0.875rem", color: "#f8fafc" } },
+                        { className: "font-semibold text-xs text-white" },
                         selectedTask.session_progress && selectedTask.session_progress.is_alive
                           ? "⚡ Active Agent Execution"
                           : "⏹ Agent Session"
                       ),
                       selectedTask.session_progress && selectedTask.session_progress.worker_pid &&
-                        React.createElement("span", { className: "zfk-pill-badge" }, "PID: " + selectedTask.session_progress.worker_pid)
+                        React.createElement("span", { className: "text-[0.625rem] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60" }, "PID: " + selectedTask.session_progress.worker_pid)
                     ),
                     React.createElement(
                       "div",
-                      { style: { display: "flex", gap: "0.5rem", alignItems: "center" } },
+                      { className: "flex items-center gap-2" },
                       selectedTask.session_progress && selectedTask.session_progress.session_id &&
                         (() => {
                           const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
@@ -1041,7 +1047,7 @@
                             "a",
                             {
                               href: chatUrl,
-                              className: "zfk-btn-session-link",
+                              className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer shadow-xs",
                               target: "_blank",
                               rel: "noreferrer",
                               title: "Open session in Hermes Chat"
@@ -1053,7 +1059,7 @@
                         "button",
                         {
                           type: "button",
-                          className: "zfk-btn-mini",
+                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer",
                           onClick: () => refreshSessionProgress(selectedTask.id),
                           title: "Refresh session status"
                         },
@@ -1066,34 +1072,34 @@
                   selectedTask.session_progress &&
                     React.createElement(
                       "div",
-                      { className: "zfk-session-stats-grid" },
+                      { className: "grid grid-cols-2 sm:grid-cols-4 gap-2.5" },
                       React.createElement(
                         "div",
-                        { className: "zfk-session-stat" },
-                        React.createElement("span", { className: "zfk-session-stat-lbl" }, "Session ID"),
-                        React.createElement("code", { className: "zfk-session-stat-val", style: { color: "#a5b4fc" } }, selectedTask.session_progress.session_id || "Detecting...")
+                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Session ID"),
+                        React.createElement("code", { className: "text-xs font-medium text-indigo-300 font-mono truncate" }, selectedTask.session_progress.session_id || "Detecting...")
                       ),
                       React.createElement(
                         "div",
-                        { className: "zfk-session-stat" },
-                        React.createElement("span", { className: "zfk-session-stat-lbl" }, "Model"),
-                        React.createElement("span", { className: "zfk-session-stat-val" }, selectedTask.session_progress.model || "Default")
+                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Model"),
+                        React.createElement("span", { className: "text-xs font-medium text-slate-200 truncate" }, selectedTask.session_progress.model || "Default")
                       ),
                       React.createElement(
                         "div",
-                        { className: "zfk-session-stat" },
-                        React.createElement("span", { className: "zfk-session-stat-lbl" }, "Turns / Msgs"),
+                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Turns / Msgs"),
                         React.createElement(
                           "span",
-                          { className: "zfk-session-stat-val", style: { color: "#34d399", fontWeight: "600" } },
+                          { className: "text-xs font-semibold text-emerald-400 truncate" },
                           (selectedTask.session_progress.turn_count || 0) + " turns (" + (selectedTask.session_progress.message_count || 0) + " msgs)"
                         )
                       ),
                       React.createElement(
                         "div",
-                        { className: "zfk-session-stat" },
-                        React.createElement("span", { className: "zfk-session-stat-lbl" }, "Last Activity"),
-                        React.createElement("span", { className: "zfk-session-stat-val" }, timeAgo(selectedTask.session_progress.last_active) || "Just now")
+                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Last Activity"),
+                        React.createElement("span", { className: "text-xs font-medium text-slate-200 truncate" }, timeAgo(selectedTask.session_progress.last_active) || "Just now")
                       )
                     ),
 
@@ -1101,34 +1107,34 @@
                   selectedTask.session_progress && selectedTask.session_progress.recent_steps && selectedTask.session_progress.recent_steps.length > 0 &&
                     React.createElement(
                       "div",
-                      { style: { marginTop: "0.75rem" } },
+                      { className: "mt-3 space-y-2" },
                       React.createElement(
                         "div",
-                        { style: { fontSize: "0.75rem", fontWeight: "600", color: "var(--zfk-text-secondary)", marginBottom: "0.35rem" } },
+                        { className: "text-xs font-semibold text-slate-400" },
                         "Recent Agent Actions & Tool Executions"
                       ),
                       React.createElement(
                         "div",
-                        { className: "zfk-steps-timeline" },
+                        { className: "space-y-1.5 max-h-48 overflow-y-auto zfk-scrollbar pr-1" },
                         selectedTask.session_progress.recent_steps.map((st) =>
                           React.createElement(
                             "div",
-                            { key: st.id, className: "zfk-step-item" },
+                            { key: st.id, className: "bg-slate-900/60 border border-slate-800/70 rounded-md p-2 text-xs space-y-1" },
                             React.createElement(
                               "div",
-                              { style: { display: "flex", alignItems: "center", gap: "0.4rem" } },
+                              { className: "flex items-center gap-2" },
                               React.createElement(
                                 "span",
-                                { className: "zfk-step-role-badge zfk-step-" + (st.tool_name ? "tool" : st.role) },
+                                { className: "text-[0.625rem] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 border border-slate-700/60" },
                                 st.tool_name ? "tool: " + st.tool_name : st.role
                               ),
                               React.createElement(
                                 "span",
-                                { style: { fontSize: "0.6875rem", color: "var(--zfk-text-muted)" } },
+                                { className: "text-[0.6875rem] text-slate-500" },
                                 timeAgo(st.timestamp)
                               )
                             ),
-                            React.createElement("div", { className: "zfk-step-snippet" }, st.snippet)
+                            React.createElement("div", { className: "text-[0.6875rem] text-slate-400 font-mono break-all line-clamp-2" }, st.snippet)
                           )
                         )
                       )
@@ -1138,15 +1144,15 @@
                   selectedTask.session_progress && selectedTask.session_progress.log_tail &&
                     React.createElement(
                       "details",
-                      { style: { marginTop: "0.75rem", fontSize: "0.75rem" } },
+                      { className: "mt-3 text-xs" },
                       React.createElement(
                         "summary",
-                        { style: { cursor: "pointer", color: "var(--zfk-text-secondary)", fontWeight: "500" } },
+                        { className: "cursor-pointer text-slate-400 hover:text-slate-200 font-medium select-none outline-none py-1" },
                         "📄 Show Worker Process Log Output"
                       ),
                       React.createElement(
                         "pre",
-                        { className: "zfk-log-tail" },
+                        { className: "mt-2 p-3 bg-black/60 border border-slate-800 rounded-lg text-[0.6875rem] font-mono text-emerald-400/90 whitespace-pre-wrap max-h-56 overflow-y-auto zfk-scrollbar" },
                         selectedTask.session_progress.log_tail
                       )
                     )
@@ -1157,29 +1163,20 @@
                 selectedTask.parents.length > 0 &&
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Parent Dependencies (Must complete first)"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Parent Dependencies (Must complete first)"),
                   React.createElement(
                     "div",
-                    { style: { display: "flex", flexDirection: "column", gap: "0.35rem" } },
+                    { className: "flex flex-col gap-1.5" },
                     selectedTask.parents.map((p) =>
                       React.createElement(
                         "div",
                         {
                           key: p.id,
-                          style: {
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            padding: "0.4rem 0.6rem",
-                            background: "rgba(30, 41, 59, 0.5)",
-                            borderRadius: "0.35rem",
-                            border: "1px solid var(--zfk-border)",
-                            fontSize: "0.75rem"
-                          }
+                          className: "flex items-center justify-between p-2 rounded-md bg-slate-800/40 border border-slate-800 text-xs text-slate-300"
                         },
                         React.createElement("span", null, p.id + ": " + p.title),
-                        React.createElement("span", { className: "zfk-role-badge zfk-role-" + p.assignee }, p.status)
+                        React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400" }, p.status)
                       )
                     )
                   )
@@ -1188,53 +1185,53 @@
               // Comments Section
               React.createElement(
                 "div",
-                { className: "zfk-form-group" },
+                { className: "space-y-2" },
                 React.createElement(
                   "label",
-                  { className: "zfk-form-label" },
+                  { className: "block text-xs font-semibold text-slate-400 tracking-wide" },
                   "Discussion & Activity (" + ((selectedTask.comments && selectedTask.comments.length) || 0) + ")"
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-comment-list" },
+                  { className: "space-y-2 max-h-52 overflow-y-auto zfk-scrollbar pr-1" },
                   (!selectedTask.comments || selectedTask.comments.length === 0)
-                    ? React.createElement("div", { style: { fontSize: "0.75rem", color: "var(--zfk-text-muted)" } }, "No comments yet.")
+                    ? React.createElement("div", { className: "text-xs text-slate-500 italic py-2" }, "No comments yet.")
                     : selectedTask.comments.map((c) =>
                         React.createElement(
                           "div",
-                          { key: c.id, className: "zfk-comment-item" },
+                          { key: c.id, className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3 space-y-1.5" },
                           React.createElement(
                             "div",
-                            { className: "zfk-comment-top" },
-                            React.createElement("span", { className: "zfk-comment-author" }, "@" + c.author),
-                            React.createElement("span", { className: "zfk-comment-time" }, timeAgo(c.created_at))
+                            { className: "flex items-center justify-between text-xs" },
+                            React.createElement("span", { className: "font-semibold text-indigo-400" }, "@" + c.author),
+                            React.createElement("span", { className: "text-[0.6875rem] text-slate-500" }, timeAgo(c.created_at))
                           ),
-                          React.createElement("div", { className: "zfk-comment-body" }, c.body)
+                          React.createElement("div", { className: "text-xs text-slate-300 whitespace-pre-wrap leading-relaxed" }, c.body)
                         )
                       )
                 ),
                 React.createElement(
                   "form",
-                  { onSubmit: handleAddCommentSubmit, style: { display: "flex", gap: "0.5rem", marginTop: "0.5rem" } },
+                  { onSubmit: handleAddCommentSubmit, className: "flex gap-2 mt-2" },
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     placeholder: "Write a note or comment...",
                     value: newCommentText,
                     onChange: (e) => setNewCommentText(e.target.value)
                   }),
-                  React.createElement("button", { type: "submit", className: "zfk-btn zfk-btn-secondary" }, "Post")
+                  React.createElement("button", { type: "submit", className: "px-3.5 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-colors cursor-pointer" }, "Post")
                 )
               )
             ),
 
             React.createElement(
               "div",
-              { className: "zfk-modal-footer" },
+              { className: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
               React.createElement(
                 "button",
                 {
-                  className: "zfk-btn zfk-btn-secondary",
-                  style: { color: "#f87171", borderColor: "rgba(239, 68, 68, 0.3)" },
+                  type: "button",
+                  className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
                   onClick: () => handleDeleteTask(selectedTask.id)
                 },
                 "Delete Task"
@@ -1242,7 +1239,8 @@
               React.createElement(
                 "button",
                 {
-                  className: "zfk-btn zfk-btn-primary",
+                  type: "button",
+                  className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
                   onClick: () => handleAdvanceTask(selectedTask)
                 },
                 "Advance Stage →"
@@ -1255,28 +1253,35 @@
       showNewTaskModal &&
         React.createElement(
           "div",
-          { className: "zfk-modal-backdrop", onClick: () => setShowNewTaskModal(false) },
+          { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowNewTaskModal(false) },
           React.createElement(
             "div",
-            { className: "zfk-modal", onClick: (e) => e.stopPropagation() },
+            { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
             React.createElement(
               "div",
-              { className: "zfk-modal-header" },
-              React.createElement("h2", { className: "zfk-modal-title" }, "Create New Zero Factory Task"),
-              React.createElement("button", { className: "zfk-modal-close", onClick: () => setShowNewTaskModal(false) }, "✕")
+              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+              React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Create New Zero Factory Task"),
+              React.createElement(
+                "button",
+                {
+                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                  onClick: () => setShowNewTaskModal(false)
+                },
+                "✕"
+              )
             ),
             React.createElement(
               "form",
-              { onSubmit: handleCreateTaskSubmit },
+              { onSubmit: handleCreateTaskSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
               React.createElement(
                 "div",
-                { className: "zfk-modal-body" },
+                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Task Title *"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Task Title *"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     required: true,
                     placeholder: "e.g. Implement caching layer for Redis",
                     value: newTaskForm.title,
@@ -1285,15 +1290,15 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-row" },
+                  { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                   React.createElement(
                     "div",
-                    { className: "zfk-form-group" },
-                    React.createElement("label", { className: "zfk-form-label" }, "Assignee"),
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"),
                     React.createElement(
                       "select",
                       {
-                        className: "zfk-form-select",
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
                         value: newTaskForm.assignee,
                         onChange: (e) => setNewTaskForm({ ...newTaskForm, assignee: e.target.value })
                       },
@@ -1305,12 +1310,12 @@
                   ),
                   React.createElement(
                     "div",
-                    { className: "zfk-form-group" },
-                    React.createElement("label", { className: "zfk-form-label" }, "Priority"),
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Priority"),
                     React.createElement(
                       "select",
                       {
-                        className: "zfk-form-select",
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
                         value: newTaskForm.priority,
                         onChange: (e) => setNewTaskForm({ ...newTaskForm, priority: e.target.value })
                       },
@@ -1323,15 +1328,15 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-row" },
+                  { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                   React.createElement(
                     "div",
-                    { className: "zfk-form-group" },
-                    React.createElement("label", { className: "zfk-form-label" }, "Initial Column"),
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Initial Column"),
                     React.createElement(
                       "select",
                       {
-                        className: "zfk-form-select",
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
                         value: newTaskForm.status,
                         onChange: (e) => setNewTaskForm({ ...newTaskForm, status: e.target.value })
                       },
@@ -1340,10 +1345,10 @@
                   ),
                   React.createElement(
                     "div",
-                    { className: "zfk-form-group" },
-                    React.createElement("label", { className: "zfk-form-label" }, "Repository / Tenant"),
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Repository / Tenant"),
                     React.createElement("input", {
-                      className: "zfk-form-input",
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                       placeholder: "e.g. zerofactory or git repo path",
                       value: newTaskForm.tenant,
                       onChange: (e) => setNewTaskForm({ ...newTaskForm, tenant: e.target.value })
@@ -1352,10 +1357,10 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Description & Acceptance Criteria"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description & Acceptance Criteria"),
                   React.createElement("textarea", {
-                    className: "zfk-form-textarea",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors min-h-[100px] resize-y leading-relaxed",
                     placeholder: "Provide context, requirements, edge cases, and steps for the agent...",
                     value: newTaskForm.description,
                     onChange: (e) => setNewTaskForm({ ...newTaskForm, description: e.target.value })
@@ -1364,13 +1369,24 @@
               ),
               React.createElement(
                 "div",
-                { className: "zfk-modal-footer" },
+                { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
                 React.createElement(
                   "button",
-                  { type: "button", className: "zfk-btn zfk-btn-secondary", onClick: () => setShowNewTaskModal(false) },
+                  {
+                    type: "button",
+                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                    onClick: () => setShowNewTaskModal(false)
+                  },
                   "Cancel"
                 ),
-                React.createElement("button", { type: "submit", className: "zfk-btn zfk-btn-primary" }, "Create Task")
+                React.createElement(
+                  "button",
+                  {
+                    type: "submit",
+                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
+                  },
+                  "Create Task"
+                )
               )
             )
           )
@@ -1380,28 +1396,35 @@
       showNewBoardModal &&
         React.createElement(
           "div",
-          { className: "zfk-modal-backdrop", onClick: () => setShowNewBoardModal(false) },
+          { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowNewBoardModal(false) },
           React.createElement(
             "div",
-            { className: "zfk-modal", onClick: (e) => e.stopPropagation() },
+            { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
             React.createElement(
               "div",
-              { className: "zfk-modal-header" },
-              React.createElement("h2", { className: "zfk-modal-title" }, "Create New Project Board"),
-              React.createElement("button", { className: "zfk-modal-close", onClick: () => setShowNewBoardModal(false) }, "✕")
+              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+              React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Create New Project Board"),
+              React.createElement(
+                "button",
+                {
+                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                  onClick: () => setShowNewBoardModal(false)
+                },
+                "✕"
+              )
             ),
             React.createElement(
               "form",
-              { onSubmit: handleCreateBoardSubmit },
+              { onSubmit: handleCreateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
               React.createElement(
                 "div",
-                { className: "zfk-modal-body" },
+                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Board Name *"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Board Name *"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     required: true,
                     placeholder: "e.g. ZeroHub Project",
                     value: newBoardForm.name,
@@ -1414,10 +1437,10 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Slug (URL identifier) *"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Slug (URL identifier) *"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     required: true,
                     placeholder: "e.g. zerohub",
                     value: newBoardForm.slug,
@@ -1426,10 +1449,10 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Remote Git URL"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     placeholder: "https://github.com/org/repo.git",
                     value: newBoardForm.git_url,
                     onChange: (e) => setNewBoardForm({ ...newBoardForm, git_url: e.target.value })
@@ -1437,10 +1460,10 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Description"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     placeholder: "Short description of this board's scope",
                     value: newBoardForm.description,
                     onChange: (e) => setNewBoardForm({ ...newBoardForm, description: e.target.value })
@@ -1449,13 +1472,24 @@
               ),
               React.createElement(
                 "div",
-                { className: "zfk-modal-footer" },
+                { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
                 React.createElement(
                   "button",
-                  { type: "button", className: "zfk-btn zfk-btn-secondary", onClick: () => setShowNewBoardModal(false) },
+                  {
+                    type: "button",
+                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                    onClick: () => setShowNewBoardModal(false)
+                  },
                   "Cancel"
                 ),
-                React.createElement("button", { type: "submit", className: "zfk-btn zfk-btn-primary" }, "Create Board")
+                React.createElement(
+                  "button",
+                  {
+                    type: "submit",
+                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
+                  },
+                  "Create Board"
+                )
               )
             )
           )
@@ -1465,28 +1499,35 @@
       showEditBoardModal &&
         React.createElement(
           "div",
-          { className: "zfk-modal-backdrop", onClick: () => setShowEditBoardModal(false) },
+          { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowEditBoardModal(false) },
           React.createElement(
             "div",
-            { className: "zfk-modal", onClick: (e) => e.stopPropagation() },
+            { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
             React.createElement(
               "div",
-              { className: "zfk-modal-header" },
-              React.createElement("h2", { className: "zfk-modal-title" }, "Edit Board: " + (editBoardForm.name || editBoardForm.slug)),
-              React.createElement("button", { className: "zfk-modal-close", onClick: () => setShowEditBoardModal(false) }, "✕")
+              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+              React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Edit Board: " + (editBoardForm.name || editBoardForm.slug)),
+              React.createElement(
+                "button",
+                {
+                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                  onClick: () => setShowEditBoardModal(false)
+                },
+                "✕"
+              )
             ),
             React.createElement(
               "form",
-              { onSubmit: handleUpdateBoardSubmit },
+              { onSubmit: handleUpdateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
               React.createElement(
                 "div",
-                { className: "zfk-modal-body" },
+                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Board Name *"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Board Name *"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     required: true,
                     placeholder: "e.g. ZeroHub Project",
                     value: editBoardForm.name,
@@ -1495,21 +1536,20 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Slug (URL identifier)"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Slug (URL identifier)"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950/60 border border-slate-800/60 rounded-lg px-3 py-2 text-xs text-slate-400 cursor-not-allowed opacity-60 outline-none",
                     disabled: true,
-                    style: { opacity: 0.6, cursor: "not-allowed" },
                     value: editBoardForm.slug
                   })
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Remote Git URL"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     placeholder: "https://github.com/org/repo.git",
                     value: editBoardForm.git_url,
                     onChange: (e) => setEditBoardForm({ ...editBoardForm, git_url: e.target.value })
@@ -1517,10 +1557,10 @@
                 ),
                 React.createElement(
                   "div",
-                  { className: "zfk-form-group" },
-                  React.createElement("label", { className: "zfk-form-label" }, "Description"),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description"),
                   React.createElement("input", {
-                    className: "zfk-form-input",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                     placeholder: "Short description of this board's scope",
                     value: editBoardForm.description,
                     onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
@@ -1529,13 +1569,12 @@
               ),
               React.createElement(
                 "div",
-                { className: "zfk-modal-footer" },
+                { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
                 React.createElement(
                   "button",
                   {
                     type: "button",
-                    className: "zfk-btn zfk-btn-danger-outline",
-                    style: { marginRight: "auto" },
+                    className: "mr-auto px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
                     onClick: handleDeleteBoard,
                     title: "Delete this board and its scheduled scanner job"
                   },
@@ -1543,10 +1582,21 @@
                 ),
                 React.createElement(
                   "button",
-                  { type: "button", className: "zfk-btn zfk-btn-secondary", onClick: () => setShowEditBoardModal(false) },
+                  {
+                    type: "button",
+                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                    onClick: () => setShowEditBoardModal(false)
+                  },
                   "Cancel"
                 ),
-                React.createElement("button", { type: "submit", className: "zfk-btn zfk-btn-primary" }, "Save Changes")
+                React.createElement(
+                  "button",
+                  {
+                    type: "submit",
+                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
+                  },
+                  "Save Changes"
+                )
               )
             )
           )
