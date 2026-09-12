@@ -176,7 +176,13 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
             target_clone = home / "git" / owner / (repo or slug)
         try:
             target_clone.parent.mkdir(parents=True, exist_ok=True)
-            res = subprocess.run(["git", "clone", git_url, str(target_clone)], capture_output=True, timeout=10)
+            res = subprocess.run(
+                ["git", "clone", git_url, str(target_clone)],
+                capture_output=True,
+                timeout=10,
+                stdin=subprocess.DEVNULL,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+            )
             if res.returncode == 0 and target_clone.is_dir():
                 return target_clone.resolve()
         except Exception as e:

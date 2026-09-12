@@ -519,6 +519,35 @@ def list_boards():
             b["running_count"] = cursor.fetchone()["count"]
         return {"ok": True, "boards": boards}
 
+def _get_cron_helpers():
+    """Import builtin cron engine functions reliably regardless of how plugin_api is loaded."""
+    try:
+        from ..builtin_cron import ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job, list_builtin_jobs
+        return ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job, list_builtin_jobs
+    except Exception:
+        pass
+    try:
+        from builtin_cron import ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job, list_builtin_jobs  # type: ignore
+        return ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job, list_builtin_jobs
+    except Exception:
+        pass
+    try:
+        import sys
+        parent_dir = str(Path(__file__).resolve().parent.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        import builtin_cron
+        return (
+            builtin_cron.ensure_builtin_cron_jobs,
+            builtin_cron.prune_board_cron_job,
+            builtin_cron.trigger_builtin_job,
+            builtin_cron.list_builtin_jobs
+        )
+    except Exception as e:
+        _log.warning("Failed to resolve builtin_cron helpers: %s", e)
+        return None, None, None, None
+
+
 @router.post("/boards")
 def create_board(req: BoardCreate):
     """Create a new board / project."""
@@ -542,16 +571,10 @@ def create_board(req: BoardCreate):
 
     # Sync builtin cron jobs so new board gets a dedicated scanner cron job
     if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
-        try:
-            from ..builtin_cron import ensure_builtin_cron_jobs
-        except Exception:
+        ensure_cron, _, _ = _get_cron_helpers()
+        if ensure_cron:
             try:
-                from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
-            except Exception:
-                ensure_builtin_cron_jobs = None
-        if ensure_builtin_cron_jobs:
-            try:
-                ensure_builtin_cron_jobs()
+                ensure_cron()
             except Exception as e:
                 _log.warning("Failed to sync cron jobs after creating board %s: %s", slug, e)
 
@@ -590,16 +613,10 @@ def update_board(slug: str, req: BoardUpdate):
 
     # Sync builtin cron jobs so updated board properties are reflected
     if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
-        try:
-            from ..builtin_cron import ensure_builtin_cron_jobs
-        except Exception:
+        ensure_cron, _, _ = _get_cron_helpers()
+        if ensure_cron:
             try:
-                from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
-            except Exception:
-                ensure_builtin_cron_jobs = None
-        if ensure_builtin_cron_jobs:
-            try:
-                ensure_builtin_cron_jobs()
+                ensure_cron()
             except Exception as e:
                 _log.warning("Failed to sync cron jobs after updating board %s: %s", slug, e)
 
@@ -618,24 +635,16 @@ def delete_board(slug: str):
 
     # Explicitly clear board's scanner cron job and sync remaining builtin cron jobs
     if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
-        try:
-            from ..builtin_cron import prune_board_cron_job, ensure_builtin_cron_jobs
-        except Exception:
+        ensure_cron, prune_cron, _ = _get_cron_helpers()
+        if prune_cron:
             try:
-                from builtin_cron import prune_board_cron_job, ensure_builtin_cron_jobs  # type: ignore
-            except Exception:
-                prune_board_cron_job = None
-                ensure_builtin_cron_jobs = None
-
-        if prune_board_cron_job:
-            try:
-                prune_board_cron_job(slug)
+                prune_cron(slug)
             except Exception as e:
                 _log.warning("Failed to prune cron job for deleted board %s: %s", slug, e)
 
-        if ensure_builtin_cron_jobs:
+        if ensure_cron:
             try:
-                ensure_builtin_cron_jobs()
+                ensure_cron()
             except Exception as e:
                 _log.warning("Failed to sync cron jobs after deleting board %s: %s", slug, e)
 
@@ -1297,47 +1306,27 @@ def import_legacy():
 @router.get("/cron")
 def get_builtin_cron_jobs():
     """List all built-in Zero Factory cron jobs and their current runtime status."""
-    try:
-        from ..builtin_cron import list_builtin_jobs
-    except Exception:
-        import sys
-        parent_dir = str(Path(__file__).parent.parent)
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        from builtin_cron import list_builtin_jobs  # type: ignore
-
-    jobs = list_builtin_jobs()
+    _, _, _, list_cron = _get_cron_helpers()
+    if not list_cron:
+        return {"ok": False, "error": "Builtin cron engine not available", "jobs": [], "count": 0}
+    jobs = list_cron()
     return {"ok": True, "jobs": jobs, "count": len(jobs)}
 
 
 @router.post("/cron/sync")
 def sync_builtin_cron_jobs():
     """Ensure all built-in Zero Factory cron jobs are registered and synchronized."""
-    try:
-        from ..builtin_cron import ensure_builtin_cron_jobs
-    except Exception:
-        import sys
-        parent_dir = str(Path(__file__).parent.parent)
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
-
-    res = ensure_builtin_cron_jobs()
-    return res
+    ensure_cron, _, _, _ = _get_cron_helpers()
+    if not ensure_cron:
+        raise HTTPException(status_code=500, detail="Builtin cron engine not available")
+    return ensure_cron()
 
 
 @router.post("/cron/{job_id}/run")
 def run_builtin_cron_job(job_id: str):
     """Trigger an immediate run of a built-in Zero Factory cron job."""
-    try:
-        from ..builtin_cron import trigger_builtin_job
-    except Exception:
-        import sys
-        parent_dir = str(Path(__file__).parent.parent)
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        from builtin_cron import trigger_builtin_job  # type: ignore
-
-    res = trigger_builtin_job(job_id)
-    return res
+    _, _, trigger_cron, _ = _get_cron_helpers()
+    if not trigger_cron:
+        raise HTTPException(status_code=500, detail="Builtin cron engine not available")
+    return trigger_cron(job_id)
 
