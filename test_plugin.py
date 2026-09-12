@@ -22,6 +22,7 @@ from dashboard.plugin_api import (
 from fastapi import FastAPI
 
 app = FastAPI()
+app.include_router(router, prefix="/api/plugins/zerofactory")
 app.include_router(router, prefix="/api/plugins/zerofactory-kanban")
 client = TestClient(app)
 
@@ -739,6 +740,15 @@ class TestZeroFactoryKanban(unittest.TestCase):
                 profile_dir = Path.home() / ".hermes" / "profiles" / "zf-builder"
                 if profile_dir.exists():
                     self.assertEqual(env.get("HERMES_HOME"), str(profile_dir))
+
+    def test_21_zerofactory_api_route(self):
+        # Verify /api/plugins/zerofactory works directly
+        resp = client.get("/api/plugins/zerofactory/boards")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("boards", resp.json())
+        resp_stats = client.get("/api/plugins/zerofactory/stats")
+        self.assertEqual(resp_stats.status_code, 200)
+        self.assertIn("total", resp_stats.json())
 
 
 if __name__ == "__main__":

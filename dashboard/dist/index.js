@@ -17,7 +17,7 @@
     return Math.floor(diff / 86400) + "d ago";
   };
 
-  const API_BASE = "/api/plugins/zerofactory-kanban";
+  const API_BASE = "/api/plugins/zerofactory";
 
   const COLUMNS = [
     { id: "triage", title: "Triage", icon: "📥", dotColor: "#818cf8", desc: "Initial requirements" },
@@ -2200,5 +2200,8 @@
   }
 
   // Register in Hermes Plugins Registry
-  window.__HERMES_PLUGINS__.register("zerofactory-kanban", ZeroFactoryKanbanApp);
+  window.__HERMES_PLUGINS__.register("zerofactory", ZeroFactoryKanbanApp);
+  try {
+    window.__HERMES_PLUGINS__.register("zerofactory-kanban", ZeroFactoryKanbanApp);
+  } catch (e) {}
 })();

@@ -45,6 +45,5 @@ agent:
 plugins:
   enabled:
     - zerofactory
-    - zerofactory-kanban
 default:
   temperature: 0.1

@@ -36,9 +36,9 @@ def get_db_path() -> Path:
 
 
 # Canonical Zero Factory Core Job Definitions
-TASK_QUEUE_CHECK_PROMPT = """Check the Zero Factory Kanban board (using `hermes zerofactory-kanban list` or querying `~/.hermes/zerofactory_kanban.db`) - are any tasks stuck in 'running' too long? Any tasks stuck in 'blocked' with '[Human Review]'? Any PRs stuck waiting for Reviewer feedback? Create a new Kanban task using `hermes zerofactory-kanban create "[Report] Queue Health" --description "..." --status done` containing your bottleneck report and recommendations."""
+TASK_QUEUE_CHECK_PROMPT = """Check the Zero Factory Kanban board (using `hermes zerofactory list` or querying `~/.hermes/zerofactory_kanban.db`) - are any tasks stuck in 'running' too long? Any tasks stuck in 'blocked' with '[Human Review]'? Any PRs stuck waiting for Reviewer feedback? Create a new Kanban task using `hermes zerofactory create "[Report] Queue Health" --description "..." --status done` containing your bottleneck report and recommendations."""
 
-DAILY_REPORT_PROMPT = """Generate a comprehensive daily report for Zero Factory using `hermes zerofactory-kanban stats` and querying `~/.hermes/zerofactory_kanban.db`. Include: total tasks completed, tasks currently running, tasks blocked, agent throughput, and open issues. Summarize with actionable items. Create a new task using `hermes zerofactory-kanban create "[Report] Daily Report" --description "..." --status done` with your full report."""
+DAILY_REPORT_PROMPT = """Generate a comprehensive daily report for Zero Factory using `hermes zerofactory stats` and querying `~/.hermes/zerofactory_kanban.db`. Include: total tasks completed, tasks currently running, tasks blocked, agent throughput, and open issues. Summarize with actionable items. Create a new task using `hermes zerofactory create "[Report] Daily Report" --description "..." --status done` with your full report."""
 
 
 def build_board_scanner_prompt(board: Dict[str, Any], workdir: Optional[str]) -> str:
@@ -55,7 +55,7 @@ def build_board_scanner_prompt(board: Dict[str, Any], workdir: Optional[str]) ->
 
 ## STEP 1: Scanner Pre-Flight Board Check (CRITICAL)
 Before inspecting files, review all existing tasks on the board:
-Run: `hermes zerofactory-kanban list --board "{slug}"`
+Run: `hermes zerofactory list --board "{slug}"`
 1. Review all open tasks (`triage`, `todo`, `ready`, `running`, `blocked`).
 2. Note the files, modules, and issues they already track.
 3. **NEVER** file a task for an issue, function, or file(s) that are already covered by an open task.
@@ -259,7 +259,7 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "paused_at": None,
         "paused_reason": None,
         "deliver": None,
-        "origin": "zerofactory-kanban",
+        "origin": "zerofactory",
         "enabled_toolsets": ["terminal", "file", "kanban"],
         "workdir": None,
         "profile": "zf-orchestrator"
@@ -287,7 +287,7 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "paused_at": None,
         "paused_reason": None,
         "deliver": None,
-        "origin": "zerofactory-kanban",
+        "origin": "zerofactory",
         "enabled_toolsets": ["terminal", "file", "kanban"],
         "workdir": None,
         "profile": "zf-orchestrator"
@@ -361,7 +361,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "paused_at": None,
             "paused_reason": None,
             "deliver": None,
-            "origin": "zerofactory-kanban",
+            "origin": "zerofactory",
             "enabled_toolsets": ["terminal", "file", "web", "kanban"],
             "workdir": workdir,
             "profile": "zf-orchestrator"
@@ -394,7 +394,7 @@ def cleanup_duplicate_root_jobs() -> None:
                 if isinstance(j, dict) and not (
                     j.get("id") in current_ids or
                     str(j.get("id", "")).startswith("zero-factory-") or
-                    j.get("origin") == "zerofactory-kanban"
+                    j.get("origin") in ("zerofactory", "zerofactory-kanban")
                 )
             ]
             if len(filtered) != len(existing):
@@ -519,7 +519,7 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
 
             # Prune any Zero Factory job not in active definitions
             is_zf_job = (
-                j.get("origin") == "zerofactory-kanban"
+                j.get("origin") in ("zerofactory", "zerofactory-kanban")
                 or jid.startswith("zero-factory-")
             )
             if is_zf_job and jid not in current_builtin_jobs:

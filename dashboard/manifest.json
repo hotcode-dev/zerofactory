@@ -1,11 +1,11 @@
 {
-  "name": "zerofactory-kanban",
-  "label": "Zero Factory Kanban",
+  "name": "zerofactory",
+  "label": "Zero Factory",
   "description": "Durable Kanban board tailored for Zero Factory multi-agent workflows",
   "icon": "Package",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "tab": {
-    "path": "/zerofactory-kanban",
+    "path": "/zerofactory",
     "position": "after:sessions"
   },
   "entry": "dist/index.js",

@@ -177,10 +177,12 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
                 plugins_sec = cfg_data.setdefault("plugins", {})
                 enabled_list = plugins_sec.setdefault("enabled", [])
                 cfg_modified = False
-                for pn in ("zerofactory", "zerofactory-kanban"):
-                    if pn not in enabled_list:
-                        enabled_list.append(pn)
-                        cfg_modified = True
+                if "zerofactory" not in enabled_list:
+                    enabled_list.append("zerofactory")
+                    cfg_modified = True
+                if "zerofactory-kanban" in enabled_list:
+                    enabled_list.remove("zerofactory-kanban")
+                    cfg_modified = True
                 if cfg_modified:
                     config_dst.write_text(yaml.dump(cfg_data, sort_keys=False), encoding="utf-8")
             except Exception as e:
@@ -244,10 +246,12 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
             plugins_sec = cfg.setdefault("plugins", {})
             enabled = plugins_sec.setdefault("enabled", [])
             changed = False
-            for p_name in ("zerofactory", "zerofactory-kanban"):
-                if p_name not in enabled:
-                    enabled.append(p_name)
-                    changed = True
+            if "zerofactory" not in enabled:
+                enabled.append("zerofactory")
+                changed = True
+            if "zerofactory-kanban" in enabled:
+                enabled.remove("zerofactory-kanban")
+                changed = True
             if changed:
                 cfg_path.write_text(yaml.dump(cfg, sort_keys=False), encoding="utf-8")
         except Exception as e:
