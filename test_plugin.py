@@ -211,10 +211,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertNotIn("zero-factory-improvement-scanner-test-dynamic-cron", ids_after_del)
 
     def test_08_dispatcher_worker_execution(self):
-        try:
-            from dispatcher import _active_workers
-        except ImportError:
-            from profiles.common.plugins.zerofactory_kanban.dispatcher import _active_workers  # type: ignore
+        from dispatcher import _active_workers
 
         # Ensure no leftover running tasks from previous tests
         with get_db_conn() as conn:
@@ -701,6 +698,47 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(normalize_assignee("zf-orchestrator"), "zf-orchestrator")
         self.assertEqual(normalize_assignee("unassigned"), "unassigned")
         self.assertEqual(normalize_assignee(None), "unassigned")
+
+    def test_19_plugin_symlinks(self):
+        from profile_manager import ensure_plugin_symlinks, get_hermes_home
+        res = ensure_plugin_symlinks()
+        self.assertIsInstance(res, dict)
+        hermes_home = get_hermes_home()
+        # Verify symlinks in root plugins dir
+        root_plugins = hermes_home / "plugins"
+        self.assertTrue((root_plugins / "zerofactory").is_symlink())
+        self.assertTrue((root_plugins / "zerofactory-kanban").is_symlink())
+
+    def test_20_worker_spawn_cmd_and_env(self):
+        from dispatcher import spawn_agent_worker
+        from unittest.mock import patch, MagicMock
+
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.pid = 99999
+            mock_popen.return_value = mock_proc
+
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+                pid, sess = spawn_agent_worker(
+                    task_id="zf-testspawn",
+                    title="Test Worker Spawn",
+                    assignee="zf-builder",
+                    priority="P0",
+                    description="Test spawn",
+                    workspace_path="/tmp",
+                    branch_name="task/zf-testspawn"
+                )
+                self.assertEqual(pid, 99999)
+                self.assertTrue(mock_popen.called)
+                args, kwargs = mock_popen.call_args
+                cmd = args[0]
+                env = kwargs.get("env", {})
+                self.assertIn("--yolo", cmd)
+                self.assertEqual(env.get("HERMES_PROFILE"), "zf-builder")
+                profile_dir = Path.home() / ".hermes" / "profiles" / "zf-builder"
+                if profile_dir.exists():
+                    self.assertEqual(env.get("HERMES_HOME"), str(profile_dir))
 
 
 if __name__ == "__main__":

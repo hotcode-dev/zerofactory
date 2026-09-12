@@ -116,6 +116,7 @@ def spawn_agent_worker(
     cmd = [
         hermes_bin,
         "-p", assignee,
+        "--yolo",
         "--cli",
         "--accept-hooks",
         "chat",
@@ -131,6 +132,9 @@ def spawn_agent_worker(
     env["HERMES_KANBAN_WORKSPACE"] = str(workdir)
     env["TERMINAL_CWD"] = str(workdir)
     env["HERMES_PROFILE"] = assignee
+    profile_home = Path.home() / ".hermes" / "profiles" / assignee
+    if profile_home.exists():
+        env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
 
     try:
@@ -864,7 +868,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             "UPDATE tasks SET assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
                                             (author, now, task_id)
                                         )
-                                        setup_worktree(cursor, task_id, title, author, tenant, db_path)
+                                        setup_worktree(cursor, task_id, title, author, tenant, db_path, board_slug=board_slug)
                                         cursor.execute(
                                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', 'Changes requested by reviewer, routed back to author', ?)",
                                             (task_id, now)

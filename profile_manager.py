@@ -26,12 +26,21 @@ _log = logging.getLogger("zerofactory.profiles")
 ZF_PROFILES = ("zf-orchestrator", "zf-builder", "zf-reviewer")
 
 
-def get_hermes_home() -> Path:
-    """Return the active Hermes home directory (~/.hermes)."""
+def get_hermes_root() -> Path:
+    """Return the base ~/.hermes directory, stripping any active profile path."""
     env_home = os.environ.get("HERMES_HOME")
     if env_home:
-        return Path(env_home).expanduser().resolve()
+        p = Path(env_home).expanduser().resolve()
+        if "profiles" in p.parts:
+            idx = p.parts.index("profiles")
+            return Path(*p.parts[:idx])
+        return p
     return (Path.home() / ".hermes").resolve()
+
+
+def get_hermes_home() -> Path:
+    """Return the base Hermes home directory (~/.hermes)."""
+    return get_hermes_root()
 
 
 def get_plugin_root() -> Path:
@@ -87,6 +96,16 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
     root_model = get_root_model_config()
     res = {"created": [], "updated": [], "existing": []}
 
+    # Ensure orchestration skill is also available in root ~/.hermes/skills/
+    root_skills = hermes_home / "skills"
+    if skill_src.exists() and root_skills.exists():
+        root_skill_dst = root_skills / "zerofactory-orchestration"
+        if not root_skill_dst.exists() and not root_skill_dst.is_symlink():
+            try:
+                root_skill_dst.symlink_to(skill_src, target_is_directory=True)
+            except Exception:
+                pass
+
     for role in ZF_PROFILES:
         target_dir = profiles_dir / role
         is_new = not target_dir.exists()
@@ -140,6 +159,33 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
                 except Exception:
                     shutil.copytree(skill_src, dest_skill, dirs_exist_ok=True)
 
+        # 5. Ensure profile's plugins/ directory and symlinks exist
+        prof_plugins = target_dir / "plugins"
+        prof_plugins.mkdir(parents=True, exist_ok=True)
+        for p_name in ("zerofactory", "zerofactory-kanban"):
+            p_link = prof_plugins / p_name
+            if not p_link.exists() and not p_link.is_symlink():
+                try:
+                    p_link.symlink_to(plugin_root, target_is_directory=True)
+                except Exception:
+                    pass
+
+        # 6. Ensure plugins.enabled in config.yaml
+        if yaml and config_dst.exists():
+            try:
+                cfg_data = yaml.safe_load(config_dst.read_text(encoding="utf-8")) or {}
+                plugins_sec = cfg_data.setdefault("plugins", {})
+                enabled_list = plugins_sec.setdefault("enabled", [])
+                cfg_modified = False
+                for pn in ("zerofactory", "zerofactory-kanban"):
+                    if pn not in enabled_list:
+                        enabled_list.append(pn)
+                        cfg_modified = True
+                if cfg_modified:
+                    config_dst.write_text(yaml.dump(cfg_data, sort_keys=False), encoding="utf-8")
+            except Exception as e:
+                _log.warning("Could not ensure plugins in %s: %s", config_dst, e)
+
         if is_new:
             res["created"].append(role)
         elif force or update_prompts:
@@ -147,4 +193,96 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
         else:
             res["existing"].append(role)
 
+    # Automatically synchronize root and legacy profile plugin symlinks
+    sym_res = ensure_plugin_symlinks()
+    res["plugin_symlinks"] = sym_res.get("linked", [])
+
     return res
+
+
+def ensure_plugin_symlinks() -> Dict[str, Any]:
+    """Ensure plugin symlinks (zerofactory and zerofactory-kanban) and config entries exist in:
+    1. Root ~/.hermes/plugins/ and ~/.hermes/config.yaml
+    2. ~/.hermes/profiles/<role>/plugins/ and config.yaml for each zf-* profile
+    3. Legacy profiles (orchestrator, builder, reviewer) if they exist
+    4. Stale ~/.hermes/profiles/common/plugins/zerofactory-kanban redirected
+    """
+    hermes_home = get_hermes_home()
+    plugin_root = get_plugin_root()
+    profiles_dir = hermes_home / "profiles"
+
+    linked: List[str] = []
+
+    def _link_in_dir(target_plugins_dir: Path):
+        target_plugins_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("zerofactory", "zerofactory-kanban"):
+            link_path = target_plugins_dir / name
+            try:
+                if link_path.is_symlink() or link_path.exists():
+                    if link_path.is_symlink():
+                        try:
+                            cur_target = link_path.resolve()
+                            if cur_target == plugin_root.resolve():
+                                continue
+                        except Exception:
+                            pass
+                        link_path.unlink()
+                    elif link_path.is_dir():
+                        shutil.rmtree(link_path)
+                    else:
+                        link_path.unlink()
+                link_path.symlink_to(plugin_root, target_is_directory=True)
+                linked.append(str(link_path))
+            except Exception as e:
+                _log.warning("Could not link plugin in %s: %s", target_plugins_dir, e)
+
+    def _enable_in_config(cfg_path: Path):
+        if not yaml or not cfg_path.exists():
+            return
+        try:
+            cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            plugins_sec = cfg.setdefault("plugins", {})
+            enabled = plugins_sec.setdefault("enabled", [])
+            changed = False
+            for p_name in ("zerofactory", "zerofactory-kanban"):
+                if p_name not in enabled:
+                    enabled.append(p_name)
+                    changed = True
+            if changed:
+                cfg_path.write_text(yaml.dump(cfg, sort_keys=False), encoding="utf-8")
+        except Exception as e:
+            _log.warning("Could not update plugins.enabled in %s: %s", cfg_path, e)
+
+    # 1. Root ~/.hermes/plugins and ~/.hermes/config.yaml
+    _link_in_dir(hermes_home / "plugins")
+    _enable_in_config(hermes_home / "config.yaml")
+
+    # 2. ZF profiles
+    for role in ZF_PROFILES:
+        prof_dir = profiles_dir / role
+        if prof_dir.exists():
+            _link_in_dir(prof_dir / "plugins")
+            _enable_in_config(prof_dir / "config.yaml")
+
+    # 3. Legacy profiles (if present)
+    for legacy_role in ("orchestrator", "builder", "reviewer"):
+        prof_dir = profiles_dir / legacy_role
+        if prof_dir.exists():
+            _link_in_dir(prof_dir / "plugins")
+            _enable_in_config(prof_dir / "config.yaml")
+
+    # 4. Clean up / redirect stale common plugin dir if it exists
+    common_p = profiles_dir / "common" / "plugins" / "zerofactory-kanban"
+    if common_p.exists():
+        try:
+            if common_p.is_symlink():
+                common_p.unlink()
+                common_p.symlink_to(plugin_root, target_is_directory=True)
+            elif common_p.is_dir():
+                shutil.rmtree(common_p)
+                common_p.symlink_to(plugin_root, target_is_directory=True)
+                linked.append(str(common_p))
+        except Exception as e:
+            _log.warning("Could not redirect stale common plugin: %s", e)
+
+    return {"linked": linked}

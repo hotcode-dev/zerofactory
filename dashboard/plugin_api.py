@@ -1543,7 +1543,8 @@ def update_builtin_cron_job(job_id: str, req: CronJobUpdate):
     update_cron = helpers[4] if len(helpers) > 4 else None
     if not update_cron:
         raise HTTPException(status_code=500, detail="Builtin cron engine not available")
-    res = update_cron(job_id, req.dict(exclude_unset=True))
+    update_data = req.model_dump(exclude_unset=True) if hasattr(req, "model_dump") else req.dict(exclude_unset=True)
+    res = update_cron(job_id, update_data)
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("error", "Update failed"))
     return res

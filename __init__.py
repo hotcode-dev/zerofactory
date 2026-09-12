@@ -295,11 +295,17 @@ def register(ctx: Any):
                 print(f"{'ID':<36} {'SCHEDULE':<14} {'STATE':<10} {'LAST STATUS':<12} {'LAST RUN'}")
                 print("-" * 90)
                 for j in jobs:
-                    jid = j["id"]
-                    sch = j.get("schedule") or "-"
-                    st = j.get("state") or "scheduled"
-                    ls = j.get("last_status") or "-"
-                    lr = j.get("last_run_at") or "-"
+                    jid = str(j.get("id") or "-")
+                    sch = j.get("schedule_display")
+                    if not sch:
+                        raw_sch = j.get("schedule")
+                        if isinstance(raw_sch, dict):
+                            sch = raw_sch.get("cron") or (f"every {raw_sch['minutes']}m" if "minutes" in raw_sch else str(raw_sch))
+                        else:
+                            sch = str(raw_sch or "-")
+                    st = str(j.get("state") or "scheduled")
+                    ls = str(j.get("last_status") or "-")
+                    lr = str(j.get("last_run_at") or "-")
                     print(f"{jid:<36} {sch:<14} {st:<10} {ls:<12} {lr}")
                 print()
             elif cron_act == "sync":
