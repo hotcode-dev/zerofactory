@@ -1,0 +1,53 @@
+@import "/home/ntsd/.hermes/hermes-agent/node_modules/tailwindcss/index.css";
+
+@source "./dist/index.js";
+
+/* Custom Zero Factory keyframes and animations */
+@keyframes zfk-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.2);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+}
+
+.zfk-pulse-active {
+  animation: zfk-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes zfk-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.zfk-spinning {
+  display: inline-block;
+  animation: zfk-spin 1s linear infinite;
+}
+
+/* Custom Scrollbar */
+.zfk-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.zfk-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
+.zfk-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+  border-radius: 9999px;
+}
+.zfk-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.8);
+}
+
+/* Drag & Drop helpers */
+.zfk-card-dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+}
