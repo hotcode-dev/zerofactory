@@ -55,6 +55,7 @@
     const [selectedTask, setSelectedTask] = useState(null);
     const [showNewTaskModal, setShowNewTaskModal] = useState(false);
     const [showNewBoardModal, setShowNewBoardModal] = useState(false);
+    const [showEditBoardModal, setShowEditBoardModal] = useState(false);
     const [newCommentText, setNewCommentText] = useState("");
 
     // Form States
@@ -68,6 +69,13 @@
     });
 
     const [newBoardForm, setNewBoardForm] = useState({
+      name: "",
+      slug: "",
+      description: "",
+      git_url: ""
+    });
+
+    const [editBoardForm, setEditBoardForm] = useState({
       name: "",
       slug: "",
       description: "",
@@ -348,6 +356,73 @@
       }
     };
 
+    // Open Edit Board Modal
+    const handleOpenEditBoard = () => {
+      if (!selectedBoard) return;
+      const curr = boards.find((b) => b.slug === selectedBoard);
+      if (curr) {
+        setEditBoardForm({
+          name: curr.name || "",
+          slug: curr.slug || "",
+          description: curr.description || "",
+          git_url: curr.git_url || ""
+        });
+        setShowEditBoardModal(true);
+      }
+    };
+
+    // Update Board Submit
+    const handleUpdateBoardSubmit = async (e) => {
+      e.preventDefault();
+      if (!editBoardForm.slug || !editBoardForm.name.trim()) return;
+
+      try {
+        await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(editBoardForm.slug), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: editBoardForm.name.trim(),
+            description: (editBoardForm.description || "").trim(),
+            git_url: (editBoardForm.git_url || "").trim()
+          })
+        });
+        showToast("Board '" + editBoardForm.slug + "' updated!", "success");
+        setShowEditBoardModal(false);
+        await loadBoards();
+      } catch (err) {
+        showToast("Failed to update board: " + err.message, "error");
+      }
+    };
+
+    // Delete Board
+    const handleDeleteBoard = async () => {
+      if (!selectedBoard) return;
+      const curr = boards.find((b) => b.slug === selectedBoard);
+      const name = curr ? curr.name : selectedBoard;
+      if (
+        !window.confirm(
+          "Are you sure you want to delete board \"" + name + "\" (" + selectedBoard + ")?\n\nThis will permanently remove the board, all its tasks, and clear its scheduled improvement scanner job."
+        )
+      ) {
+        return;
+      }
+
+      try {
+        await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(selectedBoard), {
+          method: "DELETE"
+        });
+        showToast("Board '" + name + "' deleted and scanner cron cleared", "info");
+        setShowEditBoardModal(false);
+        const remaining = boards.filter((b) => b.slug !== selectedBoard);
+        setBoards(remaining);
+        const nextSlug = remaining.length > 0 ? remaining[0].slug : "";
+        setSelectedBoard(nextSlug);
+        await loadBoards();
+      } catch (err) {
+        showToast("Failed to delete board: " + err.message, "error");
+      }
+    };
+
     // Add Comment
     const handleAddCommentSubmit = async (e) => {
       e.preventDefault();
@@ -467,6 +542,16 @@
               },
               "+ Board"
             ),
+            selectedBoard &&
+              React.createElement(
+                "button",
+                {
+                  className: "zfk-btn zfk-btn-secondary",
+                  onClick: handleOpenEditBoard,
+                  title: "Edit board settings and manage board"
+                },
+                "⚙️ Edit Board"
+              ),
             React.createElement(
               "button",
               {
@@ -1371,6 +1456,97 @@
                   "Cancel"
                 ),
                 React.createElement("button", { type: "submit", className: "zfk-btn zfk-btn-primary" }, "Create Board")
+              )
+            )
+          )
+        ),
+
+      // Edit Board Modal
+      showEditBoardModal &&
+        React.createElement(
+          "div",
+          { className: "zfk-modal-backdrop", onClick: () => setShowEditBoardModal(false) },
+          React.createElement(
+            "div",
+            { className: "zfk-modal", onClick: (e) => e.stopPropagation() },
+            React.createElement(
+              "div",
+              { className: "zfk-modal-header" },
+              React.createElement("h2", { className: "zfk-modal-title" }, "Edit Board: " + (editBoardForm.name || editBoardForm.slug)),
+              React.createElement("button", { className: "zfk-modal-close", onClick: () => setShowEditBoardModal(false) }, "✕")
+            ),
+            React.createElement(
+              "form",
+              { onSubmit: handleUpdateBoardSubmit },
+              React.createElement(
+                "div",
+                { className: "zfk-modal-body" },
+                React.createElement(
+                  "div",
+                  { className: "zfk-form-group" },
+                  React.createElement("label", { className: "zfk-form-label" }, "Board Name *"),
+                  React.createElement("input", {
+                    className: "zfk-form-input",
+                    required: true,
+                    placeholder: "e.g. ZeroHub Project",
+                    value: editBoardForm.name,
+                    onChange: (e) => setEditBoardForm({ ...editBoardForm, name: e.target.value })
+                  })
+                ),
+                React.createElement(
+                  "div",
+                  { className: "zfk-form-group" },
+                  React.createElement("label", { className: "zfk-form-label" }, "Slug (URL identifier)"),
+                  React.createElement("input", {
+                    className: "zfk-form-input",
+                    disabled: true,
+                    style: { opacity: 0.6, cursor: "not-allowed" },
+                    value: editBoardForm.slug
+                  })
+                ),
+                React.createElement(
+                  "div",
+                  { className: "zfk-form-group" },
+                  React.createElement("label", { className: "zfk-form-label" }, "Remote Git URL"),
+                  React.createElement("input", {
+                    className: "zfk-form-input",
+                    placeholder: "https://github.com/org/repo.git",
+                    value: editBoardForm.git_url,
+                    onChange: (e) => setEditBoardForm({ ...editBoardForm, git_url: e.target.value })
+                  })
+                ),
+                React.createElement(
+                  "div",
+                  { className: "zfk-form-group" },
+                  React.createElement("label", { className: "zfk-form-label" }, "Description"),
+                  React.createElement("input", {
+                    className: "zfk-form-input",
+                    placeholder: "Short description of this board's scope",
+                    value: editBoardForm.description,
+                    onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
+                  })
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "zfk-modal-footer" },
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "zfk-btn zfk-btn-danger-outline",
+                    style: { marginRight: "auto" },
+                    onClick: handleDeleteBoard,
+                    title: "Delete this board and its scheduled scanner job"
+                  },
+                  "🗑️ Remove Board"
+                ),
+                React.createElement(
+                  "button",
+                  { type: "button", className: "zfk-btn zfk-btn-secondary", onClick: () => setShowEditBoardModal(false) },
+                  "Cancel"
+                ),
+                React.createElement("button", { type: "submit", className: "zfk-btn zfk-btn-primary" }, "Save Changes")
               )
             )
           )

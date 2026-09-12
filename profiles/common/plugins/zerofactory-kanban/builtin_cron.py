@@ -468,6 +468,23 @@ def save_jobs_to_file(jobs_file: Path, jobs: List[Dict[str, Any]]) -> bool:
 
 def ensure_builtin_cron_jobs() -> Dict[str, Any]:
     """Ensure all builtin Zero Factory cron jobs are registered and up-to-date."""
+    if os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
+        return {"ok": True, "synced_targets": [], "added": 0, "updated": 0, "pruned": 0}
+    # Active board slugs currently registered in the database
+    active_board_slugs = set()
+    db_path = get_db_path()
+    if db_path.exists():
+        try:
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT slug FROM boards")
+                active_board_slugs = {row["slug"] for row in cur.fetchall() if row["slug"]}
+        except Exception as e:
+            _log.warning("Failed to query board slugs for cron pruning: %s", e)
+    if not active_board_slugs:
+        active_board_slugs.add("zerofactory")
+
     # Refresh all builtin jobs from DB and env
     current_builtin_jobs = get_all_builtin_cron_jobs()
 
@@ -481,21 +498,33 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
 
     for target in get_target_jobs_files():
         existing_jobs = load_jobs_from_file(target)
+        initial_count = len(existing_jobs)
 
-        # 1. Prune obsolete Zero Factory jobs (e.g. monolithic scanner or deleted board scanners)
+        # 1. Prune obsolete Zero Factory jobs (e.g. monolithic scanner, deleted board scanners, or test boards)
         pruned_jobs = []
         for j in existing_jobs:
             if not isinstance(j, dict):
                 continue
             jid = str(j.get("id", ""))
+
+            # Explicit check: If it is an improvement scanner job, prune if slug is not an active board
+            if jid.startswith("zero-factory-improvement-scanner-"):
+                board_slug = jid[len("zero-factory-improvement-scanner-"):]
+                if board_slug not in active_board_slugs:
+                    continue
+
+            # Prune any Zero Factory job not in active definitions
             is_zf_job = (
                 j.get("origin") == "zerofactory-kanban"
                 or jid.startswith("zero-factory-")
             )
             if is_zf_job and jid not in current_builtin_jobs:
-                total_pruned += 1
                 continue
+
             pruned_jobs.append(j)
+
+        pruned_here = initial_count - len(pruned_jobs)
+        total_pruned += pruned_here
         existing_jobs = pruned_jobs
         existing_by_id = {j.get("id"): j for j in existing_jobs if isinstance(j, dict) and j.get("id")}
 
@@ -537,7 +566,7 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 if changed:
                     updated_here += 1
 
-        if added_here > 0 or updated_here > 0 or total_pruned > 0 or not target.exists():
+        if added_here > 0 or updated_here > 0 or pruned_here > 0 or not target.exists():
             save_jobs_to_file(target, existing_jobs)
         synced_targets.append(str(target))
         total_added += added_here
@@ -551,6 +580,20 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
         "pruned": total_pruned,
         "job_ids": list(current_builtin_jobs.keys())
     }
+
+
+def prune_board_cron_job(slug: str) -> None:
+    """Explicitly remove any improvement scanner cron job for a given board slug from all cron stores."""
+    job_id = f"zero-factory-improvement-scanner-{slug}"
+    for target in get_target_jobs_files():
+        if not target.exists():
+            continue
+        jobs = load_jobs_from_file(target)
+        initial_len = len(jobs)
+        filtered = [j for j in jobs if isinstance(j, dict) and j.get("id") != job_id]
+        if len(filtered) != initial_len:
+            save_jobs_to_file(target, filtered)
+            _log.info("Pruned scanner cron job %s from %s", job_id, target)
 
 
 def list_builtin_jobs() -> List[Dict[str, Any]]:

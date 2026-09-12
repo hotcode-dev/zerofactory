@@ -15,7 +15,8 @@ try:
         init_db, get_db_conn, list_tasks as _list_tasks, create_task as _create_task,
         update_task as _update_task, move_task as _move_task, add_comment as _add_comment,
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
-        TaskCreate, TaskUpdate, TaskMove, CommentCreate
+        list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
+        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate
     )
 except ImportError:
     # If running directly or out-of-package
@@ -26,7 +27,8 @@ except ImportError:
         init_db, get_db_conn, list_tasks as _list_tasks, create_task as _create_task,
         update_task as _update_task, move_task as _move_task, add_comment as _add_comment,
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
-        TaskCreate, TaskUpdate, TaskMove, CommentCreate
+        list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
+        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate
     )
 
 
@@ -110,6 +112,18 @@ def register(ctx: Any):
         cron_subs.add_parser("sync", help="Synchronize built-in cron jobs with Hermes cron storage")
         p_cron_run = cron_subs.add_parser("run", help="Trigger immediate execution of a built-in cron job")
         p_cron_run.add_argument("job_id", help="Job ID (e.g. zero-factory-task-queue-check, zero-factory-daily-report, zero-factory-improvement-scanner)")
+
+        # board
+        p_board = subparsers.add_parser("board", help="Manage Zero Factory Kanban boards")
+        board_subs = p_board.add_subparsers(dest="board_action", help="Board actions")
+        board_subs.add_parser("list", help="List all boards")
+        p_bcreate = board_subs.add_parser("create", help="Create a new board")
+        p_bcreate.add_argument("slug", help="Board slug (unique ID)")
+        p_bcreate.add_argument("name", help="Board name")
+        p_bcreate.add_argument("--description", default="", help="Board description")
+        p_bcreate.add_argument("--git-url", default="", help="Board Git URL")
+        p_bdelete = board_subs.add_parser("delete", help="Delete a board and clear its cron scanner job")
+        p_bdelete.add_argument("slug", help="Board slug to delete")
 
     def cmd_run(args: argparse.Namespace):
         init_db()
@@ -207,6 +221,25 @@ def register(ctx: Any):
                     print(f"✓ {res.get('message')}")
                 else:
                     print(f"✗ Failed to trigger job: {res.get('error')}")
+
+        elif action == "board":
+            b_act = getattr(args, "board_action", "list") or "list"
+            if b_act == "list":
+                res = _list_boards()
+                boards = res.get("boards", [])
+                print(f"\nZero Factory Boards ({len(boards)}):")
+                print(f"{'SLUG':<20} {'NAME':<24} {'TASKS':<8} {'RUNNING':<8} {'GIT URL'}")
+                print("-" * 85)
+                for b in boards:
+                    print(f"{b['slug']:<20} {b['name']:<24} {b.get('task_count', 0):<8} {b.get('running_count', 0):<8} {b.get('git_url', '')}")
+                print()
+            elif b_act == "create":
+                req = BoardCreate(slug=args.slug, name=args.name, description=args.description, git_url=args.git_url)
+                res = _create_board(req)
+                print(f"✓ Created board: {res.get('slug')}")
+            elif b_act == "delete":
+                res = _delete_board(args.slug)
+                print(f"✓ Deleted board '{args.slug}' and cleared associated cron scanner job.")
 
     if hasattr(ctx, "register_cli_command"):
         ctx.register_cli_command(

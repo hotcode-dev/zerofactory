@@ -140,6 +140,11 @@ class BoardCreate(BaseModel):
     description: Optional[str] = ""
     git_url: Optional[str] = ""
 
+class BoardUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    git_url: Optional[str] = None
+
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     description: Optional[str] = ""
@@ -536,18 +541,67 @@ def create_board(req: BoardCreate):
         conn.commit()
 
     # Sync builtin cron jobs so new board gets a dedicated scanner cron job
-    try:
-        from ..builtin_cron import ensure_builtin_cron_jobs
-    except Exception:
+    if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
         try:
-            from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
+            from ..builtin_cron import ensure_builtin_cron_jobs
         except Exception:
-            ensure_builtin_cron_jobs = None
-    if ensure_builtin_cron_jobs:
+            try:
+                from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
+            except Exception:
+                ensure_builtin_cron_jobs = None
+        if ensure_builtin_cron_jobs:
+            try:
+                ensure_builtin_cron_jobs()
+            except Exception as e:
+                _log.warning("Failed to sync cron jobs after creating board %s: %s", slug, e)
+
+    return {"ok": True, "slug": slug}
+
+@router.patch("/boards/{slug}")
+@router.put("/boards/{slug}")
+def update_board(slug: str, req: BoardUpdate):
+    """Update board metadata."""
+    init_db()
+    now = int(time.time())
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT slug FROM boards WHERE slug = ?", (slug,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
+
+        updates = []
+        params = []
+        if req.name is not None:
+            updates.append("name = ?")
+            params.append(req.name.strip())
+        if req.description is not None:
+            updates.append("description = ?")
+            params.append(req.description.strip())
+        if req.git_url is not None:
+            updates.append("git_url = ?")
+            params.append(req.git_url.strip())
+
+        if updates:
+            updates.append("updated_at = ?")
+            params.append(now)
+            params.append(slug)
+            cursor.execute(f"UPDATE boards SET {', '.join(updates)} WHERE slug = ?", params)
+            conn.commit()
+
+    # Sync builtin cron jobs so updated board properties are reflected
+    if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
         try:
-            ensure_builtin_cron_jobs()
-        except Exception as e:
-            _log.warning("Failed to sync cron jobs after creating board %s: %s", slug, e)
+            from ..builtin_cron import ensure_builtin_cron_jobs
+        except Exception:
+            try:
+                from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
+            except Exception:
+                ensure_builtin_cron_jobs = None
+        if ensure_builtin_cron_jobs:
+            try:
+                ensure_builtin_cron_jobs()
+            except Exception as e:
+                _log.warning("Failed to sync cron jobs after updating board %s: %s", slug, e)
 
     return {"ok": True, "slug": slug}
 
@@ -562,19 +616,28 @@ def delete_board(slug: str):
             raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
         conn.commit()
 
-    # Sync builtin cron jobs so deleted board's scanner job is pruned
-    try:
-        from ..builtin_cron import ensure_builtin_cron_jobs
-    except Exception:
+    # Explicitly clear board's scanner cron job and sync remaining builtin cron jobs
+    if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
         try:
-            from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
+            from ..builtin_cron import prune_board_cron_job, ensure_builtin_cron_jobs
         except Exception:
-            ensure_builtin_cron_jobs = None
-    if ensure_builtin_cron_jobs:
-        try:
-            ensure_builtin_cron_jobs()
-        except Exception as e:
-            _log.warning("Failed to sync cron jobs after deleting board %s: %s", slug, e)
+            try:
+                from builtin_cron import prune_board_cron_job, ensure_builtin_cron_jobs  # type: ignore
+            except Exception:
+                prune_board_cron_job = None
+                ensure_builtin_cron_jobs = None
+
+        if prune_board_cron_job:
+            try:
+                prune_board_cron_job(slug)
+            except Exception as e:
+                _log.warning("Failed to prune cron job for deleted board %s: %s", slug, e)
+
+        if ensure_builtin_cron_jobs:
+            try:
+                ensure_builtin_cron_jobs()
+            except Exception as e:
+                _log.warning("Failed to sync cron jobs after deleting board %s: %s", slug, e)
 
     return {"ok": True, "deleted": slug}
 

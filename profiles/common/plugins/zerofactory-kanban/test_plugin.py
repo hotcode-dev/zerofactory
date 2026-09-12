@@ -10,6 +10,7 @@ from pathlib import Path
 test_dir = tempfile.TemporaryDirectory()
 os.environ["ZEROFACTORY_KANBAN_DB"] = str(Path(test_dir.name) / "test_kanban.db")
 os.environ["ZEROFACTORY_KANBAN_SKIP_GIT"] = "1"
+os.environ["ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"] = "1"
 
 from fastapi.testclient import TestClient
 from dashboard.plugin_api import (
@@ -376,6 +377,117 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertTrue(t5["ok"])
         self.assertFalse(t5.get("duplicate", False))
         self.assertNotEqual(t5["id"], t1_id)
+
+    def test_11_prune_orphan_board_scanners(self):
+        from builtin_cron import ensure_builtin_cron_jobs, load_jobs_from_file, save_jobs_to_file
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
+            test_jobs_path = Path(tf.name)
+        try:
+            # Seed with an active board job and orphan board jobs
+            initial_jobs = [
+                {"id": "zero-factory-task-queue-check", "origin": "zerofactory-kanban"},
+                {"id": "zero-factory-improvement-scanner-zerofactory", "origin": "zerofactory-kanban"},
+                {"id": "zero-factory-improvement-scanner-deleted-board", "origin": "zerofactory-kanban"},
+                {"id": "zero-factory-improvement-scanner-orphan-slug", "origin": "zerofactory-kanban"},
+                {"id": "custom-unrelated-cron-job"}
+            ]
+            save_jobs_to_file(test_jobs_path, initial_jobs)
+
+            import builtin_cron
+            orig_targets = builtin_cron.get_target_jobs_files
+            builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
+
+            os.environ.pop("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC", None)
+            try:
+                ensure_builtin_cron_jobs()
+            finally:
+                os.environ["ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"] = "1"
+                builtin_cron.get_target_jobs_files = orig_targets
+
+            synced = load_jobs_from_file(test_jobs_path)
+            synced_ids = [j["id"] for j in synced]
+            self.assertIn("zero-factory-task-queue-check", synced_ids)
+            self.assertIn("zero-factory-improvement-scanner-zerofactory", synced_ids)
+            self.assertIn("custom-unrelated-cron-job", synced_ids)
+            self.assertNotIn("zero-factory-improvement-scanner-deleted-board", synced_ids)
+            self.assertNotIn("zero-factory-improvement-scanner-orphan-slug", synced_ids)
+        finally:
+            if test_jobs_path.exists():
+                test_jobs_path.unlink()
+
+    def test_12_delete_board_and_clear_cron(self):
+        from builtin_cron import load_jobs_from_file, save_jobs_to_file
+        # 1. Create a board to delete
+        res_create = client.post("/api/plugins/zerofactory-kanban/boards", json={
+            "slug": "board-to-remove",
+            "name": "Board To Remove"
+        })
+        self.assertEqual(res_create.status_code, 200)
+
+        # 2. Setup mock target jobs file with its scanner job
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
+            test_jobs_path = Path(tf.name)
+        try:
+            initial_jobs = [
+                {"id": "zero-factory-improvement-scanner-board-to-remove", "origin": "zerofactory-kanban"},
+                {"id": "zero-factory-improvement-scanner-zerofactory", "origin": "zerofactory-kanban"}
+            ]
+            save_jobs_to_file(test_jobs_path, initial_jobs)
+
+            import builtin_cron
+            orig_targets = builtin_cron.get_target_jobs_files
+            builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
+
+            os.environ.pop("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC", None)
+            try:
+                # 3. Call DELETE /boards/board-to-remove
+                res_del = client.delete("/api/plugins/zerofactory-kanban/boards/board-to-remove")
+                self.assertEqual(res_del.status_code, 200)
+                self.assertTrue(res_del.json()["ok"])
+            finally:
+                os.environ["ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"] = "1"
+                builtin_cron.get_target_jobs_files = orig_targets
+
+            # 4. Verify board is removed from list_boards()
+            boards = list_boards()["boards"]
+            slugs = [b["slug"] for b in boards]
+            self.assertNotIn("board-to-remove", slugs)
+
+            # 5. Verify cron job is cleared from jobs.json
+            synced = load_jobs_from_file(test_jobs_path)
+            synced_ids = [j["id"] for j in synced]
+            self.assertNotIn("zero-factory-improvement-scanner-board-to-remove", synced_ids)
+            self.assertIn("zero-factory-improvement-scanner-zerofactory", synced_ids)
+
+            # 6. Delete again returns 404
+            res_del_404 = client.delete("/api/plugins/zerofactory-kanban/boards/board-to-remove")
+            self.assertEqual(res_del_404.status_code, 404)
+        finally:
+            if test_jobs_path.exists():
+                test_jobs_path.unlink()
+
+    def test_13_update_board(self):
+        # 1. Update existing board
+        res = client.patch("/api/plugins/zerofactory-kanban/boards/zerofactory", json={
+            "name": "ZeroFactory AI Core",
+            "description": "Updated description for AI core",
+            "git_url": "https://github.com/hotcode-dev/zerofactory-core.git"
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["ok"])
+
+        # 2. Verify in list_boards
+        boards = list_boards()["boards"]
+        zf = next(b for b in boards if b["slug"] == "zerofactory")
+        self.assertEqual(zf["name"], "ZeroFactory AI Core")
+        self.assertEqual(zf["description"], "Updated description for AI core")
+        self.assertEqual(zf["git_url"], "https://github.com/hotcode-dev/zerofactory-core.git")
+
+        # 3. Update non-existent board returns 404
+        res_404 = client.patch("/api/plugins/zerofactory-kanban/boards/non-existent-slug", json={
+            "name": "Should Fail"
+        })
+        self.assertEqual(res_404.status_code, 404)
 
 
 if __name__ == "__main__":
