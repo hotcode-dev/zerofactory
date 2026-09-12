@@ -450,8 +450,100 @@ def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optiona
             if sub.is_dir():
                 return sub
 
-    # 4. Fallback to current working directory
-    return Path(os.getcwd())
+def format_conventional_message(title: str, task_id: str = "") -> tuple[str, str]:
+    """Format task title into Conventional Commits subject and body.
+
+    Output format:
+      subject: <type>(<scope>)?: <description>
+      body: Task: <task_id>\\n\\n<title>
+    """
+    raw_title = title
+    # 1. Strip role and priority badges
+    cleaned = re.sub(r"\[(?:builder|reviewer|orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]", "", title)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    # 2. Check if already conventional
+    m = re.match(r"^(feat|fix|refactor|perf|test|docs|style|chore|ci|build)(\([^)]+\))?(!)?:\s*(.*)$", cleaned, re.IGNORECASE)
+    if m:
+        c_type = m.group(1).lower()
+        c_scope = m.group(2) or ""
+        c_desc = m.group(4).strip()
+    else:
+        # Check common prefixes
+        prefix_rules = [
+            (r"^(?:BUG\s*FIX|BUGFIX|HOTFIX)[:\s-]+(.*)$", "fix", ""),
+            (r"^(?:FIX|BUG):\s*(.*)$", "fix", ""),
+            (r"^(?:SECURITY|SEC)[:\s-]+(.*)$", "fix", "(security)"),
+            (r"^(?:REFACTOR(?:ING)?|CLEANUP|DEDUP(?:LICATE)?)[:\s-]+(.*)$", "refactor", ""),
+            (r"^(?:FEAT(?:URE)?|NEW)[:\s-]+(.*)$", "feat", ""),
+            (r"^(?:ADD):\s*(.*)$", "feat", ""),
+            (r"^(?:PERF(?:ORMANCE)?|OPTIMIZE|OPTIMIZATION)[:\s-]+(.*)$", "perf", ""),
+            (r"^(?:TEST(?:S|ING)?)[:\s-]+(.*)$", "test", ""),
+            (r"^(?:DOCS?|DOCUMENTATION)[:\s-]+(.*)$", "docs", ""),
+            (r"^(?:CHORE|MAINTENANCE|DEPS|DEPENDENCIES)[:\s-]+(.*)$", "chore", ""),
+            (r"^(?:CI|WORKFLOW|PIPELINE)[:\s-]+(.*)$", "ci", ""),
+            (r"^(?:BUILD|RELEASE)[:\s-]+(.*)$", "build", ""),
+        ]
+        c_type, c_scope, c_desc = "chore", "", cleaned
+        for pattern, t, s in prefix_rules:
+            match = re.match(pattern, cleaned, re.IGNORECASE)
+            if match:
+                c_type = t
+                c_scope = s
+                c_desc = match.group(1).strip()
+                break
+        else:
+            lower_cleaned = cleaned.lower()
+            if re.search(r"\b(?:unit[\s_-]?tests?|e2e|integration[\s_-]?tests?|tests?)\b", lower_cleaned) and not any(lower_cleaned.startswith(p) for p in ("fix ", "patch ")):
+                c_type = "test"
+            elif any(lower_cleaned.startswith(p) for p in ("add ", "create ", "implement ", "support ", "introduce ", "integrate ")):
+                c_type = "feat"
+            elif any(lower_cleaned.startswith(p) for p in ("fix ", "resolve ", "patch ", "correct ", "prevent ", "handle ")):
+                c_type = "fix"
+            elif any(lower_cleaned.startswith(p) for p in ("refactor ", "extract ", "reorganize ", "simplify ", "deduplicate ", "clean ")):
+                c_type = "refactor"
+            elif any(lower_cleaned.startswith(p) for p in ("optimize ", "speed ", "accelerate ", "reduce ")):
+                c_type = "perf"
+            elif any(lower_cleaned.startswith(p) for p in ("doc ", "document ", "readme")):
+                c_type = "docs"
+
+    # 3. Infer scope if not provided
+    if not c_scope:
+        file_m = re.search(r"(?:in\s+)?(?:[\w\-]+/)*([a-zA-Z0-9_\-]+)\.(?:ts|js|py|go|rs|json|jsx|tsx|svelte|vue|md)\b", c_desc)
+        if file_m:
+            c_scope = f"({file_m.group(1)})"
+        else:
+            mod_m = re.match(r"^([a-zA-Z0-9_\-]+)\s+", c_desc)
+            if mod_m and mod_m.group(1).lower() in ("dispatcher", "cron", "dashboard", "api", "auth", "worker", "agent"):
+                c_scope = f"({mod_m.group(1).lower()})"
+
+    # 4. Clean description
+    if c_scope:
+        scope_name = c_scope.strip("()")
+        c_desc = re.sub(rf"\s*in\s+(?:[\w\-]+/)*{re.escape(scope_name)}\.[a-zA-Z0-9]+\b", "", c_desc, flags=re.IGNORECASE)
+        c_desc = re.sub(rf"^{re.escape(scope_name)}[:\s]+", "", c_desc, flags=re.IGNORECASE)
+
+    if len(c_desc) > 1 and c_desc[0].isupper() and not c_desc[1].isupper():
+        c_desc = c_desc[0].lower() + c_desc[1:]
+
+    c_desc = c_desc.rstrip(".").strip()
+
+    subject_desc = c_desc
+    if len(f"{c_type}{c_scope}: {c_desc}") > 72:
+        no_parens = re.sub(r"\s*\([^)]*\)", "", c_desc).strip()
+        if no_parens and len(f"{c_type}{c_scope}: {no_parens}") <= 80:
+            subject_desc = no_parens
+
+    subject = f"{c_type}{c_scope}: {subject_desc}".strip()
+
+    body_lines = []
+    if task_id:
+        body_lines.append(f"Task: {task_id}")
+    if raw_title.strip() != subject:
+        body_lines.append(raw_title.strip())
+    body = "\n\n".join(body_lines)
+
+    return subject, body
 
 
 def setup_worktree(
@@ -674,10 +766,11 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if assignee != "reviewer":
                             # Author finished work -> git commit, push, create PR, hand off to reviewer
                             try:
+                                subject, commit_body = format_conventional_message(title, task_id)
                                 status_res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True)
                                 if status_res.stdout.strip():
                                     subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
-                                    subprocess.run(["git", "commit", "-m", f"Complete task {task_id}: {title}"], check=True, cwd=workspace_path, capture_output=True)
+                                    subprocess.run(["git", "commit", "-m", subject, "-m", commit_body], check=True, cwd=workspace_path, capture_output=True)
 
                                 subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True)
 
@@ -690,8 +783,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         except Exception:
                                             pr_url = ""
                                     else:
-                                        pr_title = f"Task {task_id}: {title}"
-                                        pr_body = f"Automated PR for task {task_id}\n\nCompleted by: @{assignee}"
+                                        pr_title = subject
+                                        pr_body = f"{commit_body}\n\nAutomated PR for task {task_id}\n\nCompleted by: @{assignee}"
                                         pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True)
                                         pr_url = pr_res.stdout.strip()
 

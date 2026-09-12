@@ -547,5 +547,42 @@ class TestZeroFactoryKanban(unittest.TestCase):
             if dummy_proc.poll() is None:
                 dummy_proc.kill()
 
+    def test_15_conventional_commit_formatting(self):
+        from dispatcher import format_conventional_message
+
+        cases = [
+            (
+                "REFACTOR: Extract shared reverseMap + regex encode/decode helpers (9x duplicated reverse-map construction, 3x duplicated global-regex substitution pairs) in src/dict.ts",
+                "zf-fb4215f1",
+                "refactor(dict): extract shared reverseMap + regex encode/decode helpers",
+            ),
+            (
+                "BUG FIX [P0] dispatcher promote/spawn ignore parent dependencies: task dispatched before its prerequisites are done",
+                "zf-86d5c7f5",
+                "fix(dispatcher): promote/spawn ignore parent dependencies: task dispatched before its prerequisites are done",
+            ),
+            (
+                "SECURITY: Remove committed API gateway secrets (.env) from git history",
+                "zf-9493d068",
+                "fix(security): remove committed API gateway secrets from git history",
+            ),
+            (
+                "feat: implement base92 encoding",
+                "zf-123",
+                "feat: implement base92 encoding",
+            ),
+            (
+                "Add unit tests for stuck task reaper in test_plugin.py",
+                "zf-456",
+                "test(test_plugin): add unit tests for stuck task reaper",
+            ),
+        ]
+
+        for title, task_id, expected_subj in cases:
+            subj, body = format_conventional_message(title, task_id)
+            self.assertEqual(subj, expected_subj)
+            self.assertIn(f"Task: {task_id}", body)
+
 if __name__ == "__main__":
     unittest.main()
+
