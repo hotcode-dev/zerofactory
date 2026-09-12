@@ -195,6 +195,10 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
     sym_res = ensure_plugin_symlinks()
     res["plugin_symlinks"] = sym_res.get("linked", [])
 
+    # Automatically deploy scripts to ~/.hermes/scripts and profile scripts dirs
+    script_res = ensure_script_files()
+    res["scripts"] = script_res.get("copied", [])
+
     return res
 
 
@@ -277,3 +281,52 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
             _enable_in_config(prof_dir / "config.yaml")
 
     return {"linked": linked}
+
+
+def ensure_script_files() -> Dict[str, Any]:
+    """Deploy and synchronize Zero Factory automation scripts into Hermes scripts directories.
+
+    Hermes cron job security model mandates that `script` targets must resolve inside
+    HERMES_HOME/scripts/ (or <profile>/scripts/). To satisfy this sandbox without
+    triggering symlink escape checks, scripts are copied directly.
+    """
+    hermes_home = get_hermes_home()
+    plugin_root = get_plugin_root()
+    src_scripts_dir = plugin_root / "scripts"
+    profiles_dir = hermes_home / "profiles"
+
+    if not src_scripts_dir.is_dir():
+        return {"copied": []}
+
+    target_script_dirs = [hermes_home / "scripts"]
+    for role in ZF_PROFILES:
+        target_script_dirs.append(profiles_dir / role / "scripts")
+    for legacy_role in ("orchestrator", "builder", "reviewer"):
+        prof_dir = profiles_dir / legacy_role
+        if prof_dir.exists():
+            target_script_dirs.append(prof_dir / "scripts")
+
+    copied: List[str] = []
+    for script_file in src_scripts_dir.glob("*.py"):
+        if not script_file.is_file():
+            continue
+        content = script_file.read_bytes()
+        for target_dir in target_script_dirs:
+            try:
+                target_dir.mkdir(parents=True, exist_ok=True)
+                dest_file = target_dir / script_file.name
+                # Only write if missing or content changed
+                if not dest_file.exists() or dest_file.read_bytes() != content:
+                    if dest_file.is_symlink():
+                        dest_file.unlink()
+                    dest_file.write_bytes(content)
+                    try:
+                        os.chmod(str(dest_file), 0o755)
+                    except OSError:
+                        pass
+                copied.append(str(dest_file))
+            except Exception as e:
+                _log.warning("Could not sync script %s to %s: %s", script_file.name, target_dir, e)
+
+    return {"copied": copied}
+

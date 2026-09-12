@@ -165,9 +165,10 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
         if cand.is_dir():
             return cand.resolve()
 
-    # 5. Optional auto-clone if git_url is present and git operations not disabled
+    # 5. Optional auto-clone if git_url is present and explicitly requested via ZEROFACTORY_AUTO_CLONE
     if (
         git_url
+        and os.environ.get("ZEROFACTORY_AUTO_CLONE")
         and not os.environ.get("ZEROFACTORY_SKIP_GIT")
         and not os.environ.get("ZEROFACTORY_SKIP_CLONE")
     ):
@@ -245,8 +246,8 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "model": DEFAULT_CRON_MODEL,
         "provider": DEFAULT_CRON_PROVIDER,
         "base_url": DEFAULT_CRON_BASE_URL,
-        "script": None,
-        "no_agent": False,
+        "script": "zf_queue_watchdog.py",
+        "no_agent": True,
         "context_from": None,
         "schedule": {
             "kind": "interval",
@@ -273,9 +274,9 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "model": DEFAULT_CRON_MODEL,
         "provider": DEFAULT_CRON_PROVIDER,
         "base_url": DEFAULT_CRON_BASE_URL,
-        "script": None,
+        "script": "zf_daily_stats.py",
         "no_agent": False,
-        "context_from": None,
+        "context_from": ["zero-factory-task-queue-check"],
         "schedule": {
             "kind": "cron",
             "expr": "0 9 * * *",
@@ -347,9 +348,10 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "model": eff_model,
             "provider": eff_provider,
             "base_url": eff_base_url,
-            "script": None,
+            "script": "zf_scanner_gate.py",
             "no_agent": False,
-            "context_from": None,
+            "context_from": ["self"],
+            "continuity": True,
             "schedule": {
                 "kind": "interval",
                 "minutes": 60,
@@ -474,6 +476,14 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
     """Ensure all builtin Zero Factory cron jobs are registered and up-to-date."""
     if os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         return {"ok": True, "synced_targets": [], "added": 0, "updated": 0, "pruned": 0}
+
+    # Automatically deploy scripts to ~/.hermes/scripts/ before registering jobs
+    try:
+        from profile_manager import ensure_script_files
+        ensure_script_files()
+    except Exception as e:
+        _log.debug("Script sync in ensure_builtin_cron_jobs skipped: %s", e)
+
     # Active board slugs currently registered in the database
     active_board_slugs = set()
     db_path = get_db_path()
@@ -544,18 +554,19 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 existing_jobs.append(new_job)
                 added_here += 1
             else:
-                # Update prompts, schedule, provider, model, base_url, workdir if drifted
+                # Update prompts, schedule, provider, model, base_url, workdir, script, no_agent if drifted
                 curr = existing_by_id[job_id]
                 changed = False
                 is_custom = bool(curr.get("custom_config"))
                 for field in (
                     "name", "prompt", "schedule", "schedule_display",
-                    "enabled_toolsets", "origin", "model", "provider", "base_url", "workdir"
+                    "enabled_toolsets", "origin", "model", "provider", "base_url", "workdir",
+                    "script", "no_agent", "context_from", "continuity"
                 ):
-                    if is_custom and field in ("schedule", "schedule_display", "prompt", "model", "provider", "base_url", "workdir"):
+                    if is_custom and field in ("schedule", "schedule_display", "prompt", "model", "provider", "base_url", "workdir", "script", "no_agent", "context_from", "continuity"):
                         continue
                     if curr.get(field) != builtin_def.get(field):
-                        curr[field] = builtin_def[field]
+                        curr[field] = builtin_def.get(field)
                         changed = True
 
                 # Unblock job if it was previously blocked by preflight credential missing
@@ -630,6 +641,10 @@ def list_builtin_jobs() -> List[Dict[str, Any]]:
             "base_url": curr.get("base_url", builtin_def.get("base_url")),
             "workdir": curr.get("workdir", builtin_def.get("workdir")),
             "profile": curr.get("profile", builtin_def.get("profile", "zf-orchestrator")),
+            "script": curr.get("script", builtin_def.get("script")),
+            "no_agent": bool(curr.get("no_agent", builtin_def.get("no_agent", False))),
+            "context_from": curr.get("context_from", builtin_def.get("context_from")),
+            "continuity": bool(curr.get("continuity", builtin_def.get("continuity", False))),
             "custom_config": bool(curr.get("custom_config")),
             "last_status": curr.get("last_status"),
             "last_run_at": curr.get("last_run_at"),
@@ -699,6 +714,21 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
                     j["custom_config"] = True
                 if "name" in updates and updates["name"]:
                     j["name"] = str(updates["name"])
+                if "script" in updates:
+                    j["script"] = str(updates["script"]).strip() if updates["script"] else None
+                    j["custom_config"] = True
+                if "no_agent" in updates:
+                    j["no_agent"] = bool(updates["no_agent"])
+                    j["custom_config"] = True
+                if "context_from" in updates:
+                    cf = updates["context_from"]
+                    if isinstance(cf, str):
+                        cf = [cf]
+                    j["context_from"] = [str(x).strip() for x in cf if str(x).strip()] if cf else None
+                    j["custom_config"] = True
+                if "continuity" in updates:
+                    j["continuity"] = bool(updates["continuity"])
+                    j["custom_config"] = True
 
                 updated_job_data = dict(j)
                 break
@@ -728,6 +758,21 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
                 new_job["custom_config"] = True
             if "prompt" in updates and updates["prompt"]:
                 new_job["prompt"] = str(updates["prompt"])
+                new_job["custom_config"] = True
+            if "script" in updates:
+                new_job["script"] = str(updates["script"]).strip() if updates["script"] else None
+                new_job["custom_config"] = True
+            if "no_agent" in updates:
+                new_job["no_agent"] = bool(updates["no_agent"])
+                new_job["custom_config"] = True
+            if "context_from" in updates:
+                cf = updates["context_from"]
+                if isinstance(cf, str):
+                    cf = [cf]
+                new_job["context_from"] = [str(x).strip() for x in cf if str(x).strip()] if cf else None
+                new_job["custom_config"] = True
+            if "continuity" in updates:
+                new_job["continuity"] = bool(updates["continuity"])
                 new_job["custom_config"] = True
             jobs.append(new_job)
             updated_job_data = dict(new_job)
@@ -766,7 +811,7 @@ def reset_builtin_job(job_id: str) -> Dict[str, Any]:
         jobs = load_jobs_from_file(target)
         for j in jobs:
             if isinstance(j, dict) and j.get("id") == job_id:
-                for k in ("schedule", "schedule_display", "model", "provider", "base_url", "prompt", "workdir", "name"):
+                for k in ("schedule", "schedule_display", "model", "provider", "base_url", "prompt", "workdir", "name", "script", "no_agent", "context_from", "continuity"):
                     j[k] = builtin_def.get(k)
                 j["custom_config"] = False
                 reset_count += 1

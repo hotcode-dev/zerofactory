@@ -17,7 +17,7 @@ import subprocess
 import time
 from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -188,6 +188,10 @@ class CronJobUpdate(BaseModel):
     workdir: Optional[str] = None
     prompt: Optional[str] = None
     name: Optional[str] = None
+    script: Optional[str] = None
+    no_agent: Optional[bool] = None
+    context_from: Optional[Union[str, List[str]]] = None
+    continuity: Optional[bool] = None
 
 class CronToggleRequest(BaseModel):
     enabled: Optional[bool] = None

@@ -748,7 +748,112 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(resp_stats.status_code, 200)
         self.assertIn("total", resp_stats.json())
 
+    def test_22_script_deployment(self):
+        from profile_manager import ensure_script_files, get_hermes_home, ZF_PROFILES
+        res = ensure_script_files()
+        self.assertIsInstance(res, dict)
+        copied = res.get("copied", [])
+        self.assertGreater(len(copied), 0)
+
+        hermes_home = get_hermes_home()
+        expected_scripts = ["zf_queue_watchdog.py", "zf_scanner_gate.py", "zf_daily_stats.py"]
+        for s in expected_scripts:
+            # Check in root ~/.hermes/scripts/
+            root_s = hermes_home / "scripts" / s
+            self.assertTrue(root_s.exists(), f"Missing {root_s}")
+            self.assertTrue(root_s.is_file())
+            # Ensure it is a real file, NOT a symlink (to comply with Hermes path.relative_to security check)
+            self.assertFalse(root_s.is_symlink(), f"{root_s} should not be a symlink")
+
+            # Check in profile directories
+            for role in ZF_PROFILES:
+                prof_s = hermes_home / "profiles" / role / "scripts" / s
+                self.assertTrue(prof_s.exists(), f"Missing {prof_s}")
+                self.assertFalse(prof_s.is_symlink())
+
+    def test_23_noagent_and_chained_cron_definitions(self):
+        from builtin_cron import get_all_builtin_cron_jobs, CORE_CRON_JOBS
+
+        # 1. Queue watchdog: No-Agent mode
+        queue_job = CORE_CRON_JOBS["zero-factory-task-queue-check"]
+        self.assertTrue(queue_job["no_agent"])
+        self.assertEqual(queue_job["script"], "zf_queue_watchdog.py")
+        self.assertIsNone(queue_job["context_from"])
+
+        # 2. Daily report: Chained LLM Job
+        daily_job = CORE_CRON_JOBS["zero-factory-daily-report"]
+        self.assertFalse(daily_job["no_agent"])
+        self.assertEqual(daily_job["script"], "zf_daily_stats.py")
+        self.assertEqual(daily_job["context_from"], ["zero-factory-task-queue-check"])
+
+        # 3. Dynamic board scanner: Wake-gate + continuity
+        all_jobs = get_all_builtin_cron_jobs()
+        scanner_jobs = [j for jid, j in all_jobs.items() if jid.startswith("zero-factory-improvement-scanner-")]
+        self.assertGreater(len(scanner_jobs), 0)
+        for sj in scanner_jobs:
+            self.assertEqual(sj["script"], "zf_scanner_gate.py")
+            self.assertFalse(sj["no_agent"])
+            self.assertEqual(sj["context_from"], ["self"])
+            self.assertTrue(sj["continuity"])
+
+    def test_24_script_execution_and_wakegate(self):
+        import subprocess
+        import json
+        from profile_manager import get_hermes_home
+        hermes_home = get_hermes_home()
+        scripts_dir = hermes_home / "scripts"
+
+        # 1. Test zf_queue_watchdog.py
+        proc = subprocess.run(
+            [sys.executable, str(scripts_dir / "zf_queue_watchdog.py")],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env={**os.environ, "ZEROFACTORY_DB": str(Path(test_dir.name) / "test.db")}
+        )
+        self.assertEqual(proc.returncode, 0, f"Error: {proc.stderr}")
+        # Parse last line as wake-gate JSON
+        last_line = proc.stdout.strip().splitlines()[-1]
+        data = json.loads(last_line)
+        self.assertIn("wakeAgent", data)
+        self.assertFalse(data["wakeAgent"])  # Clean board should suppress wake
+
+        # 2. Test zf_daily_stats.py
+        proc_stats = subprocess.run(
+            [sys.executable, str(scripts_dir / "zf_daily_stats.py")],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env={**os.environ, "ZEROFACTORY_DB": str(Path(test_dir.name) / "test.db")}
+        )
+        self.assertEqual(proc_stats.returncode, 0, f"Error: {proc_stats.stderr}")
+        self.assertIn("Pre-Calculated ZeroFactory Daily Metrics", proc_stats.stdout)
+        self.assertIn("Column Distribution", proc_stats.stdout)
+
+    def test_25_hermes_script_sandbox_compliance(self):
+        """Verify compliance with Hermes _script_health_issue path sandbox."""
+        from profile_manager import get_hermes_home
+        from builtin_cron import get_all_builtin_cron_jobs
+        scripts_dir = (get_hermes_home() / "scripts").resolve()
+
+        all_jobs = get_all_builtin_cron_jobs()
+        for jid, job in all_jobs.items():
+            script_name = job.get("script")
+            if not script_name:
+                continue
+            raw = Path(script_name).expanduser()
+            resolved = raw.resolve() if raw.is_absolute() else (scripts_dir / raw).resolve()
+            # Must be strictly within scripts_dir
+            try:
+                rel = resolved.relative_to(scripts_dir)
+                self.assertEqual(str(rel), script_name)
+            except ValueError as e:
+                self.fail(f"Job {jid} script {script_name} fails Hermes sandbox check: {e}")
+            self.assertTrue(resolved.exists())
+            self.assertTrue(resolved.is_file())
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
