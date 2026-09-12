@@ -273,8 +273,24 @@ def get_profile_state_db(assignee: str) -> Optional[Path]:
         return p4
     return None
 
-def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -> Dict[str, Any]:
-    """Extract real-time execution progress, turn counts, tool calls, and logs for a task."""
+def _open_readonly_state_conn(state_db_path: Path) -> sqlite3.Connection:
+    """Open a read-only sqlite connection to a profile state.db."""
+    resolved = state_db_path.resolve()
+    uri = resolved.as_uri() + "?mode=ro"
+    try:
+        return sqlite3.connect(uri, uri=True, timeout=5.0)
+    except Exception:
+        return sqlite3.connect(str(resolved), timeout=5.0)
+
+def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True,
+                                  state_conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
+    """Extract real-time execution progress, turn counts, tool calls, and logs for a task.
+
+    ``state_conn`` may carry a pre-opened read-only connection to the assignee's
+    state.db (e.g. one cached per assignee across a list_tasks loop) so that
+    batch list endpoints do not open a fresh connection per task. When omitted,
+    the connection is opened and closed here (single-task endpoints).
+    """
     meta = task.get("metadata") or {}
     if isinstance(meta, str):
         try:
@@ -328,157 +344,155 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             "log_tail": log_tail
         }
 
+    own_conn: Optional[sqlite3.Connection] = None
     try:
-        resolved_state = state_db_path.resolve()
-        uri = resolved_state.as_uri() + "?mode=ro"
-        try:
-            s_conn = sqlite3.connect(uri, uri=True, timeout=5.0)
-        except Exception:
-            s_conn = sqlite3.connect(str(resolved_state), timeout=5.0)
+        if state_conn is not None:
+            conn = state_conn
+        else:
+            own_conn = _open_readonly_state_conn(state_db_path)
+            conn = own_conn
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
 
-        with closing(s_conn) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-
-            # If session_id is missing, auto-detect it
-            if not session_id:
-                cursor.execute("""
-                    SELECT id, title, started_at FROM sessions
-                    ORDER BY started_at DESC LIMIT 5
-                """)
-                cand_rows = cursor.fetchall()
-                for cand in cand_rows:
-                    cand_id = cand["id"]
-                    cand_title = cand["title"] or ""
-                    if task_id in cand_title or (task.get("title") and any(w.lower() in cand_title.lower() for w in task["title"].split() if len(w) > 3)):
-                        session_id = cand_id
-                        break
-                if not session_id and cand_rows and task_status in ("running", "blocked", "done"):
-                    session_id = cand_rows[0]["id"]
-
-                # Auto-backfill into tasks metadata in the kanban DB
-                if session_id and backfill and task_id:
-                    try:
-                        with get_db_conn() as k_conn:
-                            meta["session_id"] = session_id
-                            k_conn.execute("UPDATE tasks SET metadata = ? WHERE id = ?", (json.dumps(meta), task_id))
-                            k_conn.commit()
-                    except Exception:
-                        pass
-
-            if not session_id:
-                return {
-                    "has_session": False,
-                    "session_id": None,
-                    "assignee": assignee,
-                    "worker_pid": worker_pid,
-                    "is_alive": is_alive,
-                    "model": None,
-                    "started_at": None,
-                    "last_active": None,
-                    "message_count": 0,
-                    "turn_count": 0,
-                    "tool_calls_count": 0,
-                    "last_action": "Awaiting agent session",
-                    "recent_steps": [],
-                    "log_tail": log_tail
-                }
-
+        # If session_id is missing, auto-detect it
+        if not session_id:
             cursor.execute("""
-                SELECT id, model, started_at, ended_at, last_activity_at, last_activity_description
-                FROM sessions WHERE id = ?
-            """, (session_id,))
-            sess_row = cursor.fetchone()
-            model = sess_row["model"] if sess_row else None
-            started_at = sess_row["started_at"] if sess_row else None
-            last_active = sess_row["last_activity_at"] if sess_row else None
-            last_activity_desc = sess_row["last_activity_description"] if sess_row else None
+                SELECT id, title, started_at FROM sessions
+                ORDER BY started_at DESC LIMIT 5
+            """)
+            cand_rows = cursor.fetchall()
+            for cand in cand_rows:
+                cand_id = cand["id"]
+                cand_title = cand["title"] or ""
+                if task_id in cand_title or (task.get("title") and any(w.lower() in cand_title.lower() for w in task["title"].split() if len(w) > 3)):
+                    session_id = cand_id
+                    break
+            if not session_id and cand_rows and task_status in ("running", "blocked", "done"):
+                session_id = cand_rows[0]["id"]
 
-            cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?", (session_id,))
-            message_count = cursor.fetchone()["cnt"]
+            # Auto-backfill into tasks metadata in the kanban DB
+            if session_id and backfill and task_id:
+                try:
+                    with get_db_conn() as k_conn:
+                        meta["session_id"] = session_id
+                        k_conn.execute("UPDATE tasks SET metadata = ? WHERE id = ?", (json.dumps(meta), task_id))
+                        k_conn.commit()
+                except Exception:
+                    pass
 
-            cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'assistant'", (session_id,))
-            turn_count = cursor.fetchone()["cnt"]
-
-            cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'tool'", (session_id,))
-            tool_calls_count = cursor.fetchone()["cnt"]
-
-            cursor.execute("""
-                SELECT id, role, tool_name, tool_calls, content, reasoning_content, timestamp
-                FROM messages
-                WHERE session_id = ?
-                ORDER BY timestamp DESC, id DESC
-                LIMIT 8
-            """, (session_id,))
-            recent_rows = cursor.fetchall()
-
-            recent_steps = []
-            last_action = None
-            for r in reversed(recent_rows):
-                r_role = r["role"]
-                r_tool = r["tool_name"]
-                snippet = ""
-                if r_tool:
-                    snippet = f"tool: {r_tool}"
-                elif r_role == "assistant":
-                    if r["tool_calls"]:
-                        try:
-                            tc = json.loads(r["tool_calls"])
-                            if isinstance(tc, list) and tc:
-                                fn_name = tc[0].get("function", {}).get("name") or tc[0].get("name", "tool")
-                                snippet = f"executing {fn_name}"
-                            elif isinstance(tc, dict):
-                                fn_name = tc.get("function", {}).get("name") or tc.get("name", "tool")
-                                snippet = f"executing {fn_name}"
-                        except Exception:
-                            snippet = "tool calling"
-                    elif r["reasoning_content"]:
-                        snippet = (r["reasoning_content"][:90] + "...") if len(r["reasoning_content"]) > 90 else r["reasoning_content"]
-                    elif r["content"]:
-                        snippet = (r["content"][:90] + "...") if len(r["content"]) > 90 else r["content"]
-                    else:
-                        snippet = "thinking..."
-                elif r_role == "tool":
-                    cnt = r["content"] or ""
-                    snippet = (cnt[:120] + "...") if len(cnt) > 120 else cnt
-                elif r_role == "user":
-                    snippet = "user prompt"
-
-                if not last_action and snippet:
-                    last_action = snippet
-
-                recent_steps.append({
-                    "id": r["id"],
-                    "role": r_role,
-                    "tool_name": r_tool,
-                    "snippet": snippet,
-                    "timestamp": r["timestamp"]
-                })
-
-            if not last_action:
-                if last_activity_desc:
-                    last_action = last_activity_desc
-                elif turn_count > 0:
-                    last_action = f"Turn {turn_count}"
-                else:
-                    last_action = "Active"
-
+        if not session_id:
             return {
-                "has_session": True,
-                "session_id": session_id,
+                "has_session": False,
+                "session_id": None,
                 "assignee": assignee,
                 "worker_pid": worker_pid,
                 "is_alive": is_alive,
-                "model": model,
-                "started_at": started_at,
-                "last_active": last_active or started_at,
-                "message_count": message_count,
-                "turn_count": turn_count,
-                "tool_calls_count": tool_calls_count,
-                "last_action": last_action,
-                "recent_steps": recent_steps,
+                "model": None,
+                "started_at": None,
+                "last_active": None,
+                "message_count": 0,
+                "turn_count": 0,
+                "tool_calls_count": 0,
+                "last_action": "Awaiting agent session",
+                "recent_steps": [],
                 "log_tail": log_tail
             }
+
+        cursor.execute("""
+            SELECT id, model, started_at, ended_at, last_activity_at, last_activity_description
+            FROM sessions WHERE id = ?
+        """, (session_id,))
+        sess_row = cursor.fetchone()
+        model = sess_row["model"] if sess_row else None
+        started_at = sess_row["started_at"] if sess_row else None
+        last_active = sess_row["last_activity_at"] if sess_row else None
+        last_activity_desc = sess_row["last_activity_description"] if sess_row else None
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?", (session_id,))
+        message_count = cursor.fetchone()["cnt"]
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'assistant'", (session_id,))
+        turn_count = cursor.fetchone()["cnt"]
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'tool'", (session_id,))
+        tool_calls_count = cursor.fetchone()["cnt"]
+
+        cursor.execute("""
+        SELECT id, role, tool_name, tool_calls, content, reasoning_content, timestamp
+        FROM messages
+        WHERE session_id = ?
+        ORDER BY timestamp DESC, id DESC
+        LIMIT 8
+        """, (session_id,))
+        recent_rows = cursor.fetchall()
+
+        recent_steps = []
+        last_action = None
+        for r in reversed(recent_rows):
+            r_role = r["role"]
+            r_tool = r["tool_name"]
+            snippet = ""
+            if r_tool:
+                snippet = f"tool: {r_tool}"
+            elif r_role == "assistant":
+                if r["tool_calls"]:
+                    try:
+                        tc = json.loads(r["tool_calls"])
+                        if isinstance(tc, list) and tc:
+                            fn_name = tc[0].get("function", {}).get("name") or tc[0].get("name", "tool")
+                            snippet = f"executing {fn_name}"
+                        elif isinstance(tc, dict):
+                            fn_name = tc.get("function", {}).get("name") or tc.get("name", "tool")
+                            snippet = f"executing {fn_name}"
+                    except Exception:
+                        snippet = "tool calling"
+                elif r["reasoning_content"]:
+                    snippet = (r["reasoning_content"][:90] + "...") if len(r["reasoning_content"]) > 90 else r["reasoning_content"]
+                elif r["content"]:
+                    snippet = (r["content"][:90] + "...") if len(r["content"]) > 90 else r["content"]
+                else:
+                    snippet = "thinking..."
+            elif r_role == "tool":
+                cnt = r["content"] or ""
+                snippet = (cnt[:120] + "...") if len(cnt) > 120 else cnt
+            elif r_role == "user":
+                snippet = "user prompt"
+
+            if not last_action and snippet:
+                last_action = snippet
+
+            recent_steps.append({
+                "id": r["id"],
+                "role": r_role,
+                "tool_name": r_tool,
+                "snippet": snippet,
+                "timestamp": r["timestamp"]
+            })
+
+        if not last_action:
+            if last_activity_desc:
+                last_action = last_activity_desc
+            elif turn_count > 0:
+                last_action = f"Turn {turn_count}"
+            else:
+                last_action = "Active"
+
+        return {
+            "has_session": True,
+            "session_id": session_id,
+            "assignee": assignee,
+            "worker_pid": worker_pid,
+            "is_alive": is_alive,
+            "model": model,
+            "started_at": started_at,
+            "last_active": last_active or started_at,
+            "message_count": message_count,
+            "turn_count": turn_count,
+            "tool_calls_count": tool_calls_count,
+            "last_action": last_action,
+            "recent_steps": recent_steps,
+            "log_tail": log_tail
+        }
     except Exception as e:
         _log.warning("Error resolving session progress for %s: %s", task_id, e)
         return {
@@ -498,6 +512,14 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             "log_tail": log_tail,
             "error": str(e)
         }
+    finally:
+        # Close only the connection we opened ourselves; a caller-supplied
+        # ``state_conn`` is owned (and closed) by the caller.
+        if own_conn is not None:
+            try:
+                own_conn.close()
+            except Exception:
+                pass
 
 
 # --- Board Endpoints ---------------------------------------------------------
@@ -511,12 +533,15 @@ def list_boards():
         cursor.execute("SELECT * FROM boards ORDER BY created_at ASC")
         boards = [dict(row) for row in cursor.fetchall()]
 
-        # Attach task counts per board
+        # Attach task counts per board with two batched GROUP BY queries
+        # (constant number of round-trips regardless of board count)
+        cursor.execute("SELECT board_slug, COUNT(*) as count FROM tasks GROUP BY board_slug")
+        total_counts = {r["board_slug"]: r["count"] for r in cursor.fetchall()}
+        cursor.execute("SELECT board_slug, COUNT(*) as count FROM tasks WHERE status = 'running' GROUP BY board_slug")
+        running_counts = {r["board_slug"]: r["count"] for r in cursor.fetchall()}
         for b in boards:
-            cursor.execute("SELECT COUNT(*) as count FROM tasks WHERE board_slug = ?", (b["slug"],))
-            b["task_count"] = cursor.fetchone()["count"]
-            cursor.execute("SELECT COUNT(*) as count FROM tasks WHERE board_slug = ? AND status = 'running'", (b["slug"],))
-            b["running_count"] = cursor.fetchone()["count"]
+            b["task_count"] = total_counts.get(b["slug"], 0)
+            b["running_count"] = running_counts.get(b["slug"], 0)
         return {"ok": True, "boards": boards}
 
 def _get_cron_helpers():
@@ -731,22 +756,40 @@ def list_tasks(
             cursor.execute(f"SELECT task_id, COUNT(*) as count FROM task_comments WHERE task_id IN ({placeholders}) GROUP BY task_id", task_ids)
             comment_counts = {r["task_id"]: r["count"] for r in cursor.fetchall()}
 
-            for t in tasks:
-                t_id = t["id"]
-                t["parent_count"] = parent_counts.get(t_id, 0)
-                t["blocking_parent_count"] = blocking_counts.get(t_id, 0)
-                t["child_count"] = child_counts.get(t_id, 0)
-                t["comment_count"] = comment_counts.get(t_id, 0)
-                if t.get("status") == "running":
-                    prog = resolve_task_session_progress(t, backfill=False)
-                    t["session_progress"] = {
-                        "has_session": prog["has_session"],
-                        "session_id": prog.get("session_id"),
-                        "is_alive": prog.get("is_alive", False),
-                        "turn_count": prog.get("turn_count", 0),
-                        "message_count": prog.get("message_count", 0),
-                        "last_action": prog.get("last_action")
-                    }
+            # Cache one read-only state.db connection per assignee so running
+            # tasks sharing an assignee reuse a single connection instead of
+            # opening one per task (N+1 connections on the second database).
+            state_conns: Dict[str, sqlite3.Connection] = {}
+            try:
+                for t in tasks:
+                    t_id = t["id"]
+                    t["parent_count"] = parent_counts.get(t_id, 0)
+                    t["blocking_parent_count"] = blocking_counts.get(t_id, 0)
+                    t["child_count"] = child_counts.get(t_id, 0)
+                    t["comment_count"] = comment_counts.get(t_id, 0)
+                    if t.get("status") == "running":
+                        assignee = str(t.get("assignee") or "builder")
+                        if assignee not in state_conns:
+                            db_path = get_profile_state_db(assignee)
+                            if db_path:
+                                state_conns[assignee] = _open_readonly_state_conn(db_path)
+                        prog = resolve_task_session_progress(
+                            t, backfill=False, state_conn=state_conns.get(assignee)
+                        )
+                        t["session_progress"] = {
+                            "has_session": prog["has_session"],
+                            "session_id": prog.get("session_id"),
+                            "is_alive": prog.get("is_alive", False),
+                            "turn_count": prog.get("turn_count", 0),
+                            "message_count": prog.get("message_count", 0),
+                            "last_action": prog.get("last_action")
+                        }
+            finally:
+                for c in state_conns.values():
+                    try:
+                        c.close()
+                    except Exception:
+                        pass
 
         return {"ok": True, "tasks": tasks, "count": len(tasks)}
 
