@@ -77,6 +77,9 @@ def register(ctx: Any):
         p_create.add_argument("--assignee", default="unassigned", help="Assignee (orchestrator, builder, reviewer)")
         p_create.add_argument("--board", default=None, help="Board slug (defaults to first available board)")
         p_create.add_argument("--parent", default=None, help="Parent task ID")
+        p_create.add_argument("--files", default=None, help="Affected relative file path(s), comma-separated")
+        p_create.add_argument("--category", default="bug-fix", help="Issue category (e.g. bug-fix, refactoring, performance, test, config)")
+        p_create.add_argument("--dedup-key", default=None, help="Explicit deduplication key override")
 
         # move
         p_move = subparsers.add_parser("move", help="Move a task to a different column")
@@ -129,6 +132,8 @@ def register(ctx: Any):
             print()
 
         elif action == "create":
+            files_arg = getattr(args, "files", None)
+            files_list = [f.strip() for f in files_arg.split(",") if f.strip()] if files_arg else []
             req = TaskCreate(
                 title=args.title,
                 description=args.description,
@@ -136,10 +141,16 @@ def register(ctx: Any):
                 priority=args.priority,
                 assignee=args.assignee,
                 board_slug=args.board,
-                parent_id=args.parent
+                parent_id=args.parent,
+                files=files_list,
+                category=getattr(args, "category", "bug-fix"),
+                dedup_key=getattr(args, "dedup_key", None),
             )
             res = _create_task(req)
-            print(f"Created task {res['id']}: {args.title}")
+            if res.get("duplicate"):
+                print(f"[Duplicate Skipped] {res.get('message', 'Task already exists')}")
+            else:
+                print(f"Created task {res['id']}: {args.title}")
 
         elif action == "move":
             req = TaskMove(status=args.status)

@@ -314,6 +314,69 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertIn("session_progress", target)
 
+    def test_10_multi_file_fingerprint_deduplication(self):
+        # 1. Create task with multiple files in random order
+        t1 = create_task(TaskCreate(
+            title="Fix login auth null check",
+            board_slug="zerofactory",
+            files=["src/user.py", "src/auth.py"],
+            category="bug-fix",
+            status="todo"
+        ))
+        self.assertTrue(t1["ok"])
+        t1_id = t1["id"]
+        self.assertFalse(t1.get("duplicate", False))
+
+        # Check metadata and tags
+        t1_data = get_task(t1_id)["task"]
+        self.assertEqual(t1_data["metadata"]["files"], ["src/auth.py", "src/user.py"])
+        self.assertEqual(t1_data["metadata"]["dedup_key"], "src/auth.py,src/user.py:bug-fix")
+        self.assertIn("file:src/auth.py", t1_data["tags"])
+        self.assertIn("file:src/user.py", t1_data["tags"])
+        self.assertIn("cat:bug-fix", t1_data["tags"])
+
+        # 2. Attempt to create second task with reversed file order and different title
+        t2 = create_task(TaskCreate(
+            title="Resolve authentication error in user session",
+            board_slug="zerofactory",
+            files=["src/auth.py", "src/user.py"],
+            category="bug-fix",
+            status="todo"
+        ))
+        self.assertTrue(t2["ok"])
+        self.assertTrue(t2.get("duplicate"))
+        self.assertEqual(t2["id"], t1_id)
+
+        # 3. Test exact title deduplication when no files specified
+        t3 = create_task(TaskCreate(
+            title="Standalone Unique Bug",
+            board_slug="zerofactory",
+            status="todo"
+        ))
+        self.assertTrue(t3["ok"])
+        self.assertFalse(t3.get("duplicate", False))
+
+        t4 = create_task(TaskCreate(
+            title=" standalone unique bug ",
+            board_slug="zerofactory",
+            status="todo"
+        ))
+        self.assertTrue(t4.get("duplicate"))
+        self.assertEqual(t4["id"], t3["id"])
+
+        # 4. Move t1 to 'done' -> new task with same files should now be allowed
+        move_task(t1_id, TaskMove(status="done"))
+        t5 = create_task(TaskCreate(
+            title="Future refactor of auth and user",
+            board_slug="zerofactory",
+            files=["src/auth.py", "src/user.py"],
+            category="bug-fix",
+            status="todo"
+        ))
+        self.assertTrue(t5["ok"])
+        self.assertFalse(t5.get("duplicate", False))
+        self.assertNotEqual(t5["id"], t1_id)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -53,7 +53,17 @@ def build_board_scanner_prompt(board: Dict[str, Any], workdir: Optional[str]) ->
 - Working Directory: {workdir_desc}
 - Target Board: `{slug}`
 
-## Scan criteria (prioritized):
+## STEP 1: Scanner Pre-Flight Board Check (CRITICAL)
+Before inspecting files, review all existing tasks on the board:
+Run: `hermes zerofactory-kanban list --board "{slug}"`
+1. Review all open tasks (`triage`, `todo`, `ready`, `running`, `blocked`).
+2. Note the files, modules, and issues they already track.
+3. **NEVER** file a task for an issue, function, or file(s) that are already covered by an open task.
+4. Only proceed to file a task if you discover a distinct, unaddressed problem.
+5. If all issues you find in the codebase are already tracked on the board, STOP and report:
+   "All discovered improvement opportunities are already tracked on the board." and finish without creating any tasks.
+
+## STEP 2: Scan criteria (prioritized):
 1. **BUG FIXES** — null pointers, missing edge cases, type mismatches, logic errors, broken imports
 2. **DUPLICATE CODE** — repeated patterns that should be extracted or refactored
 3. **MISSING TESTS** — functions/classes without coverage that should have them
@@ -63,16 +73,18 @@ def build_board_scanner_prompt(board: Dict[str, Any], workdir: Optional[str]) ->
 7. **SECURITY** — hardcoded secrets, unsanitized input, missing error handling, unsafe eval/exec usage
 8. **CONFIG** — missing .gitignore files, uncommitted config drift, stale dependencies
 
-## For each issue found (MAXIMUM 1 TASK TOTAL):
+## STEP 3: Create Task with Fingerprint Safeguard (MAXIMUM 1 TASK TOTAL):
+If you find a genuine, unaddressed issue:
 Create a task using the Zero Factory Kanban CLI:
-`hermes zerofactory-kanban create "<issue title>" --description "<detailed context>" --board "{slug}" --priority P0 --status todo --assignee builder`
-- Clear description of the issue with RELATIVE file paths ONLY (e.g., `src/main.ts`). NEVER use absolute paths in the task description!
+`hermes zerofactory-kanban create "<issue title>" --description "<detailed context>" --board "{slug}" --files "<relative_path1>,<relative_path2>" --category "<category>" --priority P0 --status todo --assignee builder`
+- Always pass `--files` with all affected relative file paths (e.g., `--files "src/auth.ts,src/session.ts"`). Zero Factory computes a multi-file fingerprint safeguard to prevent duplicate tasks.
+- Always pass `--category` (one of: `bug-fix`, `refactoring`, `performance`, `documentation`, `testing`, `security`, `config`).
+- In `--description`: Clear context with RELATIVE file paths and line numbers only. NEVER use absolute paths in the description!
 - Priority: Assign `P0` (critical) or `P1` (high) so the dispatcher picks it up first.
-- Category: bug-fix, refactoring, performance, documentation, testing, security, config.
 - Status: `todo` (the built-in dispatcher will auto-assign, provision an isolated git worktree, and promote to `ready`).
 
 ## Deliver to user:
-- Summary of what was found and the task created in Kanban
+- Summary of what was found and the task created in Kanban (or report that all issues were already tracked)
 - Inform the user that the task has been created in the Todo column for execution.
 
 ## IMPORTANT:

@@ -154,6 +154,9 @@ class TaskCreate(BaseModel):
     tenant: Optional[str] = ""
     tags: Optional[List[str]] = []
     parent_id: Optional[str] = None
+    files: Optional[List[str]] = []
+    category: Optional[str] = "bug-fix"
+    dedup_key: Optional[str] = None
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -213,6 +216,29 @@ def log_activity(conn: sqlite3.Connection, task_id: str, actor: str, action: str
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, ?, ?, ?)",
         (task_id, actor, action, details, now)
     )
+
+def normalize_file_path(path_str: str) -> str:
+    """Normalize file path for consistent deduplication comparisons."""
+    p = str(path_str).strip().replace("\\", "/")
+    p = re.sub(r"^\./+", "", p)
+    return p.lstrip("/").lower()
+
+def compute_dedup_key(files: Optional[List[str]], category: Optional[str] = None) -> Optional[str]:
+    """Generate a deterministic fingerprint from a sorted list of affected files and category."""
+    if not files:
+        return None
+    cleaned = []
+    for f in files:
+        if isinstance(f, str):
+            for part in f.split(","):
+                norm = normalize_file_path(part)
+                if norm:
+                    cleaned.append(norm)
+    if not cleaned:
+        return None
+    sorted_files = sorted(set(cleaned))
+    cat = (category or "bug-fix").strip().lower()
+    return f"{','.join(sorted_files)}:{cat}"
 
 def get_profile_state_db(assignee: str) -> Optional[Path]:
     """Find the SQLite state.db for an agent profile."""
@@ -680,6 +706,66 @@ def create_task(req: TaskCreate):
             cursor.execute("SELECT slug FROM boards ORDER BY created_at ASC LIMIT 1")
             row = cursor.fetchone()
             board_slug = row[0] if row else ""
+
+        # Check for duplicate active tasks (status != 'done') on this board
+        dedup_key = req.dedup_key or compute_dedup_key(req.files, req.category)
+        cursor.execute("""
+            SELECT id, title, status, metadata FROM tasks 
+            WHERE board_slug = ? AND status != 'done'
+        """, (board_slug,))
+        active_tasks = cursor.fetchall()
+
+        norm_title = req.title.strip().lower()
+        for row in active_tasks:
+            m = row["metadata"]
+            if isinstance(m, str):
+                try:
+                    m = json.loads(m)
+                except Exception:
+                    m = {}
+            existing_key = m.get("dedup_key") if isinstance(m, dict) else None
+            if dedup_key and existing_key == dedup_key:
+                return {
+                    "ok": True,
+                    "id": row["id"],
+                    "duplicate": True,
+                    "message": f"Task already exists ({row['id']}) with matching file fingerprint in status '{row['status']}': {row['title']}"
+                }
+            elif not dedup_key and row["title"].strip().lower() == norm_title:
+                return {
+                    "ok": True,
+                    "id": row["id"],
+                    "duplicate": True,
+                    "message": f"Task already exists ({row['id']}) with identical title in status '{row['status']}'"
+                }
+
+        # Build metadata and tags with file & category tracking
+        meta: Dict[str, Any] = {}
+        if dedup_key:
+            meta["dedup_key"] = dedup_key
+        if req.files:
+            cleaned_files = []
+            for f in req.files:
+                if isinstance(f, str):
+                    for part in f.split(","):
+                        norm = normalize_file_path(part)
+                        if norm:
+                            cleaned_files.append(norm)
+            if cleaned_files:
+                meta["files"] = sorted(set(cleaned_files))
+        if req.category:
+            meta["category"] = req.category.strip().lower()
+
+        tags = list(req.tags or [])
+        if meta.get("category") and f"cat:{meta['category']}" not in tags:
+            tags.append(f"cat:{meta['category']}")
+        for f in meta.get("files", []):
+            t = f"file:{f}"
+            if t not in tags:
+                tags.append(t)
+
+        tags_json = json.dumps(tags)
+        metadata_json = json.dumps(meta)
 
         cursor.execute("""
             INSERT INTO tasks (
