@@ -94,24 +94,41 @@ def spawn_agent_worker(
 
     workdir = workspace_path if (workspace_path and Path(workspace_path).exists()) else os.getcwd()
 
-    prompt = (
-        f"Task ID: {task_id}\n"
-        f"Title: {title}\n"
-        f"Priority: {priority}\n"
-        f"Assigned Role: {assignee}\n\n"
-        f"Description:\n{description or 'No description provided.'}\n\n"
-        f"Workspace: {workdir}\n"
-        f"Git Branch: {branch_name or 'main'}\n\n"
-        f"Your goal:\n"
-        f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
-        f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
-        f"3. Verify your changes with tests, linters, or typechecks.\n"
-        f"4. When finished, mark the task as complete using:\n"
-        f"   hermes zerofactory move {task_id} done\n"
-        f"   (or if human review or external dependencies are required, run:\n"
-        f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
-        f"5. Provide a summary of your changes.\n"
-    )
+    if assignee in ("reviewer", "zf-reviewer"):
+        prompt = (
+            f"Task ID: {task_id}\n"
+            f"Title: {title}\n"
+            f"Priority: {priority}\n"
+            f"Assigned Role: {assignee}\n\n"
+            f"Description:\n{description or 'No description provided.'}\n\n"
+            f"Workspace: {workdir}\n"
+            f"Git Branch: {branch_name or 'main'}\n\n"
+            f"Your goal as Reviewer:\n"
+            f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, test coverage, and security.\n"
+            f"2. Run automated test suites and linters in your workspace ({workdir}).\n"
+            f"3. Submit your review decision on GitHub (`gh pr review --approve` or `gh pr review --request-changes`).\n"
+            f"4. When finished, mark the task complete using `hermes zerofactory move {task_id} done` or `hermes zerofactory block {task_id} --reason 'changes-requested'`.\n"
+            f"5. Provide a clear review summary.\n"
+        )
+    else:
+        prompt = (
+            f"Task ID: {task_id}\n"
+            f"Title: {title}\n"
+            f"Priority: {priority}\n"
+            f"Assigned Role: {assignee}\n\n"
+            f"Description:\n{description or 'No description provided.'}\n\n"
+            f"Workspace: {workdir}\n"
+            f"Git Branch: {branch_name or 'main'}\n\n"
+            f"Your goal:\n"
+            f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
+            f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
+            f"3. Verify your changes with tests, linters, or typechecks.\n"
+            f"4. When finished, mark the task as complete using:\n"
+            f"   hermes zerofactory move {task_id} done\n"
+            f"   (or if human review or external dependencies are required, run:\n"
+            f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
+            f"5. Provide a summary of your changes.\n"
+        )
 
     cmd = [
         hermes_bin,
@@ -707,7 +724,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     spawn_limit = MAX_CONCURRENT_WORKERS - running_count
                     cursor.execute("""
                         SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
-                        WHERE status = 'ready' AND assignee NOT IN ('reviewer', 'zf-reviewer')
+                        WHERE status = 'ready'
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
                         LIMIT ?
                     """, (spawn_limit,))
