@@ -162,13 +162,12 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
         # 5. Ensure profile's plugins/ directory and symlinks exist
         prof_plugins = target_dir / "plugins"
         prof_plugins.mkdir(parents=True, exist_ok=True)
-        for p_name in ("zerofactory", "zerofactory-kanban"):
-            p_link = prof_plugins / p_name
-            if not p_link.exists() and not p_link.is_symlink():
-                try:
-                    p_link.symlink_to(plugin_root, target_is_directory=True)
-                except Exception:
-                    pass
+        p_link = prof_plugins / "zerofactory"
+        if not p_link.exists() and not p_link.is_symlink():
+            try:
+                p_link.symlink_to(plugin_root, target_is_directory=True)
+            except Exception:
+                pass
 
         # 6. Ensure plugins.enabled in config.yaml
         if yaml and config_dst.exists():
@@ -179,9 +178,6 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
                 cfg_modified = False
                 if "zerofactory" not in enabled_list:
                     enabled_list.append("zerofactory")
-                    cfg_modified = True
-                if "zerofactory-kanban" in enabled_list:
-                    enabled_list.remove("zerofactory-kanban")
                     cfg_modified = True
                 if cfg_modified:
                     config_dst.write_text(yaml.dump(cfg_data, sort_keys=False), encoding="utf-8")
@@ -195,7 +191,7 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
         else:
             res["existing"].append(role)
 
-    # Automatically synchronize root and legacy profile plugin symlinks
+    # Automatically synchronize root and profile plugin symlinks
     sym_res = ensure_plugin_symlinks()
     res["plugin_symlinks"] = sym_res.get("linked", [])
 
@@ -203,11 +199,10 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
 
 
 def ensure_plugin_symlinks() -> Dict[str, Any]:
-    """Ensure plugin symlinks (zerofactory and zerofactory-kanban) and config entries exist in:
+    """Ensure plugin symlink (zerofactory) and config entries exist in:
     1. Root ~/.hermes/plugins/ and ~/.hermes/config.yaml
     2. ~/.hermes/profiles/<role>/plugins/ and config.yaml for each zf-* profile
     3. Legacy profiles (orchestrator, builder, reviewer) if they exist
-    4. Stale ~/.hermes/profiles/common/plugins/zerofactory-kanban redirected
     """
     hermes_home = get_hermes_home()
     plugin_root = get_plugin_root()
@@ -217,26 +212,31 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
 
     def _link_in_dir(target_plugins_dir: Path):
         target_plugins_dir.mkdir(parents=True, exist_ok=True)
-        for name in ("zerofactory", "zerofactory-kanban"):
-            link_path = target_plugins_dir / name
-            try:
-                if link_path.is_symlink() or link_path.exists():
-                    if link_path.is_symlink():
-                        try:
-                            cur_target = link_path.resolve()
-                            if cur_target == plugin_root.resolve():
-                                continue
-                        except Exception:
+        link_path = target_plugins_dir / "zerofactory"
+        try:
+            if link_path.is_symlink() or link_path.exists():
+                if link_path.is_symlink():
+                    try:
+                        cur_target = link_path.resolve()
+                        if cur_target == plugin_root.resolve():
                             pass
+                        else:
+                            link_path.unlink()
+                            link_path.symlink_to(plugin_root, target_is_directory=True)
+                    except Exception:
                         link_path.unlink()
-                    elif link_path.is_dir():
-                        shutil.rmtree(link_path)
-                    else:
-                        link_path.unlink()
+                        link_path.symlink_to(plugin_root, target_is_directory=True)
+                elif link_path.is_dir():
+                    shutil.rmtree(link_path)
+                    link_path.symlink_to(plugin_root, target_is_directory=True)
+                else:
+                    link_path.unlink()
+                    link_path.symlink_to(plugin_root, target_is_directory=True)
+            else:
                 link_path.symlink_to(plugin_root, target_is_directory=True)
-                linked.append(str(link_path))
-            except Exception as e:
-                _log.warning("Could not link plugin in %s: %s", target_plugins_dir, e)
+            linked.append(str(link_path))
+        except Exception as e:
+            _log.warning("Could not link plugin in %s: %s", target_plugins_dir, e)
 
     def _enable_in_config(cfg_path: Path):
         if not yaml or not cfg_path.exists():
@@ -249,8 +249,9 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
             if "zerofactory" not in enabled:
                 enabled.append("zerofactory")
                 changed = True
-            if "zerofactory-kanban" in enabled:
-                enabled.remove("zerofactory-kanban")
+            entries = plugins_sec.setdefault("entries", {})
+            if "zerofactory" not in entries:
+                entries["zerofactory"] = {"allow_tool_override": False}
                 changed = True
             if changed:
                 cfg_path.write_text(yaml.dump(cfg, sort_keys=False), encoding="utf-8")
@@ -274,19 +275,5 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
         if prof_dir.exists():
             _link_in_dir(prof_dir / "plugins")
             _enable_in_config(prof_dir / "config.yaml")
-
-    # 4. Clean up / redirect stale common plugin dir if it exists
-    common_p = profiles_dir / "common" / "plugins" / "zerofactory-kanban"
-    if common_p.exists():
-        try:
-            if common_p.is_symlink():
-                common_p.unlink()
-                common_p.symlink_to(plugin_root, target_is_directory=True)
-            elif common_p.is_dir():
-                shutil.rmtree(common_p)
-                common_p.symlink_to(plugin_root, target_is_directory=True)
-                linked.append(str(common_p))
-        except Exception as e:
-            _log.warning("Could not redirect stale common plugin: %s", e)
 
     return {"linked": linked}

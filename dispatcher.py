@@ -64,10 +64,10 @@ def get_inactivity_timeout_seconds() -> int:
 
 
 def get_db_path() -> Path:
-    env_path = os.environ.get("ZEROFACTORY_KANBAN_DB")
+    env_path = os.environ.get("ZEROFACTORY_DB")
     if env_path:
         return Path(env_path)
-    return Path.home() / ".hermes" / "zerofactory_kanban.db"
+    return Path.home() / ".hermes" / "zerofactory.db"
 
 
 def spawn_agent_worker(
@@ -80,7 +80,7 @@ def spawn_agent_worker(
     branch_name: Optional[str]
 ) -> tuple[Optional[int], Optional[str]]:
     """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
-    if os.environ.get("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"):
+    if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"):
         return None, None
 
     assignee = normalize_assignee(assignee)
@@ -596,7 +596,7 @@ def setup_worktree(
         else:
             assignee = norm_assignee
 
-    if os.environ.get("ZEROFACTORY_KANBAN_SKIP_GIT"):
+    if os.environ.get("ZEROFACTORY_SKIP_GIT"):
         return None
 
     # Resolve repo path
@@ -751,7 +751,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         dispatched += 1
 
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
-                if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_GIT"):
+                if not os.environ.get("ZEROFACTORY_SKIP_GIT"):
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug FROM tasks
                         WHERE (status IN ('blocked', 'done') AND (pr_url IS NULL OR pr_url = ''))

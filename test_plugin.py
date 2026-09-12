@@ -1,4 +1,4 @@
-"""Tests for Zero Factory Kanban plugin backend and database."""
+"""Tests for Zero Factory plugin backend and database."""
 
 import os
 import sys
@@ -8,9 +8,9 @@ from pathlib import Path
 
 # Set up test database path before importing
 test_dir = tempfile.TemporaryDirectory()
-os.environ["ZEROFACTORY_KANBAN_DB"] = str(Path(test_dir.name) / "test_kanban.db")
-os.environ["ZEROFACTORY_KANBAN_SKIP_GIT"] = "1"
-os.environ["ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"] = "1"
+os.environ["ZEROFACTORY_DB"] = str(Path(test_dir.name) / "test.db")
+os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
 
 from fastapi.testclient import TestClient
 from dashboard.plugin_api import (
@@ -23,11 +23,10 @@ from fastapi import FastAPI
 
 app = FastAPI()
 app.include_router(router, prefix="/api/plugins/zerofactory")
-app.include_router(router, prefix="/api/plugins/zerofactory-kanban")
 client = TestClient(app)
 
 
-class TestZeroFactoryKanban(unittest.TestCase):
+class TestZeroFactory(unittest.TestCase):
 
     def setUp(self):
         init_db()
@@ -140,12 +139,12 @@ class TestZeroFactoryKanban(unittest.TestCase):
 
     def test_06_fastapi_endpoints(self):
         # Test HTTP endpoints via TestClient
-        resp = client.get("/api/plugins/zerofactory-kanban/boards")
+        resp = client.get("/api/plugins/zerofactory/boards")
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["ok"])
 
         # Create task via HTTP
-        resp = client.post("/api/plugins/zerofactory-kanban/tasks", json={
+        resp = client.post("/api/plugins/zerofactory/tasks", json={
             "title": "HTTP Task",
             "priority": "P2",
             "status": "todo"
@@ -154,21 +153,21 @@ class TestZeroFactoryKanban(unittest.TestCase):
         t_id = resp.json()["id"]
 
         # Move task via HTTP
-        resp = client.post(f"/api/plugins/zerofactory-kanban/tasks/{t_id}/move", json={
+        resp = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/move", json={
             "status": "ready"
         })
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["status"], "ready")
 
         # Get stats
-        resp = client.get("/api/plugins/zerofactory-kanban/stats")
+        resp = client.get("/api/plugins/zerofactory/stats")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("columns", resp.json())
         self.assertIn("ready", resp.json()["columns"])
 
     def test_07_builtin_cron(self):
         # 1. Test GET /cron
-        resp = client.get("/api/plugins/zerofactory-kanban/cron")
+        resp = client.get("/api/plugins/zerofactory/cron")
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data["ok"])
@@ -184,13 +183,13 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertTrue(os.path.isdir(zf_job["workdir"]))
 
         # 2. Test POST /cron/sync
-        sync_resp = client.post("/api/plugins/zerofactory-kanban/cron/sync")
+        sync_resp = client.post("/api/plugins/zerofactory/cron/sync")
         self.assertEqual(sync_resp.status_code, 200)
         self.assertTrue(sync_resp.json()["ok"])
 
         # 3. Test dynamic board scanner lifecycle (creation & deletion)
         # Create board
-        res_cb = client.post("/api/plugins/zerofactory-kanban/boards", json={
+        res_cb = client.post("/api/plugins/zerofactory/boards", json={
             "slug": "test-dynamic-cron",
             "name": "Dynamic Cron Test",
             "git_url": "https://github.com/example/test-dynamic-cron.git"
@@ -198,16 +197,16 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(res_cb.status_code, 200)
 
         # Check job is now present
-        resp_after_create = client.get("/api/plugins/zerofactory-kanban/cron")
+        resp_after_create = client.get("/api/plugins/zerofactory/cron")
         ids_after_create = [j["id"] for j in resp_after_create.json()["jobs"]]
         self.assertIn("zero-factory-improvement-scanner-test-dynamic-cron", ids_after_create)
 
         # Delete board
-        res_del = client.delete("/api/plugins/zerofactory-kanban/boards/test-dynamic-cron")
+        res_del = client.delete("/api/plugins/zerofactory/boards/test-dynamic-cron")
         self.assertEqual(res_del.status_code, 200)
 
         # Check job is pruned
-        resp_after_del = client.get("/api/plugins/zerofactory-kanban/cron")
+        resp_after_del = client.get("/api/plugins/zerofactory/cron")
         ids_after_del = [j["id"] for j in resp_after_del.json()["jobs"]]
         self.assertNotIn("zero-factory-improvement-scanner-test-dynamic-cron", ids_after_del)
 
@@ -228,7 +227,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
         ))["id"]
 
         # Run dispatch with worker spawn skipped (simulated spawn)
-        os.environ["ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
         res = trigger_dispatch()
         self.assertTrue(res["ok"])
         self.assertGreaterEqual(res.get("dispatched", 0), 1)
@@ -268,11 +267,11 @@ class TestZeroFactoryKanban(unittest.TestCase):
         t_data_fail = get_task(t_id_fail)["task"]
         self.assertEqual(t_data_fail["status"], "blocked")
 
-        os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+        os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
 
     def test_09_session_progress_resolution(self):
         # 1. Create board with omitted optional description/git_url (tests None coalesce)
-        res_b = client.post("/api/plugins/zerofactory-kanban/boards", json={
+        res_b = client.post("/api/plugins/zerofactory/boards", json={
             "slug": "test-omitted-fields",
             "name": "Omitted Fields Board"
         })
@@ -287,7 +286,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
         ))["id"]
 
         # 3. Query session endpoint
-        res = client.get(f"/api/plugins/zerofactory-kanban/tasks/{t_id}/session")
+        res = client.get(f"/api/plugins/zerofactory/tasks/{t_id}/session")
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertTrue(data["ok"])
@@ -300,13 +299,13 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertIn("log_tail", prog)
 
         # 4. Verify get_task also includes session_progress
-        res_task = client.get(f"/api/plugins/zerofactory-kanban/tasks/{t_id}")
+        res_task = client.get(f"/api/plugins/zerofactory/tasks/{t_id}")
         self.assertEqual(res_task.status_code, 200)
         task_data = res_task.json()["task"]
         self.assertIn("session_progress", task_data)
 
         # 5. Verify list_tasks includes compact session_progress for running task
-        res_list = client.get("/api/plugins/zerofactory-kanban/tasks?status=running")
+        res_list = client.get("/api/plugins/zerofactory/tasks?status=running")
         self.assertEqual(res_list.status_code, 200)
         tasks = res_list.json()["tasks"]
         target = next((t for t in tasks if t["id"] == t_id), None)
@@ -383,10 +382,10 @@ class TestZeroFactoryKanban(unittest.TestCase):
         try:
             # Seed with an active board job and orphan board jobs
             initial_jobs = [
-                {"id": "zero-factory-task-queue-check", "origin": "zerofactory-kanban"},
-                {"id": "zero-factory-improvement-scanner-zerofactory", "origin": "zerofactory-kanban"},
-                {"id": "zero-factory-improvement-scanner-deleted-board", "origin": "zerofactory-kanban"},
-                {"id": "zero-factory-improvement-scanner-orphan-slug", "origin": "zerofactory-kanban"},
+                {"id": "zero-factory-task-queue-check", "origin": "zerofactory"},
+                {"id": "zero-factory-improvement-scanner-zerofactory", "origin": "zerofactory"},
+                {"id": "zero-factory-improvement-scanner-deleted-board", "origin": "zerofactory"},
+                {"id": "zero-factory-improvement-scanner-orphan-slug", "origin": "zerofactory"},
                 {"id": "custom-unrelated-cron-job"}
             ]
             save_jobs_to_file(test_jobs_path, initial_jobs)
@@ -395,11 +394,11 @@ class TestZeroFactoryKanban(unittest.TestCase):
             orig_targets = builtin_cron.get_target_jobs_files
             builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
 
-            os.environ.pop("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC", None)
+            os.environ.pop("ZEROFACTORY_SKIP_CRON_SYNC", None)
             try:
                 ensure_builtin_cron_jobs()
             finally:
-                os.environ["ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"] = "1"
+                os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
                 builtin_cron.get_target_jobs_files = orig_targets
 
             synced = load_jobs_from_file(test_jobs_path)
@@ -416,7 +415,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
     def test_12_delete_board_and_clear_cron(self):
         from builtin_cron import load_jobs_from_file, save_jobs_to_file
         # 1. Create a board to delete
-        res_create = client.post("/api/plugins/zerofactory-kanban/boards", json={
+        res_create = client.post("/api/plugins/zerofactory/boards", json={
             "slug": "board-to-remove",
             "name": "Board To Remove"
         })
@@ -427,8 +426,8 @@ class TestZeroFactoryKanban(unittest.TestCase):
             test_jobs_path = Path(tf.name)
         try:
             initial_jobs = [
-                {"id": "zero-factory-improvement-scanner-board-to-remove", "origin": "zerofactory-kanban"},
-                {"id": "zero-factory-improvement-scanner-zerofactory", "origin": "zerofactory-kanban"}
+                {"id": "zero-factory-improvement-scanner-board-to-remove", "origin": "zerofactory"},
+                {"id": "zero-factory-improvement-scanner-zerofactory", "origin": "zerofactory"}
             ]
             save_jobs_to_file(test_jobs_path, initial_jobs)
 
@@ -436,14 +435,14 @@ class TestZeroFactoryKanban(unittest.TestCase):
             orig_targets = builtin_cron.get_target_jobs_files
             builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
 
-            os.environ.pop("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC", None)
+            os.environ.pop("ZEROFACTORY_SKIP_CRON_SYNC", None)
             try:
                 # 3. Call DELETE /boards/board-to-remove
-                res_del = client.delete("/api/plugins/zerofactory-kanban/boards/board-to-remove")
+                res_del = client.delete("/api/plugins/zerofactory/boards/board-to-remove")
                 self.assertEqual(res_del.status_code, 200)
                 self.assertTrue(res_del.json()["ok"])
             finally:
-                os.environ["ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"] = "1"
+                os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
                 builtin_cron.get_target_jobs_files = orig_targets
 
             # 4. Verify board is removed from list_boards()
@@ -458,7 +457,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
             self.assertIn("zero-factory-improvement-scanner-zerofactory", synced_ids)
 
             # 6. Delete again returns 404
-            res_del_404 = client.delete("/api/plugins/zerofactory-kanban/boards/board-to-remove")
+            res_del_404 = client.delete("/api/plugins/zerofactory/boards/board-to-remove")
             self.assertEqual(res_del_404.status_code, 404)
         finally:
             if test_jobs_path.exists():
@@ -466,7 +465,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
 
     def test_13_update_board(self):
         # 1. Update existing board
-        res = client.patch("/api/plugins/zerofactory-kanban/boards/zerofactory", json={
+        res = client.patch("/api/plugins/zerofactory/boards/zerofactory", json={
             "name": "ZeroFactory AI Core",
             "description": "Updated description for AI core",
             "git_url": "https://github.com/hotcode-dev/zerofactory-core.git"
@@ -482,7 +481,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(zf["git_url"], "https://github.com/hotcode-dev/zerofactory-core.git")
 
         # 3. Update non-existent board returns 404
-        res_404 = client.patch("/api/plugins/zerofactory-kanban/boards/non-existent-slug", json={
+        res_404 = client.patch("/api/plugins/zerofactory/boards/non-existent-slug", json={
             "name": "Should Fail"
         })
         self.assertEqual(res_404.status_code, 404)
@@ -522,7 +521,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
             self.assertIn("timeout", target["stuck_reason"].lower())
 
             # 3. Test GET /health/stuck-tasks endpoint
-            res = client.get("/api/plugins/zerofactory-kanban/health/stuck-tasks")
+            res = client.get("/api/plugins/zerofactory/health/stuck-tasks")
             self.assertEqual(res.status_code, 200)
             data = res.json()
             self.assertTrue(data["ok"])
@@ -530,7 +529,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
             self.assertIn(t_id, stuck_ids)
 
             # 4. Test POST /tasks/{task_id}/reap endpoint
-            res_reap = client.post(f"/api/plugins/zerofactory-kanban/tasks/{t_id}/reap")
+            res_reap = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/reap")
             self.assertEqual(res_reap.status_code, 200)
             self.assertTrue(res_reap.json()["ok"])
 
@@ -603,13 +602,13 @@ class TestZeroFactoryKanban(unittest.TestCase):
                     "state": "scheduled",
                     "prompt": "Initial prompt",
                     "model": "test-model",
-                    "origin": "zerofactory-kanban"
+                    "origin": "zerofactory"
                 }
             ]
             save_jobs_to_file(test_jobs_path, initial_jobs)
 
             # 2. GET /cron
-            res = client.get("/api/plugins/zerofactory-kanban/cron")
+            res = client.get("/api/plugins/zerofactory/cron")
             self.assertEqual(res.status_code, 200)
             data = res.json()
             self.assertTrue(data["ok"])
@@ -625,19 +624,19 @@ class TestZeroFactoryKanban(unittest.TestCase):
 
             # 3. POST /cron/{job_id}/toggle
             initial_enabled = target_job["enabled"]
-            res_toggle = client.post("/api/plugins/zerofactory-kanban/cron/zero-factory-task-queue-check/toggle")
+            res_toggle = client.post("/api/plugins/zerofactory/cron/zero-factory-task-queue-check/toggle")
             self.assertEqual(res_toggle.status_code, 200)
             self.assertTrue(res_toggle.json()["ok"])
 
             # Verify toggled
-            res_after = client.get("/api/plugins/zerofactory-kanban/cron")
+            res_after = client.get("/api/plugins/zerofactory/cron")
             toggled_job = next(j for j in res_after.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")
             self.assertEqual(toggled_job["enabled"], not initial_enabled)
             self.assertEqual(toggled_job["state"], "paused" if initial_enabled else "scheduled")
 
             # 4. PUT /cron/{job_id} (update minutes and prompt)
             res_put = client.put(
-                "/api/plugins/zerofactory-kanban/cron/zero-factory-task-queue-check",
+                "/api/plugins/zerofactory/cron/zero-factory-task-queue-check",
                 json={
                     "minutes": 45,
                     "prompt": "Custom queue check prompt",
@@ -648,7 +647,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
             self.assertTrue(res_put.json()["ok"])
 
             # Verify in GET /cron
-            res_updated = client.get("/api/plugins/zerofactory-kanban/cron")
+            res_updated = client.get("/api/plugins/zerofactory/cron")
             updated_job = next(j for j in res_updated.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")
             self.assertEqual(updated_job["schedule"]["minutes"], 45)
             self.assertEqual(updated_job["schedule_display"], "every 45m")
@@ -664,11 +663,11 @@ class TestZeroFactoryKanban(unittest.TestCase):
             self.assertEqual(persisted_job["prompt"], "Custom queue check prompt")
 
             # 6. POST /cron/{job_id}/reset restores defaults
-            res_reset = client.post("/api/plugins/zerofactory-kanban/cron/zero-factory-task-queue-check/reset")
+            res_reset = client.post("/api/plugins/zerofactory/cron/zero-factory-task-queue-check/reset")
             self.assertEqual(res_reset.status_code, 200)
             self.assertTrue(res_reset.json()["ok"])
 
-            res_after_reset = client.get("/api/plugins/zerofactory-kanban/cron")
+            res_after_reset = client.get("/api/plugins/zerofactory/cron")
             reset_job = next(j for j in res_after_reset.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")
             self.assertEqual(reset_job["schedule"]["minutes"], 120)
             self.assertFalse(reset_job["custom_config"])
@@ -708,7 +707,6 @@ class TestZeroFactoryKanban(unittest.TestCase):
         # Verify symlinks in root plugins dir
         root_plugins = hermes_home / "plugins"
         self.assertTrue((root_plugins / "zerofactory").is_symlink())
-        self.assertTrue((root_plugins / "zerofactory-kanban").is_symlink())
 
     def test_20_worker_spawn_cmd_and_env(self):
         from dispatcher import spawn_agent_worker
@@ -720,7 +718,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
             mock_popen.return_value = mock_proc
 
             with patch.dict(os.environ, {}, clear=False):
-                os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
                 pid, sess = spawn_agent_worker(
                     task_id="zf-testspawn",
                     title="Test Worker Spawn",

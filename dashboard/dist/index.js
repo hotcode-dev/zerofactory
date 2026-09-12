@@ -632,7 +632,7 @@
 
     return React.createElement(
       "div",
-      { className: "zerofactory-kanban-root w-full" },
+      { className: "zerofactory-root w-full" },
       React.createElement(
         "div",
         { className: "max-w-[1600px] mx-auto p-4 md:p-6 space-y-6 text-slate-100 font-sans antialiased min-h-screen" },
@@ -2201,7 +2201,4 @@
 
   // Register in Hermes Plugins Registry
   window.__HERMES_PLUGINS__.register("zerofactory", ZeroFactoryKanbanApp);
-  try {
-    window.__HERMES_PLUGINS__.register("zerofactory-kanban", ZeroFactoryKanbanApp);
-  } catch (e) {}
 })();

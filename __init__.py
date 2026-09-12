@@ -346,9 +346,3 @@ def register(ctx: Any):
             setup_fn=cmd_setup,
             handler_fn=cmd_run
         )
-        ctx.register_cli_command(
-            name="zerofactory-kanban",
-            help="Zero Factory durable Kanban board management (alias for 'hermes zerofactory')",
-            setup_fn=cmd_setup,
-            handler_fn=cmd_run
-        )

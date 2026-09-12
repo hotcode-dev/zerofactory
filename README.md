@@ -69,13 +69,13 @@ Start the Hermes Gateway or dashboard:
 ```bash
 hermes dashboard
 ```
-Open **`http://localhost:9119/zerofactory-kanban`** in your browser to view your boards, drag-and-drop tasks, and track agent progress.
+Open **`http://localhost:9119/zerofactory`** in your browser to view your boards, drag-and-drop tasks, and track agent progress.
 
 ---
 
 ## CLI Management
 
-Zero Factory provides rich CLI commands under both `hermes zerofactory` and `hermes zerofactory-kanban`:
+Zero Factory provides rich CLI commands under `hermes zerofactory`:
 
 ```bash
 # Profile management
@@ -108,7 +108,37 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 ## Task Lifecycle & Workflow
 
 ```text
-Triage → Todo → Ready → Running → Blocked → Done
+       [Triage]
+          │
+          ▼
+        [Todo]  ◄─────── (Changes Requested by Reviewer)
+          │
+     (Human Approves)
+          │
+          ▼
+        [Ready]
+          │
+   (Dispatcher assigns isolated Git worktree & spawns zf-builder)
+          │
+          ▼
+       [Running]
+          │
+   (zf-builder finishes; Dispatcher creates GitHub PR)
+          │
+          ▼
+       [Ready]  (Assigned to zf-reviewer)
+          │
+   (zf-reviewer inspects PR diff & commits)
+          │
+       Approved?
+       ├── Yes ──► [Blocked] (Reason: Human Review & Merge)
+       │                         │
+       │                  (Merged on GitHub)
+       │                         │
+       │                         ▼
+       │                      [Done]
+       │
+       └── Changes Requested ──► [Todo] (Re-assigned to zf-builder)
 ```
 
 1. **Goal Ingestion (`Triage`)**: Submit a high-level goal or feature request via CLI or web UI.
@@ -144,7 +174,7 @@ zerofactory/
 ├── builtin_cron.py              # Periodic scanner & reporting engine
 ├── profile_manager.py           # Auto-provisioning for zf-* profiles
 ├── test_plugin.py               # Comprehensive automated test suite
-├── dashboard/                   # Embedded web dashboard UI (/zerofactory-kanban)
+├── dashboard/                   # Embedded web dashboard UI (/zerofactory)
 │   ├── manifest.json            # Gateway route declaration
 │   ├── plugin_api.py            # FastAPI REST backend
 │   └── dist/

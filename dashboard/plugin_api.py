@@ -1,6 +1,6 @@
-"""Zero Factory Kanban — Backend API Routes & Durable SQLite Layer.
+"""Zero Factory — Backend API Routes & Durable SQLite Layer.
 
-Mounted at /api/plugins/zerofactory-kanban/ in the Hermes Dashboard.
+Mounted at /api/plugins/zerofactory/ in the Hermes Dashboard.
 Provides a durable, rock-solid, multi-board task management engine specifically
 crafted for Zero Factory multi-agent coordination.
 """
@@ -28,10 +28,10 @@ router = APIRouter()
 
 # --- Database Setup & Connection ---------------------------------------------
 
-DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory_kanban.db"
+DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
 
 def get_db_path() -> Path:
-    override = os.environ.get("ZEROFACTORY_KANBAN_DB")
+    override = os.environ.get("ZEROFACTORY_DB")
     if override:
         return Path(override)
     return DEFAULT_DB_PATH
@@ -708,7 +708,7 @@ def create_board(req: BoardCreate):
         conn.commit()
 
     # Sync builtin cron jobs so new board gets a dedicated scanner cron job
-    if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
+    if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         ensure_cron, *_ = _get_cron_helpers()
         if ensure_cron:
             try:
@@ -750,7 +750,7 @@ def update_board(slug: str, req: BoardUpdate):
             conn.commit()
 
     # Sync builtin cron jobs so updated board properties are reflected
-    if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
+    if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         ensure_cron, *_ = _get_cron_helpers()
         if ensure_cron:
             try:
@@ -772,7 +772,7 @@ def delete_board(slug: str):
         conn.commit()
 
     # Explicitly clear board's scanner cron job and sync remaining builtin cron jobs
-    if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
+    if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         ensure_cron, prune_cron, *_ = _get_cron_helpers()
         if prune_cron:
             try:

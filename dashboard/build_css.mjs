@@ -27,13 +27,13 @@ raw = raw.replace(/@keyframes[\s\S]*?\n}/g, (m) => {
 });
 
 // 3. Replace global root/host selectors with scoped selector
-raw = raw.replace(/:root,\s*:host/g, ':scope, .zerofactory-kanban-root');
+raw = raw.replace(/:root,\s*:host/g, ':scope, .zerofactory-root');
 
-// 4. Wrap everything in @scope (.zerofactory-kanban-root)
-const scopedCss = `/*! Zero Factory Kanban Scoped Stylesheet - Tailwind CSS v4 */
+// 4. Wrap everything in @scope (.zerofactory-root)
+const scopedCss = `/*! Zero Factory Scoped Stylesheet - Tailwind CSS v4 */
 ${keyframes.join('\n\n')}
 
-@scope (.zerofactory-kanban-root) {
+@scope (.zerofactory-root) {
 ${raw.trim()}
 }
 `;
