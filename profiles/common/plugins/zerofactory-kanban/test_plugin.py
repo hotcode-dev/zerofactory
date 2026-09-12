@@ -1,10 +1,13 @@
 """Tests for Zero Factory Kanban plugin backend and database."""
 
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
+from unittest import mock
 
 # Set up test database path before importing
 test_dir = tempfile.TemporaryDirectory()
@@ -13,11 +16,13 @@ os.environ["ZEROFACTORY_KANBAN_SKIP_GIT"] = "1"
 os.environ["ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"] = "1"
 
 from fastapi.testclient import TestClient
+from dashboard import plugin_api
 from dashboard.plugin_api import (
     router, init_db, get_db_conn,
     BoardCreate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
     list_boards, create_board, list_tasks, create_task, get_task, get_task_session, update_task, move_task,
-    add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch
+    add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch,
+    resolve_task_session_progress, get_profile_state_db
 )
 from fastapi import FastAPI
 
@@ -488,6 +493,142 @@ class TestZeroFactoryKanban(unittest.TestCase):
             "name": "Should Fail"
         })
         self.assertEqual(res_404.status_code, 404)
+
+    def test_14_list_boards_batched_counts_multi_board(self):
+        """list_boards returns correct per-board task_count / running_count across
+        multiple boards, and the counts come from a constant (board-count-independent)
+        number of COUNT queries (two batched GROUP BYs), not 2-per-board round-trips."""
+        # Build a multi-board fixture with a known mix of statuses.
+        create_board(BoardCreate(slug="pf-board-a", name="Board A"))
+        create_board(BoardCreate(slug="pf-board-b", name="Board B"))
+        create_board(BoardCreate(slug="pf-board-c", name="Board C"))
+
+        # Seed a deterministic number of tasks per board/status.
+        # Board A: 2 running + 1 done = 3
+        for st in ("running", "running", "done"):
+            create_task(TaskCreate(title=f"A {st}", board_slug="pf-board-a", status=st, assignee="builder"))
+        # Board B: 1 running + 2 todo = 3
+        for st in ("running", "todo", "todo"):
+            create_task(TaskCreate(title=f"B {st}", board_slug="pf-board-b", status=st, assignee="builder"))
+        # Board C: 0 running, 2 triage = 2
+        for st in ("triage", "triage"):
+            create_task(TaskCreate(title=f"C {st}", board_slug="pf-board-c", status=st, assignee="builder"))
+
+        # Count the COUNT queries issued by list_boards through a counting
+        # connection wrapper (sqlite3.Cursor is immutable, so patch the
+        # connection factory instead). The total must be board-count-independent.
+        count_queries = []
+        real_get_db_conn = plugin_api.get_db_conn
+
+        class _CountingConn:
+            def __init__(self, conn):
+                self._conn = conn
+                self.row_factory = conn.row_factory
+
+            def execute(self, *args, **kwargs):
+                if isinstance(args[0], str) and "COUNT(" in args[0]:
+                    count_queries.append(args[0])
+                return self._conn.execute(*args, **kwargs)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                # Delegate to the real connection; return False so exceptions
+                # still propagate (init_db relies on the `with conn:` block).
+                return False
+
+            def __getattr__(self, name):
+                return getattr(self._conn, name)
+
+        @contextmanager
+        def counting_get_db_conn():
+            with real_get_db_conn() as conn:
+                yield _CountingConn(conn)
+
+        with mock.patch.object(plugin_api, "get_db_conn", counting_get_db_conn):
+            res = list_boards()
+
+        self.assertTrue(res["ok"])
+        by_slug = {b["slug"]: b for b in res["boards"]}
+        self.assertEqual(by_slug["pf-board-a"]["task_count"], 3)
+        self.assertEqual(by_slug["pf-board-a"]["running_count"], 2)
+        self.assertEqual(by_slug["pf-board-b"]["task_count"], 3)
+        self.assertEqual(by_slug["pf-board-b"]["running_count"], 1)
+        self.assertEqual(by_slug["pf-board-c"]["task_count"], 2)
+        self.assertEqual(by_slug["pf-board-c"]["running_count"], 0)
+
+        # Constant number of COUNT queries regardless of board count:
+        # exactly 2 batched GROUP BY queries (one total, one running),
+        # NOT 2 * (number of boards) round-trips.
+        self.assertEqual(len(count_queries), 2)
+        self.assertTrue(any("GROUP BY board_slug" in q for q in count_queries))
+
+    def test_15_list_tasks_reuses_state_db_connection(self):
+        """list_tasks opens at most ONE read-only state.db connection per assignee
+        (not one per running task) when resolving session progress for a batch of
+        running tasks, and live progress is still attached to each running task."""
+        # A real, minimal read-only state.db with the tables the resolver queries.
+        state_dir = tempfile.TemporaryDirectory()
+        state_db = Path(state_dir.name) / "state.db"
+        try:
+            sc = sqlite3.connect(str(state_db))
+            sc.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, model TEXT, started_at REAL, ended_at REAL, last_activity_at REAL, last_activity_description TEXT)")
+            sc.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, tool_name TEXT, tool_calls TEXT, content TEXT, reasoning_content TEXT, timestamp REAL)")
+            sc.execute("INSERT INTO sessions (id, title, model, started_at) VALUES ('sess-pf-1', 'pf progress task', 'test-model', 1.0)")
+            sc.execute("INSERT INTO messages (session_id, role, content, timestamp) VALUES ('sess-pf-1', 'assistant', 'hello', 1.0)")
+            sc.execute("INSERT INTO messages (session_id, role, content, timestamp) VALUES ('sess-pf-1', 'tool', 'out', 1.1)")
+            sc.commit()
+            sc.close()
+
+            K = 5  # running tasks all sharing one assignee
+            for i in range(K):
+                t_id = create_task(TaskCreate(
+                    title=f"Running perf task {i}",
+                    board_slug="pf-board-a",
+                    status="running",
+                    assignee="builder",
+                ))["id"]
+                update_task(t_id, TaskUpdate(metadata={"session_id": "sess-pf-1"}))
+
+            opens = []
+
+            # Capture the original opener to build real connections from it.
+            with mock.patch.object(plugin_api, "get_profile_state_db", return_value=state_db), \
+                 mock.patch.object(plugin_api, "_open_readonly_state_conn",
+                                   side_effect=lambda p: (opens.append(p), _real_open(p))[1]):
+                res = list_tasks(status="running", assignee="builder", board="pf-board-a")
+
+            self.assertTrue(res["ok"])
+            tasks = res["tasks"]
+            # At least our K fixture tasks are present (the board may also hold
+            # leftover running tasks from earlier tests in the same process).
+            self.assertGreaterEqual(len(tasks), K)
+
+            # At most ONE connection opened for the shared assignee — NOT one per
+            # running task. The core assertion of the hotspot fix.
+            self.assertEqual(len(opens), 1)
+            self.assertLess(len(opens), K)
+
+            # Live progress is still attached to each running task (contract preserved).
+            for t in tasks:
+                self.assertIn("session_progress", t)
+                self.assertEqual(t["session_progress"]["session_id"], "sess-pf-1")
+                self.assertEqual(t["session_progress"]["turn_count"], 1)
+                self.assertEqual(t["session_progress"]["message_count"], 2)
+        finally:
+            state_dir.cleanup()
+
+
+def _real_open(state_db_path):
+    """Faithful copy of the plugin's read-only opener, used by the connection
+    count test to produce real connections without re-triggering the mock."""
+    resolved = state_db_path.resolve()
+    uri = resolved.as_uri() + "?mode=ro"
+    try:
+        return sqlite3.connect(uri, uri=True, timeout=5.0)
+    except Exception:
+        return sqlite3.connect(str(resolved), timeout=5.0)
 
 
 if __name__ == "__main__":
