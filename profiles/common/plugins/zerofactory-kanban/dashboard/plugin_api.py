@@ -508,6 +508,21 @@ def create_board(req: BoardCreate):
             (slug, req.name.strip(), (req.description or "").strip(), (req.git_url or "").strip(), now, now)
         )
         conn.commit()
+
+    # Sync builtin cron jobs so new board gets a dedicated scanner cron job
+    try:
+        from ..builtin_cron import ensure_builtin_cron_jobs
+    except Exception:
+        try:
+            from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
+        except Exception:
+            ensure_builtin_cron_jobs = None
+    if ensure_builtin_cron_jobs:
+        try:
+            ensure_builtin_cron_jobs()
+        except Exception as e:
+            _log.warning("Failed to sync cron jobs after creating board %s: %s", slug, e)
+
     return {"ok": True, "slug": slug}
 
 @router.delete("/boards/{slug}")
@@ -520,6 +535,21 @@ def delete_board(slug: str):
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
         conn.commit()
+
+    # Sync builtin cron jobs so deleted board's scanner job is pruned
+    try:
+        from ..builtin_cron import ensure_builtin_cron_jobs
+    except Exception:
+        try:
+            from builtin_cron import ensure_builtin_cron_jobs  # type: ignore
+        except Exception:
+            ensure_builtin_cron_jobs = None
+    if ensure_builtin_cron_jobs:
+        try:
+            ensure_builtin_cron_jobs()
+        except Exception as e:
+            _log.warning("Failed to sync cron jobs after deleting board %s: %s", slug, e)
+
     return {"ok": True, "deleted": slug}
 
 

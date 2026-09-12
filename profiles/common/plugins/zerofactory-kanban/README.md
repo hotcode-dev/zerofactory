@@ -162,7 +162,7 @@ hermes zerofactory-kanban dispatch
 # Built-in Cron Management
 hermes zerofactory-kanban cron list
 hermes zerofactory-kanban cron sync
-hermes zerofactory-kanban cron run zero-factory-improvement-scanner
+hermes zerofactory-kanban cron run zero-factory-task-queue-check
 ```
 
 ---

@@ -110,7 +110,7 @@ Zero Factory periodic maintenance, health checks, and scanning are natively buil
 Built-in jobs include:
 - `zero-factory-task-queue-check` (every 120m): Checks for bottlenecked or stuck tasks and generates queue health reports.
 - `zero-factory-daily-report` (`0 9 * * *`): Aggregates throughput, completions, and bottlenecks into a daily summary report.
-- `zero-factory-improvement-scanner` (every 60m): Scans active board repositories for improvements and creates backlog tasks for the Builder.
+- `zero-factory-improvement-scanner-{board_slug}` (every 60m per board): Dedicated scanner cron job for each dashboard/board. Its `workdir` is set directly to the local repository, executing focused scans and creating backlog tasks for the Builder scoped to that board.
 
 The plugin automatically synchronizes these jobs into Hermes's cron registry on startup and schedules them in the background. You can inspect or trigger them anytime via CLI:
 ```bash
@@ -199,8 +199,8 @@ hermes -p orchestrator -m "Archive all 'done' tasks from last month"
 Zero Factory automatically discovers and manages multiple projects. To add a new codebase to the factory:
 
 1. Open the Hermes web UI and navigate to the **Zero Factory Kanban** board tab (`/zerofactory-kanban`) to create a new board (e.g., `zerohub`).
-2. Add the remote Git URL of the repository into the **Description** field of the new board.
-3. The `zero-factory-improvement-scanner` background cron job will automatically detect the new board, clone the repository into `~/git/` if it doesn't already exist, and begin scanning it for improvements.
+2. Provide the remote Git URL of the repository in the **Git URL** (or Description) field of the new board.
+3. A dedicated `zero-factory-improvement-scanner-<slug>` background cron job is automatically registered with its `workdir` pointed directly to the repository in `~/git/`, periodically scanning for improvements and creating backlog tasks for that board.
 
 
 ## Setup Guide

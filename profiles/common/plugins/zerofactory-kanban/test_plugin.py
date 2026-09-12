@@ -173,12 +173,41 @@ class TestZeroFactoryKanban(unittest.TestCase):
         job_ids = [j["id"] for j in data["jobs"]]
         self.assertIn("zero-factory-task-queue-check", job_ids)
         self.assertIn("zero-factory-daily-report", job_ids)
-        self.assertIn("zero-factory-improvement-scanner", job_ids)
+        self.assertIn("zero-factory-improvement-scanner-zerofactory", job_ids)
+        self.assertTrue(any(j.startswith("zero-factory-improvement-scanner") for j in job_ids))
+
+        # Verify workdir is resolved for zerofactory board
+        zf_job = next(j for j in data["jobs"] if j["id"] == "zero-factory-improvement-scanner-zerofactory")
+        self.assertIsNotNone(zf_job.get("workdir"))
+        self.assertTrue(os.path.isdir(zf_job["workdir"]))
 
         # 2. Test POST /cron/sync
         sync_resp = client.post("/api/plugins/zerofactory-kanban/cron/sync")
         self.assertEqual(sync_resp.status_code, 200)
         self.assertTrue(sync_resp.json()["ok"])
+
+        # 3. Test dynamic board scanner lifecycle (creation & deletion)
+        # Create board
+        res_cb = client.post("/api/plugins/zerofactory-kanban/boards", json={
+            "slug": "test-dynamic-cron",
+            "name": "Dynamic Cron Test",
+            "git_url": "https://github.com/example/test-dynamic-cron.git"
+        })
+        self.assertEqual(res_cb.status_code, 200)
+
+        # Check job is now present
+        resp_after_create = client.get("/api/plugins/zerofactory-kanban/cron")
+        ids_after_create = [j["id"] for j in resp_after_create.json()["jobs"]]
+        self.assertIn("zero-factory-improvement-scanner-test-dynamic-cron", ids_after_create)
+
+        # Delete board
+        res_del = client.delete("/api/plugins/zerofactory-kanban/boards/test-dynamic-cron")
+        self.assertEqual(res_del.status_code, 200)
+
+        # Check job is pruned
+        resp_after_del = client.get("/api/plugins/zerofactory-kanban/cron")
+        ids_after_del = [j["id"] for j in resp_after_del.json()["jobs"]]
+        self.assertNotIn("zero-factory-improvement-scanner-test-dynamic-cron", ids_after_del)
 
     def test_08_dispatcher_worker_execution(self):
         try:
