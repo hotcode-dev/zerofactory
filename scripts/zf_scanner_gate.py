@@ -124,6 +124,15 @@ def run_scanner_gate() -> int:
         print(json.dumps({"wakeAgent": True}))
         return 0
 
+    # Fetch existing task titles to prevent duplicate suggestions
+    existing_tasks = get_existing_task_titles(board_slug)
+
+    # Check for forced scan
+    force_scan = (
+        "--force" in sys.argv
+        or os.environ.get("ZEROFACTORY_FORCE_SCAN", "").lower() in ("1", "true", "yes")
+    )
+
     state = load_state()
     board_state = state.get(board_slug, {})
     last_sha = board_state.get("last_scanned_sha")
@@ -132,14 +141,18 @@ def run_scanner_gate() -> int:
     is_same_commit = (head_sha == last_sha)
     is_same_status = (status_porcelain == last_status)
 
-    # If HEAD is unchanged and working tree status is unchanged, suppress LLM execution
-    if is_same_commit and is_same_status:
-        # Output silent wake-gate signal
-        print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} has had no new commits or working tree modifications since last check.")
-        print(json.dumps({"wakeAgent": False}))
-        return 0
+    # Only suppress if HEAD and working tree are unchanged AND the board already has open tasks.
+    # If the board has 0 open tasks, we MUST wake the agent for a baseline codebase scan!
+    if is_same_commit and is_same_status and not force_scan:
+        if len(existing_tasks) > 0:
+            print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} has had no new commits or working tree modifications since last check.")
+            print(f"Active tasks ({len(existing_tasks)}) already exist on board '{board_slug}'.")
+            print(json.dumps({"wakeAgent": False}))
+            return 0
+        else:
+            print(f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has 0 active tasks. Initiating codebase inspection.")
 
-    # Genuine changes detected! Update state
+    # Changes detected or baseline scan required! Update state
     board_state["last_scanned_sha"] = head_sha
     board_state["last_status"] = status_porcelain
     state[board_slug] = board_state
@@ -166,8 +179,6 @@ def run_scanner_gate() -> int:
     todo_matches = _run_cmd(["git", "grep", "-n", "-E", "TODO|FIXME|HACK", "--", "*.py", "*.ts", "*.js", "*.go", "*.rs"], cwd=repo_dir)
     todo_sample = "\n".join(todo_matches.splitlines()[:15]) if todo_matches else "None"
 
-    # Fetch existing task titles to prevent duplicate suggestions
-    existing_tasks = get_existing_task_titles(board_slug)
     tasks_block = "\n".join([f"- {t}" for t in existing_tasks]) if existing_tasks else "(No active tasks)"
 
     print("### 🔍 Pre-Screen Intelligence Package (Zero-Token Ingested)")
@@ -193,8 +204,18 @@ def run_scanner_gate() -> int:
     print("#### Currently Open Kanban Tasks (DO NOT DUPLICATE THESE):")
     print(tasks_block)
     print()
-    print("---")
-    print("Instructions for Agent: Review the above pre-computed diff and tasks. If a genuine bug, refactoring, or improvement is warranted, create AT MOST 1 task in Kanban and finish. Do NOT run redundant git exploration commands.")
+
+    if not existing_tasks:
+        candidate_files = _run_cmd(["git", "ls-files", "*.py", "*.ts", "*.js", "*.mjs"], cwd=repo_dir)
+        files_sample = "\n".join([f"- `{f}`" for f in candidate_files.splitlines()[:20]]) if candidate_files else "(None)"
+        print("#### Baseline Codebase Source Files to Inspect:")
+        print(files_sample)
+        print()
+        print("---")
+        print(f"Instructions for Agent: Baseline scan for board '{board_slug}' (0 active tasks). Inspect candidate source files above for genuine bugs, missing tests, or error-handling debt. Create exactly 1 task using `hermes zerofactory create \"<issue title>\" --description \"<details>\" --board \"{board_slug}\" --files \"<files>\" --category \"<category>\" --priority P0 --status todo --assignee zf-builder`.")
+    else:
+        print("---")
+        print("Instructions for Agent: Review the above pre-computed diff and tasks. If a genuine bug, refactoring, or improvement is warranted, create AT MOST 1 task in Kanban and finish. Do NOT run redundant git exploration commands.")
     print()
 
     # Emit wakeAgent: true to invoke LLM with this rich context

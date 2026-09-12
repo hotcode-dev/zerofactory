@@ -350,7 +350,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "base_url": eff_base_url,
             "script": "zf_scanner_gate.py",
             "no_agent": False,
-            "context_from": ["self"],
+            "context_from": None,
             "continuity": True,
             "schedule": {
                 "kind": "interval",
