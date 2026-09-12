@@ -26,6 +26,17 @@ _log = logging.getLogger("zerofactory.kanban.dispatcher")
 MAX_ACTIVE_TASKS = 3
 MAX_CONCURRENT_WORKERS = int(os.environ.get("ZEROFACTORY_MAX_RUNNING_WORKERS", "1"))
 DISPATCH_INTERVAL_SECONDS = 30
+
+# Shared parent-dependency gate: a task row is only selectable when it has no
+# parent links, or every linked parent task is already 'done'. Used by the
+# unblock (step 1), promote (step 2) and spawn (step 2.5) lifecycle queries so
+# no task is ever promoted or dispatched before its prerequisites are done.
+_NO_UNFINISHED_PARENTS = (
+    "AND NOT EXISTS ("
+    "SELECT 1 FROM task_links tl JOIN tasks pt ON pt.id = tl.parent_id "
+    "WHERE tl.child_id = tasks.id AND pt.status != 'done'"
+    ")"
+)
 _dispatcher_thread: Optional[threading.Thread] = None
 _dispatcher_lock = threading.Lock()
 _active_workers: Dict[str, subprocess.Popen] = {}
@@ -290,15 +301,11 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 cursor = conn.cursor()
 
                 # 1. Unblock tasks whose parent dependencies are all done
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT id, title FROM tasks
                     WHERE status = 'blocked'
                     AND id IN (SELECT child_id FROM task_links)
-                    AND NOT EXISTS (
-                        SELECT 1 FROM task_links tl
-                        JOIN tasks pt ON pt.id = tl.parent_id
-                        WHERE tl.child_id = tasks.id AND pt.status != 'done'
-                    )
+                    {_NO_UNFINISHED_PARENTS}
                 """)
                 for row in cursor.fetchall():
                     cursor.execute("UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = ?", (now, row["id"]))
@@ -314,9 +321,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                 if active_count < MAX_ACTIVE_TASKS:
                     limit = MAX_ACTIVE_TASKS - active_count
-                    cursor.execute("""
+                    cursor.execute(f"""
                         SELECT id, title, workspace_path, assignee, tenant FROM tasks
-                        WHERE status = 'todo' OR (status = 'ready' AND assignee = 'unassigned')
+                        WHERE (status = 'todo' OR (status = 'ready' AND assignee = 'unassigned'))
+                        {_NO_UNFINISHED_PARENTS}
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END
                         LIMIT ?
                     """, (limit,))
@@ -342,9 +350,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                 if running_count < MAX_CONCURRENT_WORKERS:
                     spawn_limit = MAX_CONCURRENT_WORKERS - running_count
-                    cursor.execute("""
+                    cursor.execute(f"""
                         SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata FROM tasks
                         WHERE status = 'ready' AND assignee != 'reviewer'
+                        {_NO_UNFINISHED_PARENTS}
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
                         LIMIT ?
                     """, (spawn_limit,))

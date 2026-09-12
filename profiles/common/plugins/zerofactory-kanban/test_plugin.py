@@ -489,6 +489,104 @@ class TestZeroFactoryKanban(unittest.TestCase):
         })
         self.assertEqual(res_404.status_code, 404)
 
+    def test_14_dispatcher_parent_gate_on_promote_and_spawn(self):
+        """Regression: dispatcher must not promote/spawn a task whose parent
+        dependencies are not all 'done' (P0: promote/spawn ignored parent links)."""
+        # Ensure no leftover running tasks occupy the single worker slot
+        with get_db_conn() as conn:
+            conn.execute("UPDATE tasks SET status = 'done' WHERE status = 'running'")
+            conn.commit()
+
+        # Parent stays 'todo'; reviewer assignee keeps it out of the spawn
+        # query (assignee != 'reviewer') so the worker slot stays free.
+        parent_id = create_task(TaskCreate(
+            title="Parent: schema migration",
+            status="todo",
+            priority="P1",
+            assignee="reviewer",
+        ))["id"]
+        child_id = create_task(TaskCreate(
+            title="Child: feature depending on schema",
+            status="todo",
+            priority="P1",
+            assignee="builder",
+        ))["id"]
+        link_res = add_dependency(child_id, DependencyLink(parent_id=parent_id, child_id=child_id))
+        self.assertTrue(link_res["ok"])
+
+        # Independent 'todo' task (no parents) — must still promote normally
+        indep_id = create_task(TaskCreate(
+            title="Independent task without parents",
+            status="todo",
+            priority="P1",
+            assignee="builder",
+        ))["id"]
+
+        os.environ["ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"] = "1"
+        try:
+            # (a) Parent not done -> child must NOT be promoted or dispatched
+            res = trigger_dispatch()
+            self.assertTrue(res["ok"])
+            child_after_first = get_task(child_id)["task"]
+            self.assertEqual(child_after_first["status"], "todo")
+            child_actions = [a["action"] for a in child_after_first["activity"]]
+            self.assertNotIn("promote", child_actions)
+            self.assertNotIn("start", child_actions)
+
+            # Parent (no parents of its own) is promoted as normal
+            self.assertEqual(get_task(parent_id)["task"]["status"], "ready")
+
+            # (c) Independent 'todo' task with no parents is promoted (no
+            # over-restriction) — activity log shows the promote action, and it
+            # was dispatched to 'running' in the same cycle (spawn skipped)
+            indep_after_first = get_task(indep_id)["task"]
+            indep_actions = [a["action"] for a in indep_after_first["activity"]]
+            self.assertIn("promote", indep_actions)
+            self.assertEqual(indep_after_first["status"], "running")
+        finally:
+            os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+
+        # (b) Parent done -> child is now promotable and dispatchable
+        move_task(parent_id, TaskMove(status="done"))
+        os.environ["ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"] = "1"
+        try:
+            res2 = trigger_dispatch()
+            self.assertTrue(res2["ok"])
+            child_after_second = get_task(child_id)["task"]
+            # Promoted to ready by this cycle (parent done, gate passes)
+            child_actions = [a["action"] for a in child_after_second["activity"]]
+            self.assertIn("promote", child_actions)
+            self.assertEqual(child_after_second["status"], "ready")
+
+            # And dispatched to 'running' by the following cycle (the
+            # independent task from part (c) is reaped away by now)
+            move_task(indep_id, TaskMove(status="done"))
+            res3 = trigger_dispatch()
+            self.assertTrue(res3["ok"])
+            self.assertEqual(get_task(child_id)["task"]["status"], "running")
+        finally:
+            os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+
+        # (d) Spawn gate: a 'ready' child with an UNFINISHED parent must not be
+        # dispatched to running (step 2.5 parent gate). Slot is free and the
+        # child is spawn-eligible (builder, ready) — only the gate stops it.
+        start_count_before = sum(
+            1 for a in get_task(child_id)["task"]["activity"] if a["action"] == "start"
+        )
+        move_task(child_id, TaskMove(status="ready"))
+        move_task(parent_id, TaskMove(status="running"))  # parent no longer done
+        os.environ["ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"] = "1"
+        try:
+            res4 = trigger_dispatch()
+            self.assertTrue(res4["ok"])
+            self.assertEqual(get_task(child_id)["task"]["status"], "ready")
+            start_count_after = sum(
+                1 for a in get_task(child_id)["task"]["activity"] if a["action"] == "start"
+            )
+            self.assertEqual(start_count_after, start_count_before)
+        finally:
+            os.environ.pop("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN", None)
+
 
 if __name__ == "__main__":
     unittest.main()
