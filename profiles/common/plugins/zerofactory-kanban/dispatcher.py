@@ -10,10 +10,12 @@ Handles:
 
 from __future__ import annotations
 
+from contextlib import closing
 import json
 import logging
 import os
 import re
+import signal
 import sqlite3
 import subprocess
 import threading
@@ -25,10 +27,22 @@ _log = logging.getLogger("zerofactory.kanban.dispatcher")
 
 MAX_ACTIVE_TASKS = 3
 MAX_CONCURRENT_WORKERS = int(os.environ.get("ZEROFACTORY_MAX_RUNNING_WORKERS", "1"))
+DEFAULT_TASK_TIMEOUT_SECONDS = 3600  # 1 hour max running time
+DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 900  # 15 mins with no log/session update
 DISPATCH_INTERVAL_SECONDS = 30
 _dispatcher_thread: Optional[threading.Thread] = None
 _dispatcher_lock = threading.Lock()
 _active_workers: Dict[str, subprocess.Popen] = {}
+
+
+def get_task_timeout_seconds() -> int:
+    """Return maximum allowed running duration before worker is considered stuck."""
+    return int(os.environ.get("ZEROFACTORY_TASK_TIMEOUT_SECONDS", str(DEFAULT_TASK_TIMEOUT_SECONDS)))
+
+
+def get_inactivity_timeout_seconds() -> int:
+    """Return maximum allowed inactivity before worker is considered hung."""
+    return int(os.environ.get("ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS", str(DEFAULT_INACTIVITY_TIMEOUT_SECONDS)))
 
 
 def get_db_path() -> Path:
@@ -102,6 +116,7 @@ def spawn_agent_worker(
 
     try:
         log_f = open(log_file_path, "ab")
+        spawn_time = time.time()
         proc = subprocess.Popen(
             cmd,
             cwd=str(workdir),
@@ -115,7 +130,7 @@ def spawn_agent_worker(
         _active_workers[task_id] = proc
         _log.info("Spawned %s worker for task %s (PID: %d, cwd: %s)", assignee, task_id, proc.pid, workdir)
 
-        # Detect session_id from profile's state.db
+        # Detect session_id from profile's state.db (only if started around this spawn)
         session_id = None
         state_db_path = Path.home() / ".hermes" / "profiles" / assignee / "state.db"
         if not state_db_path.exists():
@@ -139,7 +154,10 @@ def spawn_agent_worker(
                     s_conn = sqlite3.connect(str(resolved_state), timeout=2.0)
                 with closing(s_conn) as s_conn:
                     s_cur = s_conn.cursor()
-                    s_cur.execute("SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1")
+                    s_cur.execute(
+                        "SELECT id FROM sessions WHERE started_at >= ? ORDER BY started_at DESC LIMIT 1",
+                        (spawn_time - 2.0,)
+                    )
                     s_row = s_cur.fetchone()
                     if s_row:
                         session_id = s_row[0]
@@ -152,11 +170,38 @@ def spawn_agent_worker(
         return None, None
 
 
+def terminate_worker_process(proc: Optional[subprocess.Popen], pid: Optional[int]) -> None:
+    """Safely terminate a worker process with SIGTERM then SIGKILL."""
+    if proc is not None:
+        try:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        except Exception:
+            pass
+    elif pid:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            time.sleep(0.5)
+            try:
+                os.kill(pid, 0)
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+        except OSError:
+            pass
+
+
 def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
-    """Check running tasks and reap finished/crashed worker processes."""
-    cursor.execute("SELECT id, title, metadata FROM tasks WHERE status = 'running'")
+    """Check running tasks and reap finished, crashed, or stuck worker processes."""
+    cursor.execute("SELECT id, title, metadata, updated_at, created_at FROM tasks WHERE status = 'running'")
     running_rows = cursor.fetchall()
     reaped = 0
+
+    task_timeout = get_task_timeout_seconds()
+    inactivity_timeout = get_inactivity_timeout_seconds()
 
     for row in running_rows:
         task_id = str(row["id"])
@@ -188,6 +233,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     )
                     _log.warning("Worker for task %s failed with exit code %d; moved to blocked", task_id, retcode)
                 reaped += 1
+                continue
         elif pid:
             try:
                 os.kill(pid, 0)
@@ -199,8 +245,172 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 )
                 _log.warning("Worker PID %d for task %s not found; moved to blocked", pid, task_id)
                 reaped += 1
+                continue
+
+        # Check if running task exceeded overall timeout or inactivity threshold
+        started_at = meta.get("started_at") or row["updated_at"] or row["created_at"] or now
+        running_time = max(0, now - int(started_at))
+
+        is_stuck = False
+        stuck_reason = ""
+
+        if running_time > task_timeout:
+            is_stuck = True
+            stuck_reason = f"Worker exceeded running timeout ({running_time}s > {task_timeout}s)"
+        else:
+            idle_time = None
+            log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
+            if log_path.exists():
+                try:
+                    idle_time = max(0, now - int(log_path.stat().st_mtime))
+                except Exception:
+                    pass
+            if idle_time is not None and idle_time > inactivity_timeout:
+                is_stuck = True
+                stuck_reason = f"Worker inactive with no updates for {idle_time}s (limit {inactivity_timeout}s)"
+
+        if is_stuck:
+            terminate_worker_process(proc, pid)
+            _active_workers.pop(task_id, None)
+            cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, task_id))
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
+                (task_id, stuck_reason, now)
+            )
+            _log.warning("Task %s reaped due to timeout/inactivity: %s; moved to blocked", task_id, stuck_reason)
+            reaped += 1
 
     return reaped
+
+
+def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Inspect all currently running tasks and return health & stuckness metrics."""
+    close_conn = False
+    if cursor is None:
+        if db_path is None:
+            db_path = get_db_path()
+        conn = sqlite3.connect(str(db_path), timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        close_conn = True
+
+    try:
+        now = int(time.time())
+        cursor.execute("SELECT id, title, status, updated_at, created_at, metadata, assignee, board_slug FROM tasks WHERE status = 'running'")
+        running_rows = cursor.fetchall()
+
+        task_timeout = get_task_timeout_seconds()
+        inactivity_timeout = get_inactivity_timeout_seconds()
+        results = []
+
+        for row in running_rows:
+            task_id = str(row["id"])
+            meta = {}
+            try:
+                meta = json.loads(row["metadata"] or "{}")
+            except Exception:
+                pass
+
+            proc = _active_workers.get(task_id)
+            pid = meta.get("worker_pid") or (proc.pid if proc else None)
+
+            is_alive = False
+            if proc is not None:
+                is_alive = proc.poll() is None
+            elif pid:
+                try:
+                    os.kill(int(pid), 0)
+                    is_alive = True
+                except (OSError, ValueError):
+                    is_alive = False
+
+            started_at = meta.get("started_at") or row["updated_at"] or row["created_at"] or now
+            running_seconds = max(0, now - int(started_at))
+
+            idle_seconds = running_seconds
+            log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
+            if log_path.exists():
+                try:
+                    idle_seconds = max(0, now - int(log_path.stat().st_mtime))
+                except Exception:
+                    pass
+
+            is_stuck = False
+            stuck_reason = None
+
+            if not is_alive and pid:
+                is_stuck = True
+                stuck_reason = f"Worker process PID {pid} is dead/not found"
+            elif running_seconds > task_timeout:
+                is_stuck = True
+                stuck_reason = f"Exceeded running timeout ({running_seconds}s > {task_timeout}s)"
+            elif idle_seconds > inactivity_timeout:
+                is_stuck = True
+                stuck_reason = f"Worker inactive with no updates for {idle_seconds}s (limit {inactivity_timeout}s)"
+
+            results.append({
+                "id": task_id,
+                "title": row["title"],
+                "board_slug": row["board_slug"] if "board_slug" in row.keys() else None,
+                "assignee": row["assignee"] or "builder",
+                "worker_pid": pid,
+                "is_alive": is_alive,
+                "started_at": started_at,
+                "running_seconds": running_seconds,
+                "idle_seconds": idle_seconds,
+                "is_stuck": is_stuck,
+                "stuck_reason": stuck_reason,
+                "timeout_limit": task_timeout,
+                "inactivity_limit": inactivity_timeout
+            })
+
+        return results
+    finally:
+        if close_conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Manually or programmatically reap stuck tasks or a specific running task."""
+    if db_path is None:
+        db_path = get_db_path()
+
+    now = int(time.time())
+    reaped_tasks = []
+
+    with _dispatcher_lock:
+        with sqlite3.connect(str(db_path), timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            stuck_list = check_stuck_tasks(cursor=cursor)
+            for item in stuck_list:
+                t_id = item["id"]
+                if task_id and t_id != task_id:
+                    continue
+                if task_id or item["is_stuck"]:
+                    proc = _active_workers.pop(t_id, None)
+                    pid = item["worker_pid"]
+                    terminate_worker_process(proc, pid)
+
+                    reason = item["stuck_reason"] or f"Manually reaped after running {item['running_seconds']}s"
+                    cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, t_id))
+                    cursor.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
+                        (t_id, reason, now)
+                    )
+                    reaped_tasks.append({"id": t_id, "title": item["title"], "reason": reason})
+
+            conn.commit()
+
+    return {
+        "ok": True,
+        "reaped_count": len(reaped_tasks),
+        "reaped_tasks": reaped_tasks
+    }
 
 
 def setup_worktree(cursor: sqlite3.Cursor, task_id: str, title: str, assignee: str, tenant: Optional[str], db_path: Path) -> Optional[str]:
@@ -374,6 +584,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             meta["worker_pid"] = pid
                         if session_id:
                             meta["session_id"] = session_id
+                        meta["started_at"] = now
 
                         cursor.execute(
                             "UPDATE tasks SET status = 'running', metadata = ?, updated_at = ? WHERE id = ?",

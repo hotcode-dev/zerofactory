@@ -273,6 +273,74 @@ def get_profile_state_db(assignee: str) -> Optional[Path]:
         return p4
     return None
 
+def _compute_stuck_status(
+    task: Dict[str, Any],
+    is_alive: bool,
+    worker_pid: Optional[int],
+    started_at: Optional[float],
+    last_active: Optional[float],
+    log_path: Path
+) -> tuple[int, int, bool, Optional[str]]:
+    """Compute running/idle duration and stuck status for a task."""
+    now = int(time.time())
+    meta = task.get("metadata") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+
+    started = meta.get("started_at") or task.get("updated_at") or task.get("created_at") or now
+    running_seconds = max(0, now - int(started)) if task.get("status") == "running" else 0
+
+    log_idle = None
+    if log_path.exists():
+        try:
+            log_idle = max(0, now - int(log_path.stat().st_mtime))
+        except Exception:
+            pass
+    sess_idle = max(0, now - int(last_active)) if last_active else None
+
+    if log_idle is not None and sess_idle is not None:
+        idle_seconds = min(log_idle, sess_idle)
+    elif log_idle is not None:
+        idle_seconds = log_idle
+    elif sess_idle is not None:
+        idle_seconds = sess_idle
+    else:
+        idle_seconds = running_seconds
+
+    if task.get("status") != "running":
+        return running_seconds, idle_seconds, False, None
+
+    try:
+        from ..dispatcher import get_task_timeout_seconds, get_inactivity_timeout_seconds
+    except Exception:
+        try:
+            from dispatcher import get_task_timeout_seconds, get_inactivity_timeout_seconds
+        except Exception:
+            get_task_timeout_seconds = lambda: 3600
+            get_inactivity_timeout_seconds = lambda: 900
+
+    task_to = get_task_timeout_seconds()
+    inact_to = get_inactivity_timeout_seconds()
+
+    is_stuck = False
+    stuck_reason = None
+
+    if not is_alive and worker_pid:
+        is_stuck = True
+        stuck_reason = f"Worker process PID {worker_pid} is dead/not found"
+    elif running_seconds > task_to:
+        is_stuck = True
+        stuck_reason = f"Exceeded running timeout ({running_seconds}s > {task_to}s)"
+    elif idle_seconds > inact_to:
+        is_stuck = True
+        stuck_reason = f"Worker inactive with no updates for {idle_seconds}s (limit {inact_to}s)"
+
+    return running_seconds, idle_seconds, is_stuck, stuck_reason
+
+
 def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -> Dict[str, Any]:
     """Extract real-time execution progress, turn counts, tool calls, and logs for a task."""
     meta = task.get("metadata") or {}
@@ -311,6 +379,7 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             pass
 
     if not state_db_path:
+        r_sec, i_sec, stuck, reason = _compute_stuck_status(task, is_alive, worker_pid, None, None, log_path)
         return {
             "has_session": False,
             "session_id": session_id,
@@ -325,7 +394,11 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             "tool_calls_count": 0,
             "last_action": "Agent active" if is_alive else None,
             "recent_steps": [],
-            "log_tail": log_tail
+            "log_tail": log_tail,
+            "running_seconds": r_sec,
+            "idle_seconds": i_sec,
+            "is_stuck": stuck,
+            "stuck_reason": reason
         }
 
     try:
@@ -354,7 +427,10 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
                         session_id = cand_id
                         break
                 if not session_id and cand_rows and task_status in ("running", "blocked", "done"):
-                    session_id = cand_rows[0]["id"]
+                    task_time = task.get("updated_at") or task.get("created_at") or time.time()
+                    top_started = cand_rows[0]["started_at"] or 0
+                    if top_started >= task_time - 300:
+                        session_id = cand_rows[0]["id"]
 
                 # Auto-backfill into tasks metadata in the kanban DB
                 if session_id and backfill and task_id:
@@ -367,6 +443,7 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
                         pass
 
             if not session_id:
+                r_sec, i_sec, stuck, reason = _compute_stuck_status(task, is_alive, worker_pid, None, None, log_path)
                 return {
                     "has_session": False,
                     "session_id": None,
@@ -381,7 +458,11 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
                     "tool_calls_count": 0,
                     "last_action": "Awaiting agent session",
                     "recent_steps": [],
-                    "log_tail": log_tail
+                    "log_tail": log_tail,
+                    "running_seconds": r_sec,
+                    "idle_seconds": i_sec,
+                    "is_stuck": stuck,
+                    "stuck_reason": reason
                 }
 
             cursor.execute("""
@@ -463,6 +544,7 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
                 else:
                     last_action = "Active"
 
+            r_sec, i_sec, stuck, reason = _compute_stuck_status(task, is_alive, worker_pid, started_at, last_active, log_path)
             return {
                 "has_session": True,
                 "session_id": session_id,
@@ -477,10 +559,15 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
                 "tool_calls_count": tool_calls_count,
                 "last_action": last_action,
                 "recent_steps": recent_steps,
-                "log_tail": log_tail
+                "log_tail": log_tail,
+                "running_seconds": r_sec,
+                "idle_seconds": i_sec,
+                "is_stuck": stuck,
+                "stuck_reason": reason
             }
     except Exception as e:
         _log.warning("Error resolving session progress for %s: %s", task_id, e)
+        r_sec, i_sec, stuck, reason = _compute_stuck_status(task, is_alive, worker_pid, None, None, log_path)
         return {
             "has_session": bool(session_id),
             "session_id": session_id,
@@ -496,7 +583,11 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             "last_action": "Agent active" if is_alive else None,
             "recent_steps": [],
             "log_tail": log_tail,
-            "error": str(e)
+            "error": str(e),
+            "running_seconds": r_sec,
+            "idle_seconds": i_sec,
+            "is_stuck": stuck,
+            "stuck_reason": reason
         }
 
 
@@ -745,7 +836,11 @@ def list_tasks(
                         "is_alive": prog.get("is_alive", False),
                         "turn_count": prog.get("turn_count", 0),
                         "message_count": prog.get("message_count", 0),
-                        "last_action": prog.get("last_action")
+                        "last_action": prog.get("last_action"),
+                        "is_stuck": prog.get("is_stuck", False),
+                        "stuck_reason": prog.get("stuck_reason"),
+                        "running_seconds": prog.get("running_seconds", 0),
+                        "idle_seconds": prog.get("idle_seconds", 0)
                     }
 
         return {"ok": True, "tasks": tasks, "count": len(tasks)}
@@ -1179,6 +1274,64 @@ def get_dispatch_status():
         """)
         in_flight = [dict(r) for r in cursor.fetchall()]
         return {"ok": True, "in_flight": in_flight, "count": len(in_flight)}
+
+
+# --- Health & Stuck Task Reaping --------------------------------------------
+
+@router.get("/health/stuck-tasks")
+def get_stuck_tasks():
+    """Inspect all currently running tasks and report running/idle duration and stuckness."""
+    try:
+        from ..dispatcher import check_stuck_tasks
+    except Exception:
+        import sys
+        parent_dir = str(Path(__file__).parent.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        from dispatcher import check_stuck_tasks  # type: ignore
+
+    tasks = check_stuck_tasks(db_path=get_db_path())
+    stuck_tasks = [t for t in tasks if t["is_stuck"]]
+    return {
+        "ok": True,
+        "running_count": len(tasks),
+        "stuck_count": len(stuck_tasks),
+        "tasks": tasks,
+        "stuck_tasks": stuck_tasks
+    }
+
+
+@router.post("/health/reap-stuck")
+def reap_all_stuck_tasks():
+    """Reap all stuck running tasks, terminating processes and moving tasks to blocked."""
+    try:
+        from ..dispatcher import reap_stuck_tasks
+    except Exception:
+        import sys
+        parent_dir = str(Path(__file__).parent.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        from dispatcher import reap_stuck_tasks  # type: ignore
+
+    return reap_stuck_tasks(db_path=get_db_path())
+
+
+@router.post("/tasks/{task_id}/reap")
+def reap_single_task(task_id: str):
+    """Manually reap/terminate a specific running task and move it to blocked."""
+    try:
+        from ..dispatcher import reap_stuck_tasks
+    except Exception:
+        import sys
+        parent_dir = str(Path(__file__).parent.parent)
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        from dispatcher import reap_stuck_tasks  # type: ignore
+
+    res = reap_stuck_tasks(task_id=task_id, db_path=get_db_path())
+    if not res.get("reaped_tasks"):
+        raise HTTPException(status_code=404, detail=f"Task {task_id} is not currently running or could not be reaped")
+    return {"ok": True, "reaped": True, "task": res["reaped_tasks"][0]}
 
 
 # --- Legacy Migration Tool ---------------------------------------------------

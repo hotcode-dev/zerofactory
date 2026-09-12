@@ -105,6 +105,13 @@ def register(ctx: Any):
         # dispatch
         subparsers.add_parser("dispatch", help="Trigger dispatch cycle")
 
+        # check-stuck
+        p_stuck = subparsers.add_parser("check-stuck", help="Check running tasks for excessive duration or inactivity")
+        p_stuck.add_argument("--timeout", type=int, default=None, help="Override running timeout threshold in seconds")
+        p_stuck.add_argument("--inactivity", type=int, default=None, help="Override inactivity threshold in seconds")
+        p_stuck.add_argument("--reap", action="store_true", help="Automatically terminate and move stuck tasks to blocked")
+        p_stuck.add_argument("--task", default=None, help="Specific task ID to inspect or reap")
+
         # cron
         p_cron = subparsers.add_parser("cron", help="Manage built-in Zero Factory cron jobs")
         cron_subs = p_cron.add_subparsers(dest="cron_action", help="Cron actions")
@@ -194,6 +201,54 @@ def register(ctx: Any):
         elif action == "dispatch":
             res = _trigger_dispatch()
             print(f"Dispatch result: {res.get('message', res)}")
+
+        elif action == "check-stuck":
+            try:
+                from .dispatcher import check_stuck_tasks, reap_stuck_tasks
+            except Exception:
+                from dispatcher import check_stuck_tasks, reap_stuck_tasks
+
+            if getattr(args, "timeout", None):
+                os.environ["ZEROFACTORY_TASK_TIMEOUT_SECONDS"] = str(args.timeout)
+            if getattr(args, "inactivity", None):
+                os.environ["ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS"] = str(args.inactivity)
+
+            tasks = check_stuck_tasks()
+            target_task = getattr(args, "task", None)
+            if target_task:
+                tasks = [t for t in tasks if t["id"] == target_task]
+
+            print(f"\nZero Factory Running Tasks ({len(tasks)} running):")
+            if not tasks:
+                print("  No tasks currently in 'running' state.\n")
+            else:
+                print(f"{'ID':<14} {'PID':<8} {'ALIVE':<6} {'RUNNING':<10} {'IDLE':<10} {'STATUS':<10} {'TITLE'}")
+                print("-" * 85)
+                for t in tasks:
+                    t_id = t["id"]
+                    pid = str(t.get("worker_pid") or "-")
+                    alive = "yes" if t.get("is_alive") else "NO"
+                    run_str = f"{t.get('running_seconds', 0)}s"
+                    idle_str = f"{t.get('idle_seconds', 0)}s"
+                    stuck_str = "STUCK ⚠️" if t.get("is_stuck") else "OK ✓"
+                    title = t.get("title", "")
+                    if len(title) > 32:
+                        title = title[:29] + "..."
+                    print(f"{t_id:<14} {pid:<8} {alive:<6} {run_str:<10} {idle_str:<10} {stuck_str:<10} {title}")
+                    if t.get("is_stuck") and t.get("stuck_reason"):
+                        print(f"   ↳ Reason: {t['stuck_reason']}")
+                print()
+
+            if getattr(args, "reap", False):
+                reap_res = reap_stuck_tasks(task_id=target_task)
+                reaped = reap_res.get("reaped_tasks", [])
+                if reaped:
+                    print(f"✓ Reaped {len(reaped)} stuck task(s):")
+                    for rt in reaped:
+                        print(f"  - {rt['id']} ({rt['title']}): {rt['reason']}")
+                else:
+                    print("✓ No stuck tasks needed reaping.")
+                print()
 
         elif action == "cron":
             cron_act = getattr(args, "cron_action", "list") or "list"

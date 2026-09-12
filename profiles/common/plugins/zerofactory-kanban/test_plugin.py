@@ -490,5 +490,62 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(res_404.status_code, 404)
 
 
+    def test_14_stuck_task_detection_and_reap(self):
+        import json, time, subprocess
+        from dispatcher import check_stuck_tasks, reap_stuck_tasks, reap_active_workers
+
+        # Spawn a dummy worker process
+        dummy_proc = subprocess.Popen(["sleep", "60"])
+        try:
+            now = int(time.time())
+            started_time = now - 4000
+            t_res = create_task(TaskCreate(
+                title="Stuck Long Running Task",
+                description="Simulated stuck task",
+                board_slug="zerofactory",
+                priority="P1",
+                status="running",
+                assignee="builder"
+            ))
+            t_id = t_res["id"]
+
+            with get_db_conn() as conn:
+                conn.execute(
+                    "UPDATE tasks SET updated_at = ?, metadata = ? WHERE id = ?",
+                    (started_time, json.dumps({"started_at": started_time, "worker_pid": dummy_proc.pid}), t_id)
+                )
+                conn.commit()
+
+            # 2. Verify check_stuck_tasks flags it as stuck with timeout reason
+            stuck_info = check_stuck_tasks()
+            target = next((item for item in stuck_info if item["id"] == t_id), None)
+            self.assertIsNotNone(target)
+            self.assertTrue(target["is_stuck"])
+            self.assertIn("timeout", target["stuck_reason"].lower())
+
+            # 3. Test GET /health/stuck-tasks endpoint
+            res = client.get("/api/plugins/zerofactory-kanban/health/stuck-tasks")
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertTrue(data["ok"])
+            stuck_ids = [t["id"] for t in data["stuck_tasks"]]
+            self.assertIn(t_id, stuck_ids)
+
+            # 4. Test POST /tasks/{task_id}/reap endpoint
+            res_reap = client.post(f"/api/plugins/zerofactory-kanban/tasks/{t_id}/reap")
+            self.assertEqual(res_reap.status_code, 200)
+            self.assertTrue(res_reap.json()["ok"])
+
+            # 5. Verify task is moved to 'blocked'
+            t_after = get_task(t_id)["task"]
+            self.assertEqual(t_after["status"], "blocked")
+
+            # 6. Verify dummy worker process was terminated
+            time.sleep(0.6)
+            self.assertIsNotNone(dummy_proc.poll())
+        finally:
+            if dummy_proc.poll() is None:
+                dummy_proc.kill()
+
 if __name__ == "__main__":
     unittest.main()
