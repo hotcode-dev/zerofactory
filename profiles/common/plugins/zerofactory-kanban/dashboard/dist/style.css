@@ -274,6 +274,23 @@
 .max-w-xl {
   max-width: var(--container-xl);
 }
+.max-w-3xl {
+  max-width: var(--container-3xl, 48rem);
+}
+.max-w-4xl {
+  max-width: var(--container-4xl, 56rem);
+}
+.max-h-\[92vh\] {
+  max-height: 92vh;
+}
+.translate-x-4 {
+  --tw-translate-x: calc(var(--spacing) * 4);
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}
+.translate-x-0 {
+  --tw-translate-x: 0px;
+  translate: var(--tw-translate-x) var(--tw-translate-y);
+}
 .min-w-0 {
   min-width: 0px;
 }

@@ -56,6 +56,14 @@
     const [showNewTaskModal, setShowNewTaskModal] = useState(false);
     const [showNewBoardModal, setShowNewBoardModal] = useState(false);
     const [showEditBoardModal, setShowEditBoardModal] = useState(false);
+    const [showCronModal, setShowCronModal] = useState(false);
+    const [cronJobs, setCronJobs] = useState([]);
+    const [loadingCron, setLoadingCron] = useState(false);
+    const [cronFilterTab, setCronFilterTab] = useState("all");
+    const [runningCronId, setRunningCronId] = useState(null);
+    const [editingCronId, setEditingCronId] = useState(null);
+    const [cronEditForms, setCronEditForms] = useState({});
+    const [cronSearchQuery, setCronSearchQuery] = useState("");
     const [newCommentText, setNewCommentText] = useState("");
 
     // Form States
@@ -128,11 +136,147 @@
       }
     }, [fetchJSON, selectedBoard]);
 
+    // Cron management handlers
+    const loadCronJobs = useCallback(async () => {
+      try {
+        setLoadingCron(true);
+        const data = await fetchJSON(API_BASE + "/cron");
+        if (data && data.jobs) {
+          setCronJobs(data.jobs);
+          const forms = {};
+          data.jobs.forEach(j => {
+            const sched = j.schedule || {};
+            forms[j.id] = {
+              minutes: sched.kind === "interval" ? sched.minutes : 60,
+              cron_expr: sched.kind === "cron" ? sched.expr : "0 9 * * *",
+              schedule_kind: sched.kind || "interval",
+              prompt: j.prompt || "",
+              model: j.model || "",
+              workdir: j.workdir || "",
+              name: j.name || ""
+            };
+          });
+          setCronEditForms(forms);
+        }
+      } catch (err) {
+        showToast("Failed to load cron automation jobs: " + err.message, "error");
+      } finally {
+        setLoadingCron(false);
+      }
+    }, [showToast]);
+
+    const handleToggleCronJob = useCallback(async (jobId, currentEnabled) => {
+      try {
+        const nextEnabled = !currentEnabled;
+        const res = await fetchJSON(API_BASE + `/cron/${jobId}/toggle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: nextEnabled })
+        });
+        if (res && res.ok) {
+          showToast(nextEnabled ? "Cron job activated" : "Cron job paused", "success");
+          loadCronJobs();
+        } else {
+          showToast("Failed to toggle cron job: " + (res.error || "Unknown error"), "error");
+        }
+      } catch (err) {
+        showToast("Error toggling cron job: " + err.message, "error");
+      }
+    }, [loadCronJobs, showToast]);
+
+    const handleRunCronJob = useCallback(async (jobId) => {
+      try {
+        setRunningCronId(jobId);
+        showToast(`Triggering execution for ${jobId}...`, "info");
+        const res = await fetchJSON(API_BASE + `/cron/${jobId}/run`, {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          showToast(`Job triggered successfully (PID: ${res.pid || "running"})`, "success");
+          setTimeout(() => loadCronJobs(), 1500);
+        } else {
+          showToast("Failed to run cron job: " + (res.error || "Unknown error"), "error");
+        }
+      } catch (err) {
+        showToast("Error running cron job: " + err.message, "error");
+      } finally {
+        setRunningCronId(null);
+      }
+    }, [loadCronJobs, showToast]);
+
+    const handleSaveCronJob = useCallback(async (jobId) => {
+      const form = cronEditForms[jobId];
+      if (!form) return;
+      try {
+        const payload = {
+          name: form.name,
+          prompt: form.prompt,
+          model: form.model || null,
+          workdir: form.workdir || null
+        };
+        if (form.schedule_kind === "interval") {
+          payload.minutes = parseInt(form.minutes, 10) || 60;
+        } else {
+          payload.cron_expr = form.cron_expr;
+        }
+        const res = await fetchJSON(API_BASE + `/cron/${jobId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (res && res.ok) {
+          showToast("Cron schedule & configuration saved", "success");
+          setEditingCronId(null);
+          loadCronJobs();
+        } else {
+          showToast("Failed to save cron job: " + (res.error || "Unknown error"), "error");
+        }
+      } catch (err) {
+        showToast("Error saving cron job: " + err.message, "error");
+      }
+    }, [cronEditForms, loadCronJobs, showToast]);
+
+    const handleResetCronJob = useCallback(async (jobId) => {
+      if (!confirm("Reset this cron job configuration back to built-in defaults?")) return;
+      try {
+        const res = await fetchJSON(API_BASE + `/cron/${jobId}/reset`, {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          showToast("Job reset to default configuration", "success");
+          setEditingCronId(null);
+          loadCronJobs();
+        } else {
+          showToast("Failed to reset cron job: " + (res.error || "Unknown error"), "error");
+        }
+      } catch (err) {
+        showToast("Error resetting cron job: " + err.message, "error");
+      }
+    }, [loadCronJobs, showToast]);
+
+    const handleSyncAllCron = useCallback(async () => {
+      try {
+        showToast("Synchronizing cron jobs across all stores...", "info");
+        const res = await fetchJSON(API_BASE + "/cron/sync", {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          showToast("Cron jobs synchronized successfully", "success");
+          loadCronJobs();
+        } else {
+          showToast("Failed to sync cron jobs: " + (res.error || "Unknown error"), "error");
+        }
+      } catch (err) {
+        showToast("Error syncing cron jobs: " + err.message, "error");
+      }
+    }, [loadCronJobs, showToast]);
+
     // Initial load
     useEffect(() => {
       loadBoards();
       loadTasksAndStats(selectedBoard);
-    }, [loadBoards, loadTasksAndStats, selectedBoard]);
+      loadCronJobs();
+    }, [loadBoards, loadTasksAndStats, selectedBoard, loadCronJobs]);
 
     // Auto-refresh interval
     useEffect(() => {
@@ -158,6 +302,23 @@
         return true;
       });
     }, [tasks, assigneeFilter, priorityFilter, searchQuery]);
+
+    // Filtered Cron Jobs
+    const filteredCronJobs = useMemo(() => {
+      return cronJobs.filter((job) => {
+        const isScanner = job.id.startsWith("zero-factory-improvement-scanner-");
+        if (cronFilterTab === "core" && isScanner) return false;
+        if (cronFilterTab === "scanners" && !isScanner) return false;
+        if (cronSearchQuery.trim()) {
+          const q = cronSearchQuery.toLowerCase();
+          const matchName = (job.name || "").toLowerCase().includes(q);
+          const matchId = (job.id || "").toLowerCase().includes(q);
+          const matchWorkdir = (job.workdir || "").toLowerCase().includes(q);
+          if (!matchName && !matchId && !matchWorkdir) return false;
+        }
+        return true;
+      });
+    }, [cronJobs, cronFilterTab, cronSearchQuery]);
 
     // Tasks grouped by column
     const tasksByColumn = useMemo(() => {
@@ -547,6 +708,30 @@
                 },
                 "⚙️ Edit Board"
               ),
+            React.createElement(
+              "button",
+              {
+                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
+                onClick: () => {
+                  setShowCronModal(true);
+                  loadCronJobs();
+                },
+                title: "Configure built-in Cron schedules and periodic automation"
+              },
+              "⏰ Cron Config",
+              cronJobs.length > 0 &&
+                React.createElement(
+                  "span",
+                  {
+                    className:
+                      "px-1.5 py-0.5 rounded-full text-[10px] font-bold " +
+                      (cronJobs.some((j) => j.enabled)
+                        ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                        : "bg-slate-800 text-slate-400")
+                  },
+                  cronJobs.filter((j) => j.enabled).length + "/" + cronJobs.length
+                )
+            ),
             React.createElement(
               "button",
               {
@@ -1601,6 +1786,401 @@
                   "Save Changes"
                 )
               )
+            )
+          )
+        ),
+
+      // Cron Configuration Modal
+      showCronModal &&
+        React.createElement(
+          "div",
+          {
+            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto",
+            onClick: () => setShowCronModal(false)
+          },
+          React.createElement(
+            "div",
+            {
+              className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden text-slate-100",
+              onClick: (e) => e.stopPropagation()
+            },
+            // Modal Header
+            React.createElement(
+              "div",
+              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0 bg-slate-900/60" },
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-3" },
+                React.createElement("div", { className: "w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-base shrink-0" }, "⏰"),
+                React.createElement(
+                  "div",
+                  null,
+                  React.createElement("h2", { className: "text-base font-bold text-white m-0 flex items-center gap-2" }, "Zero Factory Cron Automation"),
+                  React.createElement("p", { className: "text-xs text-slate-400 font-medium m-0" }, "Manage periodic health checks, daily metrics, and per-board improvement scanners")
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-2" },
+                React.createElement(
+                  "button",
+                  {
+                    className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
+                    onClick: handleSyncAllCron,
+                    title: "Synchronize all built-in jobs across active profiles"
+                  },
+                  "🔄 Sync All"
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                    onClick: () => setShowCronModal(false)
+                  },
+                  "✕"
+                )
+              )
+            ),
+            // Filter Tabs & Search Bar
+            React.createElement(
+              "div",
+              { className: "px-6 py-3 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0" },
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs" },
+                React.createElement(
+                  "button",
+                  {
+                    className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "all" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                    onClick: () => setCronFilterTab("all")
+                  },
+                  "All (" + cronJobs.length + ")"
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "core" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                    onClick: () => setCronFilterTab("core")
+                  },
+                  "Core (" + cronJobs.filter(j => !j.id.startsWith("zero-factory-improvement-scanner-")).length + ")"
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "scanners" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                    onClick: () => setCronFilterTab("scanners")
+                  },
+                  "Scanners (" + cronJobs.filter(j => j.id.startsWith("zero-factory-improvement-scanner-")).length + ")"
+                )
+              ),
+              React.createElement(
+                "input",
+                {
+                  className: "w-full sm:w-64 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors",
+                  placeholder: "Search jobs by name or ID...",
+                  value: cronSearchQuery,
+                  onChange: (e) => setCronSearchQuery(e.target.value)
+                }
+              )
+            ),
+            // Job Cards List
+            React.createElement(
+              "div",
+              { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1 bg-slate-950/20" },
+              loadingCron && React.createElement("div", { className: "text-center py-12 text-slate-400 text-xs" }, React.createElement("span", { className: "zfk-spinning inline-block mr-2" }, "⏳"), "Loading cron schedules..."),
+              !loadingCron && filteredCronJobs.length === 0 && React.createElement("div", { className: "text-center py-12 text-slate-500 text-xs" }, "No cron jobs match the selected filter."),
+              !loadingCron && filteredCronJobs.map(job => {
+                const isEditing = editingCronId === job.id;
+                const form = cronEditForms[job.id] || {};
+                const isScanner = job.id.startsWith("zero-factory-improvement-scanner-");
+                const boardSlug = isScanner ? job.id.replace("zero-factory-improvement-scanner-", "") : null;
+                const isRunning = runningCronId === job.id;
+
+                return React.createElement(
+                  "div",
+                  {
+                    key: job.id,
+                    className: "bg-slate-900/90 border " + (job.enabled ? "border-slate-700/80 shadow-sm" : "border-slate-800/50 opacity-75") + " rounded-xl p-4 transition-all duration-150"
+                  },
+                  // Card Header Row
+                  React.createElement(
+                    "div",
+                    { className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-start gap-2.5" },
+                      React.createElement(
+                        "span",
+                        { className: "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0 mt-0.5 " + (isScanner ? "bg-purple-950/80 text-purple-300 border border-purple-800/60" : "bg-indigo-950/80 text-indigo-300 border border-indigo-800/60") },
+                        isScanner ? "Scanner" : "Core"
+                      ),
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement("h3", { className: "text-sm font-semibold text-white m-0" }, job.name),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-400" },
+                          React.createElement("code", { className: "text-[10px] text-slate-400 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800" }, job.id),
+                          boardSlug && React.createElement("span", { className: "text-amber-400/90 font-medium" }, "Board: " + boardSlug),
+                          job.workdir && React.createElement("span", { className: "truncate max-w-xs text-slate-400 font-mono text-[10px]" }, "📁 " + job.workdir)
+                        )
+                      )
+                    ),
+                    // Toggle Active / Paused switch
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" },
+                      React.createElement("span", { className: "text-xs font-semibold " + (job.enabled ? "text-emerald-400" : "text-slate-500") }, job.enabled ? "Active" : "Paused"),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          role: "switch",
+                          "aria-checked": job.enabled,
+                          onClick: () => handleToggleCronJob(job.id, job.enabled),
+                          className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (job.enabled ? "bg-emerald-600" : "bg-slate-700")
+                        },
+                        React.createElement("span", {
+                          className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (job.enabled ? "translate-x-4" : "translate-x-0")
+                        })
+                      )
+                    )
+                  ),
+                  // Metadata / Runtime Status Row
+                  React.createElement(
+                    "div",
+                    { className: "flex flex-wrap items-center justify-between gap-2 pt-3 text-xs" },
+                    React.createElement(
+                      "div",
+                      { className: "flex flex-wrap items-center gap-2" },
+                      // Schedule badge
+                      React.createElement(
+                        "span",
+                        { className: "px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 font-mono text-[11px] text-indigo-300 font-medium" },
+                        "⏱️ " + (job.schedule_display || "Every 60m")
+                      ),
+                      // Status pill
+                      React.createElement(
+                        "span",
+                        {
+                          className: "px-2 py-0.5 rounded-md text-[11px] font-medium border " +
+                            (!job.enabled ? "bg-amber-950/60 text-amber-300 border-amber-800/60"
+                            : job.last_status === "ok" ? "bg-emerald-950/60 text-emerald-300 border-emerald-800/60"
+                            : job.last_status === "error" ? "bg-rose-950/60 text-rose-300 border-rose-800/60"
+                            : "bg-slate-950 text-slate-300 border-slate-800")
+                        },
+                        !job.enabled ? "⏸ Paused" : job.last_status === "ok" ? "✓ OK" : job.last_status === "error" ? "✕ Failed" : "⏳ Scheduled"
+                      ),
+                      // Last Run
+                      job.last_run_at && React.createElement("span", { className: "text-slate-400 text-[11px]" }, "Last: " + timeAgo(new Date(job.last_run_at).getTime() / 1000)),
+                      // Customized badge
+                      job.custom_config && React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-950 text-sky-300 border border-sky-800/60" }, "Customized")
+                    ),
+                    // Action Buttons
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-2 shrink-0 ml-auto" },
+                      React.createElement(
+                        "button",
+                        {
+                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-600 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50",
+                          disabled: isRunning,
+                          onClick: () => handleRunCronJob(job.id),
+                          title: "Run this job immediately"
+                        },
+                        isRunning ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "▶",
+                        isRunning ? " Running..." : " Run Now"
+                      ),
+                      React.createElement(
+                        "button",
+                        {
+                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
+                          onClick: () => setEditingCronId(isEditing ? null : job.id),
+                          title: isEditing ? "Close configuration editor" : "Edit schedule and parameters"
+                        },
+                        isEditing ? "▲ Close" : "⚙ Edit"
+                      ),
+                      job.custom_config && React.createElement(
+                        "button",
+                        {
+                          className: "inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-400 hover:text-amber-300 hover:bg-amber-950/30 border border-transparent hover:border-amber-800/40 transition-colors cursor-pointer",
+                          onClick: () => handleResetCronJob(job.id),
+                          title: "Reset schedule and settings to built-in default"
+                        },
+                        "↺ Reset"
+                      )
+                    )
+                  ),
+                  // Last Error Box if failed
+                  job.last_error && React.createElement(
+                    "div",
+                    { className: "mt-2.5 p-2 rounded-lg bg-rose-950/40 border border-rose-900/60 text-xs text-rose-300 font-mono break-all" },
+                    "⚠️ " + job.last_error
+                  ),
+                  // Inline Edit Drawer
+                  isEditing && React.createElement(
+                    "div",
+                    { className: "mt-3.5 pt-3.5 border-t border-slate-800/80 space-y-3.5 bg-slate-950/40 -mx-4 -mb-4 p-4 rounded-b-xl" },
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1.5" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "Schedule Presets"),
+                      React.createElement(
+                        "div",
+                        { className: "flex flex-wrap gap-1.5" },
+                        [
+                          { label: "Every 15m", kind: "interval", minutes: 15 },
+                          { label: "Every 30m", kind: "interval", minutes: 30 },
+                          { label: "Every 60m", kind: "interval", minutes: 60 },
+                          { label: "Every 120m", kind: "interval", minutes: 120 },
+                          { label: "Daily 09:00", kind: "cron", expr: "0 9 * * *" },
+                          { label: "Custom Interval", kind: "interval", custom: true },
+                          { label: "Custom Cron", kind: "cron", custom: true }
+                        ].map((preset, pIdx) => {
+                          const isSel = preset.custom
+                            ? form.schedule_kind === preset.kind && form.is_custom_mode === preset.kind
+                            : form.schedule_kind === preset.kind && (preset.kind === "interval" ? parseInt(form.minutes, 10) === preset.minutes : form.cron_expr === preset.expr);
+                          return React.createElement(
+                            "button",
+                            {
+                              key: pIdx,
+                              type: "button",
+                              className: "px-2.5 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer " +
+                                (isSel ? "bg-indigo-600 text-white border-indigo-500 shadow-xs" : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800"),
+                              onClick: () => {
+                                if (preset.custom) {
+                                  setCronEditForms({
+                                    ...cronEditForms,
+                                    [job.id]: { ...form, schedule_kind: preset.kind, is_custom_mode: preset.kind }
+                                  });
+                                } else if (preset.kind === "interval") {
+                                  setCronEditForms({
+                                    ...cronEditForms,
+                                    [job.id]: { ...form, schedule_kind: "interval", minutes: preset.minutes, is_custom_mode: null }
+                                  });
+                                } else {
+                                  setCronEditForms({
+                                    ...cronEditForms,
+                                    [job.id]: { ...form, schedule_kind: "cron", cron_expr: preset.expr, is_custom_mode: null }
+                                  });
+                                }
+                              }
+                            },
+                            preset.label
+                          );
+                        })
+                      )
+                    ),
+                    // Specific schedule inputs
+                    form.schedule_kind === "interval"
+                      ? React.createElement(
+                          "div",
+                          { className: "space-y-1" },
+                          React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Interval (Minutes)"),
+                          React.createElement("input", {
+                            type: "number",
+                            min: 1,
+                            max: 10080,
+                            className: "w-full max-w-xs bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                            value: form.minutes || 60,
+                            onChange: (e) => setCronEditForms({
+                              ...cronEditForms,
+                              [job.id]: { ...form, minutes: e.target.value }
+                            })
+                          })
+                        )
+                      : React.createElement(
+                          "div",
+                          { className: "space-y-1" },
+                          React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Standard Cron Expression (minute hour dom month dow)"),
+                          React.createElement("input", {
+                            type: "text",
+                            placeholder: "e.g. 0 9 * * *",
+                            className: "w-full max-w-xs bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500",
+                            value: form.cron_expr || "0 9 * * *",
+                            onChange: (e) => setCronEditForms({
+                              ...cronEditForms,
+                              [job.id]: { ...form, cron_expr: e.target.value }
+                            })
+                          })
+                        ),
+                    // Model override & Workdir
+                    React.createElement(
+                      "div",
+                      { className: "grid grid-cols-1 sm:grid-cols-2 gap-3" },
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Model Override (optional)"),
+                        React.createElement("input", {
+                          type: "text",
+                          placeholder: "Inherit environment default",
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                          value: form.model || "",
+                          onChange: (e) => setCronEditForms({
+                            ...cronEditForms,
+                            [job.id]: { ...form, model: e.target.value }
+                          })
+                        })
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Working Directory (Worktree Root)"),
+                        React.createElement("input", {
+                          type: "text",
+                          placeholder: "/path/to/workspace",
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500",
+                          value: form.workdir || "",
+                          onChange: (e) => setCronEditForms({
+                            ...cronEditForms,
+                            [job.id]: { ...form, workdir: e.target.value }
+                          })
+                        })
+                      )
+                    ),
+                    // Prompt Editor
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Task Prompt Instructions"),
+                      React.createElement("textarea", {
+                        rows: 5,
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-[11px] font-mono text-slate-300 outline-none focus:border-indigo-500 zfk-scrollbar leading-relaxed",
+                        value: form.prompt || "",
+                        onChange: (e) => setCronEditForms({
+                          ...cronEditForms,
+                          [job.id]: { ...form, prompt: e.target.value }
+                        })
+                      })
+                    ),
+                    // Drawer Action Buttons
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-end gap-2 pt-2" },
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer",
+                          onClick: () => setEditingCronId(null)
+                        },
+                        "Cancel"
+                      ),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-xs transition-colors cursor-pointer",
+                          onClick: () => handleSaveCronJob(job.id)
+                        },
+                        "💾 Save Configuration"
+                      )
+                    )
+                  )
+                );
+              })
             )
           )
         )

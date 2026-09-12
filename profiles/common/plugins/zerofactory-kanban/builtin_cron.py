@@ -549,10 +549,13 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 # Update prompts, schedule, provider, model, base_url, workdir if drifted
                 curr = existing_by_id[job_id]
                 changed = False
+                is_custom = bool(curr.get("custom_config"))
                 for field in (
                     "name", "prompt", "schedule", "schedule_display",
                     "enabled_toolsets", "origin", "model", "provider", "base_url", "workdir"
                 ):
+                    if is_custom and field in ("schedule", "schedule_display", "prompt", "model", "provider", "base_url", "workdir"):
+                        continue
                     if curr.get(field) != builtin_def.get(field):
                         curr[field] = builtin_def[field]
                         changed = True
@@ -618,17 +621,161 @@ def list_builtin_jobs() -> List[Dict[str, Any]]:
         curr = existing_by_id.get(job_id, builtin_def)
         results.append({
             "id": job_id,
-            "name": curr.get("name", builtin_def["name"]),
-            "schedule": curr.get("schedule_display") or curr.get("schedule", {}).get("display", "configured"),
+            "name": curr.get("name", builtin_def.get("name")),
+            "schedule": curr.get("schedule", builtin_def.get("schedule")),
+            "schedule_display": curr.get("schedule_display") or curr.get("schedule", {}).get("display", "configured"),
             "enabled": curr.get("enabled", True),
             "state": curr.get("state", "scheduled"),
-            "workdir": curr.get("workdir"),
+            "prompt": curr.get("prompt", builtin_def.get("prompt")),
+            "model": curr.get("model", builtin_def.get("model")),
+            "provider": curr.get("provider", builtin_def.get("provider")),
+            "base_url": curr.get("base_url", builtin_def.get("base_url")),
+            "workdir": curr.get("workdir", builtin_def.get("workdir")),
+            "profile": curr.get("profile", builtin_def.get("profile", "orchestrator")),
+            "custom_config": bool(curr.get("custom_config")),
             "last_status": curr.get("last_status"),
             "last_run_at": curr.get("last_run_at"),
             "next_run_at": curr.get("next_run_at"),
             "last_error": curr.get("last_error")
         })
     return results
+
+
+def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Update a builtin job configuration across all target cron store files."""
+    current_builtin_jobs = get_all_builtin_cron_jobs()
+    if job_id not in current_builtin_jobs:
+        return {"ok": False, "error": f"Unknown builtin job ID: {job_id}"}
+
+    builtin_def = current_builtin_jobs[job_id]
+    target_files = get_target_jobs_files()
+    updated_count = 0
+    updated_job_data = None
+
+    for target in target_files:
+        jobs = load_jobs_from_file(target) if target.exists() else []
+        found = False
+        for j in jobs:
+            if isinstance(j, dict) and j.get("id") == job_id:
+                found = True
+                # Enabled / State toggle
+                if "enabled" in updates:
+                    is_enabled = bool(updates["enabled"])
+                    j["enabled"] = is_enabled
+                    j["state"] = "scheduled" if is_enabled else "paused"
+                    if not is_enabled:
+                        j["paused_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+                    else:
+                        j["paused_at"] = None
+
+                # Schedule updates
+                if "minutes" in updates and updates["minutes"]:
+                    try:
+                        m = int(updates["minutes"])
+                        if m > 0:
+                            j["schedule"] = {"kind": "interval", "minutes": m, "display": f"every {m}m"}
+                            j["schedule_display"] = f"every {m}m"
+                            j["custom_config"] = True
+                    except (ValueError, TypeError):
+                        pass
+                elif "cron_expr" in updates and updates["cron_expr"]:
+                    expr = str(updates["cron_expr"]).strip()
+                    if expr:
+                        j["schedule"] = {"kind": "cron", "expr": expr, "display": expr}
+                        j["schedule_display"] = expr
+                        j["custom_config"] = True
+                elif "schedule" in updates and isinstance(updates["schedule"], dict):
+                    j["schedule"] = updates["schedule"]
+                    j["schedule_display"] = updates.get("schedule_display") or updates["schedule"].get("display", "configured")
+                    j["custom_config"] = True
+
+                # Model / workdir / prompt updates
+                if "model" in updates and updates["model"] is not None:
+                    j["model"] = str(updates["model"]).strip() or None
+                    j["custom_config"] = True
+                if "workdir" in updates and updates["workdir"] is not None:
+                    j["workdir"] = str(updates["workdir"]).strip() or None
+                    j["custom_config"] = True
+                if "prompt" in updates and updates["prompt"] is not None:
+                    j["prompt"] = str(updates["prompt"])
+                    j["custom_config"] = True
+                if "name" in updates and updates["name"]:
+                    j["name"] = str(updates["name"])
+
+                updated_job_data = dict(j)
+                break
+
+        if not found and target.exists():
+            # If job not in this target yet, instantiate from builtin_def and apply updates
+            new_job = dict(builtin_def)
+            new_job["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            if "enabled" in updates:
+                new_job["enabled"] = bool(updates["enabled"])
+                new_job["state"] = "scheduled" if new_job["enabled"] else "paused"
+            if "minutes" in updates and updates["minutes"]:
+                try:
+                    m = int(updates["minutes"])
+                    new_job["schedule"] = {"kind": "interval", "minutes": m, "display": f"every {m}m"}
+                    new_job["schedule_display"] = f"every {m}m"
+                    new_job["custom_config"] = True
+                except (ValueError, TypeError):
+                    pass
+            elif "cron_expr" in updates and updates["cron_expr"]:
+                expr = str(updates["cron_expr"]).strip()
+                new_job["schedule"] = {"kind": "cron", "expr": expr, "display": expr}
+                new_job["schedule_display"] = expr
+                new_job["custom_config"] = True
+            if "model" in updates and updates["model"]:
+                new_job["model"] = str(updates["model"])
+                new_job["custom_config"] = True
+            if "prompt" in updates and updates["prompt"]:
+                new_job["prompt"] = str(updates["prompt"])
+                new_job["custom_config"] = True
+            jobs.append(new_job)
+            updated_job_data = dict(new_job)
+
+        if target.exists() or found:
+            save_jobs_to_file(target, jobs)
+            updated_count += 1
+
+    return {"ok": True, "job_id": job_id, "updated_targets": updated_count, "job": updated_job_data}
+
+
+def toggle_builtin_job(job_id: str, enabled: Optional[bool] = None) -> Dict[str, Any]:
+    """Toggle a builtin job between enabled (scheduled) and disabled (paused)."""
+    current_jobs = list_builtin_jobs()
+    target = next((j for j in current_jobs if j["id"] == job_id), None)
+    if not target:
+        return {"ok": False, "error": f"Unknown builtin job ID: {job_id}"}
+
+    new_enabled = not target["enabled"] if enabled is None else bool(enabled)
+    return update_builtin_job(job_id, {"enabled": new_enabled})
+
+
+def reset_builtin_job(job_id: str) -> Dict[str, Any]:
+    """Reset a builtin job back to canonical default definition, clearing custom_config."""
+    current_builtin_jobs = get_all_builtin_cron_jobs()
+    if job_id not in current_builtin_jobs:
+        return {"ok": False, "error": f"Unknown builtin job ID: {job_id}"}
+
+    builtin_def = current_builtin_jobs[job_id]
+    target_files = get_target_jobs_files()
+    reset_count = 0
+
+    for target in target_files:
+        if not target.exists():
+            continue
+        jobs = load_jobs_from_file(target)
+        for j in jobs:
+            if isinstance(j, dict) and j.get("id") == job_id:
+                for k in ("schedule", "schedule_display", "model", "provider", "base_url", "prompt", "workdir", "name"):
+                    j[k] = builtin_def.get(k)
+                j["custom_config"] = False
+                reset_count += 1
+                break
+        save_jobs_to_file(target, jobs)
+
+    return {"ok": True, "job_id": job_id, "reset_targets": reset_count}
 
 
 def trigger_builtin_job(job_id: str) -> Dict[str, Any]:

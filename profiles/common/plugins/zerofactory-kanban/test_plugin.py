@@ -583,6 +583,102 @@ class TestZeroFactoryKanban(unittest.TestCase):
             self.assertEqual(subj, expected_subj)
             self.assertIn(f"Task: {task_id}", body)
 
+    def test_16_cron_config_endpoints(self):
+        import builtin_cron
+        from builtin_cron import save_jobs_to_file, load_jobs_from_file, ensure_builtin_cron_jobs
+
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
+            test_jobs_path = Path(tf.name)
+
+        orig_targets = builtin_cron.get_target_jobs_files
+        builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
+
+        try:
+            # 1. Initialize test jobs in target file
+            initial_jobs = [
+                {
+                    "id": "zero-factory-task-queue-check",
+                    "name": "Zero Factory task queue check",
+                    "schedule": {"kind": "interval", "minutes": 120, "display": "every 120m"},
+                    "schedule_display": "every 120m",
+                    "enabled": True,
+                    "state": "scheduled",
+                    "prompt": "Initial prompt",
+                    "model": "test-model",
+                    "origin": "zerofactory-kanban"
+                }
+            ]
+            save_jobs_to_file(test_jobs_path, initial_jobs)
+
+            # 2. GET /cron
+            res = client.get("/api/plugins/zerofactory-kanban/cron")
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertTrue(data["ok"])
+            jobs = data["jobs"]
+            self.assertGreater(len(jobs), 0)
+
+            # Verify rich metadata
+            target_job = next((j for j in jobs if j["id"] == "zero-factory-task-queue-check"), None)
+            self.assertIsNotNone(target_job)
+            self.assertIn("prompt", target_job)
+            self.assertIn("schedule", target_job)
+            self.assertIn("enabled", target_job)
+
+            # 3. POST /cron/{job_id}/toggle
+            initial_enabled = target_job["enabled"]
+            res_toggle = client.post("/api/plugins/zerofactory-kanban/cron/zero-factory-task-queue-check/toggle")
+            self.assertEqual(res_toggle.status_code, 200)
+            self.assertTrue(res_toggle.json()["ok"])
+
+            # Verify toggled
+            res_after = client.get("/api/plugins/zerofactory-kanban/cron")
+            toggled_job = next(j for j in res_after.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")
+            self.assertEqual(toggled_job["enabled"], not initial_enabled)
+            self.assertEqual(toggled_job["state"], "paused" if initial_enabled else "scheduled")
+
+            # 4. PUT /cron/{job_id} (update minutes and prompt)
+            res_put = client.put(
+                "/api/plugins/zerofactory-kanban/cron/zero-factory-task-queue-check",
+                json={
+                    "minutes": 45,
+                    "prompt": "Custom queue check prompt",
+                    "model": "custom-test-model"
+                }
+            )
+            self.assertEqual(res_put.status_code, 200)
+            self.assertTrue(res_put.json()["ok"])
+
+            # Verify in GET /cron
+            res_updated = client.get("/api/plugins/zerofactory-kanban/cron")
+            updated_job = next(j for j in res_updated.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")
+            self.assertEqual(updated_job["schedule"]["minutes"], 45)
+            self.assertEqual(updated_job["schedule_display"], "every 45m")
+            self.assertEqual(updated_job["prompt"], "Custom queue check prompt")
+            self.assertEqual(updated_job["model"], "custom-test-model")
+            self.assertTrue(updated_job["custom_config"])
+
+            # 5. Verify ensure_builtin_cron_jobs preserves custom_config
+            ensure_builtin_cron_jobs()
+            persisted = load_jobs_from_file(test_jobs_path)
+            persisted_job = next(j for j in persisted if j["id"] == "zero-factory-task-queue-check")
+            self.assertEqual(persisted_job["schedule"]["minutes"], 45)
+            self.assertEqual(persisted_job["prompt"], "Custom queue check prompt")
+
+            # 6. POST /cron/{job_id}/reset restores defaults
+            res_reset = client.post("/api/plugins/zerofactory-kanban/cron/zero-factory-task-queue-check/reset")
+            self.assertEqual(res_reset.status_code, 200)
+            self.assertTrue(res_reset.json()["ok"])
+
+            res_after_reset = client.get("/api/plugins/zerofactory-kanban/cron")
+            reset_job = next(j for j in res_after_reset.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")
+            self.assertEqual(reset_job["schedule"]["minutes"], 120)
+            self.assertFalse(reset_job["custom_config"])
+        finally:
+            builtin_cron.get_target_jobs_files = orig_targets
+            if test_jobs_path.exists():
+                test_jobs_path.unlink()
+
 if __name__ == "__main__":
     unittest.main()
 

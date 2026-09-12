@@ -178,6 +178,20 @@ class TaskUpdate(BaseModel):
     tags: Optional[List[str]] = None
     metadata: Optional[Dict[str, Any]] = None
 
+class CronJobUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    minutes: Optional[int] = None
+    cron_expr: Optional[str] = None
+    schedule: Optional[Dict[str, Any]] = None
+    schedule_display: Optional[str] = None
+    model: Optional[str] = None
+    workdir: Optional[str] = None
+    prompt: Optional[str] = None
+    name: Optional[str] = None
+
+class CronToggleRequest(BaseModel):
+    enabled: Optional[bool] = None
+
 class TaskMove(BaseModel):
     status: str = Field(..., pattern="^(triage|todo|ready|running|blocked|done)$")
     actor: Optional[str] = "user"
@@ -613,13 +627,25 @@ def list_boards():
 def _get_cron_helpers():
     """Import builtin cron engine functions reliably regardless of how plugin_api is loaded."""
     try:
-        from ..builtin_cron import ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job, list_builtin_jobs
-        return ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job, list_builtin_jobs
+        from ..builtin_cron import (
+            ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job,
+            list_builtin_jobs, update_builtin_job, toggle_builtin_job, reset_builtin_job
+        )
+        return (
+            ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job,
+            list_builtin_jobs, update_builtin_job, toggle_builtin_job, reset_builtin_job
+        )
     except Exception:
         pass
     try:
-        from builtin_cron import ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job, list_builtin_jobs  # type: ignore
-        return ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job, list_builtin_jobs
+        from builtin_cron import (  # type: ignore
+            ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job,
+            list_builtin_jobs, update_builtin_job, toggle_builtin_job, reset_builtin_job
+        )
+        return (
+            ensure_builtin_cron_jobs, prune_board_cron_job, trigger_builtin_job,
+            list_builtin_jobs, update_builtin_job, toggle_builtin_job, reset_builtin_job
+        )
     except Exception:
         pass
     try:
@@ -632,11 +658,14 @@ def _get_cron_helpers():
             builtin_cron.ensure_builtin_cron_jobs,
             builtin_cron.prune_board_cron_job,
             builtin_cron.trigger_builtin_job,
-            builtin_cron.list_builtin_jobs
+            builtin_cron.list_builtin_jobs,
+            builtin_cron.update_builtin_job,
+            builtin_cron.toggle_builtin_job,
+            builtin_cron.reset_builtin_job
         )
     except Exception as e:
         _log.warning("Failed to resolve builtin_cron helpers: %s", e)
-        return None, None, None, None
+        return None, None, None, None, None, None, None
 
 
 @router.post("/boards")
@@ -1459,7 +1488,8 @@ def import_legacy():
 @router.get("/cron")
 def get_builtin_cron_jobs():
     """List all built-in Zero Factory cron jobs and their current runtime status."""
-    _, _, _, list_cron = _get_cron_helpers()
+    helpers = _get_cron_helpers()
+    list_cron = helpers[3] if len(helpers) > 3 else None
     if not list_cron:
         return {"ok": False, "error": "Builtin cron engine not available", "jobs": [], "count": 0}
     jobs = list_cron()
@@ -1469,7 +1499,8 @@ def get_builtin_cron_jobs():
 @router.post("/cron/sync")
 def sync_builtin_cron_jobs():
     """Ensure all built-in Zero Factory cron jobs are registered and synchronized."""
-    ensure_cron, _, _, _ = _get_cron_helpers()
+    helpers = _get_cron_helpers()
+    ensure_cron = helpers[0] if len(helpers) > 0 else None
     if not ensure_cron:
         raise HTTPException(status_code=500, detail="Builtin cron engine not available")
     return ensure_cron()
@@ -1478,8 +1509,56 @@ def sync_builtin_cron_jobs():
 @router.post("/cron/{job_id}/run")
 def run_builtin_cron_job(job_id: str):
     """Trigger an immediate run of a built-in Zero Factory cron job."""
-    _, _, trigger_cron, _ = _get_cron_helpers()
+    helpers = _get_cron_helpers()
+    trigger_cron = helpers[2] if len(helpers) > 2 else None
     if not trigger_cron:
         raise HTTPException(status_code=500, detail="Builtin cron engine not available")
     return trigger_cron(job_id)
+
+
+@router.put("/cron/{job_id}")
+@router.post("/cron/{job_id}")
+def update_builtin_cron_job(job_id: str, req: CronJobUpdate):
+    """Update schedule, enabled state, prompt, model, or workdir of a builtin cron job."""
+    helpers = _get_cron_helpers()
+    update_cron = helpers[4] if len(helpers) > 4 else None
+    if not update_cron:
+        raise HTTPException(status_code=500, detail="Builtin cron engine not available")
+    res = update_cron(job_id, req.dict(exclude_unset=True))
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Update failed"))
+    return res
+
+
+@router.post("/cron/{job_id}/toggle")
+@router.put("/cron/{job_id}/toggle")
+def toggle_builtin_cron_job(
+    job_id: str,
+    req: Optional[CronToggleRequest] = None,
+    enabled: Optional[bool] = None
+):
+    """Toggle a builtin cron job between enabled and paused."""
+    helpers = _get_cron_helpers()
+    toggle_cron = helpers[5] if len(helpers) > 5 else None
+    if not toggle_cron:
+        raise HTTPException(status_code=500, detail="Builtin cron engine not available")
+    target_enabled = req.enabled if (req and req.enabled is not None) else enabled
+    res = toggle_cron(job_id, target_enabled)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Toggle failed"))
+    return res
+
+
+@router.post("/cron/{job_id}/reset")
+@router.put("/cron/{job_id}/reset")
+def reset_builtin_cron_job(job_id: str):
+    """Reset a builtin cron job to its canonical default configuration."""
+    helpers = _get_cron_helpers()
+    reset_cron = helpers[6] if len(helpers) > 6 else None
+    if not reset_cron:
+        raise HTTPException(status_code=500, detail="Builtin cron engine not available")
+    res = reset_cron(job_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Reset failed"))
+    return res
 
