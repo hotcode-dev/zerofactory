@@ -772,7 +772,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug FROM tasks
                         WHERE (status IN ('blocked', 'done') AND (pr_url IS NULL OR pr_url = ''))
-                           OR (pr_url IS NOT NULL AND pr_url != '' AND assignee IN ('reviewer', 'zf-reviewer'))
+                           OR (status IN ('blocked', 'done') AND pr_url IS NOT NULL AND pr_url != '' AND assignee IN ('reviewer', 'zf-reviewer'))
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -858,7 +858,6 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         else:
                             # Reviewer finished review -> inspect GitHub PR state
                             try:
-                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
                                 res = subprocess.run(
                                     ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url"],
                                     capture_output=True, text=True, cwd=str(repo_path)
@@ -869,6 +868,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     decision = pr_data.get("reviewDecision")
 
                                     if pr_state == "MERGED":
+                                        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
                                         cursor.execute(
                                             "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
                                             (now, task_id)
@@ -878,6 +878,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             (task_id, now)
                                         )
                                     elif decision == "CHANGES_REQUESTED":
+                                        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
                                         match = re.search(r"\[PR Opened by (.*?)\]", title)
                                         author = match.group(1) if match else "zf-builder"
                                         author = normalize_assignee(author)
@@ -891,9 +892,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             (task_id, now)
                                         )
                                     elif decision == "APPROVED":
+                                        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
                                         new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
                                         cursor.execute(
-                                            "UPDATE tasks SET title = ?, status = 'blocked', updated_at = ? WHERE id = ?",
+                                            "UPDATE tasks SET title = ?, status = 'blocked', workspace_path = NULL, updated_at = ? WHERE id = ?",
                                             (new_title, now, task_id)
                                         )
                                         cursor.execute(
