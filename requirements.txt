@@ -1,0 +1,5 @@
+# Zero Factory runtime & test dependencies.
+# When installed into the Hermes Agent venv, FastAPI/Pydantic/HTTPX are already
+# provided — this manifest documents the minimum for a clean environment.
+fastapi>=0.110
+httpx>=0.27

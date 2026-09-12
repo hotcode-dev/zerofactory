@@ -181,6 +181,7 @@ Zero Factory is architected to drastically minimize LLM token consumption (up to
 ```text
 zerofactory/
 ├── plugin.yaml                  # Hermes plugin metadata
+├── requirements.txt             # Third-party deps for a clean env (tests)
 ├── __init__.py                  # Plugin registration & CLI interface
 ├── dispatcher.py                # Autonomous dispatch engine & worktree manager
 ├── builtin_cron.py              # Periodic scanner & reporting engine
@@ -208,8 +209,9 @@ zerofactory/
 
 ## Testing
 
-Run the automated test suite against your local Hermes environment:
+The test suite runs against your local Hermes environment. Inside the Hermes Agent venv, FastAPI/Pydantic are already available; on a clean Python environment, install the third-party dependencies first:
 ```bash
+pip install -r requirements.txt
 python3 test_plugin.py
 ```
 

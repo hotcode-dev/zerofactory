@@ -793,7 +793,8 @@ class TestZeroFactory(unittest.TestCase):
         for sj in scanner_jobs:
             self.assertEqual(sj["script"], "zf_scanner_gate.py")
             self.assertFalse(sj["no_agent"])
-            self.assertEqual(sj["context_from"], ["self"])
+            # Scanner runs stand-alone per board; no upstream chaining (see e775ff2)
+            self.assertIsNone(sj["context_from"])
             self.assertTrue(sj["continuity"])
 
     def test_24_script_execution_and_wakegate(self):
