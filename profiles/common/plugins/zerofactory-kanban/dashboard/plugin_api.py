@@ -571,7 +571,7 @@ def create_board(req: BoardCreate):
 
     # Sync builtin cron jobs so new board gets a dedicated scanner cron job
     if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
-        ensure_cron, _, _ = _get_cron_helpers()
+        ensure_cron, *_ = _get_cron_helpers()
         if ensure_cron:
             try:
                 ensure_cron()
@@ -613,7 +613,7 @@ def update_board(slug: str, req: BoardUpdate):
 
     # Sync builtin cron jobs so updated board properties are reflected
     if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
-        ensure_cron, _, _ = _get_cron_helpers()
+        ensure_cron, *_ = _get_cron_helpers()
         if ensure_cron:
             try:
                 ensure_cron()
@@ -635,7 +635,7 @@ def delete_board(slug: str):
 
     # Explicitly clear board's scanner cron job and sync remaining builtin cron jobs
     if not os.environ.get("ZEROFACTORY_KANBAN_SKIP_CRON_SYNC"):
-        ensure_cron, prune_cron, _ = _get_cron_helpers()
+        ensure_cron, prune_cron, *_ = _get_cron_helpers()
         if prune_cron:
             try:
                 prune_cron(slug)

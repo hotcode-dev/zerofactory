@@ -1,6 +1,12 @@
-@import "/home/ntsd/.hermes/hermes-agent/node_modules/tailwindcss/index.css";
+@import "/home/ntsd/.hermes/hermes-agent/node_modules/tailwindcss/theme.css";
+@import "/home/ntsd/.hermes/hermes-agent/node_modules/tailwindcss/utilities.css";
 
 @source "./dist/index.js";
+
+/* Keep host dashboard font inheritance safe */
+:root, :host {
+  --font-sans: var(--theme-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
 
 /* Custom Zero Factory keyframes and animations */
 @keyframes zfk-pulse {
