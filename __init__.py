@@ -1,4 +1,4 @@
-"""Zero Factory Kanban — Hermes Plugin Entrypoint & CLI."""
+"""Zero Factory — Hermes Plugin Entrypoint & CLI."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ try:
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate
     )
 except ImportError:
-    # If running directly or out-of-package
     current_dir = Path(__file__).parent
     if str(current_dir / "dashboard") not in sys.path:
         sys.path.insert(0, str(current_dir / "dashboard"))
@@ -31,7 +30,6 @@ except ImportError:
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate
     )
 
-
 try:
     from .dispatcher import run_dispatch_cycle, start_background_dispatcher
 except ImportError:
@@ -42,16 +40,23 @@ try:
 except ImportError:
     from builtin_cron import ensure_builtin_cron_jobs, list_builtin_jobs, trigger_builtin_job  # type: ignore
 
-def register(ctx: Any):
-    """Register plugin CLI commands and lifecycle hooks with Hermes."""
+try:
+    from .profile_manager import ensure_zf_profiles, ZF_PROFILES
+except ImportError:
+    from profile_manager import ensure_zf_profiles, ZF_PROFILES  # type: ignore
 
-    # Initialize DB, sync builtin cron jobs, & start continuous background dispatcher loop
+
+def register(ctx: Any):
+    """Register plugin CLI commands, profiles bootstrap, and lifecycle hooks with Hermes."""
+
+    # Initialize DB, pre-create agent profiles, sync builtin crons, and start dispatcher
     try:
         init_db()
+        ensure_zf_profiles()
         ensure_builtin_cron_jobs()
         start_background_dispatcher()
     except Exception as e:
-        print(f"[zerofactory-kanban] Initialization error: {e}")
+        print(f"[zerofactory] Initialization error: {e}")
 
     # Register tick hook if supported by Hermes
     if hasattr(ctx, "register_hook"):
@@ -62,7 +67,15 @@ def register(ctx: Any):
 
     # Register CLI command
     def cmd_setup(parser: argparse.ArgumentParser):
-        subparsers = parser.add_subparsers(dest="action", help="Zero Factory Kanban actions")
+        subparsers = parser.add_subparsers(dest="action", help="Zero Factory actions")
+
+        # setup profiles
+        p_setup = subparsers.add_parser("setup", help="Verify and bootstrap Zero Factory agent profiles (zf-orchestrator, zf-builder, zf-reviewer)")
+        p_setup.add_argument("--force", action="store_true", help="Force overwrite existing profiles with templates")
+
+        # sync-profiles
+        p_sync_prof = subparsers.add_parser("sync-profiles", help="Update SOUL.md system prompts for zf-* profiles from templates")
+        p_sync_prof.add_argument("--force", action="store_true", help="Also overwrite config.yaml")
 
         # list
         p_list = subparsers.add_parser("list", help="List kanban tasks")
@@ -76,7 +89,7 @@ def register(ctx: Any):
         p_create.add_argument("--description", default="", help="Task description")
         p_create.add_argument("--status", default="triage", help="Initial status")
         p_create.add_argument("--priority", default="P2", help="Priority (P0, P1, P2, P3)")
-        p_create.add_argument("--assignee", default="unassigned", help="Assignee (orchestrator, builder, reviewer)")
+        p_create.add_argument("--assignee", default="unassigned", help="Assignee (zf-orchestrator, zf-builder, zf-reviewer)")
         p_create.add_argument("--board", default=None, help="Board slug (defaults to first available board)")
         p_create.add_argument("--parent", default=None, help="Parent task ID")
         p_create.add_argument("--files", default=None, help="Affected relative file path(s), comma-separated")
@@ -136,11 +149,35 @@ def register(ctx: Any):
         init_db()
         action = getattr(args, "action", "list")
 
-        if action == "list" or not action:
+        if action == "setup":
+            force = getattr(args, "force", False)
+            res = ensure_zf_profiles(force=force)
+            print("\nZero Factory Profiles Setup:")
+            if res["created"]:
+                print(f"  ✓ Created:  {', '.join(res['created'])}")
+            if res["updated"]:
+                print(f"  ✓ Updated:  {', '.join(res['updated'])}")
+            if res["existing"]:
+                print(f"  ✓ Verified: {', '.join(res['existing'])}")
+            print(f"All Zero Factory profiles are ready in ~/.hermes/profiles/.\n")
+
+        elif action == "sync-profiles":
+            force = getattr(args, "force", False)
+            res = ensure_zf_profiles(force=force, update_prompts=True)
+            print("\nZero Factory Profiles Synced:")
+            if res["updated"]:
+                print(f"  ✓ Updated SOUL/Prompts: {', '.join(res['updated'])}")
+            if res["created"]:
+                print(f"  ✓ Created: {', '.join(res['created'])}")
+            if res["existing"]:
+                print(f"  ✓ Current: {', '.join(res['existing'])}")
+            print()
+
+        elif action == "list" or not action:
             res = _list_tasks(board=getattr(args, "board", None), status=getattr(args, "status", None), assignee=getattr(args, "assignee", None))
             tasks = res.get("tasks", [])
             print(f"\nZero Factory Kanban ({len(tasks)} tasks):")
-            print(f"{'ID':<12} {'PRIO':<6} {'STATUS':<10} {'ASSIGNEE':<14} {'TITLE'}")
+            print(f"{'ID':<12} {'PRIO':<6} {'STATUS':<10} {'ASSIGNEE':<16} {'TITLE'}")
             print("-" * 75)
             for t in tasks:
                 prio = t.get("priority", "P2")
@@ -149,7 +186,7 @@ def register(ctx: Any):
                 title = t.get("title", "")
                 if len(title) > 40:
                     title = title[:37] + "..."
-                print(f"{t['id']:<12} {prio:<6} {stat:<10} {asgn:<14} {title}")
+                print(f"{t['id']:<12} {prio:<6} {stat:<10} {asgn:<16} {title}")
             print()
 
         elif action == "create":
@@ -298,8 +335,14 @@ def register(ctx: Any):
 
     if hasattr(ctx, "register_cli_command"):
         ctx.register_cli_command(
+            name="zerofactory",
+            help="Zero Factory multi-agent software factory & Kanban",
+            setup_fn=cmd_setup,
+            handler_fn=cmd_run
+        )
+        ctx.register_cli_command(
             name="zerofactory-kanban",
-            help="Zero Factory durable Kanban board management",
+            help="Zero Factory durable Kanban board management (alias for 'hermes zerofactory')",
             setup_fn=cmd_setup,
             handler_fn=cmd_run
         )

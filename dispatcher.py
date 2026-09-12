@@ -34,6 +34,24 @@ _dispatcher_thread: Optional[threading.Thread] = None
 _dispatcher_lock = threading.Lock()
 _active_workers: Dict[str, subprocess.Popen] = {}
 
+PROFILE_MAP = {
+    "builder": "zf-builder",
+    "zf-builder": "zf-builder",
+    "reviewer": "zf-reviewer",
+    "zf-reviewer": "zf-reviewer",
+    "orchestrator": "zf-orchestrator",
+    "zf-orchestrator": "zf-orchestrator",
+}
+
+VALID_PROFILES = ("zf-builder", "zf-reviewer", "zf-orchestrator", "builder", "reviewer", "orchestrator")
+
+
+def normalize_assignee(assignee: Optional[str]) -> str:
+    """Normalize assignee to canonical zf-* namespaced profile."""
+    if not assignee or assignee == "unassigned":
+        return "unassigned"
+    return PROFILE_MAP.get(assignee, assignee)
+
 
 def get_task_timeout_seconds() -> int:
     """Return maximum allowed running duration before worker is considered stuck."""
@@ -65,6 +83,7 @@ def spawn_agent_worker(
     if os.environ.get("ZEROFACTORY_KANBAN_SKIP_WORKER_SPAWN"):
         return None, None
 
+    assignee = normalize_assignee(assignee)
     import shutil
     local_hermes = Path.home() / ".local" / "bin" / "hermes"
     hermes_bin = (
@@ -88,9 +107,9 @@ def spawn_agent_worker(
         f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
         f"3. Verify your changes with tests, linters, or typechecks.\n"
         f"4. When finished, mark the task as complete using:\n"
-        f"   hermes zerofactory-kanban move {task_id} done\n"
+        f"   hermes zerofactory move {task_id} done\n"
         f"   (or if human review or external dependencies are required, run:\n"
-        f"   hermes zerofactory-kanban move {task_id} blocked --reason \"review-required\")\n"
+        f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
         f"5. Provide a summary of your changes.\n"
     )
 
@@ -134,16 +153,14 @@ def spawn_agent_worker(
         session_id = None
         state_db_path = Path.home() / ".hermes" / "profiles" / assignee / "state.db"
         if not state_db_path.exists():
-            try:
-                resolved_parents = Path(__file__).resolve().parents
-                if len(resolved_parents) > 3:
-                    p_repo = resolved_parents[3] / assignee / "state.db"
-                    if p_repo.exists():
-                        state_db_path = p_repo
-            except Exception:
-                pass
-        if not state_db_path.exists():
-            state_db_path = Path(__file__).resolve().parent.parent.parent / assignee / "state.db"
+            unprefixed = assignee.replace("zf-", "")
+            alt_path = Path.home() / ".hermes" / "profiles" / unprefixed / "state.db"
+            if alt_path.exists():
+                state_db_path = alt_path
+            else:
+                p_root = Path.home() / ".hermes" / "state.db"
+                if p_root.exists():
+                    state_db_path = p_root
         if state_db_path.exists():
             try:
                 resolved_state = state_db_path.resolve()
@@ -459,7 +476,7 @@ def format_conventional_message(title: str, task_id: str = "") -> tuple[str, str
     """
     raw_title = title
     # 1. Strip role and priority badges
-    cleaned = re.sub(r"\[(?:builder|reviewer|orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]", "", title)
+    cleaned = re.sub(r"\[(?:zf-builder|zf-reviewer|zf-orchestrator|builder|reviewer|orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]", "", title)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     # 2. Check if already conventional
@@ -556,17 +573,24 @@ def setup_worktree(
     board_slug: Optional[str] = None
 ) -> Optional[str]:
     """Ensure git worktree and branch exist for task execution."""
-    valid_profiles = ("builder", "reviewer", "orchestrator")
+    valid_profiles = VALID_PROFILES
     if not assignee or assignee == "unassigned" or assignee not in valid_profiles:
-        if "[reviewer]" in title:
-            assignee = "reviewer"
-        elif "[builder]" in title:
-            assignee = "builder"
-        elif "[orchestrator]" in title:
-            assignee = "orchestrator"
+        if "[reviewer]" in title or "[zf-reviewer]" in title:
+            assignee = "zf-reviewer"
+        elif "[builder]" in title or "[zf-builder]" in title:
+            assignee = "zf-builder"
+        elif "[orchestrator]" in title or "[zf-orchestrator]" in title:
+            assignee = "zf-orchestrator"
         else:
-            assignee = "builder"
+            assignee = "zf-builder"
         cursor.execute("UPDATE tasks SET assignee = ?, skills = '[]' WHERE id = ?", (assignee, task_id))
+    else:
+        norm_assignee = normalize_assignee(assignee)
+        if norm_assignee != assignee:
+            assignee = norm_assignee
+            cursor.execute("UPDATE tasks SET assignee = ? WHERE id = ?", (assignee, task_id))
+        else:
+            assignee = norm_assignee
 
     if os.environ.get("ZEROFACTORY_KANBAN_SKIP_GIT"):
         return None
@@ -679,13 +703,13 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     spawn_limit = MAX_CONCURRENT_WORKERS - running_count
                     cursor.execute("""
                         SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
-                        WHERE status = 'ready' AND assignee != 'reviewer'
+                        WHERE status = 'ready' AND assignee NOT IN ('reviewer', 'zf-reviewer')
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
                         LIMIT ?
                     """, (spawn_limit,))
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
-                        assignee = row["assignee"] or "builder"
+                        assignee = normalize_assignee(row["assignee"] or "zf-builder")
                         title = row["title"] or ""
                         description = row["description"] or ""
                         priority = row["priority"] or "P2"
@@ -727,7 +751,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug FROM tasks
                         WHERE (status IN ('blocked', 'done') AND (pr_url IS NULL OR pr_url = ''))
-                           OR (pr_url IS NOT NULL AND pr_url != '' AND assignee = 'reviewer')
+                           OR (pr_url IS NOT NULL AND pr_url != '' AND assignee IN ('reviewer', 'zf-reviewer'))
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -763,7 +787,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if not repo_path or not repo_path.exists():
                             repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
 
-                        if assignee != "reviewer":
+                        if assignee not in ("reviewer", "zf-reviewer"):
                             # Author finished work -> git commit, push, create PR, hand off to reviewer
                             try:
                                 subject, commit_body = format_conventional_message(title, task_id)
@@ -796,10 +820,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     new_title = f"{title} [PR Opened by {assignee}]"
 
                                 cursor.execute(
-                                    "UPDATE tasks SET title = ?, assignee = 'reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
+                                    "UPDATE tasks SET title = ?, assignee = 'zf-reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
                                     (new_title, pr_url, now, task_id)
                                 )
-                                setup_worktree(cursor, task_id, new_title, "reviewer", tenant, db_path, board_slug=board_slug)
+                                setup_worktree(cursor, task_id, new_title, "zf-reviewer", tenant, db_path, board_slug=board_slug)
                                 cursor.execute(
                                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
                                     (task_id, f"PR created, routed to reviewer: {pr_url}", now)
@@ -834,7 +858,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         )
                                     elif decision == "CHANGES_REQUESTED":
                                         match = re.search(r"\[PR Opened by (.*?)\]", title)
-                                        author = match.group(1) if match else "builder"
+                                        author = match.group(1) if match else "zf-builder"
+                                        author = normalize_assignee(author)
                                         cursor.execute(
                                             "UPDATE tasks SET assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
                                             (author, now, task_id)

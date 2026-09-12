@@ -72,7 +72,7 @@ class TestZeroFactoryKanban(unittest.TestCase):
         self.assertEqual(details["title"], "Implement OAuth Login")
         self.assertEqual(details["status"], "triage")
         self.assertEqual(details["priority"], "P1")
-        self.assertEqual(details["assignee"], "builder")
+        self.assertEqual(details["assignee"], "zf-builder")
 
         # 3. Move Task
         move_res = move_task(task_id, TaskMove(status="running", actor="test"))
@@ -678,6 +678,30 @@ class TestZeroFactoryKanban(unittest.TestCase):
             builtin_cron.get_target_jobs_files = orig_targets
             if test_jobs_path.exists():
                 test_jobs_path.unlink()
+
+    def test_17_profile_manager(self):
+        from profile_manager import ensure_zf_profiles, ZF_PROFILES, get_hermes_home
+        res = ensure_zf_profiles()
+        self.assertIsInstance(res, dict)
+        profiles_found = set(res["created"] + res["existing"] + res["updated"])
+        for p in ZF_PROFILES:
+            self.assertIn(p, profiles_found)
+            p_dir = get_hermes_home() / "profiles" / p
+            self.assertTrue(p_dir.exists())
+            self.assertTrue((p_dir / "SOUL.md").exists())
+            self.assertTrue((p_dir / "config.yaml").exists())
+
+    def test_18_assignee_normalization(self):
+        from dispatcher import normalize_assignee, PROFILE_MAP
+        self.assertEqual(normalize_assignee("builder"), "zf-builder")
+        self.assertEqual(normalize_assignee("zf-builder"), "zf-builder")
+        self.assertEqual(normalize_assignee("reviewer"), "zf-reviewer")
+        self.assertEqual(normalize_assignee("zf-reviewer"), "zf-reviewer")
+        self.assertEqual(normalize_assignee("orchestrator"), "zf-orchestrator")
+        self.assertEqual(normalize_assignee("zf-orchestrator"), "zf-orchestrator")
+        self.assertEqual(normalize_assignee("unassigned"), "unassigned")
+        self.assertEqual(normalize_assignee(None), "unassigned")
+
 
 if __name__ == "__main__":
     unittest.main()

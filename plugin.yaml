@@ -1,0 +1,9 @@
+name: zerofactory
+version: "1.1.0"
+description: "Zero Factory — 24/7 AI multi-agent orchestration and durable Kanban system for Hermes Agent."
+homepage: "https://github.com/hotcode-dev/zerofactory"
+tags:
+  - multi-agent
+  - kanban
+  - orchestration
+  - autonomous

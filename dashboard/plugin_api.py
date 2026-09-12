@@ -209,7 +209,26 @@ class DependencyLink(BaseModel):
 
 VALID_STATUSES = {"triage", "todo", "ready", "running", "blocked", "done"}
 VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
-VALID_ASSIGNEES = {"unassigned", "orchestrator", "builder", "reviewer"}
+VALID_ASSIGNEES = {
+    "unassigned",
+    "zf-orchestrator", "zf-builder", "zf-reviewer",
+    "orchestrator", "builder", "reviewer"
+}
+
+PROFILE_MAP = {
+    "builder": "zf-builder",
+    "zf-builder": "zf-builder",
+    "reviewer": "zf-reviewer",
+    "zf-reviewer": "zf-reviewer",
+    "orchestrator": "zf-orchestrator",
+    "zf-orchestrator": "zf-orchestrator",
+}
+
+def normalize_assignee(assignee: Optional[str]) -> str:
+    """Normalize assignee to zf-* namespaced profile."""
+    if not assignee or assignee == "unassigned":
+        return "unassigned"
+    return PROFILE_MAP.get(assignee, assignee)
 
 def generate_task_id() -> str:
     token = secrets.token_hex(4)
@@ -261,26 +280,25 @@ def compute_dedup_key(files: Optional[List[str]], category: Optional[str] = None
 
 def get_profile_state_db(assignee: str) -> Optional[Path]:
     """Find the SQLite state.db for an agent profile."""
-    # 1. ~/.hermes/profiles/{assignee}/state.db
-    p1 = Path.home() / ".hermes" / "profiles" / assignee / "state.db"
+    norm_asgn = normalize_assignee(assignee)
+    # 1. ~/.hermes/profiles/{norm_asgn}/state.db
+    p1 = Path.home() / ".hermes" / "profiles" / norm_asgn / "state.db"
     if p1.exists():
         return p1
-    # 2. Path relative to plugin: profiles/{assignee}/state.db
+    # 2. Legacy un-prefixed ~/.hermes/profiles/{assignee}/state.db
+    unprefixed = norm_asgn.replace("zf-", "")
+    p2 = Path.home() / ".hermes" / "profiles" / unprefixed / "state.db"
+    if p2.exists():
+        return p2
+    # 3. Path relative to plugin: profiles/{assignee}/state.db
     try:
         resolved_parents = Path(__file__).resolve().parents
         if len(resolved_parents) > 4:
-            p2 = resolved_parents[4] / assignee / "state.db"
-            if p2.exists():
-                return p2
+            p3 = resolved_parents[4] / norm_asgn / "state.db"
+            if p3.exists():
+                return p3
     except Exception:
         pass
-    p2_fallback = Path(__file__).resolve().parent.parent.parent / assignee / "state.db"
-    if p2_fallback.exists():
-        return p2_fallback
-    # 3. Local profiles directory
-    p3 = Path("profiles") / assignee / "state.db"
-    if p3.exists():
-        return p3.resolve()
     # 4. ~/.hermes/state.db (default fallback)
     p4 = Path.home() / ".hermes" / "state.db"
     if p4.exists():
@@ -884,7 +902,7 @@ def create_task(req: TaskCreate):
     # Normalize fields
     status_val = req.status if req.status in VALID_STATUSES else "triage"
     priority_val = req.priority if req.priority in VALID_PRIORITIES else "P2"
-    assignee_val = req.assignee if req.assignee in VALID_ASSIGNEES else "unassigned"
+    assignee_val = normalize_assignee(req.assignee) if req.assignee in VALID_ASSIGNEES else "unassigned"
     tags_json = json.dumps(req.tags or [])
     metadata_json = "{}"
 
@@ -1074,9 +1092,10 @@ def update_task(task_id: str, req: TaskUpdate):
         params.append(req.status)
         changes.append(f"status changed to {req.status}")
     if req.assignee is not None:
+        asgn = normalize_assignee(req.assignee)
         updates.append("assignee = ?")
-        params.append(req.assignee)
-        changes.append(f"assignee changed to {req.assignee}")
+        params.append(asgn)
+        changes.append(f"assignee changed to {asgn}")
     if req.priority is not None:
         if req.priority not in VALID_PRIORITIES:
             raise HTTPException(status_code=400, detail=f"Invalid priority: {req.priority}")
@@ -1427,7 +1446,7 @@ def import_legacy():
                 status_val = raw_status if raw_status in VALID_STATUSES else "triage"
 
                 raw_asgn = t["assignee"] if "assignee" in keys else "unassigned"
-                assignee_val = raw_asgn if raw_asgn in VALID_ASSIGNEES else "unassigned"
+                assignee_val = normalize_assignee(raw_asgn) if raw_asgn in VALID_ASSIGNEES else "unassigned"
 
                 desc_val = (t["description"] if "description" in keys else None) or (t["body"] if "body" in keys else None) or ""
 

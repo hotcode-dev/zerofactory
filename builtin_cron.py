@@ -76,7 +76,7 @@ Run: `hermes zerofactory-kanban list --board "{slug}"`
 ## STEP 3: Create Task with Fingerprint Safeguard (MAXIMUM 1 TASK TOTAL):
 If you find a genuine, unaddressed issue:
 Create a task using the Zero Factory Kanban CLI:
-`hermes zerofactory-kanban create "<issue title>" --description "<detailed context>" --board "{slug}" --files "<relative_path1>,<relative_path2>" --category "<category>" --priority P0 --status todo --assignee builder`
+`hermes zerofactory create "<issue title>" --description "<detailed context>" --board "{slug}" --files "<relative_path1>,<relative_path2>" --category "<category>" --priority P0 --status todo --assignee zf-builder`
 - Always pass `--files` with all affected relative file paths (e.g., `--files "src/auth.ts,src/session.ts"`). Zero Factory computes a multi-file fingerprint safeguard to prevent duplicate tasks.
 - Always pass `--category` (one of: `bug-fix`, `refactoring`, `performance`, `documentation`, `testing`, `security`, `config`).
 - In `--description`: Clear context with RELATIVE file paths and line numbers only. NEVER use absolute paths in the description!
@@ -198,8 +198,9 @@ def _load_env_defaults() -> tuple[str, str, str]:
     base_url = os.getenv("CUSTOM_BASE_URL")
 
     search_files = [
+        Path(os.path.expanduser("~/.hermes/profiles/zf-orchestrator/.env")),
         Path(os.path.expanduser("~/.hermes/profiles/orchestrator/.env")),
-        Path(__file__).resolve().parent.parent.parent / "common" / ".env",
+        Path(__file__).resolve().parent / ".env",
         Path(os.path.expanduser("~/.hermes/.env")),
     ]
     env_override = os.getenv("HERMES_ENV_FILE")
@@ -261,7 +262,7 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "origin": "zerofactory-kanban",
         "enabled_toolsets": ["terminal", "file", "kanban"],
         "workdir": None,
-        "profile": "orchestrator"
+        "profile": "zf-orchestrator"
     },
     "zero-factory-daily-report": {
         "id": "zero-factory-daily-report",
@@ -289,7 +290,7 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "origin": "zerofactory-kanban",
         "enabled_toolsets": ["terminal", "file", "kanban"],
         "workdir": None,
-        "profile": "orchestrator"
+        "profile": "zf-orchestrator"
     }
 }
 
@@ -363,7 +364,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "origin": "zerofactory-kanban",
             "enabled_toolsets": ["terminal", "file", "web", "kanban"],
             "workdir": workdir,
-            "profile": "orchestrator"
+            "profile": "zf-orchestrator"
         }
 
     BUILTIN_CRON_JOBS.clear()
@@ -408,8 +409,8 @@ def get_target_jobs_files() -> List[Path]:
 
     Targets:
     1. Active profile jobs.json (if active and not default)
-    2. Orchestrator profile jobs.json in ~/.hermes/profiles/orchestrator
-    3. Workspace repository profiles/orchestrator/cron/jobs.json (if present)
+    2. ZF Orchestrator profile jobs.json in ~/.hermes/profiles/zf-orchestrator
+    3. Legacy orchestrator profile jobs.json (if present)
     """
     files: List[Path] = []
     hermes_root = Path(os.path.expanduser("~/.hermes"))
@@ -425,18 +426,15 @@ def get_target_jobs_files() -> List[Path]:
         except Exception:
             pass
 
-    # 2. Orchestrator profile jobs.json (canonical Zero Factory profile)
-    orch_jobs = hermes_root / "profiles" / "orchestrator" / "cron" / "jobs.json"
-    if orch_jobs not in files:
-        files.append(orch_jobs)
+    # 2. ZF Orchestrator profile jobs.json (canonical Zero Factory profile)
+    zf_orch_jobs = hermes_root / "profiles" / "zf-orchestrator" / "cron" / "jobs.json"
+    if zf_orch_jobs not in files:
+        files.append(zf_orch_jobs)
 
-    # 3. Local workspace repository orchestrator jobs.json
-    try:
-        repo_orch_jobs = Path(__file__).resolve().parents[3] / "orchestrator" / "cron" / "jobs.json"
-        if repo_orch_jobs.exists() and repo_orch_jobs not in files:
-            files.append(repo_orch_jobs)
-    except Exception:
-        pass
+    # 3. Fallback/legacy orchestrator profile jobs.json if exists
+    legacy_orch_jobs = hermes_root / "profiles" / "orchestrator" / "cron" / "jobs.json"
+    if legacy_orch_jobs.parent.exists() and legacy_orch_jobs not in files:
+        files.append(legacy_orch_jobs)
 
     return files
 
@@ -631,7 +629,7 @@ def list_builtin_jobs() -> List[Dict[str, Any]]:
             "provider": curr.get("provider", builtin_def.get("provider")),
             "base_url": curr.get("base_url", builtin_def.get("base_url")),
             "workdir": curr.get("workdir", builtin_def.get("workdir")),
-            "profile": curr.get("profile", builtin_def.get("profile", "orchestrator")),
+            "profile": curr.get("profile", builtin_def.get("profile", "zf-orchestrator")),
             "custom_config": bool(curr.get("custom_config")),
             "last_status": curr.get("last_status"),
             "last_run_at": curr.get("last_run_at"),

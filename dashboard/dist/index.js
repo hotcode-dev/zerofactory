@@ -290,7 +290,7 @@
     // Filtered Tasks
     const filteredTasks = useMemo(() => {
       return tasks.filter((t) => {
-        if (assigneeFilter !== "all" && t.assignee !== assigneeFilter) return false;
+        if (assigneeFilter !== "all" && t.assignee !== assigneeFilter && t.assignee !== assigneeFilter.replace("zf-", "") && ("zf-" + t.assignee) !== assigneeFilter) return false;
         if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
@@ -848,19 +848,25 @@
           "div",
           { className: "flex items-center gap-1.5 flex-wrap" },
           React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "Role:"),
-          ["all", "builder", "reviewer", "orchestrator", "unassigned"].map((role) =>
+          [
+            { id: "all", label: "All" },
+            { id: "zf-builder", label: "ZF Builder" },
+            { id: "zf-reviewer", label: "ZF Reviewer" },
+            { id: "zf-orchestrator", label: "ZF Orchestrator" },
+            { id: "unassigned", label: "Unassigned" }
+          ].map((roleObj) =>
             React.createElement(
               "button",
               {
-                key: role,
+                key: roleObj.id,
                 type: "button",
-                className: (assigneeFilter === role
+                className: (assigneeFilter === roleObj.id
                   ? "bg-indigo-600 text-white border-indigo-500 shadow-xs shadow-indigo-600/30"
                   : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
-                  " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center capitalize",
-                onClick: () => setAssigneeFilter(role)
+                  " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center",
+                onClick: () => setAssigneeFilter(roleObj.id)
               },
-              role
+              roleObj.label
             )
           )
         ),
@@ -947,11 +953,11 @@
                       ? "bg-slate-700/40 text-slate-400 border-slate-600/30"
                       : "bg-sky-500/15 text-sky-300 border-sky-500/30";
 
-                    const roleClass = t.assignee === "builder"
+                    const roleClass = (t.assignee === "builder" || t.assignee === "zf-builder")
                       ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                      : t.assignee === "reviewer"
+                      : (t.assignee === "reviewer" || t.assignee === "zf-reviewer")
                       ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
-                      : t.assignee === "orchestrator"
+                      : (t.assignee === "orchestrator" || t.assignee === "zf-orchestrator")
                       ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
                       : "bg-slate-700/30 text-slate-400 border-slate-700/40";
 
@@ -1123,8 +1129,13 @@
                         loadTasksAndStats();
                       }
                     },
-                    ["unassigned", "builder", "reviewer", "orchestrator"].map((r) =>
-                      React.createElement("option", { key: r, value: r }, r.charAt(0).toUpperCase() + r.slice(1))
+                    [
+                      { id: "unassigned", label: "Unassigned" },
+                      { id: "zf-builder", label: "ZF Builder" },
+                      { id: "zf-reviewer", label: "ZF Reviewer" },
+                      { id: "zf-orchestrator", label: "ZF Orchestrator" }
+                    ].map((r) =>
+                      React.createElement("option", { key: r.id, value: r.id }, r.label)
                     )
                   )
                 )
@@ -1491,9 +1502,9 @@
                         onChange: (e) => setNewTaskForm({ ...newTaskForm, assignee: e.target.value })
                       },
                       React.createElement("option", { value: "unassigned" }, "Unassigned (Auto-Assign)"),
-                      React.createElement("option", { value: "builder" }, "Builder"),
-                      React.createElement("option", { value: "reviewer" }, "Reviewer"),
-                      React.createElement("option", { value: "orchestrator" }, "Orchestrator")
+                      React.createElement("option", { value: "zf-builder" }, "ZF Builder"),
+                      React.createElement("option", { value: "zf-reviewer" }, "ZF Reviewer"),
+                      React.createElement("option", { value: "zf-orchestrator" }, "ZF Orchestrator")
                     )
                   ),
                   React.createElement(
