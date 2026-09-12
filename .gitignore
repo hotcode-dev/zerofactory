@@ -11,14 +11,14 @@ profiles/*
 profiles/*/**
 
 # unignore all files in common
-!profiles/common/.env
 !profiles/common/.env.example
 !profiles/common/config.yaml
 !profiles/common/SOUL.md
 !profiles/common/skills/zerofactory-orchestration/**
 
-# unignore .env
-!profiles/*/.env
+# keep real .env files ignored (profiles/*/** already does; explicit for clarity,
+# since a stray "!profiles/*/.env" would re-track them). .env.example templates stay tracked.
+profiles/*/.env
 !profiles/*/.env.example
 
 # unignore custom SOUL.md
