@@ -155,12 +155,24 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 
 ---
 
-## Built-in Automation & Cron Engine
+## Built-in Automation & Token-Efficient Cron Architecture
 
-Zero Factory includes automated background cron operations:
-- **`zero-factory-task-queue-check`** (every 120m): Scans for stuck workers or queue bottlenecks.
-- **`zero-factory-daily-report`** (`0 9 * * *`): Produces a daily summary of factory throughput and completions.
-- **`zero-factory-improvement-scanner-{board_slug}`** (every 60m per board): Periodic codebase scanner identifying bugs, performance bottlenecks, and refactoring opportunities.
+Zero Factory is architected to drastically minimize LLM token consumption (up to 95% token savings) across periodic automation cycles using Hermes Agent's **No-Agent Mode (`no_agent: true`)**, **Wake-Gate Change Detection (`{"wakeAgent": false}`)**, and **Chained LLM Jobs (`context_from`)**:
+
+- **`zero-factory-task-queue-check`** (every 120m, **0 Tokens**):
+  - Operates in Hermes **No-Agent Mode** via `scripts/zf_queue_watchdog.py`.
+  - Audits running workers, reaps stuck subprocesses, and runs `run_dispatch_cycle()`.
+  - When the queue is healthy, emits `{"wakeAgent": false}` to silently exit without invoking any LLM.
+  - When bottlenecks occur, outputs a human-readable alert delivered to the operator.
+- **`zero-factory-daily-report`** (`0 9 * * *`, **Single-Turn Synthesis**):
+  - Pre-computes 24h velocity, cycle time, blockers, and column distributions via `scripts/zf_daily_stats.py`.
+  - Automatically chains upstream output from `zero-factory-task-queue-check` via `context_from`.
+  - Pre-loads all metrics directly into prompt context, eliminating 15+ tool queries and completing in a single turn.
+- **`zero-factory-improvement-scanner-{board_slug}`** (every 60m per board, **0 Tokens on Idle**):
+  - Runs inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py`.
+  - Compares Git HEAD and working tree changes against `~/.hermes/scanner_state.json`.
+  - Suppresses unchanged runs with `{"wakeAgent": false}` (0 LLM tokens).
+  - When new commits or changes exist, pre-digests git log, diffstat, truncated diffs, and existing open board tasks, waking the LLM agent to file at most 1 high-priority task.
 
 ---
 
@@ -172,8 +184,12 @@ zerofactory/
 ├── __init__.py                  # Plugin registration & CLI interface
 ├── dispatcher.py                # Autonomous dispatch engine & worktree manager
 ├── builtin_cron.py              # Periodic scanner & reporting engine
-├── profile_manager.py           # Auto-provisioning for zf-* profiles
-├── test_plugin.py               # Comprehensive automated test suite
+├── profile_manager.py           # Auto-provisioning for zf-* profiles & scripts
+├── test_plugin.py               # Comprehensive automated test suite (25 tests)
+├── scripts/                     # No-Agent Mode scripts & LLM context pre-processors
+│   ├── zf_queue_watchdog.py     # Autonomous worker reaper & queue monitor (0 tokens)
+│   ├── zf_scanner_gate.py       # Codebase diff pre-screen & wake-gate
+│   └── zf_daily_stats.py        # Deterministic 24h metrics & velocity calculator
 ├── dashboard/                   # Embedded web dashboard UI (/zerofactory)
 │   ├── manifest.json            # Gateway route declaration
 │   ├── plugin_api.py            # FastAPI REST backend

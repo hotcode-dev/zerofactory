@@ -124,12 +124,12 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
 
         # 1. Seed or update SOUL.md
         if soul_src.exists():
-            if is_new or force or update_prompts:
+            if not soul_dst.exists() or is_new or force or update_prompts:
                 shutil.copy2(soul_src, soul_dst)
 
         # 2. Seed config.yaml
         if config_src.exists():
-            if is_new or force:
+            if not config_dst.exists() or is_new or force:
                 if yaml and root_model:
                     try:
                         base_cfg = yaml.safe_load(config_src.read_text(encoding="utf-8")) or {}
