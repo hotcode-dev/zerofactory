@@ -156,6 +156,10 @@ def spawn_agent_worker(
 
     try:
         log_f = open(log_file_path, "ab")
+        try:
+            os.utime(log_file_path, None)
+        except Exception:
+            pass
         spawn_time = time.time()
         proc = subprocess.Popen(
             cmd,
@@ -295,15 +299,17 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
         if running_time > task_timeout:
             is_stuck = True
             stuck_reason = f"Worker exceeded running timeout ({running_time}s > {task_timeout}s)"
-        else:
-            idle_time = None
+        elif running_time > inactivity_timeout:
+            idle_time = running_time
             log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
             if log_path.exists():
                 try:
-                    idle_time = max(0, now - int(log_path.stat().st_mtime))
+                    mtime = int(log_path.stat().st_mtime)
+                    if mtime > int(started_at):
+                        idle_time = max(0, now - mtime)
                 except Exception:
                     pass
-            if idle_time is not None and idle_time > inactivity_timeout:
+            if idle_time > inactivity_timeout:
                 is_stuck = True
                 stuck_reason = f"Worker inactive with no updates for {idle_time}s (limit {inactivity_timeout}s)"
 
@@ -322,26 +328,28 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
 
 
 def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
-    """Inspect all currently running tasks and return health & stuckness metrics."""
+    """Inspect all running tasks and identify any that are stuck or inactive."""
+    if db_path is None:
+        db_path = get_db_path()
+
+    if not db_path.exists():
+        return []
+
     close_conn = False
     if cursor is None:
-        if db_path is None:
-            db_path = get_db_path()
-        conn = sqlite3.connect(str(db_path), timeout=5.0)
+        conn = sqlite3.connect(str(db_path), timeout=10.0)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         close_conn = True
 
+    now = int(time.time())
+    task_timeout = get_task_timeout_seconds()
+    inactivity_timeout = get_inactivity_timeout_seconds()
+
+    results = []
     try:
-        now = int(time.time())
-        cursor.execute("SELECT id, title, status, updated_at, created_at, metadata, assignee, board_slug FROM tasks WHERE status = 'running'")
-        running_rows = cursor.fetchall()
-
-        task_timeout = get_task_timeout_seconds()
-        inactivity_timeout = get_inactivity_timeout_seconds()
-        results = []
-
-        for row in running_rows:
+        cursor.execute("SELECT id, title, status, assignee, workspace_path, metadata, created_at, updated_at, board_slug FROM tasks WHERE status = 'running'")
+        for row in cursor.fetchall():
             task_id = str(row["id"])
             meta = {}
             try:
@@ -369,7 +377,9 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
             log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
             if log_path.exists():
                 try:
-                    idle_seconds = max(0, now - int(log_path.stat().st_mtime))
+                    mtime = int(log_path.stat().st_mtime)
+                    if mtime > int(started_at):
+                        idle_seconds = max(0, now - mtime)
                 except Exception:
                     pass
 
@@ -382,7 +392,7 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
             elif running_seconds > task_timeout:
                 is_stuck = True
                 stuck_reason = f"Exceeded running timeout ({running_seconds}s > {task_timeout}s)"
-            elif idle_seconds > inactivity_timeout:
+            elif running_seconds > inactivity_timeout and idle_seconds > inactivity_timeout:
                 is_stuck = True
                 stuck_reason = f"Worker inactive with no updates for {idle_seconds}s (limit {inactivity_timeout}s)"
 
