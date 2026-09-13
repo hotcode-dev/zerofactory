@@ -322,15 +322,6 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
         except Exception as e:
             _log.warning("Failed to query boards for cron generation: %s", e)
 
-    # Fallback: if no boards in table yet, default to zerofactory board
-    if not boards:
-        boards = [{
-            "slug": "zerofactory",
-            "name": "ZeroFactory",
-            "description": "Zero Factory Multi-Agent Orchestration",
-            "git_url": "https://github.com/hotcode-dev/zerofactory.git"
-        }]
-
     for board in boards:
         slug = board.get("slug") or "default"
         job_id = f"zero-factory-improvement-scanner-{slug}"
@@ -509,8 +500,7 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 active_board_slugs = {row["slug"] for row in cur.fetchall() if row["slug"]}
         except Exception as e:
             _log.warning("Failed to query board slugs for cron pruning: %s", e)
-    if not active_board_slugs:
-        active_board_slugs.add("zerofactory")
+
 
     # Refresh all builtin jobs from DB and env
     current_builtin_jobs = get_all_builtin_cron_jobs()

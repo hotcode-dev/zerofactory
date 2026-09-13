@@ -886,6 +886,29 @@ class TestZeroFactory(unittest.TestCase):
         stats_after = get_stats(board="zerofactory")
         self.assertEqual(stats_after["pr_count"], initial_pr_count - 1)
 
+    def test_27_no_board_cron_generation(self):
+        """Verify that when no boards exist, no improvement scanner jobs are generated."""
+        from builtin_cron import get_all_builtin_cron_jobs
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as empty_td:
+            empty_db = Path(empty_td) / "empty.db"
+            with sqlite3.connect(str(empty_db)) as conn:
+                conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, name TEXT, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
+                conn.commit()
+
+            import builtin_cron
+            orig_get_db_path = builtin_cron.get_db_path
+            builtin_cron.get_db_path = lambda: empty_db
+            try:
+                jobs = get_all_builtin_cron_jobs()
+                scanner_jobs = [jid for jid in jobs if jid.startswith("zero-factory-improvement-scanner-")]
+                self.assertEqual(scanner_jobs, [])
+                self.assertIn("zero-factory-task-queue-check", jobs)
+                self.assertIn("zero-factory-daily-report", jobs)
+            finally:
+                builtin_cron.get_db_path = orig_get_db_path
+
 
 if __name__ == "__main__":
     unittest.main()

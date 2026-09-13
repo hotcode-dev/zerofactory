@@ -90,6 +90,8 @@
     const [cronEditForms, setCronEditForms] = useState({});
     const [cronSearchQuery, setCronSearchQuery] = useState("");
     const [newCommentText, setNewCommentText] = useState("");
+    const [activeView, setActiveView] = useState("board"); // "board" | "instructions"
+    const [instructionTab, setInstructionTab] = useState("overview");
 
     // Form States
     const [newTaskForm, setNewTaskForm] = useState({
@@ -133,6 +135,11 @@
               if (prev && data.boards.some(b => b.slug === prev)) return prev;
               return data.boards[0].slug;
             });
+          } else {
+            setSelectedBoard("");
+            setTasks([]);
+            setStats(null);
+            setShowNewBoardModal(true);
           }
         }
       } catch (err) {
@@ -142,7 +149,12 @@
 
     // Load Tasks & Stats
     const loadTasksAndStats = useCallback(async (boardSlug = selectedBoard) => {
-      if (!boardSlug) return;
+      if (!boardSlug) {
+        setLoading(false);
+        setTasks([]);
+        setStats(null);
+        return;
+      }
       try {
         const [tasksData, statsData] = await Promise.all([
           fetchJSON(API_BASE + "/tasks?board=" + encodeURIComponent(boardSlug)),
@@ -609,6 +621,11 @@
         setBoards(remaining);
         const nextSlug = remaining.length > 0 ? remaining[0].slug : "";
         setSelectedBoard(nextSlug);
+        if (remaining.length === 0) {
+          setTasks([]);
+          setStats(null);
+          setShowNewBoardModal(true);
+        }
         await loadBoards();
       } catch (err) {
         showToast("Failed to delete board: " + err.message, "error");
@@ -661,6 +678,505 @@
       }
     };
 
+    // Render Empty Board State
+    const renderEmptyBoardState = () => {
+      return React.createElement(
+        "div",
+        { className: "flex flex-col items-center justify-center py-20 px-6 text-center bg-slate-900/40 backdrop-blur-sm border border-slate-800/80 rounded-2xl max-w-2xl mx-auto my-8 space-y-6 shadow-2xl" },
+        React.createElement(
+          "div",
+          { className: "w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-4xl shadow-inner shadow-indigo-500/10" },
+          "📋"
+        ),
+        React.createElement(
+          "div",
+          { className: "space-y-2 max-w-lg" },
+          React.createElement("h2", { className: "text-xl font-bold text-white tracking-tight" }, "No Kanban Boards Configured"),
+          React.createElement(
+            "p",
+            { className: "text-xs text-slate-400 leading-relaxed" },
+            "Zero Factory requires at least one project board to organize tasks, track GitHub Pull Requests, and orchestrate autonomous AI agents. Please create a board to get started."
+          )
+        ),
+        React.createElement(
+          "div",
+          { className: "flex flex-wrap items-center justify-center gap-3 pt-2" },
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: "inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all duration-150 cursor-pointer",
+              onClick: () => setShowNewBoardModal(true)
+            },
+            "✨ Create First Board"
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all duration-150 cursor-pointer",
+              onClick: () => setActiveView("instructions")
+            },
+            "📖 Read Instructions & Architecture"
+          )
+        )
+      );
+    };
+
+    // Sub-sections for Instructions
+    const renderOverviewSection = () => {
+      return React.createElement(
+        "div",
+        { className: "space-y-6" },
+        React.createElement(
+          "div",
+          { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" },
+          [
+            {
+              icon: "🏭",
+              title: "24/7 Autonomous Factory",
+              desc: "Continuous agile iterations with rolling handoffs and parallel worker execution across multiple tasks."
+            },
+            {
+              icon: "🌳",
+              title: "Isolated Git Worktrees",
+              desc: "Every task executes in its own dedicated Git worktree (~/git/<repo>-worktrees/<task_id>). Main is never touched directly."
+            },
+            {
+              icon: "🔍",
+              title: "3-Round Thematic Review",
+              desc: "Layered code review capping at 3 focused rounds (Correctness ➔ Performance ➔ Clean Code) before human merge."
+            },
+            {
+              icon: "⚡",
+              title: "Zero-Token Idle Watchdogs",
+              desc: "Hermes No-Agent Mode and Wake-Gate suppress LLM queries when repositories are idle, saving up to 95% token usage."
+            }
+          ].map((card, idx) =>
+            React.createElement(
+              "div",
+              { key: idx, className: "bg-slate-900/60 border border-slate-800/80 rounded-xl p-4.5 space-y-2 hover:border-slate-700 transition-colors" },
+              React.createElement("div", { className: "text-2xl mb-1" }, card.icon),
+              React.createElement("h3", { className: "text-sm font-semibold text-white m-0" }, card.title),
+              React.createElement("p", { className: "text-xs text-slate-400 leading-relaxed m-0" }, card.desc)
+            )
+          )
+        ),
+        React.createElement(
+          "div",
+          { className: "bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 space-y-4" },
+          React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-400 m-0" }, "High-Level Architecture & Workflow"),
+          React.createElement(
+            "div",
+            { className: "flex flex-wrap items-center justify-between gap-2 p-4 bg-slate-950/70 border border-slate-800/60 rounded-xl text-xs font-mono text-slate-300" },
+            React.createElement("span", { className: "px-2.5 py-1 rounded bg-slate-800 text-slate-200" }, "1. Goal / Scanner"),
+            React.createElement("span", { className: "text-slate-500" }, "➔"),
+            React.createElement("span", { className: "px-2.5 py-1 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60" }, "2. Triage & Decompose"),
+            React.createElement("span", { className: "text-slate-500" }, "➔"),
+            React.createElement("span", { className: "px-2.5 py-1 rounded bg-amber-950 text-amber-300 border border-amber-800/60" }, "3. Ready (Worktree)"),
+            React.createElement("span", { className: "text-slate-500" }, "➔"),
+            React.createElement("span", { className: "px-2.5 py-1 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60" }, "4. Running (zf-builder)"),
+            React.createElement("span", { className: "text-slate-500" }, "➔"),
+            React.createElement("span", { className: "px-2.5 py-1 rounded bg-purple-950 text-purple-300 border border-purple-800/60" }, "5. PR Review (zf-reviewer)"),
+            React.createElement("span", { className: "text-slate-500" }, "➔"),
+            React.createElement("span", { className: "px-2.5 py-1 rounded bg-rose-950 text-rose-300 border border-rose-800/60" }, "6. Blocked (Human Merge)"),
+            React.createElement("span", { className: "text-slate-500" }, "➔"),
+            React.createElement("span", { className: "px-2.5 py-1 rounded bg-slate-800 text-emerald-400 border border-emerald-500/30" }, "7. Done")
+          ),
+          React.createElement(
+            "p",
+            { className: "text-xs text-slate-300 leading-relaxed m-0" },
+            "Zero Factory operates as a closed-loop engineering system. When a new ticket or improvement goal is created, the dispatcher provisions an isolated Git worktree, spawns a dedicated worker using the zf-builder profile, and upon test verification, opens a Pull Request on GitHub. The zf-reviewer profile conducts up to 3 iterative review rounds before handing off to human approval."
+          )
+        )
+      );
+    };
+
+    const renderSpecialistsSection = () => {
+      const specialists = [
+        {
+          name: "zf-orchestrator",
+          title: "Pipeline Overseer & Coordinator",
+          color: "border-indigo-500/40 bg-indigo-950/20 text-indigo-300",
+          badge: "Indigo Profile",
+          desc: "Supervises the Kanban board, decomposes user epics into atomic tickets, schedules task execution, and detects stuck or hung worker processes.",
+          responsibilities: [
+            "Decomposes goals into structured sub-tasks using kanban_decomposer",
+            "Manages ticket handoffs between zf-builder and zf-reviewer",
+            "Escalates unresolvable blockers and human reviews",
+            "Monitors queue health via zero-factory-task-queue-check"
+          ],
+          dir: "~/.hermes/profiles/zf-orchestrator/"
+        },
+        {
+          name: "zf-builder",
+          title: "Senior Software Engineer",
+          color: "border-emerald-500/40 bg-emerald-950/20 text-emerald-300",
+          badge: "Emerald Profile",
+          desc: "Takes tickets from Ready into Running, operating in an isolated Git worktree. Writes high-quality application code, adds comprehensive tests, and opens PRs.",
+          responsibilities: [
+            "Operates inside dedicated Git worktrees (~/git/<repo>-worktrees/<task_id>)",
+            "Never touches or modifies the repository main branch directly",
+            "Writes production code alongside automated unit and integration tests",
+            "Verifies test suites pass cleanly before committing and opening PRs"
+          ],
+          dir: "~/.hermes/profiles/zf-builder/"
+        },
+        {
+          name: "zf-reviewer",
+          title: "Quality Gatekeeper",
+          color: "border-purple-500/40 bg-purple-950/20 text-purple-300",
+          badge: "Purple Profile",
+          desc: "Conducts thematic code reviews on open Pull Requests. Capped strictly at 3 progressive rounds to eliminate infinite agent review loops.",
+          responsibilities: [
+            "Round 1: Testing coverage, edge cases, and functional correctness",
+            "Round 2: Performance, memory overhead, and algorithmic efficiency",
+            "Round 3: Clean code, DRY principles, and architectural polish",
+            "Approves PR and moves task to Blocked [Human Review] for merge"
+          ],
+          dir: "~/.hermes/profiles/zf-reviewer/"
+        }
+      ];
+
+      return React.createElement(
+        "div",
+        { className: "grid grid-cols-1 lg:grid-cols-3 gap-5" },
+        specialists.map((agent, i) =>
+          React.createElement(
+            "div",
+            { key: i, className: "flex flex-col bg-slate-900/60 border rounded-2xl p-5 space-y-4 shadow-lg " + agent.color.split(" ")[0] },
+            React.createElement(
+              "div",
+              { className: "flex items-center justify-between" },
+              React.createElement("h3", { className: "text-base font-bold text-white font-mono m-0" }, agent.name),
+              React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full border " + agent.color }, agent.badge)
+            ),
+            React.createElement("p", { className: "text-xs font-semibold text-slate-300 m-0" }, agent.title),
+            React.createElement("p", { className: "text-xs text-slate-400 leading-relaxed m-0 flex-1" }, agent.desc),
+            React.createElement(
+              "div",
+              { className: "space-y-2 pt-2 border-t border-slate-800/80" },
+              React.createElement("span", { className: "text-[11px] font-semibold text-slate-300 block" }, "Core Responsibilities:"),
+              React.createElement(
+                "ul",
+                { className: "list-disc list-inside space-y-1 text-[11px] text-slate-400 m-0 p-0" },
+                agent.responsibilities.map((r, idx) =>
+                  React.createElement("li", { key: idx, className: "leading-snug" }, r)
+                )
+              )
+            ),
+            React.createElement(
+              "div",
+              { className: "pt-2 text-[10px] font-mono text-slate-500 border-t border-slate-800/60 flex items-center justify-between" },
+              React.createElement("span", null, "Profile Path:"),
+              React.createElement("code", { className: "text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded" }, agent.dir)
+            )
+          )
+        )
+      );
+    };
+
+    const renderLifecycleSection = () => {
+      const columns = [
+        { id: "triage", title: "Triage", desc: "Incoming raw feature ideas, user reports, or suggestions generated by the periodic codebase scanner.", trigger: "Ingested via CLI or Scanner" },
+        { id: "todo", title: "Todo", desc: "Decomposed tickets ready for prioritization. Clear acceptance criteria and scoped file lists.", trigger: "zf-orchestrator decomposes" },
+        { id: "ready", title: "Ready", desc: "Dependencies cleared. Ready for dispatcher pickup and dedicated Git worktree allocation.", trigger: "Dispatcher validates deps" },
+        { id: "running", title: "Running", desc: "Dedicated worker executing inside isolated worktree. Live progress and thoughts stream to card.", trigger: "zf-builder actively coding" },
+        { id: "blocked", title: "Blocked", desc: "Tasks awaiting external conditions, or PR approved waiting for human review & merge.", trigger: "Awaiting Human Merge or Input" },
+        { id: "done", title: "Done", desc: "Completed and merged tickets. Worktrees pruned and metrics updated.", trigger: "PR merged on GitHub" }
+      ];
+
+      return React.createElement(
+        "div",
+        { className: "space-y-6" },
+        React.createElement(
+          "div",
+          { className: "bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 space-y-4" },
+          React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2" }, "🔄 Kanban Column Workflow"),
+          React.createElement(
+            "div",
+            { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1" },
+            columns.map((c) =>
+              React.createElement(
+                "div",
+                { key: c.id, className: "bg-slate-950/60 border border-slate-800/70 rounded-xl p-4 space-y-2" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-between" },
+                  React.createElement("span", { className: "text-xs font-bold uppercase tracking-wider text-indigo-400" }, c.title),
+                  React.createElement("span", { className: "text-[10px] font-mono text-slate-500" }, c.id)
+                ),
+                React.createElement("p", { className: "text-xs text-slate-300 leading-relaxed m-0" }, c.desc),
+                React.createElement("div", { className: "text-[11px] text-slate-400 pt-1 border-t border-slate-800/60 font-medium" }, "Trigger: ", React.createElement("span", { className: "text-slate-200" }, c.trigger))
+              )
+            )
+          )
+        ),
+        React.createElement(
+          "div",
+          { className: "bg-gradient-to-br from-purple-950/30 via-slate-900/60 to-slate-900/60 border border-purple-800/40 rounded-2xl p-6 space-y-3" },
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-2.5" },
+            React.createElement("div", { className: "p-2 rounded-xl bg-purple-500/20 text-purple-300" }, renderPrIcon("w-4 h-4")),
+            React.createElement("h3", { className: "text-sm font-bold text-white m-0" }, "Pull Request Tracking & Verification")
+          ),
+          React.createElement(
+            "p",
+            { className: "text-xs text-slate-300 leading-relaxed m-0" },
+            "Tasks with active GitHub Pull Requests display an interactive PR link badge directly on the Kanban card. You can click the badge to jump straight to the GitHub review interface. Use the toolbar's 'Has PR' filter button to instantly isolate all tickets currently under active Pull Request review."
+          )
+        )
+      );
+    };
+
+    const renderWorktreesSection = () => {
+      return React.createElement(
+        "div",
+        { className: "space-y-6" },
+        React.createElement(
+          "div",
+          { className: "bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 space-y-4" },
+          React.createElement("h3", { className: "text-sm font-bold text-white m-0" }, "🌳 The Git Worktree Isolation Model"),
+          React.createElement(
+            "p",
+            { className: "text-xs text-slate-300 leading-relaxed m-0" },
+            "In traditional multi-agent systems, agents operate on the primary repository directory. This causes uncommitted file clashes, stash corruptions, and broken builds when parallel tasks run. Zero Factory completely eliminates this failure mode using dedicated Git worktrees."
+          ),
+          React.createElement(
+            "div",
+            { className: "p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2 font-mono text-xs text-slate-300" },
+            React.createElement("div", { className: "text-indigo-400 font-semibold" }, "# Worktree Directory Structure"),
+            React.createElement("div", null, "~/git/"),
+            React.createElement("div", { className: "pl-4 text-slate-400" }, "├── my-repo/                    # Main repository (untouched by workers)"),
+            React.createElement("div", { className: "pl-4 text-emerald-400" }, "└── my-repo-worktrees/"),
+            React.createElement("div", { className: "pl-8 text-emerald-300" }, "├── zf-9a4f210b/            # Isolated worktree for Task 1"),
+            React.createElement("div", { className: "pl-8 text-emerald-300" }, "└── zf-b72e189c/            # Isolated worktree for Task 2")
+          ),
+          React.createElement(
+            "div",
+            { className: "grid grid-cols-1 md:grid-cols-3 gap-4 pt-2" },
+            [
+              { title: "No Branch Conflicts", desc: "Workers branch cleanly from main without touching your active unstaged edits." },
+              { title: "Parallel Test Suites", desc: "Multiple test runs execute simultaneously without file lock collisions." },
+              { title: "Automated Cleanup", desc: "When the PR is merged, the worktree is automatically pruned from disk." }
+            ].map((item, idx) =>
+              React.createElement(
+                "div",
+                { key: idx, className: "p-3.5 bg-slate-950/50 border border-slate-800/80 rounded-xl space-y-1" },
+                React.createElement("h4", { className: "text-xs font-semibold text-slate-200 m-0" }, item.title),
+                React.createElement("p", { className: "text-[11px] text-slate-400 leading-relaxed m-0" }, item.desc)
+              )
+            )
+          )
+        )
+      );
+    };
+
+    const renderCliSection = () => {
+      const cliGroups = [
+        {
+          group: "Profile & System Setup",
+          cmds: [
+            { cmd: "hermes zerofactory setup", desc: "Bootstrap or inspect zf-* profiles and script symlinks" },
+            { cmd: "hermes zerofactory sync-profiles", desc: "Update profile system prompts from plugin templates" }
+          ]
+        },
+        {
+          group: "Task Management",
+          cmds: [
+            { cmd: "hermes zerofactory list", desc: "List all active tickets across all boards" },
+            { cmd: "hermes zerofactory list --board <slug> --status running", desc: "Filter tickets by board and status" },
+            { cmd: "hermes zerofactory create \"<title>\" --description \"<desc>\" --board <slug> --priority P1", desc: "Create a new ticket" },
+            { cmd: "hermes zerofactory move <task_id> ready", desc: "Transition ticket status" },
+            { cmd: "hermes zerofactory block <task_id> --reason \"<reason>\"", desc: "Mark ticket as blocked with explanation" },
+            { cmd: "hermes zerofactory comment <task_id> \"<message>\"", desc: "Post a comment to a ticket" }
+          ]
+        },
+        {
+          group: "Board & Dispatcher Operations",
+          cmds: [
+            { cmd: "hermes zerofactory board list", desc: "List all registered project boards" },
+            { cmd: "hermes zerofactory board create <slug> \"<name>\"", desc: "Register a new codebase board" },
+            { cmd: "hermes zerofactory dispatch", desc: "Trigger an immediate autonomous dispatch cycle" },
+            { cmd: "hermes zerofactory check-stuck", desc: "Audit and reap long-running or hung worker processes" }
+          ]
+        },
+        {
+          group: "Cron Automation",
+          cmds: [
+            { cmd: "hermes zerofactory cron list", desc: "View active periodic health & scanner jobs" },
+            { cmd: "hermes zerofactory cron sync", desc: "Sync cron definitions with Hermes scheduler" },
+            { cmd: "hermes zerofactory cron run <job_id>", desc: "Execute a scheduled scanner or watchdog immediately" }
+          ]
+        }
+      ];
+
+      return React.createElement(
+        "div",
+        { className: "space-y-5" },
+        cliGroups.map((g, idx) =>
+          React.createElement(
+            "div",
+            { key: idx, className: "bg-slate-900/50 border border-slate-800/80 rounded-2xl p-5 space-y-3" },
+            React.createElement("h3", { className: "text-xs font-bold uppercase tracking-wider text-indigo-400 m-0" }, g.group),
+            React.createElement(
+              "div",
+              { className: "space-y-2" },
+              g.cmds.map((item, cIdx) =>
+                React.createElement(
+                  "div",
+                  { key: cIdx, className: "flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 bg-slate-950/70 border border-slate-800/70 rounded-xl" },
+                  React.createElement("code", { className: "text-xs font-mono text-emerald-400 break-all select-all" }, item.cmd),
+                  React.createElement("span", { className: "text-xs text-slate-400 shrink-0" }, item.desc)
+                )
+              )
+            )
+          )
+        )
+      );
+    };
+
+    const renderCronsSection = () => {
+      const crons = [
+        {
+          id: "zero-factory-task-queue-check",
+          title: "Queue Health & Worker Watchdog",
+          interval: "Every 120 minutes",
+          tokens: "0 Tokens on Idle",
+          desc: "Runs in Hermes No-Agent Mode using scripts/zf_queue_watchdog.py. Audits running tasks, reaps hung subprocesses, and automatically triggers run_dispatch_cycle(). When healthy, emits {'wakeAgent': false} to exit silently without calling any LLM.",
+          badge: "No-Agent Mode"
+        },
+        {
+          id: "zero-factory-daily-report",
+          title: "Daily Executive Briefing",
+          interval: "09:00 AM Daily (0 9 * * *)",
+          tokens: "Single-Turn Synthesis",
+          desc: "Pre-computes 24h task velocity, cycle time, blockers, and column distributions via scripts/zf_daily_stats.py. Injects metrics directly into prompt context, completing comprehensive reporting in a single turn without redundant tool queries.",
+          badge: "Single-Turn"
+        },
+        {
+          id: "zero-factory-improvement-scanner-{slug}",
+          title: "Codebase Improvement Scanner",
+          interval: "Every 60 minutes per board",
+          tokens: "0 Tokens on Unchanged Codebase",
+          desc: "Runs inside the codebase workdir using wake-gate change detection (scripts/zf_scanner_gate.py). Compares Git HEAD against ~/.hermes/scanner_state.json. If unchanged, emits {'wakeAgent': false}. If new commits exist, pre-digests diffs and creates at most 1 high-priority ticket.",
+          badge: "Wake-Gate"
+        }
+      ];
+
+      return React.createElement(
+        "div",
+        { className: "space-y-5" },
+        crons.map((job) =>
+          React.createElement(
+            "div",
+            { key: job.id, className: "bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 space-y-3" },
+            React.createElement(
+              "div",
+              { className: "flex flex-col md:flex-row md:items-center justify-between gap-2" },
+              React.createElement(
+                "div",
+                { className: "space-y-1" },
+                React.createElement("h3", { className: "text-sm font-bold text-white m-0" }, job.title),
+                React.createElement("code", { className: "text-[11px] font-mono text-indigo-400" }, job.id)
+              ),
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-2" },
+                React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-mono" }, job.tokens),
+                React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono" }, job.interval)
+              )
+            ),
+            React.createElement("p", { className: "text-xs text-slate-300 leading-relaxed m-0" }, job.desc)
+          )
+        )
+      );
+    };
+
+    // Render Instructions Page
+    const renderInstructions = () => {
+      const tabs = [
+        { id: "overview", label: "Architecture", icon: "🌟" },
+        { id: "specialists", label: "Agent Specialists", icon: "🤖" },
+        { id: "lifecycle", label: "Kanban & PR Lifecycle", icon: "🔄" },
+        { id: "worktrees", label: "Git Worktree Isolation", icon: "🌳" },
+        { id: "cli", label: "CLI Cheat Sheet", icon: "💻" },
+        { id: "crons", label: "Scheduled Automation", icon: "⏰" }
+      ];
+
+      return React.createElement(
+        "div",
+        { className: "space-y-6 pb-12 max-w-[1400px] mx-auto" },
+
+        // Instruction Hero Banner
+        React.createElement(
+          "div",
+          { className: "relative overflow-hidden bg-gradient-to-br from-indigo-950/60 via-slate-900/80 to-purple-950/50 border border-slate-800/90 rounded-2xl p-6 md:p-8 shadow-xl" },
+          React.createElement(
+            "div",
+            { className: "flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10" },
+            React.createElement(
+              "div",
+              { className: "space-y-3" },
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-2.5 flex-wrap" },
+                React.createElement("span", { className: "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono" }, "Hermes Plugin"),
+                React.createElement("span", { className: "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono" }, "Zero-Token Idle Watchdogs"),
+                React.createElement("span", { className: "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono" }, "3-Round Thematic Review")
+              ),
+              React.createElement("h2", { className: "text-2xl md:text-3xl font-extrabold text-white tracking-tight m-0" }, "Zero Factory Architecture & User Guide"),
+              React.createElement("p", { className: "text-xs md:text-sm text-slate-300 max-w-2xl leading-relaxed m-0" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Three specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")
+            ),
+            React.createElement(
+              "div",
+              { className: "flex items-center gap-3 shrink-0" },
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all duration-150 cursor-pointer",
+                  onClick: () => setActiveView("board")
+                },
+                "📋 Return to Kanban Board"
+              )
+            )
+          )
+        ),
+
+        // Sub-Navigation Tabs
+        React.createElement(
+          "div",
+          { className: "flex items-center gap-2 overflow-x-auto zfk-scrollbar pb-2 border-b border-slate-800/80" },
+          tabs.map((tab) =>
+            React.createElement(
+              "button",
+              {
+                key: tab.id,
+                type: "button",
+                className: "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer " +
+                  (instructionTab === tab.id
+                    ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30 border border-indigo-500"
+                    : "bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800/80"),
+                onClick: () => setInstructionTab(tab.id)
+              },
+              React.createElement("span", null, tab.icon),
+              tab.label
+            )
+          )
+        ),
+
+        // Content for Selected Tab
+        instructionTab === "overview" && renderOverviewSection(),
+        instructionTab === "specialists" && renderSpecialistsSection(),
+        instructionTab === "lifecycle" && renderLifecycleSection(),
+        instructionTab === "worktrees" && renderWorktreesSection(),
+        instructionTab === "cli" && renderCliSection(),
+        instructionTab === "crons" && renderCronsSection()
+      );
+    };
+
     return React.createElement(
       "div",
       { className: "zerofactory-root w-full" },
@@ -692,38 +1208,91 @@
           { className: "flex flex-col lg:flex-row lg:items-center justify-between gap-4" },
           React.createElement(
             "div",
-            { className: "flex items-center gap-3.5" },
-            React.createElement("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 text-sm tracking-wider shrink-0" }, "ZF"),
+            { className: "flex items-center gap-4 flex-wrap" },
             React.createElement(
               "div",
-              null,
-              React.createElement("h1", { className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" }, "Zero Factory Kanban"),
-              React.createElement("p", { className: "text-xs text-slate-400 font-medium" }, "Autonomous Multi-Agent Coordination Engine")
+              { className: "flex items-center gap-3.5" },
+              React.createElement("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 text-sm tracking-wider shrink-0" }, "ZF"),
+              React.createElement(
+                "div",
+                null,
+                React.createElement("h1", { className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" }, "Zero Factory Kanban"),
+                React.createElement("p", { className: "text-xs text-slate-400 font-medium" }, "Autonomous Multi-Agent Coordination Engine")
+              )
+            ),
+            // Navigation Tabs: Board vs Instructions
+            React.createElement(
+              "div",
+              { className: "flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1" },
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
+                    (activeView === "board"
+                      ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
+                  onClick: () => setActiveView("board")
+                },
+                "📋 Board"
+              ),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
+                    (activeView === "instructions"
+                      ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
+                  onClick: () => setActiveView("instructions")
+                },
+                "📖 Instructions"
+              )
             )
           ),
           React.createElement(
             "div",
             { className: "flex flex-wrap items-center gap-2.5" },
-            // Board Switcher
-            React.createElement(
-              "select",
-              {
-                className: "bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none cursor-pointer transition-colors shadow-sm",
-                value: selectedBoard,
-                onChange: (e) => setSelectedBoard(e.target.value)
-              },
-              boards.map((b) =>
-                React.createElement(
-                  "option",
-                  { key: b.slug, value: b.slug },
-                  b.name + (b.task_count ? " (" + b.task_count + ")" : "")
+            activeView === "instructions" &&
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer",
+                  onClick: () => setActiveView("board")
+                },
+                "← Back to Board"
+              ),
+            // Board Switcher (if boards exist)
+            boards.length > 0
+              ? React.createElement(
+                  "select",
+                  {
+                    className: "bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none cursor-pointer transition-colors shadow-sm",
+                    value: selectedBoard,
+                    onChange: (e) => setSelectedBoard(e.target.value)
+                  },
+                  boards.map((b) =>
+                    React.createElement(
+                      "option",
+                      { key: b.slug, value: b.slug },
+                      b.name + (b.task_count ? " (" + b.task_count + ")" : "")
+                    )
+                  )
                 )
-              )
-            ),
+              : React.createElement(
+                  "span",
+                  { className: "px-2.5 py-1 text-xs font-semibold text-amber-300 bg-amber-950/60 border border-amber-800/60 rounded-lg" },
+                  "No Boards Configured"
+                ),
             React.createElement(
               "button",
               {
-                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
+                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold " +
+                  (boards.length === 0
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30"
+                    : "bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm") +
+                  " transition-all duration-150 cursor-pointer",
                 onClick: () => setShowNewBoardModal(true),
                 title: "Create New Board"
               },
@@ -766,10 +1335,10 @@
             React.createElement(
               "button",
               {
-                className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-60 disabled:cursor-wait" + (isDispatching ? " opacity-70 cursor-wait" : ""),
+                className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
                 onClick: handleRunDispatcher,
-                disabled: isDispatching,
-                title: "Trigger Zero Factory Dispatcher Cycle"
+                disabled: isDispatching || boards.length === 0,
+                title: boards.length === 0 ? "Create a board first" : "Trigger Zero Factory Dispatcher Cycle"
               },
               isDispatching
                 ? React.createElement("span", { className: "zfk-spinning" }, "⏳")
@@ -779,8 +1348,16 @@
             React.createElement(
               "button",
               {
-                className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer",
-                onClick: () => setShowNewTaskModal(true)
+                className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                onClick: () => {
+                  if (boards.length === 0) {
+                    setShowNewBoardModal(true);
+                  } else {
+                    setShowNewTaskModal(true);
+                  }
+                },
+                disabled: boards.length === 0,
+                title: boards.length === 0 ? "Create a board first" : "Create New Task"
               },
               "+ New Task"
             ),
@@ -788,7 +1365,10 @@
               "button",
               {
                 className: "inline-flex items-center justify-center p-2 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
-                onClick: () => loadTasksAndStats(),
+                onClick: () => {
+                  loadBoards();
+                  loadTasksAndStats();
+                },
                 title: "Refresh Board"
               },
               "🔄"
@@ -796,11 +1376,19 @@
           )
         ),
 
-        // Metrics Banner
-        stats &&
-          React.createElement(
+      // Main Body: Instructions View OR Empty Boards State OR Kanban Grid
+      activeView === "instructions"
+        ? renderInstructions()
+        : boards.length === 0
+        ? renderEmptyBoardState()
+        : React.createElement(
             "div",
-            { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1" },
+            { className: "space-y-6" },
+            // Metrics Banner
+            stats &&
+              React.createElement(
+                "div",
+                { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1" },
             React.createElement(
               "div",
               { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
@@ -1140,7 +1728,8 @@
             )
           );
         })
-      ),
+      )
+    ),
 
       // Task Details Modal / Drawer
       selectedTask &&
@@ -1814,22 +2403,34 @@
       showNewBoardModal &&
         React.createElement(
           "div",
-          { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowNewBoardModal(false) },
+          {
+            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
+            onClick: () => {
+              if (boards.length > 0) setShowNewBoardModal(false);
+            }
+          },
           React.createElement(
             "div",
             { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
             React.createElement(
               "div",
               { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-              React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Create New Project Board"),
               React.createElement(
-                "button",
-                {
-                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                  onClick: () => setShowNewBoardModal(false)
-                },
-                "✕"
-              )
+                "div",
+                null,
+                React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, boards.length === 0 ? "Create First Project Board (Required)" : "Create New Project Board"),
+                boards.length === 0 &&
+                  React.createElement("p", { className: "text-xs text-indigo-400 font-normal m-0 mt-0.5" }, "A project board is required to use Zero Factory Kanban")
+              ),
+              boards.length > 0 &&
+                React.createElement(
+                  "button",
+                  {
+                    className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                    onClick: () => setShowNewBoardModal(false)
+                  },
+                  "✕"
+                )
             ),
             React.createElement(
               "form",
@@ -1837,6 +2438,18 @@
               React.createElement(
                 "div",
                 { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+                boards.length === 0 &&
+                  React.createElement(
+                    "div",
+                    { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" },
+                    React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"),
+                    React.createElement(
+                      "div",
+                      null,
+                      React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"),
+                      React.createElement("p", { className: "text-indigo-200/90" }, "Please register a project board for your codebase to begin creating tickets, assigning autonomous agents, and orchestrating Git worktrees. You can also explore the ", React.createElement("button", { type: "button", className: "underline text-indigo-300 hover:text-white font-medium cursor-pointer", onClick: () => { setShowNewBoardModal(false); setActiveView("instructions"); } }, "Zero Factory Instructions"), ".")
+                    )
+                  ),
                 React.createElement(
                   "div",
                   { className: "space-y-1.5" },
@@ -1891,22 +2504,23 @@
               React.createElement(
                 "div",
                 { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
-                    onClick: () => setShowNewBoardModal(false)
-                  },
-                  "Cancel"
-                ),
+                boards.length > 0 &&
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                      onClick: () => setShowNewBoardModal(false)
+                    },
+                    "Cancel"
+                  ),
                 React.createElement(
                   "button",
                   {
                     type: "submit",
                     className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
                   },
-                  "Create Board"
+                  boards.length === 0 ? "Create & Get Started" : "Create Board"
                 )
               )
             )
