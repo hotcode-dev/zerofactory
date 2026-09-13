@@ -454,7 +454,8 @@ def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = No
     return {
         "ok": True,
         "reaped_count": len(reaped_tasks),
-        "reaped_tasks": reaped_tasks
+        "reaped_tasks": reaped_tasks,
+        "reaped": reaped_tasks
     }
 
 

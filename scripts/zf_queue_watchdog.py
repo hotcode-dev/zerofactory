@@ -45,7 +45,7 @@ def run_watchdog() -> int:
 
     # 1. Check and reap stuck tasks
     reap_res = reap_stuck_tasks()
-    reaped_tasks = reap_res.get("reaped", [])
+    reaped_tasks = reap_res.get("reaped_tasks") or reap_res.get("reaped", [])
     reaped_count = len(reaped_tasks)
     reaped_details = [
         f"- **Task `{r['id']}`** ({r.get('title', 'unnamed')}): {r.get('reason')}"

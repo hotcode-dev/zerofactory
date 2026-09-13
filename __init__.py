@@ -87,6 +87,7 @@ def register(ctx: Any):
         p_create = subparsers.add_parser("create", help="Create a new task")
         p_create.add_argument("title", help="Task title")
         p_create.add_argument("--description", default="", help="Task description")
+        p_create.add_argument("--description-file", default=None, help="Path to file containing task description (prevents shell quoting issues)")
         p_create.add_argument("--status", default="triage", help="Initial status")
         p_create.add_argument("--priority", default="P2", help="Priority (P0, P1, P2, P3)")
         p_create.add_argument("--assignee", default="unassigned", help="Assignee (zf-orchestrator, zf-builder, zf-reviewer)")
@@ -190,11 +191,19 @@ def register(ctx: Any):
             print()
 
         elif action == "create":
+            desc = args.description or ""
+            desc_file = getattr(args, "description_file", None)
+            if desc_file and os.path.isfile(desc_file):
+                try:
+                    desc = Path(desc_file).read_text(encoding="utf-8").strip()
+                except Exception as e:
+                    print(f"Warning: Failed to read --description-file: {e}")
+
             files_arg = getattr(args, "files", None)
             files_list = [f.strip() for f in files_arg.split(",") if f.strip()] if files_arg else []
             req = TaskCreate(
                 title=args.title,
-                description=args.description,
+                description=desc,
                 status=args.status,
                 priority=args.priority,
                 assignee=args.assignee,

@@ -75,11 +75,12 @@ Run: `hermes zerofactory list --board "{slug}"`
 
 ## STEP 3: Create Task with Fingerprint Safeguard (MAXIMUM 1 TASK TOTAL):
 If you find a genuine, unaddressed issue:
-Create a task using the Zero Factory Kanban CLI:
-`hermes zerofactory create "<issue title>" --description "<detailed context>" --board "{slug}" --files "<relative_path1>,<relative_path2>" --category "<category>" --priority P0 --status todo --assignee zf-builder`
+Write your detailed context to a temporary file (e.g. `/tmp/task_desc.md`) and run:
+`hermes zerofactory create "<issue title>" --description-file "/tmp/task_desc.md" --board "{slug}" --files "<relative_path1>,<relative_path2>" --category "<category>" --priority P0 --status todo --assignee zf-builder`
+(Alternatively, pass inline `--description "<detailed context>"` if short).
 - Always pass `--files` with all affected relative file paths (e.g., `--files "src/auth.ts,src/session.ts"`). Zero Factory computes a multi-file fingerprint safeguard to prevent duplicate tasks.
 - Always pass `--category` (one of: `bug-fix`, `refactoring`, `performance`, `documentation`, `testing`, `security`, `config`).
-- In `--description`: Clear context with RELATIVE file paths and line numbers only. NEVER use absolute paths in the description!
+- In description: Clear context with RELATIVE file paths and line numbers only. NEVER use absolute paths in the description!
 - Priority: Assign `P0` (critical) or `P1` (high) so the dispatcher picks it up first.
 - Status: `todo` (the built-in dispatcher will auto-assign, provision an isolated git worktree, and promote to `ready`).
 
@@ -851,10 +852,12 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
     # Ensure job is registered in target files before running
     ensure_builtin_cron_jobs()
 
-    # Trigger via hermes CLI
+    # Trigger via hermes CLI with target profile
     try:
+        job_def = current_builtin_jobs.get(target_job_id) or {}
+        profile = job_def.get("profile") or "zf-orchestrator"
         proc = subprocess.Popen(
-            ["hermes", "cron", "run", target_job_id, "--accept-hooks"],
+            ["hermes", "-p", profile, "cron", "run", target_job_id, "--accept-hooks"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -871,7 +874,11 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
 
 
 def tick_builtin_cron() -> int:
-    """Safe periodic scheduler tick called by the background dispatcher daemon."""
+    """Safe periodic scheduler tick called by the background dispatcher daemon.
+
+    Ticks the zf-orchestrator profile's cron store where Zero Factory jobs reside,
+    ensuring scheduled jobs fire on time even when the external gateway is inactive.
+    """
     try:
         # Import lazily to avoid circular or early import issues
         hermes_agent_dir = Path(os.getenv("HERMES_AGENT_DIR", str(Path.home() / ".hermes" / "hermes-agent")))
@@ -879,6 +886,22 @@ def tick_builtin_cron() -> int:
             sys.path.insert(0, str(hermes_agent_dir))
 
         from cron.scheduler import tick
+
+        orch_profile_dir = Path.home() / ".hermes" / "profiles" / "zf-orchestrator"
+        if orch_profile_dir.is_dir():
+            try:
+                from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+                token = set_hermes_home_override(str(orch_profile_dir))
+                try:
+                    executed = tick(verbose=False)
+                    if executed:
+                        _log.info("[builtin_cron] Scheduler tick fired %s due job(s)", executed)
+                    return executed or 0
+                finally:
+                    reset_hermes_home_override(token)
+            except ImportError:
+                pass
+
         executed = tick(verbose=False)
         if executed:
             _log.info("[builtin_cron] Scheduler tick fired %s due job(s)", executed)
