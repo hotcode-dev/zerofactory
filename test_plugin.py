@@ -993,7 +993,82 @@ class TestZeroFactory(unittest.TestCase):
         self.assertIn("reaped", res)
         self.assertEqual(res["reaped_tasks"], res["reaped"])
 
-    def test_31_pull_main_and_pr_conflict_guardrail(self):
+    def test_31_watchdog_reaped_alert_rendering(self):
+        """Regression: watchdog's 'Reaped Stuck Tasks' alert actually renders.
+
+        The key contract (test_30) guarantees reap_stuck_tasks exposes the keys
+        the watchdog reads, but it never exercises run_watchdog() end-to-end.
+        Before the fix, run_watchdog() consumed a key that was never populated,
+        so reaped_count stayed 0, the has_bottleneck gate could only trip via
+        the blocked>10 fallback, and a single reaped worker was silently
+        swallowed behind {"wakeAgent": false}.
+        """
+        import io
+        import contextlib
+        import importlib.util
+        from pathlib import Path as _Path
+        from unittest.mock import MagicMock
+        from dispatcher import _active_workers
+        from dashboard.plugin_api import get_db_conn, get_task
+
+        # Ensure the default board exists (this test can run in isolation).
+        existing = [b["slug"] for b in list_boards()["boards"]]
+        if "zerofactory" not in existing:
+            create_board(BoardCreate(
+                slug="zerofactory",
+                name="ZeroFactory",
+                description="AI workflow",
+                git_url="https://github.com/hotcode-dev/zerofactory",
+            ))
+
+        # Clean slate so run_dispatch_cycle() inside run_watchdog() doesn't
+        # re-dispatch leftover tasks from earlier tests.
+        with get_db_conn() as conn:
+            conn.execute("UPDATE tasks SET status = 'done' WHERE status IN ('running', 'ready')")
+            conn.commit()
+
+        # Seed a stuck running task: registered worker already exited (poll() -> 1),
+        # so check_stuck_tasks flags "Worker process PID is dead/not found".
+        t_id = create_task(TaskCreate(
+            title="Watchdog Stuck Task",
+            status="running",
+            priority="P0",
+            assignee="zf-builder",
+        ))["id"]
+        dead_proc = MagicMock()
+        dead_proc.poll.return_value = 1
+        dead_proc.pid = 12346
+        _active_workers[t_id] = dead_proc
+
+        wd_path = _Path(__file__).resolve().parent / "scripts" / "zf_queue_watchdog.py"
+        spec = importlib.util.spec_from_file_location("zf_queue_watchdog_test", wd_path)
+        self.assertIsNotNone(spec)
+        wd = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(wd)
+
+        # Prevent run_dispatch_cycle() from spawning a real worker subprocess.
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = wd.run_watchdog()
+        finally:
+            os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        # The alert section rendered (dead code before the fix):
+        self.assertIn("Reaped Stuck Tasks", out)
+        self.assertIn(t_id, out)
+        # A single reaped worker tripped the bottleneck gate via reaped_count > 0
+        # (blocked count is well under 10), so the operator alert fired instead
+        # of the silent {"wakeAgent": false} gate.
+        self.assertIn("Current Board State", out)
+        self.assertNotIn("wakeAgent", out)
+        # And the reaped task was actually moved to 'blocked'.
+        self.assertEqual(get_task(t_id)["task"]["status"], "blocked")
+
+    def test_32_pull_main_and_pr_conflict_guardrail(self):
         """Validate that dispatcher pulls main branch, detects merge conflicts, and routes back to zf-builder."""
         import tempfile
         import subprocess
@@ -1289,6 +1364,224 @@ class TestZeroFactory(unittest.TestCase):
             stop_task_worker("task-test-stop")
             self.assertNotIn("task-test-stop", _active_workers)
             mock_term.assert_called_once_with(mock_proc, 88888)
+    def _create_conflict_test_db(self, db_file: Path) -> None:
+        """Create the scratch SQLite schema used by the conflict-handling tests."""
+        import sqlite3
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute("""
+                CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    description TEXT,
+                    priority TEXT,
+                    status TEXT,
+                    assignee TEXT,
+                    skills TEXT,
+                    workspace_kind TEXT,
+                    workspace_path TEXT,
+                    branch_name TEXT,
+                    pr_url TEXT,
+                    metadata TEXT,
+                    tenant TEXT,
+                    board_slug TEXT,
+                    created_at REAL,
+                    updated_at REAL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE task_activity (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id TEXT,
+                    actor TEXT,
+                    action TEXT,
+                    details TEXT,
+                    created_at REAL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE task_comments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id TEXT,
+                    author TEXT,
+                    body TEXT,
+                    created_at REAL
+                )
+            """)
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+            conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, name TEXT, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
+            conn.commit()
+
+    def test_32_handle_local_merge_conflict_direct(self):
+        """Directly unit-test _handle_local_merge_conflict: title tag, assignee, status,
+        activity + comment rows, and [PR Conflict] idempotency on repeated calls."""
+        from dispatcher import _handle_local_merge_conflict
+        import shutil
+        import sqlite3
+        import time
+
+        td = tempfile.mkdtemp()
+        try:
+            db_file = Path(td) / "conflict_local.db"
+            self._create_conflict_test_db(db_file)
+            ws_dir = Path(td) / "ws_local"
+            ws_dir.mkdir()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
+                    VALUES ('task-lc', 'Fix bug', 'running', 'zf-builder', ?, 'task/task-lc', 1000, 1000)
+                """, (str(ws_dir),))
+                conn.commit()
+
+            now = int(time.time())
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+
+                # First call: appends [PR Conflict] and records side effects
+                _handle_local_merge_conflict(cur, "task-lc", "Fix bug", str(ws_dir), ["a.txt", "b.txt"], now, "merge failed")
+                conn.commit()
+
+                row = cur.execute("SELECT title, assignee, status FROM tasks WHERE id = 'task-lc'").fetchone()
+                self.assertEqual(row["title"], "Fix bug [PR Conflict]")
+                self.assertEqual(row["assignee"], "zf-builder")
+                self.assertEqual(row["status"], "ready")
+
+                act = cur.execute("SELECT actor, action, details FROM task_activity WHERE task_id = 'task-lc' AND action = 'pr_conflict'").fetchone()
+                self.assertIsNotNone(act)
+                self.assertEqual(act["actor"], "dispatcher")
+                self.assertIn("a.txt", act["details"])
+                self.assertIn("b.txt", act["details"])
+
+                cmt = cur.execute("SELECT author, body FROM task_comments WHERE task_id = 'task-lc'").fetchone()
+                self.assertIsNotNone(cmt)
+                self.assertEqual(cmt["author"], "dispatcher")
+                self.assertIn("Merge Conflict Detected", cmt["body"])
+
+                # Second call on the already-tagged title: tag must NOT be duplicated
+                _handle_local_merge_conflict(cur, "task-lc", "Fix bug [PR Conflict]", str(ws_dir), [], now, "merge failed")
+                conn.commit()
+
+                row2 = cur.execute("SELECT title, assignee, status FROM tasks WHERE id = 'task-lc'").fetchone()
+                self.assertEqual(row2["title"], "Fix bug [PR Conflict]")
+                self.assertNotIn("[PR Conflict] [PR Conflict]", row2["title"])
+                self.assertEqual(row2["assignee"], "zf-builder")
+                self.assertEqual(row2["status"], "ready")
+                # Two activity rows, two comment rows (idempotency covers the title only)
+                self.assertEqual(cur.execute("SELECT COUNT(*) FROM task_activity WHERE task_id = 'task-lc' AND action = 'pr_conflict'").fetchone()[0], 2)
+                self.assertEqual(cur.execute("SELECT COUNT(*) FROM task_comments WHERE task_id = 'task-lc'").fetchone()[0], 2)
+
+            # Title that already carries [Merge Conflict] must not gain a second tag either
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                conn.execute("UPDATE tasks SET title = 'Fix bug [Merge Conflict]', status = 'running' WHERE id = 'task-lc'")
+                conn.commit()
+                cur = conn.cursor()
+                _handle_local_merge_conflict(cur, "task-lc", "Fix bug [Merge Conflict]", str(ws_dir), [], now)
+                conn.commit()
+                row3 = cur.execute("SELECT title FROM tasks WHERE id = 'task-lc'").fetchone()
+                self.assertEqual(row3["title"], "Fix bug [Merge Conflict]")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_32_github_conflicting_pr_routes_to_builder(self):
+        """Unit-test the GitHub-CONFLICTING branch: a reviewer task whose PR is
+        mergeable == 'CONFLICTING' is re-routed to the author with [PR Conflict] tag,
+        status 'ready', and pr_conflict activity + comment rows."""
+        from dispatcher import run_dispatch_cycle
+        import json
+        import shutil
+        import sqlite3
+        import subprocess
+        from unittest.mock import patch, MagicMock
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            # Build a real git repo + worktree so the dispatcher can resolve
+            # the repository root via `git rev-parse --git-common-dir`.
+            repo_path = Path(td) / "test_repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+            (repo_path / "README.md").write_text("# Test Repo\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(repo_path), check=True, capture_output=True)
+
+            reviewer_ws = Path(td) / "ws_reviewer"
+            subprocess.run(
+                ["git", "worktree", "add", str(reviewer_ws), "-b", "task/task-gh"],
+                cwd=str(repo_path), check=True, capture_output=True
+            )
+            self.assertTrue(reviewer_ws.exists())
+
+            db_file = Path(td) / "conflict_gh.db"
+            self._create_conflict_test_db(db_file)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('task-gh', 'Fix bug [PR Opened by zf-builder]', 'blocked', 'zf-reviewer', ?, 'task/task-gh',
+                            'https://github.com/hotcode-dev/zerofactory/pull/123', 1000, 1000)
+                """, (str(reviewer_ws),))
+                conn.commit()
+
+            orig_run = subprocess.run
+            captured_gh = []
+
+            def fake_run(cmd, *args, **kwargs):
+                if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr" and cmd[2] == "view":
+                    captured_gh.append(list(cmd))
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = json.dumps({
+                        "state": "OPEN",
+                        "reviewDecision": None,
+                        "url": "https://github.com/hotcode-dev/zerofactory/pull/123",
+                        "mergeable": "CONFLICTING",
+                    })
+                    return res
+                return orig_run(cmd, *args, **kwargs)
+
+            # Stub worktree setup + conflict detection so no real git operations run
+            with patch("dispatcher.setup_worktree", return_value=None) as mock_setup_wt, \
+                 patch("dispatcher.check_unresolved_conflicts", return_value=[]):
+                with patch("subprocess.run", side_effect=fake_run):
+                    res = run_dispatch_cycle(db_file)
+
+            self.assertTrue(res.get("ok"))
+            self.assertTrue(captured_gh)
+            self.assertIn("mergeable", " ".join(captured_gh[0]))
+            mock_setup_wt.assert_called_once()
+            # setup_worktree must be called with the re-routed author (zf-builder)
+            self.assertEqual(mock_setup_wt.call_args[0][3], "zf-builder")
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+
+                row = cur.execute("SELECT title, assignee, status FROM tasks WHERE id = 'task-gh'").fetchone()
+                self.assertEqual(row["status"], "ready")
+                self.assertEqual(row["assignee"], "zf-builder")
+                self.assertIn("[PR Conflict]", row["title"])
+                self.assertEqual(row["title"].count("[PR Conflict]"), 1)
+
+                acts = cur.execute("SELECT details FROM task_activity WHERE task_id = 'task-gh' AND action = 'pr_conflict'").fetchall()
+                self.assertEqual(len(acts), 1)
+                self.assertIn("conflicting", acts[0]["details"])
+                self.assertIn("zf-builder", acts[0]["details"])
+
+                cmts = cur.execute("SELECT body FROM task_comments WHERE task_id = 'task-gh'").fetchall()
+                self.assertEqual(len(cmts), 1)
+                self.assertIn("PR Conflict Detected", cmts[0]["body"])
+
+                # Reviewer worktree was force-removed before re-setup
+                self.assertFalse(reviewer_ws.exists())
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
 
 if __name__ == "__main__":
