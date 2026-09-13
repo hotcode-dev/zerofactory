@@ -106,7 +106,7 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
     name = (board.get("name") or "").strip()
     git_url = (board.get("git_url") or "").strip()
     if not git_url and board.get("description"):
-        match = re.search(r"https?://[^\s)]+", board["description"])
+        match = re.search(r"(?:https?://|git@)[^\s)]+", board["description"])
         if match:
             git_url = match.group(0)
 

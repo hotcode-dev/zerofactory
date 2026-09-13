@@ -909,6 +909,30 @@ class TestZeroFactory(unittest.TestCase):
             finally:
                 builtin_cron.get_db_path = orig_get_db_path
 
+    def test_28_git_url_ssh_and_http_resolution(self):
+        """Verify that resolve_board_repo_path correctly parses both HTTP and SSH git URLs."""
+        from builtin_cron import resolve_board_repo_path
+
+        # 1. HTTP URL
+        b_http = {"slug": "test-repo", "git_url": "https://github.com/hotcode-dev/zerofactory.git"}
+        # 2. SSH URL
+        b_ssh = {"slug": "test-repo", "git_url": "git@github.com:hotcode-dev/zerofactory.git"}
+        # 3. SSH protocol URL
+        b_ssh_proto = {"slug": "test-repo", "git_url": "ssh://git@github.com/hotcode-dev/zerofactory.git"}
+        # 4. Description fallback with SSH
+        b_desc_ssh = {"slug": "test-repo", "description": "Project at git@github.com:hotcode-dev/zerofactory.git"}
+
+        # Current workspace is zerofactory, which should resolve for all of these
+        resolved_http = resolve_board_repo_path(b_http)
+        resolved_ssh = resolve_board_repo_path(b_ssh)
+        resolved_ssh_proto = resolve_board_repo_path(b_ssh_proto)
+        resolved_desc = resolve_board_repo_path(b_desc_ssh)
+
+        self.assertIsNotNone(resolved_http)
+        self.assertEqual(resolved_http, resolved_ssh)
+        self.assertEqual(resolved_http, resolved_ssh_proto)
+        self.assertEqual(resolved_http, resolved_desc)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -94,13 +94,22 @@ def resolve_board_slug(repo_dir: Path) -> str:
                 for slug, name, _ in rows:
                     if repo_dir.name.lower() in (slug.lower(), (name or "").lower()):
                         return slug
-                # 2. Match by git remote origin url
+                # 2. Match by git remote origin url (supports both HTTPS and SSH)
                 remote_url = _run_cmd(["git", "config", "--get", "remote.origin.url"], cwd=repo_dir)
                 if remote_url:
-                    clean_remote = re.sub(r"\.git$", "", remote_url.strip().rstrip("/"))
+                    def _normalize_repo_slug(url_str: str) -> str:
+                        cleaned = re.sub(r"\.git$", "", url_str.strip().rstrip("/"))
+                        parts = cleaned.replace(":", "/").split("/")
+                        if len(parts) >= 2:
+                            return f"{parts[-2]}/{parts[-1]}".lower()
+                        return cleaned.lower()
+
+                    norm_remote = _normalize_repo_slug(remote_url)
                     for slug, _, git_url in rows:
-                        if git_url and clean_remote in git_url:
-                            return slug
+                        if git_url:
+                            norm_board_git = _normalize_repo_slug(git_url)
+                            if norm_remote == norm_board_git or norm_remote in git_url.lower():
+                                return slug
                 # Fallback to first board if available
                 if rows:
                     return rows[0][0]

@@ -2484,7 +2484,7 @@
                   React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
                   React.createElement("input", {
                     className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "https://github.com/org/repo.git",
+                    placeholder: "https://github.com/org/repo.git or git@github.com:org/repo.git",
                     value: newBoardForm.git_url,
                     onChange: (e) => setNewBoardForm({ ...newBoardForm, git_url: e.target.value })
                   })
@@ -2582,7 +2582,7 @@
                   React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
                   React.createElement("input", {
                     className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "https://github.com/org/repo.git",
+                    placeholder: "https://github.com/org/repo.git or git@github.com:org/repo.git",
                     value: editBoardForm.git_url,
                     onChange: (e) => setEditBoardForm({ ...editBoardForm, git_url: e.target.value })
                   })
