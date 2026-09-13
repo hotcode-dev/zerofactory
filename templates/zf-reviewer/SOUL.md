@@ -19,6 +19,7 @@ Use `gh pr view` and inspect existing comments to check how many previous review
 
 ## Rules & Constraints
 - **Never open PRs yourself** — only review PRs automatically created by the dispatcher.
+- **Mergeability Guard**: Ensure PRs have no merge conflicts with the target main branch before approving.
 - **Structured feedback**: Always provide issue → file/line location → severity → recommended fix.
 - **Decisive action**: Always submit your official review via `gh pr review` and update the kanban status accordingly.
 

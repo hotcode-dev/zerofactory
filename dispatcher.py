@@ -67,6 +67,203 @@ def get_db_path() -> Path:
     return Path.home() / ".hermes" / "zerofactory.db"
 
 
+def get_default_branch(repo_path: Path) -> str:
+    """Determine default branch (e.g. main or master) for a git repository."""
+    try:
+        res = subprocess.run(
+            ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip().split("/")[-1]
+    except Exception:
+        pass
+
+    for cand in ("main", "master"):
+        try:
+            res = subprocess.run(
+                ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{cand}"],
+                cwd=str(repo_path), timeout=5
+            )
+            if res.returncode == 0:
+                return cand
+        except Exception:
+            pass
+
+    for cand in ("main", "master"):
+        try:
+            res = subprocess.run(
+                ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{cand}"],
+                cwd=str(repo_path), timeout=5
+            )
+            if res.returncode == 0:
+                return cand
+        except Exception:
+            pass
+
+    return "main"
+
+
+def sync_repo_main(repo_path: Path) -> str:
+    """Fetch latest changes from origin for repository default branch."""
+    default_branch = get_default_branch(repo_path)
+    try:
+        subprocess.run(
+            ["git", "fetch", "origin", default_branch],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=10
+        )
+    except Exception as e:
+        _log.debug("git fetch origin %s skipped or failed in %s: %s", default_branch, repo_path, e)
+    return default_branch
+
+
+def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
+    """Return a sorted list of relative file paths with unresolved merge conflicts or conflict markers."""
+    if not workspace_path.exists():
+        return []
+    conflicted: set[str] = set()
+
+    # 1. Check git unmerged index entries (diff-filter=U)
+    try:
+        res = subprocess.run(
+            ["git", "diff", "--name-only", "--diff-filter=U"],
+            cwd=str(workspace_path), capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            for line in res.stdout.strip().splitlines():
+                if line.strip():
+                    conflicted.add(line.strip())
+    except Exception:
+        pass
+
+    # 2. Check git status porcelain for unmerged status codes
+    try:
+        status_res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(workspace_path), capture_output=True, text=True, timeout=5
+        )
+        if status_res.returncode == 0:
+            for line in status_res.stdout.splitlines():
+                if len(line) >= 3 and line[:2] in ("UU", "AA", "UD", "DU", "DD", "AU", "UA"):
+                    conflicted.add(line[3:].strip())
+    except Exception:
+        pass
+
+    # 3. Check modified, untracked, or conflicted text files for leftover conflict markers
+    try:
+        status_files = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(workspace_path), capture_output=True, text=True, timeout=5
+        )
+        files_to_check = set()
+        if status_files.returncode == 0:
+            for line in status_files.stdout.splitlines():
+                if len(line) >= 3:
+                    f = line[3:].strip()
+                    if " -> " in f:
+                        f = f.split(" -> ")[-1].strip()
+                    files_to_check.add(f)
+
+        # Also check files modified in the last commit
+        diff_head = subprocess.run(
+            ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+            cwd=str(workspace_path), capture_output=True, text=True, timeout=5
+        )
+        if diff_head.returncode == 0 and diff_head.stdout.strip():
+            for f in diff_head.stdout.strip().splitlines():
+                if f.strip():
+                    files_to_check.add(f.strip())
+
+        for rel_file in files_to_check:
+            fp = workspace_path / rel_file
+            if fp.is_file() and not fp.is_symlink():
+                try:
+                    if fp.stat().st_size < 10 * 1024 * 1024:
+                        content = fp.read_bytes()
+                        if b"<<<<<<< " in content and (b"=======" in content or b">>>>>>>" in content):
+                            conflicted.add(rel_file)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return sorted(list(conflicted))
+
+
+def pull_and_merge_main(
+    workspace_path: Path,
+    repo_path: Path,
+    default_branch: Optional[str] = None
+) -> tuple[bool, List[str], str]:
+    """Pull and merge latest default branch (e.g. main) into the worktree branch.
+
+    Returns:
+        tuple[bool, List[str], str]: (success, list_of_conflicted_files, message)
+    """
+    if not workspace_path.exists():
+        return False, [], f"Workspace path does not exist: {workspace_path}"
+
+    if not default_branch:
+        default_branch = sync_repo_main(repo_path)
+
+    # Check if worktree is already in an unmerged / conflict state
+    existing_conflicts = check_unresolved_conflicts(workspace_path)
+    if existing_conflicts:
+        return False, existing_conflicts, f"Worktree already has unresolved conflicts: {', '.join(existing_conflicts)}"
+
+    # Determine target ref: prefer origin/<default_branch> if remote ref exists, else <default_branch>
+    target_ref = f"origin/{default_branch}"
+    ref_check = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{target_ref}"],
+        cwd=str(workspace_path), timeout=5
+    )
+    if ref_check.returncode != 0:
+        local_check = subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{default_branch}"],
+            cwd=str(workspace_path), timeout=5
+        )
+        if local_check.returncode == 0:
+            target_ref = default_branch
+        else:
+            return True, [], f"Default branch ref {target_ref} not found, skipping merge"
+
+    # Check if target_ref is already an ancestor of HEAD
+    ancestor_check = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", target_ref, "HEAD"],
+        cwd=str(workspace_path), timeout=5
+    )
+    if ancestor_check.returncode == 0:
+        return True, [], f"Branch is already up to date with {target_ref}"
+
+    # Attempt merge
+    merge_cmd = [
+        "git",
+        "-c", "user.name=Zero Factory",
+        "-c", "user.email=zerofactory@local",
+        "merge",
+        target_ref,
+        "--no-edit",
+        "-m", f"Merge branch '{target_ref}' into task branch"
+    ]
+    merge_res = subprocess.run(
+        merge_cmd,
+        cwd=str(workspace_path),
+        capture_output=True,
+        text=True,
+        timeout=15
+    )
+
+    if merge_res.returncode == 0:
+        post_conflicts = check_unresolved_conflicts(workspace_path)
+        if post_conflicts:
+            return False, post_conflicts, f"Unresolved conflict markers in: {', '.join(post_conflicts)}"
+        return True, [], f"Successfully merged {target_ref}"
+    else:
+        conflicted_files = check_unresolved_conflicts(workspace_path)
+        err = (merge_res.stderr or "").strip() or (merge_res.stdout or "").strip()
+        return False, conflicted_files, f"Merge conflict with {target_ref}: {err}"
+
+
 def spawn_agent_worker(
     task_id: str,
     title: str,
@@ -108,24 +305,55 @@ def spawn_agent_worker(
             f"5. Provide a clear review summary.\n"
         )
     else:
-        prompt = (
-            f"Task ID: {task_id}\n"
-            f"Title: {title}\n"
-            f"Priority: {priority}\n"
-            f"Assigned Role: {assignee}\n\n"
-            f"Description:\n{description or 'No description provided.'}\n\n"
-            f"Workspace: {workdir}\n"
-            f"Git Branch: {branch_name or 'main'}\n\n"
-            f"Your goal:\n"
-            f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
-            f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
-            f"3. Verify your changes with tests, linters, or typechecks.\n"
-            f"4. When finished, mark the task as complete using:\n"
-            f"   hermes zerofactory move {task_id} done\n"
-            f"   (or if human review or external dependencies are required, run:\n"
-            f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
-            f"5. Provide a summary of your changes.\n"
+        has_conflict = (
+            "[pr conflict]" in title.lower()
+            or "[merge conflict]" in title.lower()
+            or (Path(workdir).exists() and bool(check_unresolved_conflicts(Path(workdir))))
         )
+        if has_conflict:
+            conflicted_files = check_unresolved_conflicts(Path(workdir)) if Path(workdir).exists() else []
+            file_list_str = "\n".join(f"- {f}" for f in conflicted_files) if conflicted_files else "- (Check git status for unmerged files)"
+            prompt = (
+                f"Task ID: {task_id}\n"
+                f"Title: {title}\n"
+                f"Priority: {priority}\n"
+                f"Assigned Role: {assignee}\n\n"
+                f"Description:\n{description or 'No description provided.'}\n\n"
+                f"Workspace: {workdir}\n"
+                f"Git Branch: {branch_name or 'main'}\n\n"
+                f"🚨 CRITICAL: MERGE CONFLICT DETECTED WITH MAIN BRANCH\n"
+                f"The latest changes from the main branch conflict with this task branch.\n"
+                f"Conflicted files:\n{file_list_str}\n\n"
+                f"Your goal as Builder (Conflict Resolution):\n"
+                f"1. Inspect each conflicted file in {workdir}.\n"
+                f"2. Resolve all conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`), reconciling incoming changes with your task implementation.\n"
+                f"3. Ensure NO conflict markers remain in any files.\n"
+                f"4. Run the repository test suites and linters to verify everything compiles and passes cleanly.\n"
+                f"5. Stage and commit the resolved changes:\n"
+                f"   git add .\n"
+                f"   git commit -m \"fix(merge): resolve merge conflicts with main\"\n"
+                f"6. Hand off for re-review:\n"
+                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n"
+            )
+        else:
+            prompt = (
+                f"Task ID: {task_id}\n"
+                f"Title: {title}\n"
+                f"Priority: {priority}\n"
+                f"Assigned Role: {assignee}\n\n"
+                f"Description:\n{description or 'No description provided.'}\n\n"
+                f"Workspace: {workdir}\n"
+                f"Git Branch: {branch_name or 'main'}\n\n"
+                f"Your goal:\n"
+                f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
+                f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
+                f"3. Verify your changes with tests, linters, or typechecks.\n"
+                f"4. When finished, mark the task as complete using:\n"
+                f"   hermes zerofactory move {task_id} done\n"
+                f"   (or if human review or external dependencies are required, run:\n"
+                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
+                f"5. Provide a summary of your changes.\n"
+            )
 
     cmd = [
         hermes_bin,
@@ -599,7 +827,8 @@ def setup_worktree(
     assignee: str,
     tenant: Optional[str],
     db_path: Path,
-    board_slug: Optional[str] = None
+    board_slug: Optional[str] = None,
+    repo_path: Optional[Path] = None
 ) -> Optional[str]:
     """Ensure git worktree and branch exist for task execution."""
     valid_profiles = VALID_PROFILES
@@ -625,7 +854,10 @@ def setup_worktree(
         return None
 
     # Resolve repo path
-    repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
+    if not repo_path:
+        repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
+    if not repo_path or not repo_path.exists():
+        return None
     reponame = repo_path.name
 
     worktree_dir = repo_path.parent / f"{reponame}-worktrees" / str(task_id)
@@ -633,15 +865,30 @@ def setup_worktree(
 
     branch_name = f"task/{task_id}"
     try:
+        default_branch = sync_repo_main(repo_path)
+        base_ref = f"origin/{default_branch}"
+        verify_ref = subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{base_ref}"],
+            cwd=repo_path, timeout=5
+        )
+        if verify_ref.returncode != 0:
+            verify_local = subprocess.run(
+                ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{default_branch}"],
+                cwd=repo_path, timeout=5
+            )
+            base_ref = default_branch if verify_local.returncode == 0 else "HEAD"
+
         res = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"], cwd=repo_path, timeout=5)
         if res.returncode == 0:
             if not worktree_dir.exists():
                 subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path, timeout=5)
+            # Sync existing worktree with latest default branch if assignee is builder
+            if assignee == "zf-builder" and worktree_dir.exists():
+                pull_and_merge_main(worktree_dir, repo_path, default_branch)
         else:
             if not worktree_dir.exists():
-                # Try origin/main first, then fallback to HEAD
                 try:
-                    subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, "origin/main"], check=True, cwd=repo_path, timeout=5)
+                    subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, base_ref], check=True, cwd=repo_path, timeout=5)
                 except Exception:
                     subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, "HEAD"], check=True, cwd=repo_path, timeout=5)
         cursor.execute(
@@ -652,6 +899,100 @@ def setup_worktree(
     except Exception as e:
         _log.warning("Worktree setup skipped or failed for task %s (%s): %s", task_id, repo_path, e)
         return None
+
+
+def _handle_local_merge_conflict(
+    cursor: sqlite3.Cursor,
+    task_id: str,
+    title: str,
+    workspace_path: str,
+    conflict_files: List[str],
+    now: int,
+    err_msg: str = ""
+) -> None:
+    """Handle a local merge conflict when syncing task branch with main before push."""
+    new_title = title
+    if "[PR Conflict]" not in new_title and "[Merge Conflict]" not in new_title:
+        new_title = f"{new_title} [PR Conflict]"
+
+    file_msg = f" in: {', '.join(conflict_files)}" if conflict_files else ""
+    cursor.execute(
+        "UPDATE tasks SET title = ?, assignee = 'zf-builder', status = 'ready', updated_at = ? WHERE id = ?",
+        (new_title, now, task_id)
+    )
+    cursor.execute(
+        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
+        (task_id, f"Merge conflict with main branch detected{file_msg}. Routed back to zf-builder for resolution.", now)
+    )
+    try:
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+            (
+                task_id,
+                "dispatcher",
+                f"🚨 **Merge Conflict Detected**: Pulling latest main branch encountered conflicts{file_msg}. "
+                f"Worktree has been left with conflict markers for resolution. "
+                f"Please reconcile conflict markers, verify tests pass, and commit.",
+                now
+            )
+        )
+    except Exception as e:
+        _log.debug("Failed to record task comment for conflict: %s", e)
+
+
+def _handle_pr_conflict_from_github(
+    cursor: sqlite3.Cursor,
+    task_id: str,
+    title: str,
+    workspace_path: Optional[str],
+    repo_path: Path,
+    tenant: Optional[str],
+    db_path: Path,
+    board_slug: Optional[str],
+    now: int
+) -> None:
+    """Handle a PR that has merge conflicts on GitHub by routing back to builder."""
+    if workspace_path and Path(workspace_path).exists():
+        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
+
+    match = re.search(r"\[PR Opened by (.*?)\]", title)
+    author = match.group(1) if match else "zf-builder"
+    author = normalize_assignee(author)
+    if author == "zf-reviewer":
+        author = "zf-builder"
+
+    new_title = title
+    if "[PR Conflict]" not in new_title and "[Merge Conflict]" not in new_title:
+        new_title = f"{new_title} [PR Conflict]"
+
+    wt_path = setup_worktree(cursor, task_id, new_title, author, tenant, db_path, board_slug=board_slug, repo_path=repo_path)
+    conflict_files = []
+    if wt_path and Path(wt_path).exists():
+        conflict_files = check_unresolved_conflicts(Path(wt_path))
+
+    file_msg = f" in {', '.join(conflict_files)}" if conflict_files else ""
+    cursor.execute(
+        "UPDATE tasks SET title = ?, assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
+        (new_title, author, now, task_id)
+    )
+    cursor.execute(
+        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
+        (task_id, f"GitHub PR is conflicting with main branch{file_msg}. Routed to {author} to resolve conflicts.", now)
+    )
+    try:
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+            (
+                task_id,
+                "dispatcher",
+                f"🚨 **PR Conflict Detected**: GitHub reports mergeable state is CONFLICTING. "
+                f"The worktree has been synced with latest main branch{file_msg}. "
+                f"Please resolve all conflict markers, verify tests pass, and commit.",
+                now
+            )
+        )
+    except Exception as e:
+        _log.debug("Failed to record task comment for conflict: %s", e)
 
 
 def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
@@ -778,9 +1119,9 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
                 if not os.environ.get("ZEROFACTORY_SKIP_GIT"):
                     cursor.execute("""
-                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug FROM tasks
-                        WHERE (status IN ('blocked', 'done') AND (pr_url IS NULL OR pr_url = ''))
-                           OR (status IN ('blocked', 'done') AND pr_url IS NOT NULL AND pr_url != '' AND assignee = 'zf-reviewer')
+                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status FROM tasks
+                        WHERE (status IN ('blocked', 'done') AND assignee != 'zf-reviewer')
+                           OR (assignee = 'zf-reviewer' AND pr_url IS NOT NULL AND pr_url != '')
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -816,14 +1157,40 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if not repo_path or not repo_path.exists():
                             repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
 
+                        if not repo_path or not repo_path.exists():
+                            continue
+
                         if assignee != "zf-reviewer":
-                            # Author finished work -> git commit, push, create PR, hand off to reviewer
+                            # Author finished work -> check conflicts, commit, pull/merge main, push, create PR, hand off to reviewer
                             try:
+                                # 1. Guardrail: Check if worktree is already in an unmerged conflict state
+                                initial_conflicts = check_unresolved_conflicts(Path(workspace_path))
+                                if initial_conflicts:
+                                    _log.warning("Task %s has unresolved conflicts in worktree: %s", task_id, initial_conflicts)
+                                    _handle_local_merge_conflict(cursor, task_id, title, workspace_path, initial_conflicts, now, "Unresolved conflicts in worktree")
+                                    continue
+
                                 subject, commit_body = format_conventional_message(title, task_id)
                                 status_res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True)
                                 if status_res.stdout.strip():
                                     subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
-                                    subprocess.run(["git", "commit", "-m", subject, "-m", commit_body], check=True, cwd=workspace_path, capture_output=True)
+                                    subprocess.run(
+                                        ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit", "-m", subject, "-m", commit_body],
+                                        check=True, cwd=workspace_path, capture_output=True
+                                    )
+
+                                # 2. Guardrail: Always pull and merge latest main branch before pushing
+                                merged_ok, conflict_files, merge_err = pull_and_merge_main(Path(workspace_path), repo_path)
+                                if not merged_ok:
+                                    _log.warning("Task %s merge conflict with main detected: %s (%s)", task_id, conflict_files, merge_err)
+                                    _handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
+                                    continue
+
+                                # 3. Guardrail: Check for any leftover conflict markers post-merge
+                                leftover_conflicts = check_unresolved_conflicts(Path(workspace_path))
+                                if leftover_conflicts:
+                                    _handle_local_merge_conflict(cursor, task_id, title, workspace_path, leftover_conflicts, now, "Leftover conflict markers detected after merge")
+                                    continue
 
                                 subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True)
 
@@ -845,8 +1212,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
 
                                 new_title = title
-                                if not re.search(r"\[PR Opened by .*?\]", title):
-                                    new_title = f"{title} [PR Opened by {assignee}]"
+                                for tag in ("[PR Conflict]", "[Merge Conflict]"):
+                                    new_title = new_title.replace(f" {tag}", "").replace(tag, "").strip()
+                                if not re.search(r"\[PR Opened by .*?\]", new_title):
+                                    new_title = f"{new_title} [PR Opened by {assignee}]"
 
                                 cursor.execute(
                                     "UPDATE tasks SET title = ?, assignee = 'zf-reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
@@ -855,7 +1224,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 setup_worktree(cursor, task_id, new_title, "zf-reviewer", tenant, db_path, board_slug=board_slug)
                                 cursor.execute(
                                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
-                                    (task_id, f"PR created, routed to reviewer: {pr_url}", now)
+                                    (task_id, f"PR synced with main, routed to reviewer: {pr_url}", now)
                                 )
                                 prs_opened += 1
                             except subprocess.CalledProcessError as e:
@@ -864,16 +1233,17 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             except Exception as e:
                                 _log.warning("Task %s commit/PR failed: %s", task_id, e)
                         else:
-                            # Reviewer finished review -> inspect GitHub PR state
+                            # Reviewer check -> inspect GitHub PR state
                             try:
                                 res = subprocess.run(
-                                    ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url"],
-                                    capture_output=True, text=True, cwd=str(repo_path)
+                                    ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url,mergeable"],
+                                    capture_output=True, text=True, cwd=str(repo_path), timeout=10
                                 )
                                 if res.returncode == 0:
                                     pr_data = json.loads(res.stdout)
                                     pr_state = pr_data.get("state")
                                     decision = pr_data.get("reviewDecision")
+                                    mergeable = pr_data.get("mergeable")
 
                                     if pr_state == "MERGED":
                                         subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
@@ -885,31 +1255,34 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
                                             (task_id, now)
                                         )
-                                    elif decision == "CHANGES_REQUESTED":
-                                        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
-                                        match = re.search(r"\[PR Opened by (.*?)\]", title)
-                                        author = match.group(1) if match else "zf-builder"
-                                        author = normalize_assignee(author)
-                                        cursor.execute(
-                                            "UPDATE tasks SET assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
-                                            (author, now, task_id)
-                                        )
-                                        setup_worktree(cursor, task_id, title, author, tenant, db_path, board_slug=board_slug)
-                                        cursor.execute(
-                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', 'Changes requested by reviewer, routed back to author', ?)",
-                                            (task_id, now)
-                                        )
-                                    elif decision == "APPROVED":
-                                        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
-                                        new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
-                                        cursor.execute(
-                                            "UPDATE tasks SET title = ?, status = 'blocked', workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                            (new_title, now, task_id)
-                                        )
-                                        cursor.execute(
-                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved, waiting for human merge', ?)",
-                                            (task_id, now)
-                                        )
+                                    elif mergeable == "CONFLICTING":
+                                        _handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
+                                    elif row["status"] in ("blocked", "done"):
+                                        if decision == "CHANGES_REQUESTED":
+                                            subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
+                                            match = re.search(r"\[PR Opened by (.*?)\]", title)
+                                            author = match.group(1) if match else "zf-builder"
+                                            author = normalize_assignee(author)
+                                            cursor.execute(
+                                                "UPDATE tasks SET assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
+                                                (author, now, task_id)
+                                            )
+                                            setup_worktree(cursor, task_id, title, author, tenant, db_path, board_slug=board_slug)
+                                            cursor.execute(
+                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', 'Changes requested by reviewer, routed back to author', ?)",
+                                                (task_id, now)
+                                            )
+                                        elif decision == "APPROVED":
+                                            subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
+                                            new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
+                                            cursor.execute(
+                                                "UPDATE tasks SET title = ?, status = 'blocked', workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                                (new_title, now, task_id)
+                                            )
+                                            cursor.execute(
+                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved, waiting for human merge', ?)",
+                                                (task_id, now)
+                                            )
                             except Exception as e:
                                 _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
 
