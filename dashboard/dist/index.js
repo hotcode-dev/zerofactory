@@ -17,6 +17,30 @@
     return Math.floor(diff / 86400) + "d ago";
   };
 
+  const formatPrLabel = function (url) {
+    if (!url) return "";
+    const trimmed = String(url).trim();
+    if (/^#?\d+$/.test(trimmed)) return "PR #" + trimmed.replace(/^#/, "");
+    const m = trimmed.match(/\/(?:pull|merge_requests)\/(\d+)/i);
+    if (m) return "PR #" + m[1];
+    return "PR ↗";
+  };
+
+  const renderPrIcon = function (className = "w-3 h-3 shrink-0") {
+    return React.createElement(
+      "svg",
+      {
+        className: className,
+        viewBox: "0 0 16 16",
+        fill: "currentColor",
+        xmlns: "http://www.w3.org/2000/svg"
+      },
+      React.createElement("path", {
+        d: "M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z"
+      })
+    );
+  };
+
   const API_BASE = "/api/plugins/zerofactory";
 
   const COLUMNS = [
@@ -46,6 +70,7 @@
     const [searchQuery, setSearchQuery] = useState("");
     const [assigneeFilter, setAssigneeFilter] = useState("all");
     const [priorityFilter, setPriorityFilter] = useState("all");
+    const [prFilter, setPrFilter] = useState("all");
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [isDispatching, setIsDispatching] = useState(false);
     const [dragOverCol, setDragOverCol] = useState(null);
@@ -73,7 +98,8 @@
       status: "triage",
       priority: "P2",
       assignee: "unassigned",
-      tenant: ""
+      tenant: "",
+      pr_url: ""
     });
 
     const [newBoardForm, setNewBoardForm] = useState({
@@ -292,16 +318,19 @@
       return tasks.filter((t) => {
         if (assigneeFilter !== "all" && t.assignee !== assigneeFilter && t.assignee !== assigneeFilter.replace("zf-", "") && ("zf-" + t.assignee) !== assigneeFilter) return false;
         if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
+        if (prFilter === "has_pr" && (!t.pr_url || !t.pr_url.trim())) return false;
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
           const matchTitle = (t.title || "").toLowerCase().includes(q);
           const matchDesc = (t.description || "").toLowerCase().includes(q);
           const matchId = (t.id || "").toLowerCase().includes(q);
-          if (!matchTitle && !matchDesc && !matchId) return false;
+          const matchPr = (t.pr_url || "").toLowerCase().includes(q);
+          const matchBranch = (t.branch_name || "").toLowerCase().includes(q);
+          if (!matchTitle && !matchDesc && !matchId && !matchPr && !matchBranch) return false;
         }
         return true;
       });
-    }, [tasks, assigneeFilter, priorityFilter, searchQuery]);
+    }, [tasks, assigneeFilter, priorityFilter, prFilter, searchQuery]);
 
     // Filtered Cron Jobs
     const filteredCronJobs = useMemo(() => {
@@ -472,6 +501,7 @@
       try {
         const payload = {
           ...newTaskForm,
+          pr_url: newTaskForm.pr_url && newTaskForm.pr_url.trim() ? newTaskForm.pr_url.trim() : null,
           board_slug: selectedBoard
         };
         const res = await fetchJSON(API_BASE + "/tasks", {
@@ -487,7 +517,8 @@
           status: "triage",
           priority: "P2",
           assignee: "unassigned",
-          tenant: ""
+          tenant: "",
+          pr_url: ""
         });
         loadTasksAndStats();
       } catch (err) {
@@ -769,7 +800,7 @@
         stats &&
           React.createElement(
             "div",
-            { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1" },
+            { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1" },
             React.createElement(
               "div",
               { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
@@ -824,6 +855,21 @@
                 React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.active_worktrees || 0),
                 React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Git Worktrees")
               )
+            ),
+            React.createElement(
+              "div",
+              {
+                className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150 cursor-pointer " + (prFilter === "has_pr" ? "ring-1 ring-purple-500/50 bg-purple-950/20" : ""),
+                onClick: () => setPrFilter(prFilter === "has_pr" ? "all" : "has_pr"),
+                title: "Filter by tasks with Pull Requests"
+              },
+              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, renderPrIcon("w-4 h-4 text-purple-400")),
+              React.createElement(
+                "div",
+                { className: "flex flex-col min-w-0" },
+                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.pr_count || 0),
+                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Pull Requests")
+              )
             )
           )
       ),
@@ -839,7 +885,7 @@
           React.createElement("input", {
             type: "text",
             className: "bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none w-full",
-            placeholder: "Search tasks by title, description or ID...",
+            placeholder: "Search tasks by title, description, ID or PR...",
             value: searchQuery,
             onChange: (e) => setSearchQuery(e.target.value)
           })
@@ -887,6 +933,36 @@
                 onClick: () => setPriorityFilter(prio)
               },
               prio
+            )
+          )
+        ),
+        React.createElement(
+          "div",
+          { className: "flex items-center gap-1.5 flex-wrap" },
+          React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "PR:"),
+          [
+            { id: "all", label: "All" },
+            { id: "has_pr", label: "Has PR" }
+          ].map((item) =>
+            React.createElement(
+              "button",
+              {
+                key: item.id,
+                type: "button",
+                className: (prFilter === item.id
+                  ? "bg-purple-600 text-white border-purple-500 shadow-xs shadow-purple-600/30"
+                  : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
+                  " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center inline-flex items-center gap-1.5",
+                onClick: () => setPrFilter(item.id)
+              },
+              item.id === "has_pr" && renderPrIcon("w-3 h-3 shrink-0"),
+              item.label,
+              item.id === "has_pr" && stats && stats.pr_count > 0 &&
+                React.createElement(
+                  "span",
+                  { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" },
+                  stats.pr_count
+                )
             )
           )
         ),
@@ -995,6 +1071,20 @@
                         { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" },
                         t.tenant && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant),
                         t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name),
+                        t.pr_url &&
+                          React.createElement(
+                            "a",
+                            {
+                              href: t.pr_url,
+                              target: "_blank",
+                              rel: "noopener noreferrer",
+                              onClick: (e) => e.stopPropagation(),
+                              className: "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] font-mono font-semibold bg-purple-500/15 hover:bg-purple-500/30 text-purple-300 hover:text-purple-100 border border-purple-500/30 transition-all duration-150 truncate max-w-[140px] shadow-xs cursor-pointer",
+                              title: "Pull Request: " + t.pr_url
+                            },
+                            renderPrIcon("w-2.5 h-2.5 shrink-0 text-purple-400"),
+                            formatPrLabel(t.pr_url)
+                          ),
                         t.blocking_parent_count > 0 &&
                           React.createElement(
                             "span",
@@ -1180,6 +1270,61 @@
                 )
               ),
 
+              // Pull Request URL Row
+              React.createElement(
+                "div",
+                { className: "space-y-1.5" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-between" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL"),
+                  selectedTask.pr_url &&
+                    React.createElement(
+                      "a",
+                      {
+                        href: selectedTask.pr_url,
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        className: "inline-flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 font-medium transition-colors"
+                      },
+                      renderPrIcon("w-2.5 h-2.5 shrink-0"),
+                      "Open Link ↗"
+                    )
+                ),
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-2" },
+                  React.createElement("input", {
+                    key: selectedTask.id + (selectedTask.pr_url || ""),
+                    defaultValue: selectedTask.pr_url || "",
+                    placeholder: "e.g. https://github.com/owner/repo/pull/123",
+                    className: "flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors font-mono",
+                    onBlur: async (e) => {
+                      const newPr = e.target.value.trim();
+                      if (newPr !== (selectedTask.pr_url || "")) {
+                        try {
+                          await fetchJSON(API_BASE + "/tasks/" + selectedTask.id, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ pr_url: newPr || null })
+                          });
+                          loadTaskDetails(selectedTask.id);
+                          loadTasksAndStats();
+                          showToast("Updated Pull Request URL", "success");
+                        } catch (err) {
+                          showToast("Failed to update PR URL: " + err.message, "error");
+                        }
+                      }
+                    },
+                    onKeyDown: (e) => {
+                      if (e.key === "Enter") {
+                        e.target.blur();
+                      }
+                    }
+                  })
+                )
+              ),
+
               // Description
               React.createElement(
                 "div",
@@ -1205,6 +1350,69 @@
                   React.createElement("code", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path),
                   selectedTask.branch_name &&
                     React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)
+                ),
+
+              // Pull Request Banner
+              selectedTask.pr_url &&
+                React.createElement(
+                  "div",
+                  {
+                    className: "p-3.5 bg-purple-500/10 border border-purple-500/25 rounded-lg text-xs space-y-2 shadow-xs"
+                  },
+                  React.createElement(
+                    "div",
+                    { className: "flex items-center justify-between gap-2 flex-wrap" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-2 text-purple-300 font-semibold" },
+                      renderPrIcon("w-4 h-4 text-purple-400 shrink-0"),
+                      React.createElement("span", null, "Pull Request:"),
+                      React.createElement(
+                        "span",
+                        { className: "font-mono font-bold bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30 text-purple-200" },
+                        formatPrLabel(selectedTask.pr_url)
+                      )
+                    ),
+                    React.createElement(
+                      "a",
+                      {
+                        href: selectedTask.pr_url,
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        className: "inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-md shadow-purple-600/20 transition-all duration-150 cursor-pointer"
+                      },
+                      "View on GitHub ↗"
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "flex items-center justify-between gap-2 pt-1 border-t border-purple-500/20 text-slate-300" },
+                    React.createElement(
+                      "a",
+                      {
+                        href: selectedTask.pr_url,
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        className: "text-purple-300 hover:text-purple-200 font-mono text-[0.6875rem] break-all underline decoration-purple-500/50 hover:decoration-purple-300 transition-colors"
+                      },
+                      selectedTask.pr_url
+                    ),
+                    React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => {
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(selectedTask.pr_url);
+                          }
+                          showToast("Copied PR URL to clipboard!", "success");
+                        },
+                        className: "shrink-0 px-2 py-0.5 rounded text-[0.625rem] bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 cursor-pointer transition-colors",
+                        title: "Copy PR URL"
+                      },
+                      "Copy"
+                    )
+                  )
                 ),
 
               // Agent Session Progress Panel
@@ -1553,6 +1761,17 @@
                       onChange: (e) => setNewTaskForm({ ...newTaskForm, tenant: e.target.value })
                     })
                   )
+                ),
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL (Optional)"),
+                  React.createElement("input", {
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+                    placeholder: "e.g. https://github.com/owner/repo/pull/123",
+                    value: newTaskForm.pr_url || "",
+                    onChange: (e) => setNewTaskForm({ ...newTaskForm, pr_url: e.target.value })
+                  })
                 ),
                 React.createElement(
                   "div",

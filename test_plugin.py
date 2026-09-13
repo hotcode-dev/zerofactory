@@ -852,6 +852,43 @@ class TestZeroFactory(unittest.TestCase):
             self.assertTrue(resolved.exists())
             self.assertTrue(resolved.is_file())
 
+    def test_26_task_pr_url_and_stats(self):
+        """Verify task pr_url persistence, update, and get_stats pr_count metric."""
+        # 1. Create task with pr_url
+        req = TaskCreate(
+            title="Task with Pull Request",
+            description="Testing PR integration",
+            board_slug="zerofactory",
+            pr_url="https://github.com/hotcode-dev/zerofactory/pull/42"
+        )
+        task_id = create_task(req)["id"]
+        
+        # 2. Verify pr_url in get_task
+        task = get_task(task_id)["task"]
+        self.assertEqual(task["pr_url"], "https://github.com/hotcode-dev/zerofactory/pull/42")
+
+        # 3. Verify get_stats pr_count
+        stats = get_stats(board="zerofactory")
+        self.assertTrue(stats["ok"])
+        self.assertIn("pr_count", stats)
+        self.assertGreaterEqual(stats["pr_count"], 1)
+        initial_pr_count = stats["pr_count"]
+
+        # 4. Update pr_url
+        up_res = update_task(task_id, TaskUpdate(pr_url="https://github.com/hotcode-dev/zerofactory/pull/99"))
+        self.assertTrue(up_res["ok"])
+        updated_task = get_task(task_id)["task"]
+        self.assertEqual(updated_task["pr_url"], "https://github.com/hotcode-dev/zerofactory/pull/99")
+
+        # 5. Clear pr_url and verify pr_count reflects it
+        clear_res = update_task(task_id, TaskUpdate(pr_url=""))
+        self.assertTrue(clear_res["ok"])
+        cleared_task = get_task(task_id)["task"]
+        self.assertEqual(cleared_task["pr_url"], "")
+
+        stats_after = get_stats(board="zerofactory")
+        self.assertEqual(stats_after["pr_count"], initial_pr_count - 1)
+
 
 if __name__ == "__main__":
     unittest.main()

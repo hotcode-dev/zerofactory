@@ -1279,6 +1279,10 @@ def get_stats(board: Optional[str] = None):
         cursor.execute(f"SELECT COUNT(*) as count FROM tasks{base_filter} AND workspace_path IS NOT NULL AND status IN ('ready', 'running')", params)
         active_worktrees = cursor.fetchone()["count"]
 
+        # Pull requests count
+        cursor.execute(f"SELECT COUNT(*) as count FROM tasks{base_filter} AND pr_url IS NOT NULL AND pr_url != ''", params)
+        pr_count = cursor.fetchone()["count"]
+
         return {
             "ok": True,
             "total": total_tasks,
@@ -1292,7 +1296,8 @@ def get_stats(board: Optional[str] = None):
             },
             "priorities": priority_counts,
             "assignees": assignee_counts,
-            "active_worktrees": active_worktrees
+            "active_worktrees": active_worktrees,
+            "pr_count": pr_count
         }
 
 
