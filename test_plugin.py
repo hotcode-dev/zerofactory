@@ -1229,6 +1229,67 @@ class TestZeroFactory(unittest.TestCase):
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
+    def test_32_worktree_symlink_guardrail_and_resolution(self):
+        """Verify that get_plugin_root() resolves main repo from inside worktrees and ensure_plugin_symlinks cleans up worktree symlinks."""
+        from profile_manager import get_plugin_root, ensure_plugin_symlinks
+        import shutil
+        import tempfile
+        from unittest.mock import patch
+
+        canonical_repo = Path(__file__).resolve().parent
+
+        # 1. Normal resolution from main repo
+        self.assertEqual(get_plugin_root(), canonical_repo)
+
+        # 2. Simulated worktree directory with .git pointer file
+        td = tempfile.mkdtemp(prefix="zf-worktree-test-")
+        try:
+            worktree_dir = Path(td) / "zerofactory-worktrees" / "zf-test123"
+            worktree_dir.mkdir(parents=True, exist_ok=True)
+            # Create a .git file mimicking git worktree pointer
+            git_file = worktree_dir / ".git"
+            dummy_gitdir = canonical_repo / ".git" / "worktrees" / "zf-test123"
+            git_file.write_text(f"gitdir: {dummy_gitdir}\n", encoding="utf-8")
+
+            # Patch __file__ to simulate executing from inside the worktree
+            fake_pm_file = str(worktree_dir / "profile_manager.py")
+            with patch("profile_manager.__file__", fake_pm_file):
+                resolved = get_plugin_root()
+                self.assertEqual(resolved, canonical_repo)
+
+            # 3. Guardrail: ensure_plugin_symlinks unlinks any worktree link
+            hermes_fake = Path(td) / "fake_hermes"
+            hermes_fake.mkdir(parents=True, exist_ok=True)
+            fake_plugins = hermes_fake / "plugins"
+            fake_plugins.mkdir(parents=True, exist_ok=True)
+            bad_link = fake_plugins / "zerofactory"
+            bad_target = worktree_dir
+            bad_link.symlink_to(bad_target, target_is_directory=True)
+            self.assertTrue(bad_link.is_symlink())
+            self.assertIn("worktrees", str(bad_link.resolve()))
+
+            with patch("profile_manager.get_hermes_home", return_value=hermes_fake):
+                ensure_plugin_symlinks()
+                # Must have replaced the bad worktree link with canonical repo
+                self.assertTrue(bad_link.is_symlink())
+                self.assertEqual(bad_link.resolve(), canonical_repo)
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_33_stop_task_worker(self):
+        """Verify stop_task_worker terminates active worker and removes it from tracking."""
+        from dispatcher import stop_task_worker, _active_workers
+        from unittest.mock import MagicMock, patch
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 88888
+        _active_workers["task-test-stop"] = mock_proc
+
+        with patch("dispatcher.terminate_worker_process") as mock_term:
+            stop_task_worker("task-test-stop")
+            self.assertNotIn("task-test-stop", _active_workers)
+            mock_term.assert_called_once_with(mock_proc, 88888)
+
 
 if __name__ == "__main__":
     unittest.main()

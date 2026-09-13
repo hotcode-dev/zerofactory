@@ -1,11 +1,41 @@
 """Zero Factory Kanban Dispatcher Engine.
 
-Handles:
-1. Parent-child dependency resolution (auto-unblocking).
-2. Work-in-Progress (WIP) limits and promotion (todo -> ready).
-3. Automatic specialist assignment (builder / reviewer / orchestrator).
-4. Git worktree provisioning and isolated branching.
-5. GitHub Pull Request lifecycle and reviewer feedback loop.
+The core orchestration engine driving 24/7 autonomous multi-agent software engineering
+workflows within the Zero Factory system. It coordinates task scheduling, agent execution,
+git worktree isolation, GitHub Pull Request reviews, and worker lifecycle management.
+
+Core Responsibilities:
+1. Dependency Graph & DAG Progression:
+   - Evaluates parent-child ticket dependencies and automatically unblocks downstream tasks
+     when prerequisite parent tasks reach 'done'.
+2. Work-in-Progress (WIP) Management & Scheduling:
+   - Enforces configurable WIP limits per board and assignee to avoid pipeline congestion.
+   - Promotes scheduled tickets from 'todo' to 'ready' based on capacity and priority.
+3. Specialist Role Assignment & Routing:
+   - Directs tasks to specialized Hermes agent profiles:
+     * zf-orchestrator: Goal decomposition, issue triage, repository improvement scanning.
+     * zf-builder: Implementation, test writing, worktree-isolated development.
+     * zf-reviewer: Thematic code review, security and performance audits, PR polish.
+4. Isolated Git Worktree Provisioning:
+   - Provisions isolated git worktrees (`~/git/<repo>-worktrees/<task_id>`) with dedicated
+     feature branches (`task/<task_id>`).
+   - Automatically synchronizes worktrees with the default branch (e.g. 'main') and detects
+     merge conflicts, routing conflicting tasks back to builder agents for resolution.
+   - Guarantees clean worktree teardown and prevents repository state pollution.
+5. Agent Worker Process Lifecycle & Safety:
+   - Spawns and tracks non-interactive Hermes worker subprocesses with custom context.
+   - Monitors process health, maximum execution limits, and inactivity thresholds.
+   - Safely terminates workers (SIGTERM -> SIGKILL) prior to worktree deletion
+     to prevent zombie/orphan processes in deleted directories.
+   - Reaps crashed, timed out, or orphaned workers, moving affected tickets to 'blocked'.
+6. GitHub Pull Request & Review Feedback Loop:
+   - Automates branch commits, remote pushes, and PR creation via GitHub CLI (`gh`).
+   - Monitors GitHub PR status (`MERGED`, `CONFLICTING`, `CHANGES_REQUESTED`, `APPROVED`).
+   - Orchestrates iterative multi-round code review loops between builder and reviewer agents.
+   - Escalates approved PRs or unresolvable conflicts to human maintainers.
+7. Concurrency & Dispatch Loop Safety:
+   - Operates under a global re-entrant lock (`_dispatcher_lock`) to prevent race
+     conditions across parallel background cron cycles, CLI commands, and dashboard triggers.
 """
 
 from __future__ import annotations
@@ -459,6 +489,31 @@ def terminate_worker_process(proc: Optional[subprocess.Popen], pid: Optional[int
                 pass
         except OSError:
             pass
+
+
+def stop_task_worker(task_id: str, cursor: Optional[sqlite3.Cursor] = None) -> None:
+    """Safely terminate any active worker process for a task.
+
+    Invoked before git worktree removal or task transitions to prevent orphaned
+    zombie processes from running in deleted directories, leaking resources,
+    and corrupting plugin symlinks. Checks in-memory workers first, then falls
+    back to metadata `worker_pid`. Idempotent and exception-safe.
+    """
+    proc = _active_workers.pop(task_id, None)
+    pid = None
+    if proc is not None:
+        pid = proc.pid
+    elif cursor:
+        try:
+            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+            row = cursor.fetchone()
+            if row:
+                raw_meta = row["metadata"] if hasattr(row, "keys") or isinstance(row, dict) else row[0]
+                meta = json.loads(raw_meta or "{}")
+                pid = meta.get("worker_pid")
+        except Exception:
+            pass
+    terminate_worker_process(proc, pid)
 
 
 def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
@@ -952,6 +1007,7 @@ def _handle_pr_conflict_from_github(
     now: int
 ) -> None:
     """Handle a PR that has merge conflicts on GitHub by routing back to builder."""
+    stop_task_worker(task_id, cursor)
     if workspace_path and Path(workspace_path).exists():
         subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
 
@@ -1209,6 +1265,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         pr_url = pr_res.stdout.strip()
 
                                 # Cleanup author worktree
+                                stop_task_worker(task_id, cursor)
                                 subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
 
                                 new_title = title
@@ -1246,6 +1303,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     mergeable = pr_data.get("mergeable")
 
                                     if pr_state == "MERGED":
+                                        stop_task_worker(task_id, cursor)
                                         subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
                                         cursor.execute(
                                             "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
@@ -1259,6 +1317,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         _handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
                                     elif row["status"] in ("blocked", "done"):
                                         if decision == "CHANGES_REQUESTED":
+                                            stop_task_worker(task_id, cursor)
                                             subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
                                             match = re.search(r"\[PR Opened by (.*?)\]", title)
                                             author = match.group(1) if match else "zf-builder"
@@ -1273,6 +1332,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                                 (task_id, now)
                                             )
                                         elif decision == "APPROVED":
+                                            stop_task_worker(task_id, cursor)
                                             subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
                                             new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
                                             cursor.execute(

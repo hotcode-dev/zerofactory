@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -44,8 +45,56 @@ def get_hermes_home() -> Path:
 
 
 def get_plugin_root() -> Path:
-    """Return the root path of the zerofactory plugin."""
-    return Path(__file__).resolve().parent
+    """Return the canonical root path of the zerofactory plugin.
+
+    If executed from inside an isolated git worktree (e.g. `*-worktrees/<task_id>`),
+    this resolves to the primary repository root to ensure plugin symlinks in
+    ~/.hermes/plugins/ and profile directories never point to transient worktrees
+    that will be removed when the task completes.
+    """
+    cur = Path(__file__).resolve().parent
+
+    # 1. Check if .git is a worktree pointer file
+    git_entry = cur / ".git"
+    if git_entry.is_file():
+        try:
+            content = git_entry.read_text(encoding="utf-8").strip()
+            if content.startswith("gitdir:"):
+                gitdir_str = content.split(":", 1)[1].strip()
+                gitdir_path = Path(gitdir_str).resolve()
+                if "worktrees" in gitdir_path.parts:
+                    idx = gitdir_path.parts.index("worktrees")
+                    dot_git = Path(*gitdir_path.parts[:idx])
+                    main_repo = dot_git.parent
+                    if (main_repo / "plugin.yaml").exists():
+                        return main_repo
+        except Exception:
+            pass
+
+    # 2. Check if git common dir points to main repo
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=str(cur),
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if res.returncode == 0:
+            common_git = Path(res.stdout.strip()).resolve()
+            main_repo = common_git.parent
+            if (main_repo / "plugin.yaml").exists():
+                return main_repo
+    except Exception:
+        pass
+
+    # 3. Path heuristic: if within a `<name>-worktrees/<task_id>` folder
+    if "-worktrees" in cur.parent.name:
+        candidate_repo = cur.parent.parent / cur.parent.name.replace("-worktrees", "")
+        if (candidate_repo / "plugin.yaml").exists():
+            return candidate_repo
+
+    return cur
 
 
 def get_root_model_config() -> Dict[str, Any]:
@@ -211,6 +260,11 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
     plugin_root = get_plugin_root()
     profiles_dir = hermes_home / "profiles"
 
+    # Guardrail: NEVER symlink to a transient git worktree directory
+    if "-worktrees" in str(plugin_root) or (plugin_root / ".git").is_file():
+        _log.warning("Refusing to create plugin symlink to git worktree directory: %s", plugin_root)
+        return {"linked": []}
+
     linked: List[str] = []
 
     def _link_in_dir(target_plugins_dir: Path):
@@ -221,7 +275,11 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
                 if link_path.is_symlink():
                     try:
                         cur_target = link_path.resolve()
-                        if cur_target == plugin_root.resolve():
+                        # If existing symlink points to a transient worktree or is broken, unlink it
+                        if "-worktrees" in str(cur_target) or not cur_target.exists():
+                            link_path.unlink()
+                            link_path.symlink_to(plugin_root, target_is_directory=True)
+                        elif cur_target == plugin_root.resolve():
                             pass
                         else:
                             link_path.unlink()
