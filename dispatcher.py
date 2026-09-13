@@ -939,7 +939,7 @@ def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optiona
     # 1. If board_slug is provided, query boards table and resolve repo path
     if board_slug and cursor:
         try:
-            cursor.execute("SELECT slug, name, description, git_url FROM boards WHERE slug = ?", (board_slug,))
+            cursor.execute("SELECT slug, description, git_url FROM boards WHERE slug = ?", (board_slug,))
             b_row = cursor.fetchone()
             if b_row:
                 b_dict = dict(b_row)

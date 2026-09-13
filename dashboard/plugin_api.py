@@ -60,7 +60,6 @@ def init_db():
             conn.executescript("""
             CREATE TABLE IF NOT EXISTS boards (
                 slug TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
                 description TEXT DEFAULT '',
                 git_url TEXT DEFAULT '',
                 created_at INTEGER NOT NULL,
@@ -749,8 +748,8 @@ def create_board(req: BoardCreate):
             raise HTTPException(status_code=409, detail=f"Board '{slug}' already exists")
 
         cursor.execute(
-            "INSERT INTO boards (slug, name, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (slug, slug, desc, git_url, now, now)
+            "INSERT INTO boards (slug, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (slug, desc, git_url, now, now)
         )
         conn.commit()
 

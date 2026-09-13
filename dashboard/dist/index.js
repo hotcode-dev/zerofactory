@@ -105,18 +105,24 @@
     });
 
     const [newBoardForm, setNewBoardForm] = useState({
-      name: "",
-      slug: "",
-      description: "",
-      git_url: ""
+      git_url: "",
+      description: ""
     });
 
     const [editBoardForm, setEditBoardForm] = useState({
-      name: "",
       slug: "",
-      description: "",
-      git_url: ""
+      git_url: "",
+      description: ""
     });
+
+    const [createBoardError, setCreateBoardError] = useState("");
+    const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
+
+    const handleOpenNewBoardModal = () => {
+      setCreateBoardError("");
+      setNewBoardForm({ git_url: "", description: "" });
+      setShowNewBoardModal(true);
+    };
 
     // Toast helper
     const showToast = useCallback((msg, type = "info") => {
@@ -574,6 +580,22 @@
       }
 
       const autoSlug = computeGitSlug(gitUrl);
+      if (!autoSlug) {
+        const msg = "Could not derive a board slug from the URL. Please enter a valid Git URL.";
+        setCreateBoardError(msg);
+        showToast(msg, "warning");
+        return;
+      }
+
+      if (boards.some((b) => b.slug === autoSlug)) {
+        const msg = "Board '" + autoSlug + "' already exists. Please enter a different repository URL.";
+        setCreateBoardError(msg);
+        showToast(msg, "warning");
+        return;
+      }
+
+      setCreateBoardError("");
+      setIsSubmittingBoard(true);
 
       try {
         const res = await fetchJSON(API_BASE + "/boards", {
@@ -584,14 +606,19 @@
             description: (newBoardForm.description || "").trim()
           })
         });
-        const createdSlug = res.slug || autoSlug;
+        const createdSlug = (res && res.slug) ? res.slug : autoSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
         setNewBoardForm({ git_url: "", description: "" });
+        setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
       } catch (err) {
-        showToast("Failed to create board: " + err.message, "error");
+        const msg = (err && err.message) ? err.message : "Failed to create board";
+        setCreateBoardError(msg);
+        showToast("Failed to create board: " + msg, "error");
+      } finally {
+        setIsSubmittingBoard(false);
       }
     };
 
@@ -1358,21 +1385,6 @@
         "div",
         { className: "max-w-[1600px] mx-auto p-4 md:p-6 space-y-6 text-slate-100 font-sans antialiased min-h-screen" },
 
-      // Toast Notification
-      toast &&
-        React.createElement(
-          "div",
-          {
-            className: "fixed top-6 right-6 z-50 px-4 py-3 rounded-xl font-semibold text-sm shadow-2xl flex items-center gap-2.5 transition-all duration-200 border " +
-              (toast.type === "error"
-                ? "bg-rose-950/90 text-rose-200 border-rose-800 shadow-rose-950/50"
-                : toast.type === "success"
-                ? "bg-emerald-950/90 text-emerald-200 border-emerald-800 shadow-emerald-950/50"
-                : "bg-indigo-950/90 text-indigo-200 border-indigo-800 shadow-indigo-950/50")
-          },
-          toast.message
-        ),
-
       // Header Section
       React.createElement(
         "header",
@@ -1467,7 +1479,7 @@
                     ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30"
                     : "bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm") +
                   " transition-all duration-150 cursor-pointer",
-                onClick: () => setShowNewBoardModal(true),
+                onClick: handleOpenNewBoardModal,
                 title: "Create New Board"
               },
               "+ Board"
@@ -1525,7 +1537,7 @@
                 className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                 onClick: () => {
                   if (boards.length === 0) {
-                    setShowNewBoardModal(true);
+                    handleOpenNewBoardModal();
                   } else {
                     setShowNewTaskModal(true);
                   }
@@ -2606,84 +2618,116 @@
                   "✕"
                 )
             ),
-            React.createElement(
-              "form",
-              { onSubmit: handleCreateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
               React.createElement(
-                "div",
-                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
-                boards.length === 0 &&
-                  React.createElement(
-                    "div",
-                    { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" },
-                    React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"),
-                    React.createElement(
-                      "div",
-                      null,
-                      React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"),
-                      React.createElement("p", { className: "text-indigo-200/90" }, "Please register a project board for your codebase to begin creating tickets, assigning autonomous agents, and orchestrating Git worktrees. You can also explore the ", React.createElement("button", { type: "button", className: "underline text-indigo-300 hover:text-white font-medium cursor-pointer", onClick: () => { setShowNewBoardModal(false); setActiveView("instructions"); } }, "Zero Factory Instructions"), ".")
-                    )
-                  ),
+                "form",
+                { onSubmit: handleCreateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
                 React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Remote Git URL *"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
-                    required: true,
-                    autoFocus: true,
-                    placeholder: "https://github.com/hotcode-dev/zerofactory.git or git@github.com:hotcode-dev/zerofactory.git",
-                    value: newBoardForm.git_url || "",
-                    onChange: (e) => setNewBoardForm({ ...newBoardForm, git_url: e.target.value })
-                  }),
-                  (() => {
-                    const autoSlug = computeGitSlug(newBoardForm.git_url || "");
-                    if (autoSlug) {
-                      return React.createElement(
+                  { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+                  boards.length === 0 &&
+                    React.createElement(
+                      "div",
+                      { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" },
+                      React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"),
+                      React.createElement(
                         "div",
-                        { className: "flex items-center gap-2 pt-1 text-[11px] text-slate-400 font-mono" },
-                        React.createElement("span", { className: "text-slate-500" }, "Board Slug:"),
-                        React.createElement("span", { className: "px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 font-medium" }, autoSlug)
-                      );
-                    }
-                    return null;
-                  })()
+                        null,
+                        React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"),
+                        React.createElement("p", { className: "text-indigo-200/90" }, "Please register a project board for your codebase to begin creating tickets, assigning autonomous agents, and orchestrating Git worktrees. You can also explore the ", React.createElement("button", { type: "button", className: "underline text-indigo-300 hover:text-white font-medium cursor-pointer", onClick: () => { setShowNewBoardModal(false); setActiveView("instructions"); } }, "Zero Factory Instructions"), ".")
+                      )
+                    ),
+                  createBoardError &&
+                    React.createElement(
+                      "div",
+                      { className: "p-3 rounded-lg bg-rose-950/90 border border-rose-500/60 text-xs text-rose-200 leading-relaxed flex items-start gap-2.5 shadow-sm" },
+                      React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "⚠️"),
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Could Not Create Board"),
+                        React.createElement("p", { className: "text-rose-200/90 m-0" }, createBoardError)
+                      )
+                    ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Remote Git URL *"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+                      required: true,
+                      autoFocus: true,
+                      placeholder: "https://github.com/hotcode-dev/zerofactory.git or git@github.com:hotcode-dev/zerofactory.git",
+                      value: newBoardForm.git_url || "",
+                      onChange: (e) => {
+                        setCreateBoardError("");
+                        setNewBoardForm({ ...newBoardForm, git_url: e.target.value });
+                      }
+                    }),
+                    (() => {
+                      const autoSlug = computeGitSlug(newBoardForm.git_url || "");
+                      if (autoSlug) {
+                        const exists = boards.some((b) => b.slug === autoSlug);
+                        return React.createElement(
+                          "div",
+                          { className: "space-y-1 pt-1" },
+                          React.createElement(
+                            "div",
+                            { className: "flex items-center gap-2 text-[11px] text-slate-400 font-mono" },
+                            React.createElement("span", { className: "text-slate-500" }, "Board Slug:"),
+                            React.createElement("span", { className: "px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 font-medium" }, autoSlug)
+                          ),
+                          exists &&
+                            React.createElement(
+                              "div",
+                              { className: "text-[11px] text-amber-400 flex items-center gap-1.5 font-sans" },
+                              React.createElement("span", null, "⚠️"),
+                              "A board with slug '",
+                              React.createElement("span", { className: "font-mono font-bold text-amber-300" }, autoSlug),
+                              "' already exists."
+                            )
+                        );
+                      }
+                      return null;
+                    })()
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description (Optional)"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "Short description of this board's scope (optional)",
+                      value: newBoardForm.description || "",
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, description: e.target.value })
+                    })
+                  )
                 ),
                 React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description (Optional)"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "Short description of this board's scope (optional)",
-                    value: newBoardForm.description || "",
-                    onChange: (e) => setNewBoardForm({ ...newBoardForm, description: e.target.value })
-                  })
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
-                boards.length > 0 &&
+                  { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+                  boards.length > 0 &&
+                    React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                        onClick: () => setShowNewBoardModal(false)
+                      },
+                      "Cancel"
+                    ),
                   React.createElement(
                     "button",
                     {
-                      type: "button",
-                      className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
-                      onClick: () => setShowNewBoardModal(false)
+                      type: "submit",
+                      disabled: isSubmittingBoard,
+                      className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
                     },
-                    "Cancel"
-                  ),
-                React.createElement(
-                  "button",
-                  {
-                    type: "submit",
-                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
-                  },
-                  boards.length === 0 ? "Create & Get Started" : "Create Board"
+                    isSubmittingBoard
+                      ? "Creating..."
+                      : (boards.length === 0 ? "Create & Get Started" : "Create Board")
+                  )
                 )
               )
-            )
           )
         ),
 
@@ -3176,7 +3220,23 @@
             )
           )
         )
-      )
+      ),
+
+      // Floating Toast Notification with zIndex 999999 so it is always on top of modals
+      toast &&
+        React.createElement(
+          "div",
+          {
+            style: { zIndex: 999999 },
+            className: "fixed top-6 right-6 px-4 py-3 rounded-xl font-semibold text-sm shadow-2xl flex items-center gap-2.5 transition-all duration-200 border pointer-events-auto " +
+              (toast.type === "error"
+                ? "bg-rose-950/95 text-rose-200 border-rose-700 shadow-rose-950/80"
+                : toast.type === "success"
+                ? "bg-emerald-950/95 text-emerald-200 border-emerald-700 shadow-emerald-950/80"
+                : "bg-indigo-950/95 text-indigo-200 border-indigo-700 shadow-indigo-950/80")
+          },
+          toast.message
+        )
     );
   }
 

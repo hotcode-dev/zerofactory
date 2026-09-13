@@ -88,11 +88,11 @@ def resolve_board_slug(repo_dir: Path) -> str:
         try:
             with sqlite3.connect(str(db_path), timeout=5.0) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT slug, name, git_url FROM boards")
+                cursor.execute("SELECT slug, git_url FROM boards")
                 rows = cursor.fetchall()
-                # 1. Match by slug == repo name or name == repo name
-                for slug, name, _ in rows:
-                    if repo_dir.name.lower() in (slug.lower(), (name or "").lower()):
+                # 1. Match by slug == repo name or slug ends with repo name
+                for slug, _ in rows:
+                    if repo_dir.name.lower() in (slug.lower(), slug.split("-")[-1].lower()):
                         return slug
                 # 2. Match by git remote origin url (supports both HTTPS and SSH)
                 remote_url = _run_cmd(["git", "config", "--get", "remote.origin.url"], cwd=repo_dir)
@@ -105,7 +105,7 @@ def resolve_board_slug(repo_dir: Path) -> str:
                         return cleaned.lower()
 
                     norm_remote = _normalize_repo_slug(remote_url)
-                    for slug, _, git_url in rows:
+                    for slug, git_url in rows:
                         if git_url:
                             norm_board_git = _normalize_repo_slug(git_url)
                             if norm_remote == norm_board_git or norm_remote in git_url.lower():

@@ -103,7 +103,6 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
     and current working directory.
     """
     slug = (board.get("slug") or "").strip()
-    name = (board.get("name") or "").strip()
     git_url = (board.get("git_url") or "").strip()
     if not git_url and board.get("description"):
         match = re.search(r"(?:https?://|git@)[^\s)]+", board["description"])
@@ -320,7 +319,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             with sqlite3.connect(str(db_path), timeout=5.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                cursor.execute("SELECT slug, name, description, git_url FROM boards ORDER BY created_at ASC")
+                cursor.execute("SELECT slug, description, git_url FROM boards ORDER BY created_at ASC")
                 boards = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             _log.warning("Failed to query boards for cron generation: %s", e)

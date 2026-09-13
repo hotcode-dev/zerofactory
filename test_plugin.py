@@ -481,7 +481,7 @@ class TestZeroFactory(unittest.TestCase):
 
         # 3. Update non-existent board returns 404
         res_404 = client.patch("/api/plugins/zerofactory/boards/non-existent-slug", json={
-            "name": "Should Fail"
+            "description": "Should Fail"
         })
         self.assertEqual(res_404.status_code, 404)
 
@@ -893,7 +893,7 @@ class TestZeroFactory(unittest.TestCase):
         with tempfile.TemporaryDirectory() as empty_td:
             empty_db = Path(empty_td) / "empty.db"
             with sqlite3.connect(str(empty_db)) as conn:
-                conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, name TEXT, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
+                conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
                 conn.commit()
 
             import builtin_cron
@@ -1221,7 +1221,7 @@ class TestZeroFactory(unittest.TestCase):
                     )
                 """)
                 conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
-                conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, name TEXT, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
+                conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
 
                 # Insert a task that is blocked and author finished, but has conflict in worktree
                 conn.execute("""
@@ -1405,7 +1405,7 @@ class TestZeroFactory(unittest.TestCase):
                 )
             """)
             conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
-            conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, name TEXT, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
+            conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
             conn.commit()
 
     def test_35_handle_local_merge_conflict_direct(self):

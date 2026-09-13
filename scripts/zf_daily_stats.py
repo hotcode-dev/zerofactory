@@ -63,7 +63,7 @@ def run_daily_stats() -> int:
             running_tasks = [dict(r) for r in cursor.fetchall()]
 
             # Boards overview
-            cursor.execute("SELECT slug, name FROM boards")
+            cursor.execute("SELECT slug, git_url FROM boards")
             boards = [dict(r) for r in cursor.fetchall()]
 
     except Exception as e:
