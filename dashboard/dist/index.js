@@ -538,23 +538,58 @@
       }
     };
 
+    const computeGitSlug = (gitUrl) => {
+      if (!gitUrl) return "";
+      let cleaned = gitUrl.trim().replace(/\.git$/, "").replace(/\/+$/, "");
+      cleaned = cleaned.replace(/^[a-zA-Z]+:\/\//, "");
+      if (cleaned.includes("@")) {
+        cleaned = cleaned.split("@")[1];
+        if (cleaned.includes(":")) cleaned = cleaned.split(":")[1];
+        else if (cleaned.includes("/")) cleaned = cleaned.split("/").slice(1).join("/");
+      } else if (cleaned.includes("/")) {
+        const first = cleaned.split("/")[0];
+        if (first.includes(".") || first.includes(":")) {
+          cleaned = cleaned.split("/").slice(1).join("/");
+        }
+      }
+      const parts = cleaned.split("/").filter(Boolean);
+      let repo = parts.length >= 1 ? parts[parts.length - 1].replace(/[^a-zA-Z0-9_\-.]/g, "") : "";
+      let owner = parts.length >= 2 ? parts[parts.length - 2].replace(/[^a-zA-Z0-9_\-.]/g, "") : "";
+      if (owner && repo) {
+        return (owner + "-" + repo).toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, "-").replace(/^-+|-+$/g, "");
+      }
+      if (repo) {
+        return repo.toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, "-").replace(/^-+|-+$/g, "");
+      }
+      return "";
+    };
+
     // Create Board
     const handleCreateBoardSubmit = async (e) => {
       e.preventDefault();
-      if (!newBoardForm.slug.trim() || !newBoardForm.name.trim()) return;
+      const gitUrl = (newBoardForm.git_url || "").trim();
+      if (!gitUrl) {
+        showToast("Please enter a Remote Git URL", "warning");
+        return;
+      }
+
+      const autoSlug = computeGitSlug(gitUrl);
 
       try {
-        await fetchJSON(API_BASE + "/boards", {
+        const res = await fetchJSON(API_BASE + "/boards", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newBoardForm)
+          body: JSON.stringify({
+            git_url: gitUrl,
+            description: (newBoardForm.description || "").trim()
+          })
         });
-        showToast("Board '" + newBoardForm.slug + "' created!", "success");
+        const createdSlug = res.slug || autoSlug;
+        showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        const slug = newBoardForm.slug;
-        setNewBoardForm({ name: "", slug: "", description: "", git_url: "" });
+        setNewBoardForm({ git_url: "", description: "" });
         await loadBoards();
-        setSelectedBoard(slug);
+        setSelectedBoard(createdSlug);
       } catch (err) {
         showToast("Failed to create board: " + err.message, "error");
       }
@@ -566,7 +601,6 @@
       const curr = boards.find((b) => b.slug === selectedBoard);
       if (curr) {
         setEditBoardForm({
-          name: curr.name || "",
           slug: curr.slug || "",
           description: curr.description || "",
           git_url: curr.git_url || ""
@@ -578,14 +612,13 @@
     // Update Board Submit
     const handleUpdateBoardSubmit = async (e) => {
       e.preventDefault();
-      if (!editBoardForm.slug || !editBoardForm.name.trim()) return;
+      if (!editBoardForm.slug) return;
 
       try {
         await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(editBoardForm.slug), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: editBoardForm.name.trim(),
             description: (editBoardForm.description || "").trim(),
             git_url: (editBoardForm.git_url || "").trim()
           })
@@ -601,11 +634,9 @@
     // Delete Board
     const handleDeleteBoard = async () => {
       if (!selectedBoard) return;
-      const curr = boards.find((b) => b.slug === selectedBoard);
-      const name = curr ? curr.name : selectedBoard;
       if (
         !window.confirm(
-          "Are you sure you want to delete board \"" + name + "\" (" + selectedBoard + ")?\n\nThis will permanently remove the board, all its tasks, and clear its scheduled improvement scanner job."
+          "Are you sure you want to delete board \"" + selectedBoard + "\"?\n\nThis will permanently remove the board, all its tasks, and clear its scheduled improvement scanner job."
         )
       ) {
         return;
@@ -842,7 +873,7 @@
                   title: "PR Handoff",
                   badge: "Ready",
                   bcolor: "text-purple-100 bg-purple-900/90 border-purple-500/70",
-                  desc: "Dispatcher commits changes, opens GitHub PR via gh pr create, and routes ticket back to Ready assigned to zf-reviewer."
+                  desc: "Dispatcher commits changes, opens GitHub PR via gh pr create, pre-digests git diff and commit log into reviewer context, and routes ticket to Ready assigned to zf-reviewer."
                 },
                 {
                   num: "6",
@@ -966,6 +997,7 @@
             "Round 1: Testing coverage, edge cases, and functional correctness",
             "Round 2: Performance, memory overhead, and algorithmic efficiency",
             "Round 3: Clean code, DRY principles, and architectural polish",
+            "Pre-digested git diff and commit history provided directly in prompt context to minimize redundant exploration",
             "Approves PR and moves task to Blocked [Human Review] for merge"
           ],
           dir: "~/.hermes/profiles/zf-reviewer/"
@@ -1138,7 +1170,8 @@
           group: "Board & Dispatcher Operations",
           cmds: [
             { cmd: "hermes zerofactory board list", desc: "List all registered project boards" },
-            { cmd: "hermes zerofactory board create <slug> \"<name>\"", desc: "Register a new codebase board" },
+            { cmd: "hermes zerofactory board create <git_url>", desc: "Register a new codebase board from Remote Git URL" },
+            { cmd: "hermes zerofactory board delete <slug>", desc: "Delete a board and clear its scheduled scanner job" },
             { cmd: "hermes zerofactory dispatch", desc: "Trigger an immediate autonomous dispatch cycle" },
             { cmd: "hermes zerofactory check-stuck", desc: "Audit and reap long-running or hung worker processes" }
           ]
@@ -1201,7 +1234,7 @@
           title: "Codebase Improvement Scanner (zf-orchestrator)",
           interval: "Every 60 minutes per board",
           tokens: "0 Tokens on Unchanged Codebase",
-          desc: "Executed autonomously by zf-orchestrator inside the codebase workdir using wake-gate change detection (scripts/zf_scanner_gate.py). Compares Git HEAD against ~/.hermes/scanner_state.json. If unchanged, emits {'wakeAgent': false} (0 tokens). When changes, tech debt, or missing tests exist, zf-orchestrator analyzes the project and creates at most 1 actionable TODO task directly on the board assigned to zf-builder.",
+          desc: "Executed autonomously by zf-orchestrator inside the codebase workdir using wake-gate change detection (scripts/zf_scanner_gate.py) with independent sessions (continuity: false). Compares Git HEAD against ~/.hermes/scanner_state.json. If unchanged, emits {'wakeAgent': false} (0 tokens). When changes, tech debt, or missing tests exist, zf-orchestrator analyzes the project and creates at most 1 actionable TODO task directly on the board assigned to zf-builder.",
           badge: "Wake-Gate • zf-orchestrator"
         }
       ];
@@ -1417,7 +1450,7 @@
                     React.createElement(
                       "option",
                       { key: b.slug, value: b.slug },
-                      b.name + (b.task_count ? " (" + b.task_count + ")" : "")
+                      b.slug + (b.task_count ? " (" + b.task_count + ")" : "")
                     )
                   )
                 )
@@ -2594,50 +2627,36 @@
                 React.createElement(
                   "div",
                   { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Board Name *"),
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Remote Git URL *"),
                   React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
                     required: true,
-                    placeholder: "e.g. Zero Factory Project",
-                    value: newBoardForm.name,
-                    onChange: (e) => {
-                      const name = e.target.value;
-                      const slug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
-                      setNewBoardForm({ ...newBoardForm, name, slug: newBoardForm.slug || slug });
-                    }
-                  })
-                ),
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Slug (URL identifier) *"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    required: true,
-                    placeholder: "e.g. zerofactory",
-                    value: newBoardForm.slug,
-                    onChange: (e) => setNewBoardForm({ ...newBoardForm, slug: e.target.value })
-                  })
-                ),
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "https://github.com/org/repo.git or git@github.com:org/repo.git",
-                    value: newBoardForm.git_url,
+                    autoFocus: true,
+                    placeholder: "https://github.com/hotcode-dev/zerofactory.git or git@github.com:hotcode-dev/zerofactory.git",
+                    value: newBoardForm.git_url || "",
                     onChange: (e) => setNewBoardForm({ ...newBoardForm, git_url: e.target.value })
-                  })
+                  }),
+                  (() => {
+                    const autoSlug = computeGitSlug(newBoardForm.git_url || "");
+                    if (autoSlug) {
+                      return React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2 pt-1 text-[11px] text-slate-400 font-mono" },
+                        React.createElement("span", { className: "text-slate-500" }, "Board Slug:"),
+                        React.createElement("span", { className: "px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 font-medium" }, autoSlug)
+                      );
+                    }
+                    return null;
+                  })()
                 ),
                 React.createElement(
                   "div",
                   { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description"),
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description (Optional)"),
                   React.createElement("input", {
                     className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "Short description of this board's scope",
-                    value: newBoardForm.description,
+                    placeholder: "Short description of this board's scope (optional)",
+                    value: newBoardForm.description || "",
                     onChange: (e) => setNewBoardForm({ ...newBoardForm, description: e.target.value })
                   })
                 )
@@ -2679,7 +2698,7 @@
             React.createElement(
               "div",
               { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-              React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Edit Board: " + (editBoardForm.name || editBoardForm.slug)),
+              React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Edit Board: " + editBoardForm.slug),
               React.createElement(
                 "button",
                 {
@@ -2695,18 +2714,6 @@
               React.createElement(
                 "div",
                 { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Board Name *"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    required: true,
-                    placeholder: "e.g. Zero Factory Project",
-                    value: editBoardForm.name,
-                    onChange: (e) => setEditBoardForm({ ...editBoardForm, name: e.target.value })
-                  })
-                ),
                 React.createElement(
                   "div",
                   { className: "space-y-1.5" },

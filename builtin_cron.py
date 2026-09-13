@@ -44,10 +44,9 @@ DAILY_REPORT_PROMPT = """Generate a comprehensive daily report for Zero Factory 
 def build_board_scanner_prompt(board: Dict[str, Any], workdir: Optional[str]) -> str:
     """Generate a clean, focused improvement scanner prompt for a specific board."""
     slug = board.get("slug") or "default"
-    name = board.get("name") or slug
     workdir_desc = f"Current repository root (`{workdir}`)" if workdir else "Current repository workspace"
 
-    return f"""Scan the workspace repository for code quality issues, tech debt, and improvement opportunities for the '{name}' board (slug: '{slug}').
+    return f"""Scan the workspace repository for code quality issues, tech debt, and improvement opportunities for the '{slug}' board.
 
 ## Context:
 - Working Directory: {workdir_desc}
@@ -121,9 +120,12 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
             repo = parts[-1]
         if len(parts) >= 2:
             owner = parts[-2]
+    elif "-" in slug:
+        parts = slug.split("-", 1)
+        owner, repo = parts[0], parts[1]
 
     candidate_names = set()
-    for n in (slug, repo, name):
+    for n in (slug, repo):
         if n:
             candidate_names.add(n)
             candidate_names.add(n.lower())
@@ -332,7 +334,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
 
         jobs[job_id] = {
             "id": job_id,
-            "name": f"Zero Factory improvement scanner ({board.get('name', slug)})",
+            "name": f"Zero Factory improvement scanner ({slug})",
             "prompt": prompt,
             "skills": [],
             "skill": None,

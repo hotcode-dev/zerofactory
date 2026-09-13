@@ -967,6 +967,15 @@ def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optiona
         g_board = Path.home() / "git" / board_slug
         if g_board.exists():
             return g_board
+        if "-" in board_slug:
+            # Check ~/git/<owner>/<repo> (e.g. ~/git/hotcode-dev/zerofactory)
+            owner_sub = Path.home() / "git" / board_slug.replace("-", "/", 1)
+            if owner_sub.is_dir():
+                return owner_sub
+            # Check ~/git/<repo> (e.g. ~/git/zerofactory)
+            repo_only = Path.home() / "git" / board_slug.split("-", 1)[1]
+            if repo_only.is_dir():
+                return repo_only
         for sub in (Path.home() / "git").glob(f"*/{board_slug}"):
             if sub.is_dir():
                 return sub

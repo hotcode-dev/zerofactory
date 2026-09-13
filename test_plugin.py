@@ -32,32 +32,35 @@ class TestZeroFactory(unittest.TestCase):
         init_db()
 
     def test_01_init_and_boards(self):
-        req = BoardCreate(slug="zerofactory", name="ZeroFactory", description="AI workflow", git_url="https://github.com/hotcode-dev/zerofactory")
-        create_board(req)
-        res = list_boards()
-        self.assertTrue(res["ok"])
-        boards = res["boards"]
-        self.assertGreaterEqual(len(boards), 1)
-        slugs = [b["slug"] for b in boards]
-        self.assertIn("zerofactory", slugs)
-
-    def test_02_create_board(self):
-        req = BoardCreate(slug="zerohub", name="ZeroHub Project", description="Hub project", git_url="https://github.com/example/zerohub")
+        req = BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory", description="AI workflow")
         res = create_board(req)
         self.assertTrue(res["ok"])
-        self.assertEqual(res["slug"], "zerohub")
+        self.assertEqual(res["slug"], "hotcode-dev-zerofactory")
+
+        list_res = list_boards()
+        self.assertTrue(list_res["ok"])
+        boards = list_res["boards"]
+        self.assertGreaterEqual(len(boards), 1)
+        slugs = [b["slug"] for b in boards]
+        self.assertIn("hotcode-dev-zerofactory", slugs)
+
+    def test_02_create_board(self):
+        req = BoardCreate(git_url="https://github.com/example/zerohub.git", description="Hub project")
+        res = create_board(req)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["slug"], "example-zerohub")
 
         # Verify listed
         boards = list_boards()["boards"]
         slugs = [b["slug"] for b in boards]
-        self.assertIn("zerohub", slugs)
+        self.assertIn("example-zerohub", slugs)
 
     def test_03_task_crud_and_transitions(self):
         # 1. Create Task
         req = TaskCreate(
             title="Implement OAuth Login",
             description="Add GitHub and Google OAuth2 providers",
-            board_slug="zerofactory",
+            board_slug="hotcode-dev-zerofactory",
             status="triage",
             priority="P1",
             assignee="zf-builder",
@@ -174,11 +177,11 @@ class TestZeroFactory(unittest.TestCase):
         job_ids = [j["id"] for j in data["jobs"]]
         self.assertIn("zero-factory-task-queue-check", job_ids)
         self.assertIn("zero-factory-daily-report", job_ids)
-        self.assertIn("zero-factory-improvement-scanner-zerofactory", job_ids)
+        self.assertIn("zero-factory-improvement-scanner-hotcode-dev-zerofactory", job_ids)
         self.assertTrue(any(j.startswith("zero-factory-improvement-scanner") for j in job_ids))
 
-        # Verify workdir is resolved for zerofactory board
-        zf_job = next(j for j in data["jobs"] if j["id"] == "zero-factory-improvement-scanner-zerofactory")
+        # Verify workdir is resolved for hotcode-dev-zerofactory board
+        zf_job = next(j for j in data["jobs"] if j["id"] == "zero-factory-improvement-scanner-hotcode-dev-zerofactory")
         self.assertIsNotNone(zf_job.get("workdir"))
         self.assertTrue(os.path.isdir(zf_job["workdir"]))
 
@@ -190,25 +193,24 @@ class TestZeroFactory(unittest.TestCase):
         # 3. Test dynamic board scanner lifecycle (creation & deletion)
         # Create board
         res_cb = client.post("/api/plugins/zerofactory/boards", json={
-            "slug": "test-dynamic-cron",
-            "name": "Dynamic Cron Test",
             "git_url": "https://github.com/example/test-dynamic-cron.git"
         })
         self.assertEqual(res_cb.status_code, 200)
+        self.assertEqual(res_cb.json()["slug"], "example-test-dynamic-cron")
 
         # Check job is now present
         resp_after_create = client.get("/api/plugins/zerofactory/cron")
         ids_after_create = [j["id"] for j in resp_after_create.json()["jobs"]]
-        self.assertIn("zero-factory-improvement-scanner-test-dynamic-cron", ids_after_create)
+        self.assertIn("zero-factory-improvement-scanner-example-test-dynamic-cron", ids_after_create)
 
         # Delete board
-        res_del = client.delete("/api/plugins/zerofactory/boards/test-dynamic-cron")
+        res_del = client.delete("/api/plugins/zerofactory/boards/example-test-dynamic-cron")
         self.assertEqual(res_del.status_code, 200)
 
         # Check job is pruned
         resp_after_del = client.get("/api/plugins/zerofactory/cron")
         ids_after_del = [j["id"] for j in resp_after_del.json()["jobs"]]
-        self.assertNotIn("zero-factory-improvement-scanner-test-dynamic-cron", ids_after_del)
+        self.assertNotIn("zero-factory-improvement-scanner-example-test-dynamic-cron", ids_after_del)
 
     def test_08_dispatcher_worker_execution(self):
         from dispatcher import _active_workers
@@ -270,10 +272,9 @@ class TestZeroFactory(unittest.TestCase):
         os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
 
     def test_09_session_progress_resolution(self):
-        # 1. Create board with omitted optional description/git_url (tests None coalesce)
+        # 1. Create board with omitted optional description (tests None coalesce)
         res_b = client.post("/api/plugins/zerofactory/boards", json={
-            "slug": "test-omitted-fields",
-            "name": "Omitted Fields Board"
+            "git_url": "https://github.com/example/test-omitted-fields"
         })
         self.assertEqual(res_b.status_code, 200)
 
@@ -316,7 +317,7 @@ class TestZeroFactory(unittest.TestCase):
         # 1. Create task with multiple files in random order
         t1 = create_task(TaskCreate(
             title="Fix login auth null check",
-            board_slug="zerofactory",
+            board_slug="hotcode-dev-zerofactory",
             files=["src/user.py", "src/auth.py"],
             category="bug-fix",
             status="todo"
@@ -336,7 +337,7 @@ class TestZeroFactory(unittest.TestCase):
         # 2. Attempt to create second task with reversed file order and different title
         t2 = create_task(TaskCreate(
             title="Resolve authentication error in user session",
-            board_slug="zerofactory",
+            board_slug="hotcode-dev-zerofactory",
             files=["src/auth.py", "src/user.py"],
             category="bug-fix",
             status="todo"
@@ -348,7 +349,7 @@ class TestZeroFactory(unittest.TestCase):
         # 3. Test exact title deduplication when no files specified
         t3 = create_task(TaskCreate(
             title="Standalone Unique Bug",
-            board_slug="zerofactory",
+            board_slug="hotcode-dev-zerofactory",
             status="todo"
         ))
         self.assertTrue(t3["ok"])
@@ -356,7 +357,7 @@ class TestZeroFactory(unittest.TestCase):
 
         t4 = create_task(TaskCreate(
             title=" standalone unique bug ",
-            board_slug="zerofactory",
+            board_slug="hotcode-dev-zerofactory",
             status="todo"
         ))
         self.assertTrue(t4.get("duplicate"))
@@ -366,7 +367,7 @@ class TestZeroFactory(unittest.TestCase):
         move_task(t1_id, TaskMove(status="done"))
         t5 = create_task(TaskCreate(
             title="Future refactor of auth and user",
-            board_slug="zerofactory",
+            board_slug="hotcode-dev-zerofactory",
             files=["src/auth.py", "src/user.py"],
             category="bug-fix",
             status="todo"
@@ -383,7 +384,7 @@ class TestZeroFactory(unittest.TestCase):
             # Seed with an active board job and orphan board jobs
             initial_jobs = [
                 {"id": "zero-factory-task-queue-check", "origin": "zerofactory"},
-                {"id": "zero-factory-improvement-scanner-zerofactory", "origin": "zerofactory"},
+                {"id": "zero-factory-improvement-scanner-hotcode-dev-zerofactory", "origin": "zerofactory"},
                 {"id": "zero-factory-improvement-scanner-deleted-board", "origin": "zerofactory"},
                 {"id": "zero-factory-improvement-scanner-orphan-slug", "origin": "zerofactory"},
                 {"id": "custom-unrelated-cron-job"}
@@ -404,7 +405,7 @@ class TestZeroFactory(unittest.TestCase):
             synced = load_jobs_from_file(test_jobs_path)
             synced_ids = [j["id"] for j in synced]
             self.assertIn("zero-factory-task-queue-check", synced_ids)
-            self.assertIn("zero-factory-improvement-scanner-zerofactory", synced_ids)
+            self.assertIn("zero-factory-improvement-scanner-hotcode-dev-zerofactory", synced_ids)
             self.assertIn("custom-unrelated-cron-job", synced_ids)
             self.assertNotIn("zero-factory-improvement-scanner-deleted-board", synced_ids)
             self.assertNotIn("zero-factory-improvement-scanner-orphan-slug", synced_ids)
@@ -416,18 +417,18 @@ class TestZeroFactory(unittest.TestCase):
         from builtin_cron import load_jobs_from_file, save_jobs_to_file
         # 1. Create a board to delete
         res_create = client.post("/api/plugins/zerofactory/boards", json={
-            "slug": "board-to-remove",
-            "name": "Board To Remove"
+            "git_url": "https://github.com/test-org/board-to-remove.git"
         })
         self.assertEqual(res_create.status_code, 200)
+        self.assertEqual(res_create.json()["slug"], "test-org-board-to-remove")
 
         # 2. Setup mock target jobs file with its scanner job
         with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
             test_jobs_path = Path(tf.name)
         try:
             initial_jobs = [
-                {"id": "zero-factory-improvement-scanner-board-to-remove", "origin": "zerofactory"},
-                {"id": "zero-factory-improvement-scanner-zerofactory", "origin": "zerofactory"}
+                {"id": "zero-factory-improvement-scanner-test-org-board-to-remove", "origin": "zerofactory"},
+                {"id": "zero-factory-improvement-scanner-hotcode-dev-zerofactory", "origin": "zerofactory"}
             ]
             save_jobs_to_file(test_jobs_path, initial_jobs)
 
@@ -437,8 +438,8 @@ class TestZeroFactory(unittest.TestCase):
 
             os.environ.pop("ZEROFACTORY_SKIP_CRON_SYNC", None)
             try:
-                # 3. Call DELETE /boards/board-to-remove
-                res_del = client.delete("/api/plugins/zerofactory/boards/board-to-remove")
+                # 3. Call DELETE /boards/test-org-board-to-remove
+                res_del = client.delete("/api/plugins/zerofactory/boards/test-org-board-to-remove")
                 self.assertEqual(res_del.status_code, 200)
                 self.assertTrue(res_del.json()["ok"])
             finally:
@@ -448,16 +449,16 @@ class TestZeroFactory(unittest.TestCase):
             # 4. Verify board is removed from list_boards()
             boards = list_boards()["boards"]
             slugs = [b["slug"] for b in boards]
-            self.assertNotIn("board-to-remove", slugs)
+            self.assertNotIn("test-org-board-to-remove", slugs)
 
             # 5. Verify cron job is cleared from jobs.json
             synced = load_jobs_from_file(test_jobs_path)
             synced_ids = [j["id"] for j in synced]
-            self.assertNotIn("zero-factory-improvement-scanner-board-to-remove", synced_ids)
-            self.assertIn("zero-factory-improvement-scanner-zerofactory", synced_ids)
+            self.assertNotIn("zero-factory-improvement-scanner-test-org-board-to-remove", synced_ids)
+            self.assertIn("zero-factory-improvement-scanner-hotcode-dev-zerofactory", synced_ids)
 
             # 6. Delete again returns 404
-            res_del_404 = client.delete("/api/plugins/zerofactory/boards/board-to-remove")
+            res_del_404 = client.delete("/api/plugins/zerofactory/boards/test-org-board-to-remove")
             self.assertEqual(res_del_404.status_code, 404)
         finally:
             if test_jobs_path.exists():
@@ -465,8 +466,7 @@ class TestZeroFactory(unittest.TestCase):
 
     def test_13_update_board(self):
         # 1. Update existing board
-        res = client.patch("/api/plugins/zerofactory/boards/zerofactory", json={
-            "name": "ZeroFactory AI Core",
+        res = client.patch("/api/plugins/zerofactory/boards/hotcode-dev-zerofactory", json={
             "description": "Updated description for AI core",
             "git_url": "https://github.com/hotcode-dev/zerofactory-core.git"
         })
@@ -475,8 +475,7 @@ class TestZeroFactory(unittest.TestCase):
 
         # 2. Verify in list_boards
         boards = list_boards()["boards"]
-        zf = next(b for b in boards if b["slug"] == "zerofactory")
-        self.assertEqual(zf["name"], "ZeroFactory AI Core")
+        zf = next(b for b in boards if b["slug"] == "hotcode-dev-zerofactory")
         self.assertEqual(zf["description"], "Updated description for AI core")
         self.assertEqual(zf["git_url"], "https://github.com/hotcode-dev/zerofactory-core.git")
 
@@ -499,7 +498,7 @@ class TestZeroFactory(unittest.TestCase):
             t_res = create_task(TaskCreate(
                 title="Stuck Long Running Task",
                 description="Simulated stuck task",
-                board_slug="zerofactory",
+                board_slug="hotcode-dev-zerofactory",
                 priority="P1",
                 status="running",
                 assignee="zf-builder"
@@ -855,7 +854,7 @@ class TestZeroFactory(unittest.TestCase):
         req = TaskCreate(
             title="Task with Pull Request",
             description="Testing PR integration",
-            board_slug="zerofactory",
+            board_slug="hotcode-dev-zerofactory",
             pr_url="https://github.com/hotcode-dev/zerofactory/pull/42"
         )
         task_id = create_task(req)["id"]
@@ -865,7 +864,7 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(task["pr_url"], "https://github.com/hotcode-dev/zerofactory/pull/42")
 
         # 3. Verify get_stats pr_count
-        stats = get_stats(board="zerofactory")
+        stats = get_stats(board="hotcode-dev-zerofactory")
         self.assertTrue(stats["ok"])
         self.assertIn("pr_count", stats)
         self.assertGreaterEqual(stats["pr_count"], 1)
@@ -883,7 +882,7 @@ class TestZeroFactory(unittest.TestCase):
         cleared_task = get_task(task_id)["task"]
         self.assertEqual(cleared_task["pr_url"], "")
 
-        stats_after = get_stats(board="zerofactory")
+        stats_after = get_stats(board="hotcode-dev-zerofactory")
         self.assertEqual(stats_after["pr_count"], initial_pr_count - 1)
 
     def test_27_no_board_cron_generation(self):
@@ -1013,12 +1012,10 @@ class TestZeroFactory(unittest.TestCase):
 
         # Ensure the default board exists (this test can run in isolation).
         existing = [b["slug"] for b in list_boards()["boards"]]
-        if "zerofactory" not in existing:
+        if "hotcode-dev-zerofactory" not in existing:
             create_board(BoardCreate(
-                slug="zerofactory",
-                name="ZeroFactory",
-                description="AI workflow",
                 git_url="https://github.com/hotcode-dev/zerofactory",
+                description="AI workflow",
             ))
 
         # Clean slate so run_dispatch_cycle() inside run_watchdog() doesn't
@@ -1801,7 +1798,7 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
 
-    def test_38_reviewer_git_predigest(self):
+    def test_39_reviewer_git_predigest(self):
         from dispatcher import digest_reviewer_git_context, spawn_agent_worker
         import subprocess
         import tempfile

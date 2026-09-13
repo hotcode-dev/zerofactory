@@ -94,7 +94,8 @@ hermes zerofactory comment <task_id> "Note..."    # Post a comment to a ticket
 
 # Board operations
 hermes zerofactory board list                     # List all project boards
-hermes zerofactory board create <slug> "<name>"   # Add a new codebase board
+hermes zerofactory board create <git_url>         # Add a new codebase board from Remote Git URL
+hermes zerofactory board delete <slug>            # Delete a board and clear its scanner job
 
 # Dispatcher & Background Crons
 hermes zerofactory dispatch                       # Trigger an immediate dispatch cycle
@@ -146,7 +147,7 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 2. **Decomposition & Codebase Scanning (`Todo`)**: `zf-orchestrator` breaks `Triage` goals down into atomic sub-tasks, and runs periodic codebase scans to directly file actionable `Todo` improvement tasks for `zf-builder`.
 3. **Dispatch & Worktree Provisioning (`Ready`)**: The dispatcher validates dependencies, assigns `zf-builder`, and creates an isolated Git worktree.
 4. **Autonomous Execution (`Running`)**: `zf-builder` works in its isolated worktree, writing code and automated tests.
-5. **PR Creation & Review (`Blocked / Reviewer`)**: When `zf-builder` finishes, the dispatcher commits the branch, opens a GitHub Pull Request, and routes it to `zf-reviewer`.
+5. **PR Creation & Review (`Blocked / Reviewer`)**: When `zf-builder` finishes, the dispatcher commits the branch, opens a GitHub Pull Request, pre-digests the git diff, commit history, and touched files directly into the reviewer prompt, and routes it to `zf-reviewer`.
 6. **Iterative Polish (Rounds 1-3)**:
    - **Round 1**: Testing, correctness, and edge-case handling.
    - **Round 2**: Performance, memory, and algorithmic efficiency.
@@ -170,7 +171,7 @@ Zero Factory is architected to drastically minimize LLM token consumption (up to
   - Automatically chains upstream output from `zero-factory-task-queue-check` via `context_from`.
   - Pre-loads all metrics directly into prompt context, eliminating 15+ tool queries and completing in a single turn.
 - **`zero-factory-improvement-scanner-{board_slug}`** (every 60m per board, **0 Tokens on Idle**):
-  - Executed by **`zf-orchestrator`** inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py`.
+  - Executed by **`zf-orchestrator`** inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py` with independent sessions (`continuity: false`).
   - Compares Git HEAD and working tree changes against `~/.hermes/scanner_state.json`.
   - Suppresses unchanged runs with `{"wakeAgent": false}` (0 LLM tokens).
   - When new commits or changes exist, pre-digests git log, diffstat, truncated diffs, and existing open board tasks, waking `zf-orchestrator` to analyze the project and file at most 1 actionable `Todo` task assigned to `zf-builder`.
@@ -186,7 +187,7 @@ zerofactory/
 ├── dispatcher.py                # Autonomous dispatch engine & worktree manager
 ├── builtin_cron.py              # Periodic scanner & reporting engine
 ├── profile_manager.py           # Auto-provisioning for zf-* profiles & scripts
-├── test_plugin.py               # Comprehensive automated test suite (25 tests)
+├── test_plugin.py               # Comprehensive automated test suite (39 tests)
 ├── scripts/                     # No-Agent Mode scripts & LLM context pre-processors
 │   ├── zf_queue_watchdog.py     # Autonomous worker reaper & queue monitor (0 tokens)
 │   ├── zf_scanner_gate.py       # Codebase diff pre-screen & wake-gate

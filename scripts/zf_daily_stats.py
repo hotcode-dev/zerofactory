@@ -112,7 +112,7 @@ def run_daily_stats() -> int:
 
     print(f"#### Active Boards: {len(boards)}")
     for b in boards:
-        print(f"- **{b['name']}** (`{b['slug']}`)")
+        print(f"- `{b['slug']}` ({b.get('git_url', '') or 'local'})")
     print()
     print("---")
     print("Instructions for Agent: Synthesize the above metrics into a concise, professional executive briefing. Highlight velocity, blocker resolution, and recommended focus areas. Create the task using `hermes zerofactory create \"[Report] Daily Report\" --status done`.")

@@ -138,11 +138,9 @@ def register(ctx: Any):
         p_board = subparsers.add_parser("board", help="Manage Zero Factory Kanban boards")
         board_subs = p_board.add_subparsers(dest="board_action", help="Board actions")
         board_subs.add_parser("list", help="List all boards")
-        p_bcreate = board_subs.add_parser("create", help="Create a new board")
-        p_bcreate.add_argument("slug", help="Board slug (unique ID)")
-        p_bcreate.add_argument("name", help="Board name")
+        p_bcreate = board_subs.add_parser("create", help="Create a new board from Remote Git URL")
+        p_bcreate.add_argument("git_url", help="Remote Git URL (e.g. https://github.com/owner/repo.git)")
         p_bcreate.add_argument("--description", default="", help="Board description")
-        p_bcreate.add_argument("--git-url", default="", help="Board Git URL")
         p_bdelete = board_subs.add_parser("delete", help="Delete a board and clear its cron scanner job")
         p_bdelete.add_argument("slug", help="Board slug to delete")
 
@@ -335,13 +333,16 @@ def register(ctx: Any):
                 res = _list_boards()
                 boards = res.get("boards", [])
                 print(f"\nZero Factory Boards ({len(boards)}):")
-                print(f"{'SLUG':<20} {'NAME':<24} {'TASKS':<8} {'RUNNING':<8} {'GIT URL'}")
-                print("-" * 85)
+                print(f"{'SLUG':<32} {'TASKS':<8} {'RUNNING':<8} {'GIT URL'}")
+                print("-" * 80)
                 for b in boards:
-                    print(f"{b['slug']:<20} {b['name']:<24} {b.get('task_count', 0):<8} {b.get('running_count', 0):<8} {b.get('git_url', '')}")
+                    print(f"{b['slug']:<32} {b.get('task_count', 0):<8} {b.get('running_count', 0):<8} {b.get('git_url', '')}")
                 print()
             elif b_act == "create":
-                req = BoardCreate(slug=args.slug, name=args.name, description=args.description, git_url=args.git_url)
+                req = BoardCreate(
+                    git_url=args.git_url,
+                    description=args.description
+                )
                 res = _create_board(req)
                 print(f"✓ Created board: {res.get('slug')}")
             elif b_act == "delete":
