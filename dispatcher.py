@@ -586,7 +586,7 @@ def spawn_agent_worker(
                 f"   git add .\n"
                 f"   git commit -m \"fix(merge): resolve merge conflicts with main\"\n"
                 f"6. Hand off for re-review:\n"
-                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n"
+                f"   hermes zerofactory block {task_id} --reason \"review-required\"\n"
             )
         else:
             prompt = (
@@ -605,7 +605,7 @@ def spawn_agent_worker(
                 f"5. When finished, mark the task as complete using:\n"
                 f"   hermes zerofactory move {task_id} done\n"
                 f"   (or if human review or external dependencies are required, run:\n"
-                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
+                f"   hermes zerofactory block {task_id} --reason \"review-required\")\n"
                 f"6. Provide a summary of your changes.\n"
             )
 

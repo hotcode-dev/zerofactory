@@ -2024,6 +2024,125 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
 
 
+    def test_40_builder_handoff_uses_valid_block_command(self):
+        """Regression: the builder conflict-resolution prompt must hand off with
+        `hermes zerofactory block <task_id> --reason "review-required"` (the verb
+        that accepts --reason), NOT `move <task_id> blocked --reason ...` (which
+        argparse rejects with "unrecognized arguments: --reason" and silently
+        stalls the pipeline)."""
+        import subprocess
+        import tempfile
+        import shutil
+        from unittest.mock import patch, MagicMock
+        from dispatcher import spawn_agent_worker, check_unresolved_conflicts
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "test_repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+            (repo_path / "a.txt").write_text("content\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "initial"], cwd=str(repo_path), check=True, capture_output=True)
+
+            worktree_dir = Path(td) / "worktree_conflict"
+            subprocess.run(
+                ["git", "worktree", "add", str(worktree_dir), "-b", "task/ctask"],
+                cwd=str(repo_path), check=True, capture_output=True
+            )
+            # Clean worktree -> has_conflict is driven purely by the [PR Conflict] title tag.
+            self.assertEqual(check_unresolved_conflicts(Path(worktree_dir)), [])
+
+            captured = []
+            orig_popen = subprocess.Popen
+            def fake_popen(cmd, *args, **kwargs):
+                if isinstance(cmd, list) and "chat" in cmd:
+                    captured.append(cmd)
+                    m = MagicMock()
+                    m.pid = 12345
+                    return m
+                return orig_popen(cmd, *args, **kwargs)
+
+            with patch("subprocess.Popen", side_effect=fake_popen):
+                pid, _ = spawn_agent_worker(
+                    "ctask", "Fix conflict [PR Conflict]", "Desc", "P1",
+                    "zf-builder", str(worktree_dir), "task/ctask"
+                )
+                self.assertEqual(pid, 12345)
+                self.assertTrue(captured)
+                q_idx = captured[0].index("-q")
+                prompt = captured[0][q_idx + 1]
+                # This is the fix: the prompt must instruct the valid `block --reason` form.
+                self.assertIn('hermes zerofactory block ctask --reason "review-required"', prompt)
+                # The old invalid form (move + blocked + --reason) must be gone.
+                self.assertNotIn('move ctask blocked --reason', prompt)
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_41_move_blocked_reason_forwarded(self):
+        """Regression: `hermes zerofactory move <task_id> blocked --reason <r>` must
+        parse (the move subparser now accepts --reason) and the handler must forward
+        it — moving to blocked AND appending a 'Blocked: <r>' comment (mirroring the
+        block handler). Before the fix argparse rejected this with exit code 2."""
+        import argparse
+        import io
+        import contextlib
+        from __init__ import register
+        from dashboard.plugin_api import get_task
+
+        # Build the CLI parser the way Hermes does (mirrors test_29).
+        class MockCtx:
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.setup_fn = setup_fn
+                self.handler_fn = handler_fn
+
+        ctx = MockCtx()
+        register(ctx)
+        cmd_parser = argparse.ArgumentParser()
+        ctx.setup_fn(cmd_parser)
+
+        # Ensure a board exists so create_task (board_slug=None) can resolve one.
+        slugs = [b["slug"] for b in list_boards()["boards"]]
+        if not slugs:
+            create_board(BoardCreate(
+                git_url="https://github.com/hotcode-dev/zerofactory",
+                description="AI workflow",
+            ))
+
+        t_id = create_task(TaskCreate(title="Move Reason Handoff Task"))["id"]
+        self.assertEqual(get_task(t_id)["task"]["status"], "triage")
+
+        # 1. `move <id> blocked --reason "review-required"` parses and forwards the reason.
+        parsed = cmd_parser.parse_args(["move", t_id, "blocked", "--reason", "review-required"])
+        self.assertEqual(parsed.action, "move")
+        self.assertEqual(parsed.status, "blocked")
+        self.assertEqual(parsed.reason, "review-required")
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ctx.handler_fn(parsed)
+
+        t = get_task(t_id)["task"]
+        self.assertEqual(t["status"], "blocked")
+        bodies = [c["body"] for c in t["comments"]]
+        self.assertIn("Blocked: review-required", bodies)
+
+        # 2. `move <id> done` without --reason still works and leaves reason unset.
+        parsed2 = cmd_parser.parse_args(["move", t_id, "done"])
+        self.assertIsNone(getattr(parsed2, "reason", None))
+        buf2 = io.StringIO()
+        with contextlib.redirect_stdout(buf2):
+            ctx.handler_fn(parsed2)
+        self.assertEqual(get_task(t_id)["task"]["status"], "done")
+        # No extra 'Blocked:' comment added for a non-blocked move.
+        self.assertNotIn("Blocked: review-required", [c["body"] for c in get_task(t_id)["task"]["comments"]][1:])
+
+
 if __name__ == "__main__":
     unittest.main()
 
