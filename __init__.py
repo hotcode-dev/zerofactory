@@ -218,14 +218,16 @@ def register(ctx: Any):
                 print(f"Created task {res['id']}: {args.title}")
 
         elif action == "move":
-            req = TaskMove(status=args.status)
+            actor = os.environ.get("HERMES_PROFILE") or "user"
+            req = TaskMove(status=args.status, actor=actor)
             res = _move_task(args.task_id, req)
             print(f"Moved task {args.task_id} to {args.status}")
 
         elif action == "block":
-            req = TaskMove(status="blocked")
+            actor = os.environ.get("HERMES_PROFILE") or "user"
+            req = TaskMove(status="blocked", actor=actor)
             _move_task(args.task_id, req)
-            _add_comment(args.task_id, CommentCreate(author="cli", body=f"Blocked: {args.reason}"))
+            _add_comment(args.task_id, CommentCreate(author=actor, body=f"Blocked: {args.reason}"))
             print(f"Task {args.task_id} marked as BLOCKED ({args.reason})")
 
         elif action == "comment":
