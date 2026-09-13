@@ -7,7 +7,8 @@ graph TD
     classDef kanban fill:#f9d0c4,stroke:#333,stroke-width:2px,color:#000;
     
     User([User / Goal]) --> Triage[Kanban: Triage]:::kanban
-    Triage -->|Auto-decomposes| Todo[Kanban: Todo]:::kanban
+    Triage -->|zf-orchestrator decomposes| Todo[Kanban: Todo]:::kanban
+    Scanner["zf-orchestrator (Improvement Scanner)"] -->|Scans Project & Creates Task| Todo
     Todo -->|Dispatcher Assigns & Creates Worktree| Ready[Kanban: Ready]:::kanban
     Ready -->|Autonomous Pickup| Running[Kanban: Running]:::kanban
     
@@ -17,7 +18,7 @@ graph TD
     
     Builder -->|Work Done| PR[Dispatcher Pushes & Opens PR]
     PR --> Reviewer["zf-reviewer (3-Round Polish)"]
-    Reviewer -->|Changes Requested| Ready
+    Reviewer -->|Changes Requested| Todo
     Reviewer -->|Approved| Blocked[Kanban: Blocked / Human Review]:::kanban
     Blocked -->|Human Merges PR| Done[Kanban: Done]:::kanban
 ```
@@ -142,7 +143,7 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 ```
 
 1. **Goal Ingestion (`Triage`)**: Submit a high-level goal or feature request via CLI or web UI.
-2. **Decomposition (`Todo`)**: The `kanban_decomposer` breaks the goal down into granular sub-tasks.
+2. **Decomposition & Codebase Scanning (`Todo`)**: `zf-orchestrator` breaks `Triage` goals down into atomic sub-tasks, and runs periodic codebase scans to directly file actionable `Todo` improvement tasks for `zf-builder`.
 3. **Dispatch & Worktree Provisioning (`Ready`)**: The dispatcher validates dependencies, assigns `zf-builder`, and creates an isolated Git worktree.
 4. **Autonomous Execution (`Running`)**: `zf-builder` works in its isolated worktree, writing code and automated tests.
 5. **PR Creation & Review (`Blocked / Reviewer`)**: When `zf-builder` finishes, the dispatcher commits the branch, opens a GitHub Pull Request, and routes it to `zf-reviewer`.
@@ -169,10 +170,10 @@ Zero Factory is architected to drastically minimize LLM token consumption (up to
   - Automatically chains upstream output from `zero-factory-task-queue-check` via `context_from`.
   - Pre-loads all metrics directly into prompt context, eliminating 15+ tool queries and completing in a single turn.
 - **`zero-factory-improvement-scanner-{board_slug}`** (every 60m per board, **0 Tokens on Idle**):
-  - Runs inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py`.
+  - Executed by **`zf-orchestrator`** inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py`.
   - Compares Git HEAD and working tree changes against `~/.hermes/scanner_state.json`.
   - Suppresses unchanged runs with `{"wakeAgent": false}` (0 LLM tokens).
-  - When new commits or changes exist, pre-digests git log, diffstat, truncated diffs, and existing open board tasks, waking the LLM agent to file at most 1 high-priority task.
+  - When new commits or changes exist, pre-digests git log, diffstat, truncated diffs, and existing open board tasks, waking `zf-orchestrator` to analyze the project and file at most 1 actionable `Todo` task assigned to `zf-builder`.
 
 ---
 

@@ -14,7 +14,7 @@ Zero Factory automatically provisions and maintains the following specialist pro
 
 | Profile | Role | Identity / Responsibilities |
 | :--- | :--- | :--- |
-| **`zf-orchestrator`** | Pipeline Overseer | Master coordinator — manages the Kanban board, oversees goal decomposition, manages handoffs, and escalates blockers to human review. |
+| **`zf-orchestrator`** | Pipeline Overseer | Master coordinator — manages the Kanban board, oversees goal decomposition, autonomously scans repositories to generate improvement TODO tasks, manages handoffs, and escalates blockers to human review. |
 | **`zf-builder`** | Senior Software Engineer | Writes clean code and tests, operates inside automated Git worktrees, and ships features rapidly. |
 | **`zf-reviewer`** | Quality Gatekeeper | Conducts thematic, capped 3-round code reviews on GitHub Pull Requests, verifying test adequacy, performance, and architecture. |
 
@@ -29,8 +29,8 @@ Profiles are managed natively by the **Zero Factory plugin** (`zerofactory`):
 
 The workflow is managed via the **Zero Factory Kanban** system with explicit Human-in-the-Loop (HITL) gates:
 
-1. **Goal & Triage**: User or cron job drops a goal in `Triage`. The `kanban_decomposer` automatically breaks the goal into child tasks and routes them to specialist agents.
-2. **Plan Review (HITL)**: The auto-generated child tasks enter `Todo`. A human reviews the plan, edits if needed, and approves tasks to `Ready`.
+1. **Goal & Triage**: User drops a high-level goal or epic into `Triage`. The `kanban_decomposer` (run by `zf-orchestrator`) automatically breaks the goal into child tasks.
+2. **Plan Review & Improvements (HITL)**: Auto-generated child tasks and autonomous codebase improvement tasks filed by `zf-orchestrator` enter `Todo`. A human reviews the plan, edits if needed, and approves tasks to `Ready`.
 3. **Ready Queue**: Approved tasks whose dependencies are met are automatically promoted to `Ready`.
 4. **Task Delegation**: The kanban dispatcher automatically provisions isolated Git worktrees and spawns `zf-builder`, moving tasks to `Running`.
 5. **PR Creation & Review**: When `zf-builder` completes the work, the dispatcher commits the branch, opens a GitHub Pull Request, and routes the ticket to `zf-reviewer`.
