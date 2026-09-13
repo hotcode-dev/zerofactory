@@ -1257,7 +1257,7 @@ class TestZeroFactory(unittest.TestCase):
 
             # Write conflict markers and verify detection
             conflict_file = repo_path / "conflict.txt"
-            conflict_file.write_text("<<<<<<< HEAD\nLocal Change\n=======\nMain Change\n>>>>>>> main\n")
+            conflict_file.write_text(f"{'<' * 7} HEAD\nLocal Change\n{'=' * 7}\nMain Change\n{'>' * 7} main\n")
             self.assertIn("conflict.txt", check_unresolved_conflicts(repo_path))
             conflict_file.unlink()
             self.assertEqual(check_unresolved_conflicts(repo_path), [])

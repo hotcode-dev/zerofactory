@@ -165,6 +165,36 @@ def sync_repo_main(repo_path: Path) -> str:
     return default_branch
 
 
+def _has_unresolved_conflict_markers(content: bytes) -> bool:
+    """Check if byte content contains a real git conflict marker block.
+
+    A real conflict marker block requires a start line (<<<<<<< <label>),
+    a middle separator line (=======), and an end line (>>>>>>> <label>).
+    Simple substring occurrences inside single-line strings or comments
+    will not trigger false-positive conflict detections.
+    """
+    try:
+        text = content.decode("utf-8", errors="replace")
+    except Exception:
+        return False
+
+    in_conflict = False
+    has_sep = False
+    for line in text.splitlines():
+        line = line.rstrip("\r")
+        if not in_conflict:
+            if line.startswith("<<<<<<< "):
+                in_conflict = True
+                has_sep = False
+        elif not has_sep:
+            if line == "=======":
+                has_sep = True
+        else:
+            if line.startswith(">>>>>>> "):
+                return True
+    return False
+
+
 def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
     """Return a sorted list of relative file paths with unresolved merge conflicts or conflict markers."""
     if not workspace_path.exists():
@@ -174,32 +204,12 @@ def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
     # A real git conflict is a structured block: a start line (<{7} plus an
     # optional branch label), a separator line (={7} alone), and an end line
     # (>{7} plus an optional branch label). We detect a file as conflicted only
-    # when a full start->sep->end sequence is present. A naive substring search
+    # when a full start->sep->end sequence is present (see
+    # _has_unresolved_conflict_markers). A naive substring search
     # (e.g. b"<<<<<<< " AND b"=======") false-positives on source files that
     # merely *mention* the markers — most notably test fixtures that embed a
     # conflict block as a single-line string (see test_35 in test_plugin.py) —
     # and would then re-route the task to zf-builder on every dispatch cycle.
-    _conflict_start = re.compile(r"^<{7}( |~|$)")
-    _conflict_sep = re.compile(r"^={7}$")
-    _conflict_end = re.compile(r"^>{7}( |$)")
-
-    def _has_conflict_block(content: str) -> bool:
-        """True only if `content` contains a real <...>...=...>...> block."""
-        in_conflict = False
-        past_sep = False
-        for line in content.splitlines():
-            if not in_conflict:
-                if _conflict_start.match(line):
-                    in_conflict = True
-                    past_sep = False
-                continue
-            if not past_sep:
-                if _conflict_sep.match(line):
-                    past_sep = True
-            else:
-                if _conflict_end.match(line):
-                    return True
-        return False
 
     # 1. Check git unmerged index entries (diff-filter=U) — the authoritative
     #    signal of an in-progress conflicted merge.
@@ -258,8 +268,8 @@ def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
             if fp.is_file() and not fp.is_symlink():
                 try:
                     if fp.stat().st_size < 10 * 1024 * 1024:
-                        content = fp.read_bytes().decode("utf-8", errors="replace")
-                        if _has_conflict_block(content):
+                        content = fp.read_bytes()
+                        if _has_unresolved_conflict_markers(content):
                             conflicted.add(rel_file)
                 except Exception:
                     pass
