@@ -101,7 +101,6 @@ def register(ctx: Any):
         p_move = subparsers.add_parser("move", help="Move a task to a different column")
         p_move.add_argument("task_id", help="Task ID")
         p_move.add_argument("status", choices=["triage", "todo", "ready", "running", "blocked", "done"], help="Target status")
-        p_move.add_argument("--reason", default=None, help="Reason (recorded as a comment when moving to 'blocked', e.g. --reason 'review-required'")
         p_move.add_argument("--reason", default=None, help="Optional reason; recorded as a comment when moving to 'blocked' (mirrors the 'block' command)")
 
         # block
@@ -224,8 +223,7 @@ def register(ctx: Any):
             reason = getattr(args, "reason", None)
             req = TaskMove(status=args.status, actor=actor, reason=reason)
             res = _move_task(args.task_id, req)
-            if args.status == "blocked" and reason:
-                _add_comment(args.task_id, CommentCreate(author=actor, body=f"Blocked: {reason}"))
+            if res.get("status") == "blocked" and reason:
                 print(f"Moved task {args.task_id} to {args.status} (reason: {reason})")
             else:
                 print(f"Moved task {args.task_id} to {args.status}")
