@@ -206,7 +206,6 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
     """Ensure plugin symlink (zerofactory) and config entries exist in:
     1. Root ~/.hermes/plugins/ and ~/.hermes/config.yaml
     2. ~/.hermes/profiles/<role>/plugins/ and config.yaml for each zf-* profile
-    3. Legacy profiles (orchestrator, builder, reviewer) if they exist
     """
     hermes_home = get_hermes_home()
     plugin_root = get_plugin_root()
@@ -273,13 +272,6 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
             _link_in_dir(prof_dir / "plugins")
             _enable_in_config(prof_dir / "config.yaml")
 
-    # 3. Legacy profiles (if present)
-    for legacy_role in ("orchestrator", "builder", "reviewer"):
-        prof_dir = profiles_dir / legacy_role
-        if prof_dir.exists():
-            _link_in_dir(prof_dir / "plugins")
-            _enable_in_config(prof_dir / "config.yaml")
-
     return {"linked": linked}
 
 
@@ -301,10 +293,6 @@ def ensure_script_files() -> Dict[str, Any]:
     target_script_dirs = [hermes_home / "scripts"]
     for role in ZF_PROFILES:
         target_script_dirs.append(profiles_dir / role / "scripts")
-    for legacy_role in ("orchestrator", "builder", "reviewer"):
-        prof_dir = profiles_dir / legacy_role
-        if prof_dir.exists():
-            target_script_dirs.append(prof_dir / "scripts")
 
     copied: List[str] = []
     for script_file in src_scripts_dir.glob("*.py"):

@@ -35,15 +35,12 @@ _dispatcher_lock = threading.Lock()
 _active_workers: Dict[str, subprocess.Popen] = {}
 
 PROFILE_MAP = {
-    "builder": "zf-builder",
     "zf-builder": "zf-builder",
-    "reviewer": "zf-reviewer",
     "zf-reviewer": "zf-reviewer",
-    "orchestrator": "zf-orchestrator",
     "zf-orchestrator": "zf-orchestrator",
 }
 
-VALID_PROFILES = ("zf-builder", "zf-reviewer", "zf-orchestrator", "builder", "reviewer", "orchestrator")
+VALID_PROFILES = ("zf-builder", "zf-reviewer", "zf-orchestrator")
 
 
 def normalize_assignee(assignee: Optional[str]) -> str:
@@ -94,7 +91,7 @@ def spawn_agent_worker(
 
     workdir = workspace_path if (workspace_path and Path(workspace_path).exists()) else os.getcwd()
 
-    if assignee in ("reviewer", "zf-reviewer"):
+    if assignee == "zf-reviewer":
         prompt = (
             f"Task ID: {task_id}\n"
             f"Title: {title}\n"
@@ -400,7 +397,7 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
                 "id": task_id,
                 "title": row["title"],
                 "board_slug": row["board_slug"] if "board_slug" in row.keys() else None,
-                "assignee": row["assignee"] or "builder",
+                "assignee": row["assignee"] or "zf-builder",
                 "worker_pid": pid,
                 "is_alive": is_alive,
                 "started_at": started_at,
@@ -782,7 +779,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug FROM tasks
                         WHERE (status IN ('blocked', 'done') AND (pr_url IS NULL OR pr_url = ''))
-                           OR (status IN ('blocked', 'done') AND pr_url IS NOT NULL AND pr_url != '' AND assignee IN ('reviewer', 'zf-reviewer'))
+                           OR (status IN ('blocked', 'done') AND pr_url IS NOT NULL AND pr_url != '' AND assignee = 'zf-reviewer')
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -818,7 +815,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if not repo_path or not repo_path.exists():
                             repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
 
-                        if assignee not in ("reviewer", "zf-reviewer"):
+                        if assignee != "zf-reviewer":
                             # Author finished work -> git commit, push, create PR, hand off to reviewer
                             try:
                                 subject, commit_body = format_conventional_message(title, task_id)

@@ -316,7 +316,7 @@
     // Filtered Tasks
     const filteredTasks = useMemo(() => {
       return tasks.filter((t) => {
-        if (assigneeFilter !== "all" && t.assignee !== assigneeFilter && t.assignee !== assigneeFilter.replace("zf-", "") && ("zf-" + t.assignee) !== assigneeFilter) return false;
+        if (assigneeFilter !== "all" && t.assignee !== assigneeFilter) return false;
         if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
         if (prFilter === "has_pr" && (!t.pr_url || !t.pr_url.trim())) return false;
         if (searchQuery.trim()) {
@@ -1029,11 +1029,11 @@
                       ? "bg-slate-700/40 text-slate-400 border-slate-600/30"
                       : "bg-sky-500/15 text-sky-300 border-sky-500/30";
 
-                    const roleClass = (t.assignee === "builder" || t.assignee === "zf-builder")
+                    const roleClass = t.assignee === "zf-builder"
                       ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                      : (t.assignee === "reviewer" || t.assignee === "zf-reviewer")
+                      : t.assignee === "zf-reviewer"
                       ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
-                      : (t.assignee === "orchestrator" || t.assignee === "zf-orchestrator")
+                      : t.assignee === "zf-orchestrator"
                       ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
                       : "bg-slate-700/30 text-slate-400 border-slate-700/40";
 

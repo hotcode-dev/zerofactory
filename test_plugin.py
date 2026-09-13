@@ -60,7 +60,7 @@ class TestZeroFactory(unittest.TestCase):
             board_slug="zerofactory",
             status="triage",
             priority="P1",
-            assignee="builder",
+            assignee="zf-builder",
             tenant="zerofactory"
         )
         created = create_task(req)
@@ -97,14 +97,14 @@ class TestZeroFactory(unittest.TestCase):
         task_id = created["id"]
 
         # Add comment
-        c_res = add_comment(task_id, CommentCreate(author="reviewer", body="Please add unit tests."))
+        c_res = add_comment(task_id, CommentCreate(author="zf-reviewer", body="Please add unit tests."))
         self.assertTrue(c_res["ok"])
 
         # Check task details for comment and activity
         details = get_task(task_id)["task"]
         self.assertEqual(len(details["comments"]), 1)
         self.assertEqual(details["comments"][0]["body"], "Please add unit tests.")
-        self.assertEqual(details["comments"][0]["author"], "reviewer")
+        self.assertEqual(details["comments"][0]["author"], "zf-reviewer")
 
         # Check activity
         activities = details["activity"]
@@ -223,7 +223,7 @@ class TestZeroFactory(unittest.TestCase):
             title="Implement Builder Task",
             status="ready",
             priority="P0",
-            assignee="builder"
+            assignee="zf-builder"
         ))["id"]
 
         # Run dispatch with worker spawn skipped (simulated spawn)
@@ -255,7 +255,7 @@ class TestZeroFactory(unittest.TestCase):
             title="Failing Task",
             status="running",
             priority="P1",
-            assignee="builder"
+            assignee="zf-builder"
         ))["id"]
 
         mock_fail_proc = MagicMock()
@@ -282,7 +282,7 @@ class TestZeroFactory(unittest.TestCase):
             title="Session Progress Test Task",
             status="running",
             priority="P0",
-            assignee="builder"
+            assignee="zf-builder"
         ))["id"]
 
         # 3. Query session endpoint
@@ -502,7 +502,7 @@ class TestZeroFactory(unittest.TestCase):
                 board_slug="zerofactory",
                 priority="P1",
                 status="running",
-                assignee="builder"
+                assignee="zf-builder"
             ))
             t_id = t_res["id"]
 
@@ -690,11 +690,8 @@ class TestZeroFactory(unittest.TestCase):
 
     def test_18_assignee_normalization(self):
         from dispatcher import normalize_assignee, PROFILE_MAP
-        self.assertEqual(normalize_assignee("builder"), "zf-builder")
         self.assertEqual(normalize_assignee("zf-builder"), "zf-builder")
-        self.assertEqual(normalize_assignee("reviewer"), "zf-reviewer")
         self.assertEqual(normalize_assignee("zf-reviewer"), "zf-reviewer")
-        self.assertEqual(normalize_assignee("orchestrator"), "zf-orchestrator")
         self.assertEqual(normalize_assignee("zf-orchestrator"), "zf-orchestrator")
         self.assertEqual(normalize_assignee("unassigned"), "unassigned")
         self.assertEqual(normalize_assignee(None), "unassigned")

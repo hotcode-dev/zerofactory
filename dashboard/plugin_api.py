@@ -215,16 +215,12 @@ VALID_STATUSES = {"triage", "todo", "ready", "running", "blocked", "done"}
 VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
 VALID_ASSIGNEES = {
     "unassigned",
-    "zf-orchestrator", "zf-builder", "zf-reviewer",
-    "orchestrator", "builder", "reviewer"
+    "zf-orchestrator", "zf-builder", "zf-reviewer"
 }
 
 PROFILE_MAP = {
-    "builder": "zf-builder",
     "zf-builder": "zf-builder",
-    "reviewer": "zf-reviewer",
     "zf-reviewer": "zf-reviewer",
-    "orchestrator": "zf-orchestrator",
     "zf-orchestrator": "zf-orchestrator",
 }
 
@@ -386,7 +382,7 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
         except Exception:
             meta = {}
 
-    assignee = task.get("assignee") or "builder"
+    assignee = task.get("assignee") or "zf-builder"
     task_id = task.get("id") or ""
     worker_pid = meta.get("worker_pid")
     session_id = meta.get("session_id")

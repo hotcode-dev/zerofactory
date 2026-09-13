@@ -200,7 +200,6 @@ def _load_env_defaults() -> tuple[str, str, str]:
 
     search_files = [
         Path(os.path.expanduser("~/.hermes/profiles/zf-orchestrator/.env")),
-        Path(os.path.expanduser("~/.hermes/profiles/orchestrator/.env")),
         Path(__file__).resolve().parent / ".env",
         Path(os.path.expanduser("~/.hermes/.env")),
     ]
@@ -432,7 +431,6 @@ def get_target_jobs_files() -> List[Path]:
     Targets:
     1. Active profile jobs.json (if active and not default)
     2. ZF Orchestrator profile jobs.json in ~/.hermes/profiles/zf-orchestrator
-    3. Legacy orchestrator profile jobs.json (if present)
     """
     files: List[Path] = []
     hermes_root = Path(os.path.expanduser("~/.hermes"))
@@ -452,11 +450,6 @@ def get_target_jobs_files() -> List[Path]:
     zf_orch_jobs = hermes_root / "profiles" / "zf-orchestrator" / "cron" / "jobs.json"
     if zf_orch_jobs not in files:
         files.append(zf_orch_jobs)
-
-    # 3. Fallback/legacy orchestrator profile jobs.json if exists
-    legacy_orch_jobs = hermes_root / "profiles" / "orchestrator" / "cron" / "jobs.json"
-    if legacy_orch_jobs.parent.exists() and legacy_orch_jobs not in files:
-        files.append(legacy_orch_jobs)
 
     return files
 
