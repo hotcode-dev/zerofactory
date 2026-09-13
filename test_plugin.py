@@ -993,7 +993,82 @@ class TestZeroFactory(unittest.TestCase):
         self.assertIn("reaped", res)
         self.assertEqual(res["reaped_tasks"], res["reaped"])
 
-    def test_31_pull_main_and_pr_conflict_guardrail(self):
+    def test_31_watchdog_reaped_alert_rendering(self):
+        """Regression: watchdog's 'Reaped Stuck Tasks' alert actually renders.
+
+        The key contract (test_30) guarantees reap_stuck_tasks exposes the keys
+        the watchdog reads, but it never exercises run_watchdog() end-to-end.
+        Before the fix, run_watchdog() consumed a key that was never populated,
+        so reaped_count stayed 0, the has_bottleneck gate could only trip via
+        the blocked>10 fallback, and a single reaped worker was silently
+        swallowed behind {"wakeAgent": false}.
+        """
+        import io
+        import contextlib
+        import importlib.util
+        from pathlib import Path as _Path
+        from unittest.mock import MagicMock
+        from dispatcher import _active_workers
+        from dashboard.plugin_api import get_db_conn, get_task
+
+        # Ensure the default board exists (this test can run in isolation).
+        existing = [b["slug"] for b in list_boards()["boards"]]
+        if "zerofactory" not in existing:
+            create_board(BoardCreate(
+                slug="zerofactory",
+                name="ZeroFactory",
+                description="AI workflow",
+                git_url="https://github.com/hotcode-dev/zerofactory",
+            ))
+
+        # Clean slate so run_dispatch_cycle() inside run_watchdog() doesn't
+        # re-dispatch leftover tasks from earlier tests.
+        with get_db_conn() as conn:
+            conn.execute("UPDATE tasks SET status = 'done' WHERE status IN ('running', 'ready')")
+            conn.commit()
+
+        # Seed a stuck running task: registered worker already exited (poll() -> 1),
+        # so check_stuck_tasks flags "Worker process PID is dead/not found".
+        t_id = create_task(TaskCreate(
+            title="Watchdog Stuck Task",
+            status="running",
+            priority="P0",
+            assignee="zf-builder",
+        ))["id"]
+        dead_proc = MagicMock()
+        dead_proc.poll.return_value = 1
+        dead_proc.pid = 12346
+        _active_workers[t_id] = dead_proc
+
+        wd_path = _Path(__file__).resolve().parent / "scripts" / "zf_queue_watchdog.py"
+        spec = importlib.util.spec_from_file_location("zf_queue_watchdog_test", wd_path)
+        self.assertIsNotNone(spec)
+        wd = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(wd)
+
+        # Prevent run_dispatch_cycle() from spawning a real worker subprocess.
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = wd.run_watchdog()
+        finally:
+            os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        # The alert section rendered (dead code before the fix):
+        self.assertIn("Reaped Stuck Tasks", out)
+        self.assertIn(t_id, out)
+        # A single reaped worker tripped the bottleneck gate via reaped_count > 0
+        # (blocked count is well under 10), so the operator alert fired instead
+        # of the silent {"wakeAgent": false} gate.
+        self.assertIn("Current Board State", out)
+        self.assertNotIn("wakeAgent", out)
+        # And the reaped task was actually moved to 'blocked'.
+        self.assertEqual(get_task(t_id)["task"]["status"], "blocked")
+
+    def test_32_pull_main_and_pr_conflict_guardrail(self):
         """Validate that dispatcher pulls main branch, detects merge conflicts, and routes back to zf-builder."""
         import tempfile
         import subprocess
