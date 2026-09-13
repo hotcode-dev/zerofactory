@@ -783,7 +783,7 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(daily_job["script"], "zf_daily_stats.py")
         self.assertEqual(daily_job["context_from"], ["zero-factory-task-queue-check"])
 
-        # 3. Dynamic board scanner: Wake-gate + continuity
+        # 3. Dynamic board scanner: Wake-gate + stateless (continuity=False to prevent context bloating)
         all_jobs = get_all_builtin_cron_jobs()
         scanner_jobs = [j for jid, j in all_jobs.items() if jid.startswith("zero-factory-improvement-scanner-")]
         self.assertGreater(len(scanner_jobs), 0)
@@ -791,7 +791,7 @@ class TestZeroFactory(unittest.TestCase):
             self.assertEqual(sj["script"], "zf_scanner_gate.py")
             self.assertFalse(sj["no_agent"])
             self.assertIn(sj["context_from"], (None, ["self"]))
-            self.assertTrue(sj["continuity"])
+            self.assertFalse(sj["continuity"])
 
     def test_24_script_execution_and_wakegate(self):
         import subprocess

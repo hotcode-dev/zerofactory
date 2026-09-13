@@ -342,7 +342,9 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "script": "zf_scanner_gate.py",
             "no_agent": False,
             "context_from": None,
-            "continuity": True,
+            # Stateless: zf_scanner_gate.py tracks git state on disk (scanner_state.json)
+            # and injects open tasks from SQLite. continuity=False avoids conversation history bloating.
+            "continuity": False,
             "schedule": {
                 "kind": "interval",
                 "minutes": 60,
