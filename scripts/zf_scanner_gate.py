@@ -150,16 +150,20 @@ def run_scanner_gate() -> int:
     is_same_commit = (head_sha == last_sha)
     is_same_status = (status_porcelain == last_status)
 
-    # Only suppress if HEAD and working tree are unchanged AND the board already has open tasks.
-    # If the board has 0 open tasks, we MUST wake the agent for a baseline codebase scan!
+    # Suppress an unchanged run based purely on whether this exact commit was already
+    # scanned — NOT on the number of open tasks. The baseline (first-ever) scan fires via
+    # the fall-through below when `last_sha` is None (is_same_commit is then False).
     if is_same_commit and is_same_status and not force_scan:
-        if len(existing_tasks) > 0:
-            print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} has had no new commits or working tree modifications since last check.")
-            print(f"Active tasks ({len(existing_tasks)}) already exist on board '{board_slug}'.")
+        if last_sha is not None:
+            # Already scanned this exact commit and the worktree is clean -> 0-token
+            # suppress, independent of how many tasks are currently open on the board.
+            print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; board '{board_slug}' already scanned.")
             print(json.dumps({"wakeAgent": False}))
             return 0
-        else:
-            print(f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has 0 active tasks. Initiating codebase inspection.")
+        # else: last_sha is None -> board never scanned -> one-time baseline scan.
+        # (Defensive branch: in practice the first-ever scan reaches the fall-through
+        # below, because is_same_commit is False when last_sha is None.)
+        print(f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has never been scanned. Initiating baseline codebase inspection.")
 
     # Changes detected or baseline scan required! Update state
     board_state["last_scanned_sha"] = head_sha

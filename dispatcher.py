@@ -165,6 +165,36 @@ def sync_repo_main(repo_path: Path) -> str:
     return default_branch
 
 
+def _has_unresolved_conflict_markers(content: bytes) -> bool:
+    """Check if byte content contains a real git conflict marker block.
+
+    A real conflict marker block requires a start line (<<<<<<< <label>),
+    a middle separator line (=======), and an end line (>>>>>>> <label>).
+    Simple substring occurrences inside single-line strings or comments
+    will not trigger false-positive conflict detections.
+    """
+    try:
+        text = content.decode("utf-8", errors="replace")
+    except Exception:
+        return False
+
+    in_conflict = False
+    has_sep = False
+    for line in text.splitlines():
+        line = line.rstrip("\r")
+        if not in_conflict:
+            if line.startswith("<<<<<<< "):
+                in_conflict = True
+                has_sep = False
+        elif not has_sep:
+            if line == "=======":
+                has_sep = True
+        else:
+            if line.startswith(">>>>>>> "):
+                return True
+    return False
+
+
 def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
     """Return a sorted list of relative file paths with unresolved merge conflicts or conflict markers."""
     if not workspace_path.exists():
@@ -228,7 +258,7 @@ def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
                 try:
                     if fp.stat().st_size < 10 * 1024 * 1024:
                         content = fp.read_bytes()
-                        if b"<<<<<<< " in content and (b"=======" in content or b">>>>>>>" in content):
+                        if _has_unresolved_conflict_markers(content):
                             conflicted.add(rel_file)
                 except Exception:
                     pass

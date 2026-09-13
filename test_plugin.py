@@ -848,6 +848,156 @@ class TestZeroFactory(unittest.TestCase):
             self.assertTrue(resolved.exists())
             self.assertTrue(resolved.is_file())
 
+    def test_25a_scanner_gate_unchanged_suppresses(self):
+        """Regression: an already-scanned, unchanged, clean board must emit
+        wakeAgent=false (0 tokens) EVEN WHEN IT HAS 0 OPEN TASKS.
+
+        The old gate suppressed only when the board had >0 open tasks and instead
+        re-fired a full LLM "baseline scan" on every 60m tick for any 0-task board —
+        draining tokens on unchanged code and defeating the "0 Tokens on Idle" pillar.
+        Suppression must now depend only on whether the exact commit was already
+        scanned (last_scanned_sha is not None), never on open-task count.
+        """
+        import contextlib
+        import importlib.util
+        import io
+        import json
+        import sqlite3
+        import subprocess
+
+        # Load the script from THIS repo (the source of truth we are testing), NOT the
+        # deployed copy under the Hermes home (which may be a stale pre-fix snapshot).
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+        self.assertTrue(gate_path.is_file(), f"missing {gate_path}")
+
+        def git(repo, *args):
+            subprocess.run(
+                ["git", *args], cwd=str(repo), check=True,
+                capture_output=True, text=True,
+                env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            )
+
+        def load_gate():
+            spec = importlib.util.spec_from_file_location("zf_scanner_gate_under_test", gate_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            slug = "gate-test-board"
+
+            # 1. Fresh git repo with a single commit.
+            repo = td / "repo"
+            repo.mkdir()
+            git(repo, "init", "-q")
+            git(repo, "config", "user.email", "scan@test.local")
+            git(repo, "config", "user.name", "Scan Test")
+            (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "initial")
+
+            # 2. Temp zerofactory.db with the minimal boards/tasks schema.
+            db_path = td / "gate.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.executescript(
+                "CREATE TABLE boards ("
+                " slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+                "CREATE TABLE tasks ("
+                " id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL,"
+                " description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage',"
+                " assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2',"
+                " workspace_path TEXT, workspace_kind TEXT DEFAULT 'worktree', branch_name TEXT,"
+                " pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]',"
+                " tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+            )
+            conn.execute(
+                "INSERT INTO boards (slug, created_at, updated_at) VALUES (?, 1, 1)",
+                (slug,),
+            )
+            conn.commit()
+            conn.close()
+
+            state_path = td / "scanner_state.json"
+
+            def run_gate():
+                mod = load_gate()
+                mod.STATE_FILE = state_path  # isolate the persisted scan state
+                old_argv, old_cwd = sys.argv, os.getcwd()
+                old_db = os.environ.get("ZEROFACTORY_DB")
+                sys.argv = [gate_path.name, slug]  # board slug via argv[1]
+                os.chdir(str(repo))
+                os.environ["ZEROFACTORY_DB"] = str(db_path)
+                os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                buf = io.StringIO()
+                try:
+                    with contextlib.redirect_stdout(buf):
+                        rc = mod.run_scanner_gate()
+                finally:
+                    sys.argv = old_argv
+                    os.chdir(old_cwd)
+                    if old_db is None:
+                        os.environ.pop("ZEROFACTORY_DB", None)
+                    else:
+                        os.environ["ZEROFACTORY_DB"] = old_db
+                    os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                out = buf.getvalue()
+                wake = json.loads(out.strip().splitlines()[-1])
+                return rc, wake.get("wakeAgent"), out
+
+            def add_open_task():
+                c = sqlite3.connect(str(db_path))
+                c.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, created_at, updated_at)"
+                    " VALUES (?, ?, ?, 'todo', 1, 1)",
+                    (slug + "-t1", slug, "Open task"),
+                )
+                c.commit()
+                c.close()
+
+            # --- Run 1: brand-new board (no last_scanned_sha) -> one-time baseline.
+            rc, wake1, _ = run_gate()
+            self.assertEqual(rc, 0)
+            self.assertTrue(wake1, "first-ever board must fire a baseline scan")
+
+            # --- Run 2: same HEAD + clean worktree + 0 open tasks -> SUPPRESS (0 tokens).
+            # This is the exact steady state that used to re-wake the LLM every tick.
+            rc, wake2, out2 = run_gate()
+            self.assertEqual(rc, 0)
+            self.assertFalse(
+                wake2,
+                "unchanged + already-scanned board with 0 open tasks must suppress; got:\n" + out2,
+            )
+            self.assertIn("wakeAgent", out2.strip().splitlines()[-1])
+
+            # --- Run 3: same HEAD + clean worktree but now WITH an open task -> STILL SUPPRESS.
+            # Proves suppression no longer depends on open-task count (the root cause).
+            add_open_task()
+            rc, wake3, _ = run_gate()
+            self.assertEqual(rc, 0)
+            self.assertFalse(wake3, "suppression must be independent of open-task count")
+
+            # --- Run 4: a new commit lands -> re-wake for a scan.
+            (repo / "b.py").write_text("y = 2\n", encoding="utf-8")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "second")
+            rc, wake4, _ = run_gate()
+            self.assertEqual(rc, 0)
+            self.assertTrue(wake4, "a new commit must re-trigger the scanner")
+
+            # --- Run 5: same (new) HEAD + clean worktree -> suppress again.
+            rc, wake5, _ = run_gate()
+            self.assertEqual(rc, 0)
+            self.assertFalse(wake5, "after the new commit is scanned, an unchanged run suppresses")
+
+            # --- Run 6: dirty worktree (modified tracked file) -> re-wake.
+            (repo / "a.py").write_text("x = 1  # tweak\n", encoding="utf-8")
+            rc, wake6, _ = run_gate()
+            self.assertEqual(rc, 0)
+            self.assertTrue(wake6, "a dirty worktree must re-trigger the scanner")
+
     def test_26_task_pr_url_and_stats(self):
         """Verify task pr_url persistence, update, and get_stats pr_count metric."""
         # 1. Create task with pr_url
@@ -1107,7 +1257,7 @@ class TestZeroFactory(unittest.TestCase):
 
             # Write conflict markers and verify detection
             conflict_file = repo_path / "conflict.txt"
-            conflict_file.write_text("<<<<<<< HEAD\nLocal Change\n=======\nMain Change\n>>>>>>> main\n")
+            conflict_file.write_text(f"{'<' * 7} HEAD\nLocal Change\n{'=' * 7}\nMain Change\n{'>' * 7} main\n")
             self.assertIn("conflict.txt", check_unresolved_conflicts(repo_path))
             conflict_file.unlink()
             self.assertEqual(check_unresolved_conflicts(repo_path), [])
