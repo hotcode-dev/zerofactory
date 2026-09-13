@@ -142,8 +142,26 @@ def sync_repo_main(repo_path: Path) -> str:
             ["git", "fetch", "origin", default_branch],
             cwd=str(repo_path), capture_output=True, text=True, timeout=10
         )
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+        )
+        curr_branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+        )
+        if (
+            status.returncode == 0
+            and not status.stdout.strip()
+            and curr_branch.returncode == 0
+            and curr_branch.stdout.strip() == default_branch
+        ):
+            subprocess.run(
+                ["git", "merge", "--ff-only", f"origin/{default_branch}"],
+                cwd=str(repo_path), capture_output=True, text=True, timeout=5
+            )
     except Exception as e:
-        _log.debug("git fetch origin %s skipped or failed in %s: %s", default_branch, repo_path, e)
+        _log.debug("git fetch/sync origin %s skipped or failed in %s: %s", default_branch, repo_path, e)
     return default_branch
 
 
@@ -375,14 +393,15 @@ def spawn_agent_worker(
                 f"Workspace: {workdir}\n"
                 f"Git Branch: {branch_name or 'main'}\n\n"
                 f"Your goal:\n"
-                f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
-                f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
-                f"3. Verify your changes with tests, linters, or typechecks.\n"
-                f"4. When finished, mark the task as complete using:\n"
+                f"1. Ensure your git branch is up to date with the latest main branch before making edits.\n"
+                f"2. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
+                f"3. Implement the required changes cleanly, adhering to repository patterns.\n"
+                f"4. Verify your changes with tests, linters, or typechecks.\n"
+                f"5. When finished, mark the task as complete using:\n"
                 f"   hermes zerofactory move {task_id} done\n"
                 f"   (or if human review or external dependencies are required, run:\n"
                 f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
-                f"5. Provide a summary of your changes.\n"
+                f"6. Provide a summary of your changes.\n"
             )
 
     cmd = [
@@ -946,6 +965,9 @@ def setup_worktree(
                     subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, base_ref], check=True, cwd=repo_path, timeout=5)
                 except Exception:
                     subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, "HEAD"], check=True, cwd=repo_path, timeout=5)
+            # Sync newly created worktree with latest default branch if assignee is builder
+            if assignee == "zf-builder" and worktree_dir.exists():
+                pull_and_merge_main(worktree_dir, repo_path, default_branch)
         cursor.execute(
             "UPDATE tasks SET workspace_kind = 'dir', workspace_path = ?, branch_name = ? WHERE id = ?",
             (str(worktree_dir), branch_name, task_id)
@@ -1148,6 +1170,22 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             wt = setup_worktree(cursor, task_id, title, assignee, tenant, db_path, board_slug=board_slug)
                             if wt:
                                 workspace_path = wt
+
+                        # Guardrail: Always pull git to latest before implement
+                        if not os.environ.get("ZEROFACTORY_SKIP_GIT") and assignee == "zf-builder" and workspace_path and Path(workspace_path).exists():
+                            is_conflict_resolution = (
+                                "[pr conflict]" in title.lower()
+                                or "[merge conflict]" in title.lower()
+                                or bool(check_unresolved_conflicts(Path(workspace_path)))
+                            )
+                            if not is_conflict_resolution:
+                                repo_for_task = resolve_task_repo_path(cursor, board_slug, tenant)
+                                if repo_for_task and repo_for_task.exists():
+                                    merged_ok, conflict_files, merge_err = pull_and_merge_main(Path(workspace_path), repo_for_task)
+                                    if not merged_ok:
+                                        _log.warning("Task %s pre-implement merge conflict with main: %s (%s)", task_id, conflict_files, merge_err)
+                                        _handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
+                                        continue
 
                         pid, session_id = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
 

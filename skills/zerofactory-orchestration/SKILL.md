@@ -32,7 +32,7 @@ The workflow is managed via the **Zero Factory Kanban** system with explicit Hum
 1. **Goal & Triage**: User drops a high-level goal or epic into `Triage`. The `kanban_decomposer` (run by `zf-orchestrator`) automatically breaks the goal into child tasks.
 2. **Plan Review & Improvements (HITL)**: Auto-generated child tasks and autonomous codebase improvement tasks filed by `zf-orchestrator` enter `Todo`. A human reviews the plan, edits if needed, and approves tasks to `Ready`.
 3. **Ready Queue**: Approved tasks whose dependencies are met are automatically promoted to `Ready`.
-4. **Task Delegation**: The kanban dispatcher automatically provisions isolated Git worktrees and spawns `zf-builder`, moving tasks to `Running`.
+4. **Task Delegation**: The kanban dispatcher automatically provisions isolated Git worktrees, pulls/merges the latest default branch, and spawns `zf-builder`, moving tasks to `Running`.
 5. **PR Creation & Review**: When `zf-builder` completes the work, the dispatcher commits the branch, opens a GitHub Pull Request, and routes the ticket to `zf-reviewer`.
 6. **Iterative Polish (up to 3 rounds)**: `zf-reviewer` examines the PR diff and either requests changes (routed back to `zf-builder`) or approves the PR.
 7. **Human Merge (HITL)**: Approved tasks move to `Blocked` for final human review. Once the PR is merged on GitHub, the dispatcher marks the task as `Done`.

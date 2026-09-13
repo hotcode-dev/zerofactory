@@ -1304,7 +1304,7 @@ class TestZeroFactory(unittest.TestCase):
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
-    def test_32_worktree_symlink_guardrail_and_resolution(self):
+    def test_33_worktree_symlink_guardrail_and_resolution(self):
         """Verify that get_plugin_root() resolves main repo from inside worktrees and ensure_plugin_symlinks cleans up worktree symlinks."""
         from profile_manager import get_plugin_root, ensure_plugin_symlinks
         import shutil
@@ -1351,7 +1351,7 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             shutil.rmtree(td, ignore_errors=True)
 
-    def test_33_stop_task_worker(self):
+    def test_34_stop_task_worker(self):
         """Verify stop_task_worker terminates active worker and removes it from tracking."""
         from dispatcher import stop_task_worker, _active_workers
         from unittest.mock import MagicMock, patch
@@ -1411,7 +1411,7 @@ class TestZeroFactory(unittest.TestCase):
             conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, name TEXT, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
             conn.commit()
 
-    def test_32_handle_local_merge_conflict_direct(self):
+    def test_35_handle_local_merge_conflict_direct(self):
         """Directly unit-test _handle_local_merge_conflict: title tag, assignee, status,
         activity + comment rows, and [PR Conflict] idempotency on repeated calls."""
         from dispatcher import _handle_local_merge_conflict
@@ -1484,7 +1484,7 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             shutil.rmtree(td, ignore_errors=True)
 
-    def test_32_github_conflicting_pr_routes_to_builder(self):
+    def test_36_github_conflicting_pr_routes_to_builder(self):
         """Unit-test the GitHub-CONFLICTING branch: a reviewer task whose PR is
         mergeable == 'CONFLICTING' is re-routed to the author with [PR Conflict] tag,
         status 'ready', and pr_conflict activity + comment rows."""
@@ -1578,6 +1578,106 @@ class TestZeroFactory(unittest.TestCase):
 
                 # Reviewer worktree was force-removed before re-setup
                 self.assertFalse(reviewer_ws.exists())
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_37_pre_implement_pull_guardrail(self):
+        """Verify that run_dispatch_cycle pulls latest main before implementing,
+        and routes to conflict handling if merge fails."""
+        from dispatcher import run_dispatch_cycle
+        import json
+        import shutil
+        import sqlite3
+        import tempfile
+        from unittest.mock import patch
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp(prefix="zf-pre-implement-")
+        try:
+            db_file = Path(td) / "pre_implement.db"
+            self._create_conflict_test_db(db_file)
+            repo_dir = Path(td) / "main_repo"
+            repo_dir.mkdir()
+            ws_dir = Path(td) / "ws_task_builder"
+            ws_dir.mkdir()
+
+            # Case 1: Clean pull & merge before builder starts
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
+                    VALUES ('task-pre-1', 'Build feature X', 'ready', 'zf-builder', ?, 'task/task-pre-1', 1000, 1000)
+                """, (str(ws_dir),))
+                conn.commit()
+
+            with patch("dispatcher.reap_active_workers", return_value=0), \
+                 patch("dispatcher.resolve_task_repo_path", return_value=repo_dir), \
+                 patch("dispatcher.pull_and_merge_main", return_value=(True, [], "Already up to date")) as mock_pull, \
+                 patch("dispatcher.spawn_agent_worker", return_value=(99901, "sess-1")) as mock_spawn:
+                res = run_dispatch_cycle(db_file)
+                self.assertTrue(res.get("ok"))
+                mock_pull.assert_called_once_with(ws_dir, repo_dir)
+                mock_spawn.assert_called_once()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT status, metadata FROM tasks WHERE id = 'task-pre-1'").fetchone()
+                self.assertEqual(row["status"], "running")
+                meta = json.loads(row["metadata"])
+                self.assertEqual(meta["worker_pid"], 99901)
+                conn.execute("DELETE FROM tasks WHERE id = 'task-pre-1'")
+                conn.commit()
+
+            # Case 2: Merge conflict before implement routes task to conflict handling
+            ws_dir_conflict = Path(td) / "ws_task_conflict"
+            ws_dir_conflict.mkdir()
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
+                    VALUES ('task-pre-conflict', 'Implement feature Y', 'ready', 'zf-builder', ?, 'task/task-pre-conflict', 1000, 1000)
+                """, (str(ws_dir_conflict),))
+                conn.commit()
+
+            with patch("dispatcher.reap_active_workers", return_value=0), \
+                 patch("dispatcher.resolve_task_repo_path", return_value=repo_dir), \
+                 patch("dispatcher.pull_and_merge_main", return_value=(False, ["config.py"], "Merge conflict")) as mock_pull_conflict, \
+                 patch("dispatcher.spawn_agent_worker") as mock_spawn_conflict:
+                res = run_dispatch_cycle(db_file)
+                self.assertTrue(res.get("ok"))
+                mock_pull_conflict.assert_called_once_with(ws_dir_conflict, repo_dir)
+                mock_spawn_conflict.assert_not_called()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                row_c = conn.execute("SELECT title, status, assignee FROM tasks WHERE id = 'task-pre-conflict'").fetchone()
+                self.assertIn("[PR Conflict]", row_c["title"])
+                self.assertEqual(row_c["status"], "ready")
+                self.assertEqual(row_c["assignee"], "zf-builder")
+
+                act = conn.execute("SELECT action, details FROM task_activity WHERE task_id = 'task-pre-conflict'").fetchone()
+                self.assertEqual(act["action"], "pr_conflict")
+                self.assertIn("config.py", act["details"])
+                conn.execute("DELETE FROM tasks WHERE id = 'task-pre-conflict'")
+                conn.commit()
+
+            # Case 3: Non-builder (e.g. zf-reviewer) does not invoke pre-implement pull
+            ws_dir_rev = Path(td) / "ws_task_rev"
+            ws_dir_rev.mkdir()
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
+                    VALUES ('task-pre-rev', 'Review PR 123', 'ready', 'zf-reviewer', ?, 'task/task-pre-rev', 1000, 1000)
+                """, (str(ws_dir_rev),))
+                conn.commit()
+
+            with patch("dispatcher.reap_active_workers", return_value=0), \
+                 patch("dispatcher.resolve_task_repo_path", return_value=repo_dir), \
+                 patch("dispatcher.pull_and_merge_main") as mock_pull_rev, \
+                 patch("dispatcher.spawn_agent_worker", return_value=(99902, "sess-rev")):
+                res = run_dispatch_cycle(db_file)
+                self.assertTrue(res.get("ok"))
+                mock_pull_rev.assert_not_called()
         finally:
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is not None:
