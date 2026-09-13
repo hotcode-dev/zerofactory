@@ -755,38 +755,171 @@
           ].map((card, idx) =>
             React.createElement(
               "div",
-              { key: idx, className: "bg-slate-900/60 border border-slate-800/80 rounded-xl p-4.5 space-y-2 hover:border-slate-700 transition-colors" },
+              { key: idx, className: "bg-slate-900/80 border border-slate-700/80 rounded-xl p-5 space-y-2 hover:border-slate-600 transition-colors shadow-sm" },
               React.createElement("div", { className: "text-2xl mb-1" }, card.icon),
-              React.createElement("h3", { className: "text-sm font-semibold text-white m-0" }, card.title),
-              React.createElement("p", { className: "text-xs text-slate-400 leading-relaxed m-0" }, card.desc)
+              React.createElement("h3", { className: "text-sm font-bold text-white m-0 tracking-wide" }, card.title),
+              React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, card.desc)
             )
           )
         ),
         React.createElement(
           "div",
-          { className: "bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 space-y-4" },
-          React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-400 m-0" }, "High-Level Architecture & Workflow"),
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-6 shadow-md" },
           React.createElement(
             "div",
-            { className: "flex flex-wrap items-center justify-between gap-2 p-4 bg-slate-950/70 border border-slate-800/60 rounded-xl text-xs font-mono text-slate-300" },
-            React.createElement("span", { className: "px-2.5 py-1 rounded bg-slate-800 text-slate-200" }, "1. Goal / Scanner"),
-            React.createElement("span", { className: "text-slate-500" }, "➔"),
-            React.createElement("span", { className: "px-2.5 py-1 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60" }, "2. Triage & Decompose"),
-            React.createElement("span", { className: "text-slate-500" }, "➔"),
-            React.createElement("span", { className: "px-2.5 py-1 rounded bg-amber-950 text-amber-300 border border-amber-800/60" }, "3. Ready (Worktree)"),
-            React.createElement("span", { className: "text-slate-500" }, "➔"),
-            React.createElement("span", { className: "px-2.5 py-1 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60" }, "4. Running (zf-builder)"),
-            React.createElement("span", { className: "text-slate-500" }, "➔"),
-            React.createElement("span", { className: "px-2.5 py-1 rounded bg-purple-950 text-purple-300 border border-purple-800/60" }, "5. PR Review (zf-reviewer)"),
-            React.createElement("span", { className: "text-slate-500" }, "➔"),
-            React.createElement("span", { className: "px-2.5 py-1 rounded bg-rose-950 text-rose-300 border border-rose-800/60" }, "6. Blocked (Human Merge)"),
-            React.createElement("span", { className: "text-slate-500" }, "➔"),
-            React.createElement("span", { className: "px-2.5 py-1 rounded bg-slate-800 text-emerald-400 border border-emerald-500/30" }, "7. Done")
+            { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
+            React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0 flex items-center gap-2" }, "🏗️ High-Level Architecture & Workflow"),
+            React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "6 Kanban States • 3 Specialist Agents • 2 HITL Gates")
           ),
+
+          // 1. The 6 Kanban Status Columns
           React.createElement(
-            "p",
-            { className: "text-xs text-slate-300 leading-relaxed m-0" },
-            "Zero Factory operates as a closed-loop engineering system. When a new ticket or improvement goal is created, the dispatcher provisions an isolated Git worktree, spawns a dedicated worker using the zf-builder profile, and upon test verification, opens a Pull Request on GitHub. The zf-reviewer profile conducts up to 3 iterative review rounds before handing off to human approval."
+            "div",
+            { className: "space-y-3" },
+            React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "Kanban Column States & Roles"),
+            React.createElement(
+              "div",
+              { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs" },
+              [
+                { step: "1. Triage", color: "bg-indigo-950/90 border-indigo-500/70 text-indigo-100", role: "Intake & Epics", actor: "User / Scanner", desc: "Raw goals and suggestions. Ignored by dispatcher until decomposed." },
+                { step: "2. Todo", color: "bg-sky-950/90 border-sky-500/70 text-sky-100", role: "Actionable Backlog", actor: "zf-orchestrator", desc: "Decomposed atomic tickets with file scopes. Holds backlog and rework." },
+                { step: "3. Ready", color: "bg-amber-950/90 border-amber-500/70 text-amber-100", role: "Worktree Queue", actor: "Dispatcher", desc: "WIP slot cleared. Isolated Git worktree provisioned; awaiting worker." },
+                { step: "4. Running", color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100", role: "Active Worker", actor: "zf-builder / reviewer", desc: "Subprocess actively executing. zf-builder coding or zf-reviewer evaluating PR." },
+                { step: "5. Blocked", color: "bg-purple-950/90 border-purple-500/70 text-purple-100", role: "Awaiting Merge (HITL)", actor: "Human Operator", desc: "PR approved by reviewer waiting for human merge, or unmet dependencies." },
+                { step: "6. Done", color: "bg-slate-900 border-emerald-500/70 text-emerald-200", role: "PR Merged & Pruned", actor: "System (Closed)", desc: "PR merged on GitHub. Worktree pruned and metrics recorded." }
+              ].map((col, idx) =>
+                React.createElement(
+                  "div",
+                  { key: idx, className: "flex flex-col p-3.5 rounded-xl border text-center space-y-2 shadow-sm " + col.color },
+                  React.createElement("span", { className: "font-bold font-mono text-xs text-white" }, col.step),
+                  React.createElement("span", { className: "text-[11px] font-bold uppercase tracking-wider text-slate-100 truncate" }, col.role),
+                  React.createElement("span", { className: "text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-700 text-slate-200 font-semibold truncate" }, col.actor),
+                  React.createElement("p", { className: "text-xs text-slate-200 leading-snug m-0 text-left pt-1.5 border-t border-slate-700/60 font-normal" }, col.desc)
+                )
+              )
+            )
+          ),
+
+          // 2. The 7-Step End-to-End Autonomous Lifecycle
+          React.createElement(
+            "div",
+            { className: "space-y-3 pt-3 border-t border-slate-800" },
+            React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "End-to-End Autonomous Execution Flow"),
+            React.createElement(
+              "div",
+              { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-2.5 text-xs" },
+              [
+                {
+                  num: "1",
+                  title: "Goal Ingestion",
+                  badge: "Triage",
+                  bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
+                  desc: "User submits epic via CLI or the hourly cron scanner detects codebase improvements and drops proposal into Triage."
+                },
+                {
+                  num: "2",
+                  title: "Decomposition",
+                  badge: "Todo",
+                  bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
+                  desc: "zf-orchestrator uses kanban_decomposer to break raw goals into atomic tickets with file scopes and acceptance criteria."
+                },
+                {
+                  num: "3",
+                  title: "Worktree Setup",
+                  badge: "Ready",
+                  bcolor: "text-amber-100 bg-amber-900/90 border-amber-500/70",
+                  desc: "Dispatcher verifies WIP limits, allocates isolated Git worktree (~/git/<repo>-worktrees/<id>), and moves task to Ready."
+                },
+                {
+                  num: "4",
+                  title: "Code & Tests",
+                  badge: "Running",
+                  bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
+                  desc: "Dispatcher spawns zf-builder in Running. Agent implements features and writes automated tests in the dedicated worktree."
+                },
+                {
+                  num: "5",
+                  title: "PR Handoff",
+                  badge: "Ready",
+                  bcolor: "text-purple-100 bg-purple-900/90 border-purple-500/70",
+                  desc: "Dispatcher commits changes, opens GitHub PR via gh pr create, and routes ticket back to Ready assigned to zf-reviewer."
+                },
+                {
+                  num: "6",
+                  title: "3-Round Review",
+                  badge: "Running",
+                  bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
+                  desc: "zf-reviewer runs in Running across 3 rounds (Correctness ➔ Performance ➔ Clean Code). Requests changes or approves."
+                },
+                {
+                  num: "7",
+                  title: "Human Merge",
+                  badge: "Blocked ➔ Done",
+                  bcolor: "text-rose-100 bg-rose-900/90 border-rose-500/70",
+                  desc: "Approved PR waits in Blocked. Once human merges on GitHub, dispatcher marks task Done and prunes the worktree."
+                }
+              ].map((step, idx) =>
+                React.createElement(
+                  "div",
+                  { key: idx, className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-3.5 flex flex-col justify-between space-y-2 relative group hover:border-slate-500 transition-colors shadow-sm" },
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between gap-1" },
+                      React.createElement("span", { className: "w-6 h-6 rounded-full bg-indigo-900/90 text-indigo-100 font-mono font-bold text-xs flex items-center justify-center shrink-0 border border-indigo-500/60 shadow-xs" }, step.num),
+                      React.createElement("span", { className: "text-xs font-mono px-2 py-0.5 rounded border font-bold truncate shadow-xs " + step.bcolor }, step.badge)
+                    ),
+                    React.createElement("div", { className: "text-xs font-bold text-white leading-tight pt-0.5" }, step.title),
+                    React.createElement("p", { className: "text-xs text-slate-200 leading-snug m-0 font-normal" }, step.desc)
+                  )
+                )
+              )
+            )
+          ),
+
+          // 3. Two Callouts: Feedback Loop + HITL Gates
+          React.createElement(
+            "div",
+            { className: "grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2" },
+            // Loopback Callout
+            React.createElement(
+              "div",
+              { className: "p-4.5 bg-purple-950/50 border border-purple-600/70 rounded-xl space-y-2 text-xs shadow-sm" },
+              React.createElement("div", { className: "font-bold flex items-center gap-2 text-purple-200 text-sm" }, "↩️ Reviewer Feedback Loop:"),
+              React.createElement(
+                "p",
+                { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" },
+                "When ",
+                React.createElement("code", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-reviewer"),
+                " requests changes during rounds 1-3 in ",
+                React.createElement("code", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "Running"),
+                ", the dispatcher routes the ticket back to ",
+                React.createElement("code", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"),
+                " assigned to ",
+                React.createElement("code", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "zf-builder"),
+                ". The builder updates code and tests on the same branch, triggering automatic re-review."
+              )
+            ),
+            // HITL Safety Gates
+            React.createElement(
+              "div",
+              { className: "p-4.5 bg-amber-950/40 border border-amber-600/70 rounded-xl space-y-2 text-xs shadow-sm" },
+              React.createElement("div", { className: "font-bold flex items-center gap-2 text-amber-200 text-sm" }, "🛡️ Human-in-the-Loop (HITL) Safety Gates:"),
+              React.createElement(
+                "p",
+                { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" },
+                React.createElement("strong", { className: "text-amber-200 font-bold" }, "Gate 1 (Plan Review): "),
+                "Humans can reprioritize or edit tickets in ",
+                React.createElement("code", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"),
+                " before dispatch. ",
+                React.createElement("strong", { className: "text-amber-200 font-bold" }, "Gate 2 (PR Merge): "),
+                "Agents NEVER auto-merge to main. Approved tasks pause in ",
+                React.createElement("code", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"),
+                " until a human merges the PR on GitHub."
+              )
+            )
           )
         )
       );
@@ -797,8 +930,8 @@
         {
           name: "zf-orchestrator",
           title: "Pipeline Overseer & Coordinator",
-          color: "border-indigo-500/40 bg-indigo-950/20 text-indigo-300",
-          badge: "Indigo Profile",
+          color: "border-indigo-500/70 bg-indigo-950/40 text-indigo-100",
+          badge: "Indigo Profile (Pipeline Overseer)",
           desc: "Supervises the Kanban board, decomposes user epics into atomic tickets, schedules task execution, and detects stuck or hung worker processes.",
           responsibilities: [
             "Decomposes goals into structured sub-tasks using kanban_decomposer",
@@ -811,8 +944,8 @@
         {
           name: "zf-builder",
           title: "Senior Software Engineer",
-          color: "border-emerald-500/40 bg-emerald-950/20 text-emerald-300",
-          badge: "Emerald Profile",
+          color: "border-emerald-500/70 bg-emerald-950/40 text-emerald-100",
+          badge: "Emerald Profile (Senior Engineer)",
           desc: "Takes tickets from Ready into Running, operating in an isolated Git worktree. Writes high-quality application code, adds comprehensive tests, and opens PRs.",
           responsibilities: [
             "Operates inside dedicated Git worktrees (~/git/<repo>-worktrees/<task_id>)",
@@ -825,8 +958,8 @@
         {
           name: "zf-reviewer",
           title: "Quality Gatekeeper",
-          color: "border-purple-500/40 bg-purple-950/20 text-purple-300",
-          badge: "Purple Profile",
+          color: "border-purple-500/70 bg-purple-950/40 text-purple-100",
+          badge: "Purple Profile (Quality Gatekeeper)",
           desc: "Conducts thematic code reviews on open Pull Requests. Capped strictly at 3 progressive rounds to eliminate infinite agent review loops.",
           responsibilities: [
             "Round 1: Testing coverage, edge cases, and functional correctness",
@@ -844,32 +977,32 @@
         specialists.map((agent, i) =>
           React.createElement(
             "div",
-            { key: i, className: "flex flex-col bg-slate-900/60 border rounded-2xl p-5 space-y-4 shadow-lg " + agent.color.split(" ")[0] },
+            { key: i, className: "flex flex-col bg-slate-900/80 border rounded-2xl p-5 space-y-4 shadow-lg " + agent.color.split(" ")[0] },
             React.createElement(
               "div",
-              { className: "flex items-center justify-between" },
+              { className: "flex items-center justify-between gap-2" },
               React.createElement("h3", { className: "text-base font-bold text-white font-mono m-0" }, agent.name),
-              React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full border " + agent.color }, agent.badge)
+              React.createElement("span", { className: "text-xs font-bold px-2.5 py-1 rounded-full border shadow-xs " + agent.color }, agent.badge)
             ),
-            React.createElement("p", { className: "text-xs font-semibold text-slate-300 m-0" }, agent.title),
-            React.createElement("p", { className: "text-xs text-slate-400 leading-relaxed m-0 flex-1" }, agent.desc),
+            React.createElement("p", { className: "text-xs font-bold text-slate-200 m-0" }, agent.title),
+            React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 flex-1 font-normal" }, agent.desc),
             React.createElement(
               "div",
-              { className: "space-y-2 pt-2 border-t border-slate-800/80" },
-              React.createElement("span", { className: "text-[11px] font-semibold text-slate-300 block" }, "Core Responsibilities:"),
+              { className: "space-y-2 pt-3 border-t border-slate-700/80" },
+              React.createElement("span", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider block" }, "Core Responsibilities:"),
               React.createElement(
                 "ul",
-                { className: "list-disc list-inside space-y-1 text-[11px] text-slate-400 m-0 p-0" },
+                { className: "list-disc list-inside space-y-1.5 text-xs text-slate-200 m-0 p-0 leading-relaxed font-normal" },
                 agent.responsibilities.map((r, idx) =>
-                  React.createElement("li", { key: idx, className: "leading-snug" }, r)
+                  React.createElement("li", { key: idx, className: "leading-relaxed" }, r)
                 )
               )
             ),
             React.createElement(
               "div",
-              { className: "pt-2 text-[10px] font-mono text-slate-500 border-t border-slate-800/60 flex items-center justify-between" },
-              React.createElement("span", null, "Profile Path:"),
-              React.createElement("code", { className: "text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded" }, agent.dir)
+              { className: "pt-3 text-xs font-mono text-slate-300 border-t border-slate-700/70 flex items-center justify-between gap-2" },
+              React.createElement("span", { className: "font-semibold text-slate-300" }, "Profile Path:"),
+              React.createElement("code", { className: "text-indigo-200 bg-slate-950 px-2 py-1 rounded-md border border-slate-700 font-bold select-all" }, agent.dir)
             )
           )
         )
@@ -880,9 +1013,9 @@
       const columns = [
         { id: "triage", title: "Triage", desc: "Incoming raw feature ideas, user reports, or suggestions generated by the periodic codebase scanner.", trigger: "Ingested via CLI or Scanner" },
         { id: "todo", title: "Todo", desc: "Decomposed tickets ready for prioritization. Clear acceptance criteria and scoped file lists.", trigger: "zf-orchestrator decomposes" },
-        { id: "ready", title: "Ready", desc: "Dependencies cleared. Ready for dispatcher pickup and dedicated Git worktree allocation.", trigger: "Dispatcher validates deps" },
-        { id: "running", title: "Running", desc: "Dedicated worker executing inside isolated worktree. Live progress and thoughts stream to card.", trigger: "zf-builder actively coding" },
-        { id: "blocked", title: "Blocked", desc: "Tasks awaiting external conditions, or PR approved waiting for human review & merge.", trigger: "Awaiting Human Merge or Input" },
+        { id: "ready", title: "Ready", desc: "Dependencies cleared and worktree provisioned. Queued for worker execution.", trigger: "Dispatcher validates WIP & deps" },
+        { id: "running", title: "Running", desc: "Dedicated worker executing inside isolated Git worktree. Live progress and thoughts stream to card.", trigger: "zf-builder coding or zf-reviewer reviewing" },
+        { id: "blocked", title: "Blocked", desc: "Tasks with unmet parent dependencies, or PR approved by reviewer waiting for human merge.", trigger: "Awaiting Human Merge or Dependencies" },
         { id: "done", title: "Done", desc: "Completed and merged tickets. Worktrees pruned and metrics updated.", trigger: "PR merged on GitHub" }
       ];
 
@@ -891,40 +1024,47 @@
         { className: "space-y-6" },
         React.createElement(
           "div",
-          { className: "bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 space-y-4" },
-          React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2" }, "🔄 Kanban Column Workflow"),
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
+          React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, "🔄 Kanban Column Workflow"),
           React.createElement(
             "div",
             { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1" },
             columns.map((c) =>
               React.createElement(
                 "div",
-                { key: c.id, className: "bg-slate-950/60 border border-slate-800/70 rounded-xl p-4 space-y-2" },
+                { key: c.id, className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-4.5 space-y-2.5 shadow-sm" },
                 React.createElement(
                   "div",
-                  { className: "flex items-center justify-between" },
-                  React.createElement("span", { className: "text-xs font-bold uppercase tracking-wider text-indigo-400" }, c.title),
-                  React.createElement("span", { className: "text-[10px] font-mono text-slate-500" }, c.id)
+                  { className: "flex items-center justify-between gap-2" },
+                  React.createElement("span", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300" }, c.title),
+                  React.createElement("span", { className: "text-xs font-mono font-semibold px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-200" }, c.id)
                 ),
-                React.createElement("p", { className: "text-xs text-slate-300 leading-relaxed m-0" }, c.desc),
-                React.createElement("div", { className: "text-[11px] text-slate-400 pt-1 border-t border-slate-800/60 font-medium" }, "Trigger: ", React.createElement("span", { className: "text-slate-200" }, c.trigger))
+                React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, c.desc),
+                React.createElement(
+                  "div",
+                  { className: "text-xs text-slate-300 pt-2 border-t border-slate-800 font-medium flex items-center justify-between gap-2 flex-wrap" },
+                  React.createElement("span", null, "Trigger:"),
+                  React.createElement("span", { className: "text-white font-semibold bg-slate-900 px-2 py-0.5 rounded border border-slate-700/80" }, c.trigger)
+                )
               )
             )
           )
         ),
         React.createElement(
           "div",
-          { className: "bg-gradient-to-br from-purple-950/30 via-slate-900/60 to-slate-900/60 border border-purple-800/40 rounded-2xl p-6 space-y-3" },
+          { className: "bg-gradient-to-br from-purple-950/50 via-slate-900/80 to-slate-900/80 border border-purple-600/70 rounded-2xl p-6 space-y-3 shadow-md" },
           React.createElement(
             "div",
-            { className: "flex items-center gap-2.5" },
-            React.createElement("div", { className: "p-2 rounded-xl bg-purple-500/20 text-purple-300" }, renderPrIcon("w-4 h-4")),
-            React.createElement("h3", { className: "text-sm font-bold text-white m-0" }, "Pull Request Tracking & Verification")
+            { className: "flex items-center gap-3" },
+            React.createElement("div", { className: "p-2.5 rounded-xl bg-purple-900/80 text-purple-200 border border-purple-500/50 shadow-xs" }, renderPrIcon("w-4 h-4")),
+            React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, "Pull Request Tracking & Verification")
           ),
           React.createElement(
             "p",
-            { className: "text-xs text-slate-300 leading-relaxed m-0" },
-            "Tasks with active GitHub Pull Requests display an interactive PR link badge directly on the Kanban card. You can click the badge to jump straight to the GitHub review interface. Use the toolbar's 'Has PR' filter button to instantly isolate all tickets currently under active Pull Request review."
+            { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" },
+            "Tasks with active GitHub Pull Requests display an interactive PR link badge directly on the Kanban card. You can click the badge to jump straight to the GitHub review interface. Use the toolbar's ",
+            React.createElement("code", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold text-xs" }, "Has PR"),
+            " filter button to instantly isolate all tickets currently under active Pull Request review."
           )
         )
       );
@@ -936,22 +1076,22 @@
         { className: "space-y-6" },
         React.createElement(
           "div",
-          { className: "bg-slate-900/50 border border-slate-800/80 rounded-2xl p-6 space-y-4" },
-          React.createElement("h3", { className: "text-sm font-bold text-white m-0" }, "🌳 The Git Worktree Isolation Model"),
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
+          React.createElement("h3", { className: "text-sm font-bold text-white m-0 tracking-wide" }, "🌳 The Git Worktree Isolation Model"),
           React.createElement(
             "p",
-            { className: "text-xs text-slate-300 leading-relaxed m-0" },
+            { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" },
             "In traditional multi-agent systems, agents operate on the primary repository directory. This causes uncommitted file clashes, stash corruptions, and broken builds when parallel tasks run. Zero Factory completely eliminates this failure mode using dedicated Git worktrees."
           ),
           React.createElement(
             "div",
-            { className: "p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2 font-mono text-xs text-slate-300" },
-            React.createElement("div", { className: "text-indigo-400 font-semibold" }, "# Worktree Directory Structure"),
-            React.createElement("div", null, "~/git/"),
-            React.createElement("div", { className: "pl-4 text-slate-400" }, "├── my-repo/                    # Main repository (untouched by workers)"),
-            React.createElement("div", { className: "pl-4 text-emerald-400" }, "└── my-repo-worktrees/"),
-            React.createElement("div", { className: "pl-8 text-emerald-300" }, "├── zf-9a4f210b/            # Isolated worktree for Task 1"),
-            React.createElement("div", { className: "pl-8 text-emerald-300" }, "└── zf-b72e189c/            # Isolated worktree for Task 2")
+            { className: "p-4.5 bg-slate-950 border border-slate-700 rounded-xl space-y-2 font-mono text-xs text-slate-100 shadow-inner" },
+            React.createElement("div", { className: "text-indigo-300 font-bold" }, "# Worktree Directory Structure"),
+            React.createElement("div", { className: "text-white font-bold" }, "~/git/"),
+            React.createElement("div", { className: "pl-4 text-slate-300" }, "├── my-repo/                    # Main repository (untouched by workers)"),
+            React.createElement("div", { className: "pl-4 text-emerald-300 font-bold" }, "└── my-repo-worktrees/"),
+            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "├── zf-9a4f210b/            # Isolated worktree for Task 1"),
+            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "└── zf-b72e189c/            # Isolated worktree for Task 2")
           ),
           React.createElement(
             "div",
@@ -963,9 +1103,9 @@
             ].map((item, idx) =>
               React.createElement(
                 "div",
-                { key: idx, className: "p-3.5 bg-slate-950/50 border border-slate-800/80 rounded-xl space-y-1" },
-                React.createElement("h4", { className: "text-xs font-semibold text-slate-200 m-0" }, item.title),
-                React.createElement("p", { className: "text-[11px] text-slate-400 leading-relaxed m-0" }, item.desc)
+                { key: idx, className: "p-4 bg-slate-950/80 border border-slate-700/80 rounded-xl space-y-1.5 shadow-sm" },
+                React.createElement("h4", { className: "text-xs font-bold text-white m-0" }, item.title),
+                React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, item.desc)
               )
             )
           )
@@ -1018,17 +1158,17 @@
         cliGroups.map((g, idx) =>
           React.createElement(
             "div",
-            { key: idx, className: "bg-slate-900/50 border border-slate-800/80 rounded-2xl p-5 space-y-3" },
-            React.createElement("h3", { className: "text-xs font-bold uppercase tracking-wider text-indigo-400 m-0" }, g.group),
+            { key: idx, className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-5 space-y-3.5 shadow-md" },
+            React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0" }, g.group),
             React.createElement(
               "div",
-              { className: "space-y-2" },
+              { className: "space-y-2.5" },
               g.cmds.map((item, cIdx) =>
                 React.createElement(
                   "div",
-                  { key: cIdx, className: "flex flex-col md:flex-row md:items-center justify-between gap-2 p-3 bg-slate-950/70 border border-slate-800/70 rounded-xl" },
-                  React.createElement("code", { className: "text-xs font-mono text-emerald-400 break-all select-all" }, item.cmd),
-                  React.createElement("span", { className: "text-xs text-slate-400 shrink-0" }, item.desc)
+                  { key: cIdx, className: "flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-slate-950 border border-slate-800 rounded-xl hover:border-slate-700 transition-colors shadow-xs" },
+                  React.createElement("code", { className: "text-xs font-mono text-emerald-300 font-bold bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 break-all select-all shadow-xs" }, item.cmd),
+                  React.createElement("span", { className: "text-xs text-slate-200 font-medium shrink-0" }, item.desc)
                 )
               )
             )
@@ -1071,24 +1211,24 @@
         crons.map((job) =>
           React.createElement(
             "div",
-            { key: job.id, className: "bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 space-y-3" },
+            { key: job.id, className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-5 space-y-3 shadow-md" },
             React.createElement(
               "div",
-              { className: "flex flex-col md:flex-row md:items-center justify-between gap-2" },
+              { className: "flex flex-col md:flex-row md:items-center justify-between gap-2.5" },
               React.createElement(
                 "div",
-                { className: "space-y-1" },
-                React.createElement("h3", { className: "text-sm font-bold text-white m-0" }, job.title),
-                React.createElement("code", { className: "text-[11px] font-mono text-indigo-400" }, job.id)
+                { className: "space-y-1.5" },
+                React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, job.title),
+                React.createElement("code", { className: "text-xs font-mono text-indigo-200 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-700 font-bold select-all inline-block" }, job.id)
               ),
               React.createElement(
                 "div",
-                { className: "flex items-center gap-2" },
-                React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-mono" }, job.tokens),
-                React.createElement("span", { className: "text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono" }, job.interval)
+                { className: "flex items-center gap-2.5 flex-wrap" },
+                React.createElement("span", { className: "text-xs font-bold px-3 py-1 rounded-full bg-emerald-900/90 text-emerald-100 border border-emerald-500/70 font-mono shadow-xs" }, job.tokens),
+                React.createElement("span", { className: "text-xs font-bold px-3 py-1 rounded-full bg-slate-800 text-slate-100 border border-slate-600 font-mono shadow-xs" }, job.interval)
               )
             ),
-            React.createElement("p", { className: "text-xs text-slate-300 leading-relaxed m-0" }, job.desc)
+            React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, job.desc)
           )
         )
       );
@@ -1112,22 +1252,22 @@
         // Instruction Hero Banner
         React.createElement(
           "div",
-          { className: "relative overflow-hidden bg-gradient-to-br from-indigo-950/60 via-slate-900/80 to-purple-950/50 border border-slate-800/90 rounded-2xl p-6 md:p-8 shadow-xl" },
+          { className: "relative overflow-hidden bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-purple-950/60 border border-slate-700/90 rounded-2xl p-6 md:p-8 shadow-2xl" },
           React.createElement(
             "div",
             { className: "flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10" },
             React.createElement(
               "div",
-              { className: "space-y-3" },
+              { className: "space-y-3.5" },
               React.createElement(
                 "div",
                 { className: "flex items-center gap-2.5 flex-wrap" },
-                React.createElement("span", { className: "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono" }, "Hermes Plugin"),
-                React.createElement("span", { className: "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono" }, "Zero-Token Idle Watchdogs"),
-                React.createElement("span", { className: "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono" }, "3-Round Thematic Review")
+                React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 text-indigo-100 border border-indigo-500/60 font-mono shadow-xs" }, "Hermes Plugin"),
+                React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-900/80 text-emerald-100 border border-emerald-500/60 font-mono shadow-xs" }, "Zero-Token Idle Watchdogs"),
+                React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/80 text-purple-100 border border-purple-500/60 font-mono shadow-xs" }, "3-Round Thematic Review")
               ),
               React.createElement("h2", { className: "text-2xl md:text-3xl font-extrabold text-white tracking-tight m-0" }, "Zero Factory Architecture & User Guide"),
-              React.createElement("p", { className: "text-xs md:text-sm text-slate-300 max-w-2xl leading-relaxed m-0" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Three specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")
+              React.createElement("p", { className: "text-xs md:text-sm text-slate-200 max-w-2xl leading-relaxed m-0 font-normal" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Three specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")
             ),
             React.createElement(
               "div",
@@ -1136,7 +1276,7 @@
                 "button",
                 {
                   type: "button",
-                  className: "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all duration-150 cursor-pointer",
+                  className: "inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/40 transition-all duration-150 cursor-pointer",
                   onClick: () => setActiveView("board")
                 },
                 "📋 Return to Kanban Board"
@@ -1148,17 +1288,17 @@
         // Sub-Navigation Tabs
         React.createElement(
           "div",
-          { className: "flex items-center gap-2 overflow-x-auto zfk-scrollbar pb-2 border-b border-slate-800/80" },
+          { className: "flex items-center gap-2 overflow-x-auto zfk-scrollbar pb-2 border-b border-slate-800" },
           tabs.map((tab) =>
             React.createElement(
               "button",
               {
                 key: tab.id,
                 type: "button",
-                className: "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer " +
+                className: "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-150 cursor-pointer " +
                   (instructionTab === tab.id
-                    ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30 border border-indigo-500"
-                    : "bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 border border-slate-800/80"),
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400"
+                    : "bg-slate-900/80 text-slate-200 hover:text-white hover:bg-slate-800 border border-slate-700/80 font-medium"),
                 onClick: () => setInstructionTab(tab.id)
               },
               React.createElement("span", null, tab.icon),
