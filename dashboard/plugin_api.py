@@ -238,6 +238,7 @@ class CronToggleRequest(BaseModel):
 class TaskMove(BaseModel):
     status: str = Field(..., pattern="^(triage|todo|ready|running|blocked|done)$")
     actor: Optional[str] = "user"
+    reason: Optional[str] = None
 
 class CommentCreate(BaseModel):
     author: str = Field(default="user", max_length=64)
@@ -1204,9 +1205,22 @@ def move_task(task_id: str, req: TaskMove):
         if prev_status != req.status:
             cursor.execute("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?", (req.status, now, task_id))
             log_activity(conn, task_id, req.actor or "user", "move", f"Moved from {prev_status} to {req.status}")
-            conn.commit()
 
-    return {"ok": True, "id": task_id, "status": req.status, "prev_status": prev_status}
+        # When moving to 'blocked' with a reason, record it as a comment (mirrors
+        # the `block` CLI handler) so the handoff reason is auditable. This makes
+        # `move <id> blocked --reason "review-required"` a first-class citizen.
+        if req.status == "blocked" and req.reason:
+            actor = req.actor or "user"
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (task_id, actor, f"Blocked: {req.reason}", now)
+            )
+            comment_id = cursor.lastrowid
+            log_activity(conn, task_id, actor, "comment", f"Added comment #{comment_id}")
+
+        conn.commit()
+
+    return {"ok": True, "id": task_id, "status": req.status, "prev_status": prev_status, "reason": req.reason}
 
 @router.delete("/tasks/{task_id}")
 def delete_task(task_id: str):

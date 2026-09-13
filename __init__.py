@@ -101,6 +101,7 @@ def register(ctx: Any):
         p_move = subparsers.add_parser("move", help="Move a task to a different column")
         p_move.add_argument("task_id", help="Task ID")
         p_move.add_argument("status", choices=["triage", "todo", "ready", "running", "blocked", "done"], help="Target status")
+        p_move.add_argument("--reason", default=None, help="Optional reason; recorded as a comment when moving to 'blocked' (mirrors the 'block' command)")
 
         # block
         p_block = subparsers.add_parser("block", help="Mark a task as blocked")
@@ -219,9 +220,13 @@ def register(ctx: Any):
 
         elif action == "move":
             actor = os.environ.get("HERMES_PROFILE") or "user"
-            req = TaskMove(status=args.status, actor=actor)
+            reason = getattr(args, "reason", None)
+            req = TaskMove(status=args.status, actor=actor, reason=reason)
             res = _move_task(args.task_id, req)
-            print(f"Moved task {args.task_id} to {args.status}")
+            if res.get("status") == "blocked" and reason:
+                print(f"Moved task {args.task_id} to {args.status} (reason: {reason})")
+            else:
+                print(f"Moved task {args.task_id} to {args.status}")
 
         elif action == "block":
             actor = os.environ.get("HERMES_PROFILE") or "user"
