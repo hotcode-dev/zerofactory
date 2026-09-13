@@ -936,7 +936,7 @@ class TestZeroFactory(unittest.TestCase):
                     with contextlib.redirect_stdout(buf):
                         rc = mod.run_scanner_gate()
                 finally:
-                    sys.argv, os_cwd = old_argv, old_cwd
+                    sys.argv = old_argv
                     os.chdir(old_cwd)
                     if old_db is None:
                         os.environ.pop("ZEROFACTORY_DB", None)
