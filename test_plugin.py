@@ -2023,6 +2023,95 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             shutil.rmtree(td, ignore_errors=True)
 
+    def test_40_move_blocked_with_reason_cli(self):
+        """Regression: `hermes zerofactory move <id> blocked --reason "review-required"`
+        (the documented zf-builder handoff command in templates/zf-builder/SOUL.md line 21
+        and the dispatcher builder prompts at dispatcher.py:589 and :608) must be accepted
+        by argparse and must move the task to 'blocked' while recording the reason as a
+        'Blocked: ...' comment.
+
+        Before the fix the `move` subparser only registered `task_id` + `status` with no
+        `--reason` flag, so the command failed with
+        `hermes: error: unrecognized arguments: --reason ...` (exit 2) and the TaskMove
+        schema rejected a `reason` field. This broke the builder -> blocked(review-required)
+        -> PR -> zf-reviewer handoff loop for any builder following the SOUL.md instruction.
+        """
+        import argparse
+        from unittest.mock import patch
+        from __init__ import register
+
+        # Build the CLI parser + handler the same way the real `hermes zerofactory`
+        # plugin registration does (same pattern as test_29).
+        class _MockCtx:
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.setup_fn = setup_fn
+                self.handler_fn = handler_fn
+
+        ctx = _MockCtx()
+        register(ctx)
+        cmd_parser = argparse.ArgumentParser()
+        ctx.setup_fn(cmd_parser)
+
+        # Create a running builder task to hand off. Ensure the default board
+        # exists first so create_task's board_slug FK constraint is satisfied
+        # (this test must also pass in isolation).
+        existing_boards = [b["slug"] for b in list_boards()["boards"]]
+        if "hotcode-dev-zerofactory" not in existing_boards:
+            create_board(BoardCreate(
+                git_url="https://github.com/hotcode-dev/zerofactory",
+                description="AI workflow",
+            ))
+
+        t_id = create_task(TaskCreate(
+            title="Builder Handoff Regression Task",
+            status="running",
+            priority="P0",
+            assignee="zf-builder",
+            board_slug="hotcode-dev-zerofactory",
+        ))["id"]
+
+        # 1. The exact documented handoff command must parse (previously exit 2).
+        parsed = cmd_parser.parse_args(
+            ["move", t_id, "blocked", "--reason", "review-required"]
+        )
+        self.assertEqual(parsed.task_id, t_id)
+        self.assertEqual(parsed.status, "blocked")
+        self.assertEqual(parsed.reason, "review-required")
+
+        # 2. Running the handler moves the task to 'blocked' and records the reason.
+        with patch.dict(os.environ, {"HERMES_PROFILE": "zf-builder"}, clear=False):
+            ctx.handler_fn(parsed)
+
+        t_data = get_task(t_id)["task"]
+        self.assertEqual(t_data["status"], "blocked")
+        # The reason is recorded as a comment, mirroring the `block` command behaviour.
+        blocked_comments = [
+            c for c in t_data["comments"] if c["body"] == "Blocked: review-required"
+        ]
+        self.assertEqual(len(blocked_comments), 1)
+        self.assertEqual(blocked_comments[0]["author"], "zf-builder")
+
+        # 3. The TaskMove schema now accepts a `reason` field via the HTTP endpoint
+        #    (the model no longer rejects it), and a non-blocked move still works.
+        resp = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/move", json={
+            "status": "ready",
+            "reason": "unblocked",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "ready")
+        self.assertEqual(get_task(t_id)["task"]["status"], "ready")
+
+        # 4. A `move ... blocked` WITHOUT a reason must NOT record a comment
+        #    (reason is optional; only a provided reason is recorded).
+        resp2 = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/move", json={
+            "status": "blocked",
+        })
+        self.assertEqual(resp2.status_code, 200)
+        comments_after = get_task(t_id)["task"]["comments"]
+        self.assertEqual(
+            len([c for c in comments_after if c["body"] == "Blocked: "]), 0
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

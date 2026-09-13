@@ -238,6 +238,7 @@ class CronToggleRequest(BaseModel):
 class TaskMove(BaseModel):
     status: str = Field(..., pattern="^(triage|todo|ready|running|blocked|done)$")
     actor: Optional[str] = "user"
+    reason: Optional[str] = None
 
 class CommentCreate(BaseModel):
     author: str = Field(default="user", max_length=64)
