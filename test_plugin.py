@@ -1684,6 +1684,82 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
 
+    def test_38_reviewer_git_predigest(self):
+        from dispatcher import digest_reviewer_git_context, spawn_agent_worker
+        import subprocess
+        import tempfile
+        import shutil
+        from unittest.mock import patch, MagicMock
+
+        td = tempfile.mkdtemp()
+        try:
+            repo_dir = Path(td) / "repo"
+            repo_dir.mkdir()
+
+            # Initialize git repo with main branch
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_dir), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "TestUser"], cwd=str(repo_dir), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir), check=True)
+
+            (repo_dir / "README.md").write_text("# Initial Repo\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True)
+            subprocess.run(["git", "commit", "-m", "chore: initial commit"], cwd=str(repo_dir), check=True, capture_output=True)
+
+            # Create a feature branch with changes
+            subprocess.run(["git", "checkout", "-b", "task/zf-testrev"], cwd=str(repo_dir), check=True, capture_output=True)
+            (repo_dir / "feature.py").write_text("def hello():\n    return 'world'\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True)
+            subprocess.run(["git", "commit", "-m", "feat: add hello function"], cwd=str(repo_dir), check=True, capture_output=True)
+
+            # 1. Test digest_reviewer_git_context directly
+            digest = digest_reviewer_git_context(repo_dir, "task/zf-testrev")
+            self.assertIn("Pre-Digested PR Changes", digest)
+            self.assertIn("feat: add hello function", digest)
+            self.assertIn("feature.py", digest)
+            self.assertIn("def hello():", digest)
+
+            # 2. Test non-git directory returns empty string gracefully
+            non_git = Path(td) / "non_git"
+            non_git.mkdir()
+            self.assertEqual(digest_reviewer_git_context(non_git), "")
+
+            # 3. Test spawn_agent_worker embeds pre-digested git context for zf-reviewer
+            captured_prompts = []
+            orig_popen = subprocess.Popen
+
+            def mock_popen(cmd, *args, **kwargs):
+                if isinstance(cmd, list) and any("hermes" in str(c) for c in cmd):
+                    if "-q" in cmd:
+                        idx = cmd.index("-q")
+                        captured_prompts.append(cmd[idx + 1])
+                    m = MagicMock()
+                    m.pid = 99123
+                    return m
+                return orig_popen(cmd, *args, **kwargs)
+
+            with patch("subprocess.Popen", side_effect=mock_popen):
+                with patch.dict(os.environ, {}, clear=False):
+                    os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+                    pid, sid = spawn_agent_worker(
+                        task_id="zf-revtest1",
+                        title="Review feature.py implementation",
+                        description="Review new feature",
+                        priority="P1",
+                        assignee="zf-reviewer",
+                        workspace_path=str(repo_dir),
+                        branch_name="task/zf-testrev"
+                    )
+                    self.assertEqual(pid, 99123)
+                    self.assertTrue(captured_prompts)
+                    prompt_text = captured_prompts[0]
+                    self.assertIn("Pre-Digested PR Changes", prompt_text)
+                    self.assertIn("feat: add hello function", prompt_text)
+                    self.assertIn("feature.py", prompt_text)
+                    self.assertIn("Your goal as Reviewer:", prompt_text)
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
 

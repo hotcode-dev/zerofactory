@@ -312,6 +312,176 @@ def pull_and_merge_main(
         return False, conflicted_files, f"Merge conflict with {target_ref}: {err}"
 
 
+def digest_reviewer_git_context(
+    workspace_path: Path,
+    branch_name: Optional[str] = None,
+    max_diff_lines: int = 100,
+    max_diff_chars: int = 4000
+) -> str:
+    """Extract pre-digested commits, diffstat, and code diff for reviewer prompt.
+
+    Pre-computes git diffs and commit summaries in Python before waking zf-reviewer,
+    eliminating multi-turn git exploration tool calls and saving substantial LLM tokens.
+    """
+    if not workspace_path.exists():
+        return ""
+
+    try:
+        git_check = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if git_check.returncode != 0 or git_check.stdout.strip() != "true":
+            return ""
+    except Exception:
+        return ""
+
+    default_branch = get_default_branch(workspace_path)
+    base_ref = f"origin/{default_branch}"
+    try:
+        verify_remote = subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{base_ref}"],
+            cwd=str(workspace_path), timeout=5
+        )
+        if verify_remote.returncode != 0:
+            verify_local = subprocess.run(
+                ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{default_branch}"],
+                cwd=str(workspace_path), timeout=5
+            )
+            base_ref = default_branch if verify_local.returncode == 0 else "HEAD~1"
+    except Exception:
+        base_ref = "HEAD~1"
+
+    # Find merge base between HEAD and base_ref
+    merge_base = base_ref
+    try:
+        mb_res = subprocess.run(
+            ["git", "merge-base", "HEAD", base_ref],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if mb_res.returncode == 0 and mb_res.stdout.strip():
+            merge_base = mb_res.stdout.strip()
+    except Exception:
+        pass
+
+    diff_range = f"{merge_base}..HEAD" if merge_base else "HEAD~1..HEAD"
+
+    # 1. Commit log on branch
+    log_summary = ""
+    try:
+        log_res = subprocess.run(
+            ["git", "log", "-n", "10", "--oneline", diff_range],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if log_res.returncode == 0:
+            log_summary = log_res.stdout.strip()
+    except Exception:
+        pass
+
+    # 2. Diffstat
+    diffstat = ""
+    try:
+        stat_res = subprocess.run(
+            ["git", "diff", "--stat", diff_range],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if stat_res.returncode == 0 and stat_res.stdout.strip():
+            diffstat = stat_res.stdout.strip()
+        else:
+            stat_fallback = subprocess.run(
+                ["git", "diff", "--stat", "HEAD"],
+                cwd=str(workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if stat_fallback.returncode == 0:
+                diffstat = stat_fallback.stdout.strip()
+    except Exception:
+        pass
+
+    # 3. Code Diff
+    diff_content = ""
+    try:
+        diff_res = subprocess.run(
+            ["git", "diff", "-U2", diff_range],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        raw_diff = diff_res.stdout.strip() if diff_res.returncode == 0 else ""
+        if not raw_diff:
+            diff_fallback = subprocess.run(
+                ["git", "diff", "-U2", "HEAD"],
+                cwd=str(workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            raw_diff = diff_fallback.stdout.strip() if diff_fallback.returncode == 0 else ""
+
+        if raw_diff:
+            lines = raw_diff.splitlines()
+            is_truncated = False
+            if len(lines) > max_diff_lines:
+                raw_diff = "\n".join(lines[:max_diff_lines])
+                is_truncated = True
+            if len(raw_diff) > max_diff_chars:
+                raw_diff = raw_diff[:max_diff_chars]
+                is_truncated = True
+            if is_truncated:
+                raw_diff += "\n... [diff truncated for token efficiency; inspect remaining diff with git diff in workspace]"
+            diff_content = raw_diff
+    except Exception:
+        pass
+
+    # 4. Check uncommitted modifications if any
+    status_summary = ""
+    try:
+        status_res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if status_res.returncode == 0 and status_res.stdout.strip():
+            status_summary = status_res.stdout.strip()
+    except Exception:
+        pass
+
+    if not log_summary and not diffstat and not diff_content:
+        return ""
+
+    sections = [
+        "### 🔍 Pre-Digested PR Changes (Zero-Token Ingested)",
+        f"- **Target Base Branch:** `{default_branch}`"
+    ]
+    if log_summary:
+        sections.append(f"#### Commits on Feature Branch:\n```\n{log_summary}\n```")
+    if diffstat:
+        sections.append(f"#### Changed Files (Diffstat):\n```\n{diffstat}\n```")
+    if diff_content:
+        sections.append(f"#### Code Changes (Diff):\n```diff\n{diff_content}\n```")
+    if status_summary:
+        sections.append(f"#### Uncommitted Modifications:\n```\n{status_summary}\n```")
+
+    return "\n\n".join(sections)
+
+
 def spawn_agent_worker(
     task_id: str,
     title: str,
@@ -337,6 +507,8 @@ def spawn_agent_worker(
     workdir = workspace_path if (workspace_path and Path(workspace_path).exists()) else os.getcwd()
 
     if assignee == "zf-reviewer":
+        pre_digested_git = digest_reviewer_git_context(Path(workdir), branch_name)
+        pre_digested_block = f"\n{pre_digested_git}\n\n" if pre_digested_git else "\n"
         prompt = (
             f"Task ID: {task_id}\n"
             f"Title: {title}\n"
@@ -344,9 +516,10 @@ def spawn_agent_worker(
             f"Assigned Role: {assignee}\n\n"
             f"Description:\n{description or 'No description provided.'}\n\n"
             f"Workspace: {workdir}\n"
-            f"Git Branch: {branch_name or 'main'}\n\n"
+            f"Git Branch: {branch_name or 'main'}\n"
+            f"{pre_digested_block}"
             f"Your goal as Reviewer:\n"
-            f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, test coverage, and security.\n"
+            f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
             f"2. Run automated test suites and linters in your workspace ({workdir}).\n"
             f"3. Submit your review decision on GitHub (`gh pr review --approve` or `gh pr review --request-changes`).\n"
             f"4. When finished, mark the task complete using `hermes zerofactory move {task_id} done` or `hermes zerofactory block {task_id} --reason 'changes-requested'`.\n"
