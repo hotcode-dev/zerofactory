@@ -933,6 +933,66 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(resolved_http, resolved_ssh_proto)
         self.assertEqual(resolved_http, resolved_desc)
 
+    def test_29_cron_profile_targeting_and_description_file(self):
+        """Validate that trigger_builtin_job runs with -p zf-orchestrator and --description-file is supported."""
+        import subprocess
+        from unittest.mock import patch
+        from builtin_cron import trigger_builtin_job, get_all_builtin_cron_jobs
+        import tempfile
+
+        # 1. trigger_builtin_job targets profile
+        all_jobs = get_all_builtin_cron_jobs()
+        job_id = "zero-factory-task-queue-check"
+        self.assertIn(job_id, all_jobs)
+
+        captured_cmd = []
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc = mock_popen.return_value
+            mock_proc.pid = 99999
+            res = trigger_builtin_job(job_id)
+            self.assertTrue(res.get("ok"))
+            self.assertEqual(res.get("pid"), 99999)
+            call_args = mock_popen.call_args[0][0]
+            self.assertIn("-p", call_args)
+            self.assertIn("zf-orchestrator", call_args)
+            self.assertIn(job_id, call_args)
+
+        # 2. --description-file support in CLI parser and handler
+        from __init__ import register
+        import argparse
+        parser = argparse.ArgumentParser()
+        # Create a mock ctx to capture setup_fn and handler_fn
+        class MockCtx:
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.setup_fn = setup_fn
+                self.handler_fn = handler_fn
+
+        ctx = MockCtx()
+        register(ctx)
+
+        cmd_parser = argparse.ArgumentParser()
+        ctx.setup_fn(cmd_parser)
+
+        with tempfile.NamedTemporaryFile("w", delete=False) as tf:
+            tf.write("Detailed context from file with `code` and (parentheses)\nLine 2")
+            tf_path = tf.name
+
+        try:
+            parsed = cmd_parser.parse_args(["create", "Test Task", "--description-file", tf_path, "--status", "todo"])
+            self.assertEqual(parsed.description_file, tf_path)
+        finally:
+            if os.path.exists(tf_path):
+                os.unlink(tf_path)
+
+    def test_30_reap_stuck_tasks_contract(self):
+        """Validate that reap_stuck_tasks provides both reaped_tasks and reaped for watchdog compatibility."""
+        from dispatcher import reap_stuck_tasks
+        res = reap_stuck_tasks()
+        self.assertTrue(res.get("ok"))
+        self.assertIn("reaped_tasks", res)
+        self.assertIn("reaped", res)
+        self.assertEqual(res["reaped_tasks"], res["reaped"])
+
 
 if __name__ == "__main__":
     unittest.main()
