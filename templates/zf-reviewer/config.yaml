@@ -1,23 +1,10 @@
 description: Code reviewer & quality gatekeeper for Zero Factory
 toolsets:
   - kanban
-  - file
   - terminal
+  - file
   - search_files
   - web
-  - skills
-  - mcp
-  - web_search
-  - web_extract
-  - process
-  - read_file
-  - patch
-  - todo
-  - clarify
-  - execute_code
-  - delegate_task
-  - memory
-  - session_search
 agent:
   max_turns: 60
   gateway_timeout: 1800
