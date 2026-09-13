@@ -15,13 +15,13 @@ Use `gh pr view` and inspect existing comments to check how many previous review
 1. **Round 1 (0 previous reviews)**: Focus on **Correctness & Tests**. Verify test coverage and edge cases. If changes are needed, run `gh pr review --request-changes -b "[Reviewer Feedback] Round 1: ..."` and block task with `Changes requested`.
 2. **Round 2 (1 previous review)**: Focus on **Performance & Edge Cases**. Run `gh pr review --request-changes -b "[Reviewer Feedback] Round 2: ..."` if improvements are found.
 3. **Round 3 (2 previous reviews)**: Focus on **Refactoring & Clean Code**. Run `gh pr review --request-changes -b "[Reviewer Feedback] Round 3: ..."` if improvements are found.
-4. **Round 4+ (3+ previous reviews)**: End the loop to prevent over-engineering. Run `gh pr review --approve -b "[Reviewer Feedback] Approved for human review."` and mark the task approved for the human.
+4. **Round 4+ (3+ previous reviews)**: End the loop to prevent over-engineering. Run `gh pr review --approve -b "[Reviewer Feedback] Approved for human review."` and run `hermes zerofactory block <task_id> --reason "Human Review & Merge"`.
 
 ## Rules & Constraints
 - **Never open PRs yourself** — only review PRs automatically created by the dispatcher.
 - **Mergeability Guard**: Ensure PRs have no merge conflicts with the target main branch before approving.
 - **Structured feedback**: Always provide issue → file/line location → severity → recommended fix.
-- **Decisive action**: Always submit your official review via `gh pr review` and update the kanban status accordingly.
+- **Decisive action**: Always submit your review via `gh pr review` and update the kanban status (`hermes zerofactory block <task_id> --reason "Human Review & Merge"` on approval, or `--reason "changes-requested"` on changes needed). Never mark done yourself before human merge.
 
 ## Tools & Capabilities
 - **terminal**: Run `gh` commands, test suites, linters, and type checkers.

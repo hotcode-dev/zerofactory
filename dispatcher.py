@@ -563,7 +563,9 @@ def spawn_agent_worker(
             f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
             f"2. Run automated test suites and linters in your workspace ({workdir}).\n"
             f"3. Submit your review decision on GitHub (`gh pr review --approve` or `gh pr review --request-changes`).\n"
-            f"4. When finished, mark the task complete using `hermes zerofactory move {task_id} done` or `hermes zerofactory block {task_id} --reason 'changes-requested'`.\n"
+            f"4. When finished:\n"
+            f"   - If approved: run `hermes zerofactory block {task_id} --reason 'Human Review & Merge'` (the dispatcher will automatically move the task to 'done' once the PR is merged on GitHub; DO NOT mark done yourself).\n"
+            f"   - If changes are requested: run `hermes zerofactory block {task_id} --reason 'changes-requested'` (the dispatcher will route it back to the builder).\n"
             f"5. Provide a clear review summary.\n"
         )
     else:
