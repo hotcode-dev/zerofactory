@@ -1683,6 +1683,123 @@ class TestZeroFactory(unittest.TestCase):
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
+    def test_38_setup_worktree_builder_merge_sync(self):
+        """Verify setup_worktree syncs zf-builder worktrees with the latest default
+        branch via pull_and_merge_main on BOTH the existing-branch path
+        (dispatcher.py:959-961) and the new-branch path (dispatcher.py:968-970),
+        and never invokes the sync for non-builder assignees. Because
+        setup_worktree swallows all exceptions and returns None on failure,
+        assertions check post-merge HEAD / worktree state, not just the return value."""
+        import subprocess
+        import sqlite3
+        import tempfile
+        import shutil
+        from unittest.mock import patch
+        from dispatcher import setup_worktree
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp(prefix="zf-wt-sync-")
+        try:
+            repo_path = Path(td) / "test_repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+            (repo_path / "README.md").write_text("# Sync Test Repo\nLine 1\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(repo_path), check=True, capture_output=True)
+
+            db_file = Path(td) / "wt_sync.db"
+            self._create_conflict_test_db(db_file)
+
+            def insert_task(task_id, assignee):
+                with sqlite3.connect(str(db_file)) as conn:
+                    conn.execute(
+                        "INSERT INTO tasks (id, title, status, assignee, created_at, updated_at) "
+                        "VALUES (?, ?, 'ready', ?, 1000, 1000)",
+                        (task_id, f"Task {task_id}", assignee),
+                    )
+                    conn.commit()
+
+            def head_of(cwd):
+                return subprocess.run(
+                    ["git", "rev-parse", "HEAD"], cwd=str(cwd), check=True, capture_output=True, text=True
+                ).stdout.strip()
+
+            # --- 1. Existing-branch path: worktree exists and main has advanced past it ---
+            insert_task("sync-1", "zf-builder")
+            wt1 = Path(td) / "test_repo-worktrees" / "sync-1"
+            subprocess.run(
+                ["git", "worktree", "add", str(wt1), "-b", "task/sync-1"],
+                cwd=str(repo_path), check=True, capture_output=True,
+            )
+            self.assertEqual(head_of(wt1), head_of(repo_path))
+            # Advance main so it is no longer an ancestor of the worktree HEAD
+            (repo_path / "README.md").write_text("# Sync Test Repo\nLine 1\nMain advance\n")
+            subprocess.run(["git", "commit", "-am", "Advance main"], cwd=str(repo_path), check=True, capture_output=True)
+            main_tip = head_of(repo_path)
+            self.assertNotEqual(head_of(wt1), main_tip)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                res = setup_worktree(conn.cursor(), "sync-1", "Task sync-1", "zf-builder", None, db_file, repo_path=repo_path)
+                conn.commit()
+            # setup_worktree returned the worktree dir (no swallowed exception)
+            self.assertEqual(res, str(wt1))
+            # Real pull_and_merge_main ran: post-merge HEAD moved to the latest main tip
+            self.assertEqual(head_of(wt1), main_tip)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT workspace_path, branch_name, workspace_kind FROM tasks WHERE id = 'sync-1'"
+                ).fetchone()
+                self.assertEqual(row["workspace_path"], str(wt1))
+                self.assertEqual(row["branch_name"], "task/sync-1")
+                self.assertEqual(row["workspace_kind"], "dir")
+
+            # --- 2. New-branch path: branch/worktree do not exist yet ---
+            insert_task("sync-2", "zf-builder")
+            wt2 = Path(td) / "test_repo-worktrees" / "sync-2"
+            with sqlite3.connect(str(db_file)) as conn:
+                res2 = setup_worktree(conn.cursor(), "sync-2", "Task sync-2", "zf-builder", None, db_file, repo_path=repo_path)
+                conn.commit()
+            self.assertEqual(res2, str(wt2))
+            self.assertTrue(wt2.exists())
+            subprocess.run(
+                ["git", "show-ref", "--verify", "refs/heads/task/sync-2"],
+                cwd=str(repo_path), check=True, capture_output=True,
+            )
+            # Fresh branch cut from main must contain the latest main tip
+            self.assertEqual(head_of(wt2), main_tip)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                row2 = conn.execute("SELECT workspace_path, branch_name FROM tasks WHERE id = 'sync-2'").fetchone()
+                self.assertEqual(row2["workspace_path"], str(wt2))
+                self.assertEqual(row2["branch_name"], "task/sync-2")
+
+            # --- 3. Mock assertion: builder sync invoked with exact args (existing-branch path) ---
+            with patch("dispatcher.pull_and_merge_main", return_value=(True, [], "ok")) as mock_pull:
+                with sqlite3.connect(str(db_file)) as conn:
+                    res3 = setup_worktree(
+                        conn.cursor(), "sync-1", "Task sync-1", "zf-builder", None, db_file, repo_path=repo_path
+                    )
+                self.assertEqual(res3, str(wt1))
+                mock_pull.assert_called_once_with(wt1, repo_path, "main")
+
+            # --- 4. Non-builder assignee (new-branch path) must NOT trigger the merge sync ---
+            insert_task("sync-3", "zf-reviewer")
+            wt3 = Path(td) / "test_repo-worktrees" / "sync-3"
+            with patch("dispatcher.pull_and_merge_main", return_value=(True, [], "ok")) as mock_pull_rev:
+                with sqlite3.connect(str(db_file)) as conn:
+                    res4 = setup_worktree(
+                        conn.cursor(), "sync-3", "Review task", "zf-reviewer", None, db_file, repo_path=repo_path
+                    )
+                self.assertEqual(res4, str(wt3))
+                mock_pull_rev.assert_not_called()
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
 
 if __name__ == "__main__":
     unittest.main()
