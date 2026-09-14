@@ -41,6 +41,7 @@ Core Responsibilities:
 from __future__ import annotations
 
 from contextlib import closing
+import fcntl
 import json
 import logging
 import os
@@ -54,6 +55,28 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
+
+
+def get_dispatcher_lock_path() -> Path:
+    """Path to the cross-process lock file for Kanban dispatch cycles."""
+    env_lock = os.environ.get("ZEROFACTORY_LOCK_PATH")
+    if env_lock:
+        return Path(env_lock)
+    return Path.home() / ".hermes" / "zerofactory_dispatcher.lock"
+
+
+def is_worker_or_child_process() -> bool:
+    """Return True if current process is a worker, cron runner, or child CLI process."""
+    if os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER") == "1":
+        return True
+    profile = os.environ.get("HERMES_PROFILE") or ""
+    if profile in ("zf-builder", "zf-reviewer"):
+        return True
+    if os.environ.get("HERMES_KANBAN_TASK"):
+        return True
+    if os.environ.get("_HERMES_CRON_EXTERNAL_WORKER"):
+        return True
+    return False
 
 # Kanban WIP Limit: Default maximum total active tasks across all boards permitted in ('ready', 'running').
 # Controls Step 2 promotion from 'todo' -> 'ready' and git worktree pre-provisioning to avoid queue flooding.
@@ -81,6 +104,25 @@ _dispatcher_lock = threading.Lock()
 
 # Registry tracking active worker subprocesses keyed by task_id: {task_id: subprocess.Popen}.
 _active_workers: Dict[str, subprocess.Popen] = {}
+
+# Idle Improvement Scanner Configuration
+# Automatically scan workspace repository for code quality improvements when running workers are below threshold.
+DEFAULT_SCAN_ON_IDLE = True
+
+# Threshold of active running workers on a board below which an improvement scan is considered (e.g. < 2, meaning 0 or 1 active workers).
+DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD = 2
+
+# Minimum duration (in seconds) between idle improvement scans for the same board.
+DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = 900  # 15 mins cooldown
+
+# Maximum backlog tasks allowed in 'todo' before suppressing idle scans to prevent backlog flooding.
+DEFAULT_IDLE_SCAN_MAX_TODO = 2
+
+# Timestamp tracking when an idle improvement scan was last triggered per board slug: {board_slug: timestamp}
+_last_idle_scan_times: Dict[str, int] = {}
+
+# Registry tracking active scanner worker subprocesses per board slug: {board_slug: subprocess.Popen}
+_active_scanners: Dict[str, subprocess.Popen] = {}
 
 # Canonical alias mapping to standardize task assignees to recognized agent profiles.
 PROFILE_MAP = {
@@ -852,6 +894,89 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
     return reaped
 
 
+def reap_active_scanners() -> int:
+    """Clean up finished or exited scanner worker processes."""
+    reaped = 0
+    for slug, proc in list(_active_scanners.items()):
+        if proc is not None:
+            retcode = proc.poll()
+            if retcode is not None:
+                _active_scanners.pop(slug, None)
+                reaped += 1
+                _log.debug("Scanner process for board '%s' exited with code %d", slug, retcode)
+    return reaped
+
+
+def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Optional[int]:
+    """Spawn an improvement scanner agent worker process for a specific board."""
+    if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN") or os.environ.get("ZEROFACTORY_SKIP_SCANNER_SPAWN"):
+        return None
+
+    import shutil
+    local_hermes = Path.home() / ".local" / "bin" / "hermes"
+    hermes_bin = (
+        os.environ.get("HERMES_BIN")
+        or shutil.which("hermes")
+        or (str(local_hermes) if local_hermes.exists() else "hermes")
+    )
+    job_id = f"zero-factory-improvement-scanner-{board_slug}"
+    # Ensure job is enabled in profile cron store before running
+    try:
+        try:
+            from .builtin_cron import toggle_builtin_job
+        except ImportError:
+            from builtin_cron import toggle_builtin_job  # type: ignore
+        toggle_builtin_job(job_id, enabled=True)
+    except Exception as e:
+        _log.debug("Pre-spawn job unpause check: %s", e)
+
+    cmd = [hermes_bin, "-p", "zf-orchestrator", "cron", "run", job_id, "--accept-hooks"]
+
+    log_dir = Path.home() / ".hermes" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file_path = log_dir / f"scanner_{board_slug}.log"
+
+    env = os.environ.copy()
+    env["HERMES_PROFILE"] = "zf-orchestrator"
+    profile_home = Path.home() / ".hermes" / "profiles" / "zf-orchestrator"
+    if profile_home.exists():
+        env["HERMES_HOME"] = str(profile_home)
+    env["PYTHONUNBUFFERED"] = "1"
+
+    workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()
+
+    try:
+        log_f = open(log_file_path, "ab")
+        proc = subprocess.Popen(
+            cmd,
+            cwd=workdir,
+            stdin=subprocess.DEVNULL,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=True,
+        )
+        log_f.close()
+        _active_scanners[board_slug] = proc
+        _log.info("Spawned idle improvement scanner for board '%s' (PID: %d, cwd: %s)", board_slug, proc.pid, workdir)
+        return proc.pid
+    except Exception as e:
+        _log.error("Failed to spawn idle improvement scanner for board '%s': %s", board_slug, e)
+        return None
+
+
+def reset_idle_scanner_state() -> None:
+    """Reset scanner state tracking (useful for test isolation)."""
+    _last_idle_scan_times.clear()
+    for slug, proc in list(_active_scanners.items()):
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+    _active_scanners.clear()
+
+
 def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Inspect all running tasks and identify any that are stuck or inactive."""
     if db_path is None:
@@ -1321,9 +1446,33 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
     dispatched = 0
     prs_opened = 0
     reaped = 0
+    scans_triggered = 0
     now = int(time.time())
 
     with _dispatcher_lock:
+        lock_path = get_dispatcher_lock_path()
+        lock_fd: Optional[int] = None
+        try:
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o666)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            if lock_fd is not None:
+                try:
+                    os.close(lock_fd)
+                except Exception:
+                    pass
+            _log.debug("Another process is currently running a Zero Factory dispatch cycle; skipping.")
+            return {"ok": True, "skipped": True, "reason": "concurrent_cycle_active"}
+        except Exception as e:
+            _log.debug("Failed to acquire cross-process lock %s: %s", lock_path, e)
+            if lock_fd is not None:
+                try:
+                    os.close(lock_fd)
+                except Exception:
+                    pass
+            lock_fd = None
+
         try:
             with sqlite3.connect(str(db_path), timeout=15.0) as conn:
                 conn.execute("PRAGMA busy_timeout=15000;")
@@ -1376,12 +1525,22 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         tenant = row["tenant"] if "tenant" in row.keys() else None
                         board_slug = row["board_slug"] if "board_slug" in row.keys() else None
 
+                        # Atomic CAS: only promote if still in 'todo' (or unassigned ready).
+                        # This prevents concurrent dispatchers from resetting a running task back to ready!
+                        cursor.execute(
+                            "UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = ? AND (status = 'todo' OR (status = 'ready' AND assignee = 'unassigned'))",
+                            (now, task_id)
+                        )
+                        if cursor.rowcount == 0:
+                            continue
+                        conn.commit()
+
                         setup_worktree(cursor, task_id, title, assignee, tenant, db_path, board_slug=board_slug)
-                        cursor.execute("UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = ?", (now, task_id))
                         cursor.execute(
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'promote', 'Promoted to ready (WIP slot available)', ?)",
                             (task_id, now)
                         )
+                        conn.commit()
                         promoted += 1
 
                 # 2.5. Reap finished workers and dispatch Ready tasks to Running
@@ -1677,6 +1836,66 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             except Exception as e:
                                 _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
 
+                # 4. Capacity-driven / Idle Improvement Scanner Check
+                reap_active_scanners()
+
+                scan_on_idle = DEFAULT_SCAN_ON_IDLE
+                idle_active_threshold = DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD
+                cooldown_seconds = DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS
+                max_todo = DEFAULT_IDLE_SCAN_MAX_TODO
+
+                try:
+                    s_rows = cursor.execute(
+                        "SELECT key, value FROM settings WHERE key IN ('scan_on_idle', 'idle_scan_active_threshold', 'idle_scan_cooldown_minutes', 'idle_scan_max_todo')"
+                    ).fetchall()
+                    for s_k, s_v in [(r["key"], r["value"]) for r in s_rows]:
+                        if s_k == "scan_on_idle":
+                            scan_on_idle = str(s_v).lower() in ("true", "1", "yes")
+                        elif s_k == "idle_scan_active_threshold":
+                            idle_active_threshold = max(1, int(s_v))
+                        elif s_k == "idle_scan_cooldown_minutes":
+                            cooldown_seconds = max(1, int(s_v)) * 60
+                        elif s_k == "idle_scan_max_todo":
+                            max_todo = max(0, int(s_v))
+                except Exception:
+                    pass
+
+                if scan_on_idle:
+                    try:
+                        b_rows = cursor.execute("SELECT slug, git_url FROM boards").fetchall()
+                    except Exception:
+                        b_rows = []
+
+                    # Count todo tasks per board to prevent backlog flooding
+                    todo_per_board: Dict[str, int] = {}
+                    try:
+                        for td_row in cursor.execute(
+                            "SELECT board_slug, COUNT(*) AS cnt FROM tasks WHERE status = 'todo' GROUP BY board_slug"
+                        ).fetchall():
+                            todo_per_board[str(td_row["board_slug"] or "")] = td_row["cnt"]
+                    except Exception:
+                        pass
+
+                    for b_row in b_rows:
+                        board_slug = str(b_row["slug"] or "")
+                        if not board_slug:
+                            continue
+                        board_active_running = running_per_board.get(board_slug, 0)
+                        board_todo_count = todo_per_board.get(board_slug, 0)
+
+                        if board_active_running < idle_active_threshold and board_todo_count < max_todo:
+                            if board_slug not in _active_scanners:
+                                last_scan = _last_idle_scan_times.get(board_slug, 0)
+                                if (now - last_scan) >= cooldown_seconds:
+                                    _last_idle_scan_times[board_slug] = now
+                                    repo_for_task = resolve_task_repo_path(cursor, board_slug, None)
+                                    pid = spawn_board_scanner(board_slug, repo_for_task)
+                                    scans_triggered += 1
+                                    _log.info(
+                                        "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %s)",
+                                        board_slug, board_active_running, idle_active_threshold, board_todo_count, pid or "skipped"
+                                    )
+
                 conn.commit()
 
             return {
@@ -1686,11 +1905,22 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 "dispatched": dispatched,
                 "reaped": reaped,
                 "prs_opened": prs_opened,
-                "message": f"Dispatch cycle complete: {unblocked} unblocked, {promoted} promoted, {dispatched} dispatched to running, {reaped} reaped, {prs_opened} PRs opened."
+                "scans_triggered": scans_triggered,
+                "message": f"Dispatch cycle complete: {unblocked} unblocked, {promoted} promoted, {dispatched} dispatched to running, {reaped} reaped, {prs_opened} PRs opened, {scans_triggered} scans triggered."
             }
         except Exception as e:
             _log.error("Error during dispatch cycle: %s", e)
             return {"ok": False, "error": str(e)}
+        finally:
+            if lock_fd is not None:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                except Exception:
+                    pass
+                try:
+                    os.close(lock_fd)
+                except Exception:
+                    pass
 
 
 def _dispatcher_loop():
@@ -1715,6 +1945,9 @@ def _dispatcher_loop():
 
 def start_background_dispatcher():
     """Start background dispatcher daemon thread if not already running."""
+    if is_worker_or_child_process():
+        _log.debug("Skipping background dispatcher in worker/child process (profile=%s)", os.environ.get("HERMES_PROFILE"))
+        return
     global _dispatcher_thread
     with _dispatcher_lock:
         if _dispatcher_thread is None or not _dispatcher_thread.is_alive():

@@ -147,10 +147,36 @@ def init_db():
                 "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('default_max_concurrent_workers', '1', ?)",
                 (now_ts,)
             )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('scan_on_idle', 'true', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', '2', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', '15', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', '2', ?)",
+                (now_ts,)
+            )
 
 # Initialize on import
 try:
     init_db()
+    if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER"):
+        try:
+            from ..dispatcher import start_background_dispatcher
+            start_background_dispatcher()
+        except Exception:
+            try:
+                from dispatcher import start_background_dispatcher  # type: ignore
+                start_background_dispatcher()
+            except Exception:
+                pass
 except Exception as e:
     _log.error("Failed to initialize Zero Factory Kanban database: %s", e)
 
@@ -277,6 +303,10 @@ class DependencyLink(BaseModel):
 class SettingsUpdate(BaseModel):
     max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in ready and running")
     default_max_concurrent_workers: Optional[int] = Field(default=None, ge=1, description="Default max concurrent running workers per board")
+    scan_on_idle: Optional[bool] = Field(default=None, description="Automatically trigger improvement scans when active workers are below threshold")
+    idle_scan_active_threshold: Optional[int] = Field(default=None, ge=1, description="Max active running workers on a board to trigger idle scan")
+    idle_scan_cooldown_minutes: Optional[int] = Field(default=None, ge=1, description="Minimum cooldown in minutes between idle improvement scans per board")
+    idle_scan_max_todo: Optional[int] = Field(default=None, ge=0, description="Max todo backlog tasks on board before suppressing idle scan")
 
 
 # --- Helper Functions --------------------------------------------------------
@@ -872,6 +902,10 @@ def delete_board(slug: str):
 
 DEFAULT_MAX_ACTIVE_TASKS = 10
 DEFAULT_MAX_CONCURRENT_WORKERS = 1
+DEFAULT_SCAN_ON_IDLE = True
+DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD = 2
+DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES = 15
+DEFAULT_IDLE_SCAN_MAX_TODO = 2
 
 @router.get("/settings")
 def get_settings():
@@ -879,6 +913,10 @@ def get_settings():
     settings = {
         "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
         "default_max_concurrent_workers": DEFAULT_MAX_CONCURRENT_WORKERS,
+        "scan_on_idle": DEFAULT_SCAN_ON_IDLE,
+        "idle_scan_active_threshold": DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
+        "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+        "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
     }
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -892,6 +930,23 @@ def get_settings():
             elif k == "default_max_concurrent_workers":
                 try:
                     settings["default_max_concurrent_workers"] = max(1, int(v))
+                except Exception:
+                    pass
+            elif k == "scan_on_idle":
+                settings["scan_on_idle"] = str(v).lower() in ("true", "1", "yes")
+            elif k == "idle_scan_active_threshold":
+                try:
+                    settings["idle_scan_active_threshold"] = max(1, int(v))
+                except Exception:
+                    pass
+            elif k == "idle_scan_cooldown_minutes":
+                try:
+                    settings["idle_scan_cooldown_minutes"] = max(1, int(v))
+                except Exception:
+                    pass
+            elif k == "idle_scan_max_todo":
+                try:
+                    settings["idle_scan_max_todo"] = max(0, int(v))
                 except Exception:
                     pass
     return {"ok": True, "settings": settings}
@@ -914,6 +969,30 @@ def update_settings(req: SettingsUpdate):
             val = str(max(1, int(req.default_max_concurrent_workers)))
             cursor.execute(
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('default_max_concurrent_workers', ?, ?)",
+                (val, now)
+            )
+        if req.scan_on_idle is not None:
+            val = "true" if req.scan_on_idle else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('scan_on_idle', ?, ?)",
+                (val, now)
+            )
+        if req.idle_scan_active_threshold is not None:
+            val = str(max(1, int(req.idle_scan_active_threshold)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', ?, ?)",
+                (val, now)
+            )
+        if req.idle_scan_cooldown_minutes is not None:
+            val = str(max(1, int(req.idle_scan_cooldown_minutes)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', ?, ?)",
+                (val, now)
+            )
+        if req.idle_scan_max_todo is not None:
+            val = str(max(0, int(req.idle_scan_max_todo)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', ?, ?)",
                 (val, now)
             )
         conn.commit()
@@ -1666,9 +1745,15 @@ def import_legacy():
 def get_builtin_cron_jobs():
     """List all built-in Zero Factory cron jobs and their current runtime status."""
     helpers = _get_cron_helpers()
+    ensure_cron = helpers[0] if len(helpers) > 0 else None
     list_cron = helpers[3] if len(helpers) > 3 else None
     if not list_cron:
         return {"ok": False, "error": "Builtin cron engine not available", "jobs": [], "count": 0}
+    if ensure_cron:
+        try:
+            ensure_cron()
+        except Exception:
+            pass
     jobs = list_cron()
     return {"ok": True, "jobs": jobs, "count": len(jobs)}
 

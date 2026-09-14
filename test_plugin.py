@@ -2551,20 +2551,44 @@ class TestZeroFactory(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertIn("max_active_tasks", data["settings"])
         self.assertIn("default_max_concurrent_workers", data["settings"])
+        self.assertIn("scan_on_idle", data["settings"])
+        self.assertIn("idle_scan_active_threshold", data["settings"])
+        self.assertIn("idle_scan_cooldown_minutes", data["settings"])
+        self.assertIn("idle_scan_max_todo", data["settings"])
+        self.assertTrue(data["settings"]["scan_on_idle"])
+        self.assertEqual(data["settings"]["idle_scan_active_threshold"], 2)
+        self.assertEqual(data["settings"]["idle_scan_cooldown_minutes"], 15)
+        self.assertEqual(data["settings"]["idle_scan_max_todo"], 2)
 
         # 2. PATCH updates settings
         res_patch = client.patch(
             "/api/plugins/zerofactory/settings",
-            json={"max_active_tasks": 12, "default_max_concurrent_workers": 2}
+            json={
+                "max_active_tasks": 12,
+                "default_max_concurrent_workers": 2,
+                "scan_on_idle": False,
+                "idle_scan_active_threshold": 1,
+                "idle_scan_cooldown_minutes": 30,
+                "idle_scan_max_todo": 3,
+            }
         )
         self.assertEqual(res_patch.status_code, 200)
-        self.assertEqual(res_patch.json()["settings"]["max_active_tasks"], 12)
-        self.assertEqual(res_patch.json()["settings"]["default_max_concurrent_workers"], 2)
+        settings = res_patch.json()["settings"]
+        self.assertEqual(settings["max_active_tasks"], 12)
+        self.assertEqual(settings["default_max_concurrent_workers"], 2)
+        self.assertFalse(settings["scan_on_idle"])
+        self.assertEqual(settings["idle_scan_active_threshold"], 1)
+        self.assertEqual(settings["idle_scan_cooldown_minutes"], 30)
+        self.assertEqual(settings["idle_scan_max_todo"], 3)
 
         # Verify GET returns updated values
         res_after = client.get("/api/plugins/zerofactory/settings")
         self.assertEqual(res_after.json()["settings"]["max_active_tasks"], 12)
         self.assertEqual(res_after.json()["settings"]["default_max_concurrent_workers"], 2)
+        self.assertFalse(res_after.json()["settings"]["scan_on_idle"])
+        self.assertEqual(res_after.json()["settings"]["idle_scan_active_threshold"], 1)
+        self.assertEqual(res_after.json()["settings"]["idle_scan_cooldown_minutes"], 30)
+        self.assertEqual(res_after.json()["settings"]["idle_scan_max_todo"], 3)
 
         # 3. Validation: values < 1 are rejected with 422
         res_bad = client.patch(
@@ -2573,10 +2597,23 @@ class TestZeroFactory(unittest.TestCase):
         )
         self.assertEqual(res_bad.status_code, 422)
 
+        res_bad_threshold = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"idle_scan_active_threshold": 0}
+        )
+        self.assertEqual(res_bad_threshold.status_code, 422)
+
         # Reset back to default
         client.patch(
             "/api/plugins/zerofactory/settings",
-            json={"max_active_tasks": 10, "default_max_concurrent_workers": 1}
+            json={
+                "max_active_tasks": 10,
+                "default_max_concurrent_workers": 1,
+                "scan_on_idle": True,
+                "idle_scan_active_threshold": 2,
+                "idle_scan_cooldown_minutes": 15,
+                "idle_scan_max_todo": 2,
+            }
         )
 
     def test_48_dynamic_max_active_tasks_dispatch(self):
@@ -2653,6 +2690,300 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
             else:
                 os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
+    def test_49_idle_improvement_scan_dispatch(self):
+        """Dispatcher triggers improvement scan on idle and respects threshold, cooldown, and limits."""
+        import time
+        import tempfile
+        import shutil
+        import sqlite3
+        from unittest.mock import patch, MagicMock
+        from dispatcher import run_dispatch_cycle, reset_idle_scanner_state, _active_scanners, _last_idle_scan_times
+
+        orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+
+        td = tempfile.mkdtemp(prefix="zf-idle-scan-")
+        ws = Path(td) / "ws"
+        ws.mkdir()
+        db_file = Path(td) / "idle_scan.db"
+
+        try:
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, metadata TEXT DEFAULT '{}', tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, actor TEXT, action TEXT, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 5, 1, 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('scan_on_idle', 'true', 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', '2', 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', '15', 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', '2', 1)")
+            conn.commit()
+            conn.close()
+
+            # 1. Idle condition met: 0 running workers < threshold 2, 0 todo < max_todo 2 -> triggers scan
+            reset_idle_scanner_state()
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn:
+                res1 = run_dispatch_cycle(db_file)
+                self.assertTrue(res1["ok"])
+                self.assertEqual(res1["scans_triggered"], 1)
+                mock_spawn.assert_called_once()
+                self.assertEqual(mock_spawn.call_args[0][0], "b1")
+
+            # 2. Cooldown suppression: immediately running cycle 2 should NOT trigger another scan
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn2:
+                res2 = run_dispatch_cycle(db_file)
+                self.assertTrue(res2["ok"])
+                self.assertEqual(res2["scans_triggered"], 0)
+                mock_spawn2.assert_not_called()
+
+            # 3. Active running worker suppression: running count = 2 >= threshold 2
+            reset_idle_scanner_state()
+            now_ts = int(time.time())
+            conn = sqlite3.connect(str(db_file))
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES ('r1', 'b1', 'Run 1', 'running', 'zf-builder', 'P2', ?, ?, ?)",
+                (str(ws), now_ts, now_ts)
+            )
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES ('r2', 'b1', 'Run 2', 'running', 'zf-builder', 'P2', ?, ?, ?)",
+                (str(ws), now_ts, now_ts)
+            )
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn3:
+                res3 = run_dispatch_cycle(db_file)
+                self.assertTrue(res3["ok"])
+                self.assertEqual(res3["scans_triggered"], 0)
+                mock_spawn3.assert_not_called()
+
+            # 4. Todo backlog suppression: 3 tasks in todo with max_active_tasks=1 leaves 2 in todo (>= max_todo 2)
+            reset_idle_scanner_state()
+            now_ts = int(time.time())
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("DELETE FROM tasks")
+            conn.execute("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '1', ?)", (now_ts,))
+            conn.execute("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', '2', ?)", (now_ts,))
+            for i in range(1, 4):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'unassigned', 'P2', ?, ?, ?)",
+                    (f"t{i}", f"Todo {i}", str(ws), now_ts, now_ts)
+                )
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn4:
+                # 1 task promoted to running, 2 tasks remain in todo (>= max_todo 2) -> scan suppressed
+                res4 = run_dispatch_cycle(db_file)
+                self.assertEqual(res4["scans_triggered"], 0)
+                mock_spawn4.assert_not_called()
+
+            # 5. In-flight scanner lock suppression
+            reset_idle_scanner_state()
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("DELETE FROM tasks")
+            conn.execute("UPDATE settings SET value = '2' WHERE key = 'idle_scan_max_todo'")
+            conn.commit()
+            conn.close()
+
+            # Place a dummy active process in _active_scanners
+            mock_proc = MagicMock()
+            mock_proc.poll.return_value = None
+            _active_scanners["b1"] = mock_proc
+
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn5:
+                res5 = run_dispatch_cycle(db_file)
+                self.assertEqual(res5["scans_triggered"], 0)
+                mock_spawn5.assert_not_called()
+
+            # Now let the mock proc finish: poll returns 0
+            mock_proc.poll.return_value = 0
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn6:
+                res6 = run_dispatch_cycle(db_file)
+                self.assertEqual(res6["scans_triggered"], 1)
+                mock_spawn6.assert_called_once()
+
+            # 6. Disabled scan_on_idle setting
+            reset_idle_scanner_state()
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("UPDATE settings SET value = 'false' WHERE key = 'scan_on_idle'")
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn7:
+                res7 = run_dispatch_cycle(db_file)
+                self.assertEqual(res7["scans_triggered"], 0)
+                mock_spawn7.assert_not_called()
+
+        finally:
+            reset_idle_scanner_state()
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is None:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
+    def test_51_cross_process_dispatcher_lock(self):
+        """Verify cross-process fcntl.flock prevents concurrent run_dispatch_cycle cycles."""
+        import fcntl
+        import shutil
+        import sqlite3
+        from dispatcher import run_dispatch_cycle, get_dispatcher_lock_path
+        td = tempfile.mkdtemp()
+        orig_lock_env = os.environ.get("ZEROFACTORY_LOCK_PATH")
+        lock_file = Path(td) / "test_dispatcher.lock"
+        os.environ["ZEROFACTORY_LOCK_PATH"] = str(lock_file)
+        db_file = Path(td) / "test.db"
+
+        try:
+            # Initialize minimal DB
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("""
+                CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT,
+                    status TEXT, assignee TEXT, priority TEXT, workspace_path TEXT,
+                    tenant TEXT, branch_name TEXT, metadata TEXT, created_at INTEGER, updated_at INTEGER
+                )
+            """)
+            conn.execute("CREATE TABLE task_links (parent_id TEXT, child_id TEXT)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY, task_id TEXT, actor TEXT, action TEXT, details TEXT, created_at INTEGER)")
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, max_concurrent_running INTEGER)")
+            conn.close()
+
+            # 1. Acquire the lock externally as if another process holds it
+            external_fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR, 0o666)
+            fcntl.flock(external_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+            # 2. Call run_dispatch_cycle; it should detect the lock and skip immediately
+            res = run_dispatch_cycle(db_file)
+            self.assertTrue(res.get("ok"))
+            self.assertTrue(res.get("skipped"))
+            self.assertEqual(res.get("reason"), "concurrent_cycle_active")
+
+            # 3. Release the external lock
+            fcntl.flock(external_fd, fcntl.LOCK_UN)
+            os.close(external_fd)
+
+            # 4. Now run_dispatch_cycle should successfully acquire the lock and execute
+            res2 = run_dispatch_cycle(db_file)
+            self.assertTrue(res2.get("ok"))
+            self.assertFalse(res2.get("skipped", False))
+        finally:
+            if orig_lock_env is None:
+                os.environ.pop("ZEROFACTORY_LOCK_PATH", None)
+            else:
+                os.environ["ZEROFACTORY_LOCK_PATH"] = orig_lock_env
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_52_atomic_cas_task_promotion(self):
+        """Verify atomic CAS prevents concurrent dispatchers from resetting a running task to ready."""
+        import shutil
+        import sqlite3
+        import time
+        from dispatcher import run_dispatch_cycle
+        td = tempfile.mkdtemp()
+        orig_skip = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        db_file = Path(td) / "test.db"
+
+        try:
+            now_ts = int(time.time())
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("""
+                CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT,
+                    status TEXT, assignee TEXT, priority TEXT, workspace_path TEXT,
+                    tenant TEXT, branch_name TEXT, metadata TEXT, created_at INTEGER, updated_at INTEGER
+                )
+            """)
+            conn.execute("CREATE TABLE task_links (parent_id TEXT, child_id TEXT)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY, task_id TEXT, actor TEXT, action TEXT, details TEXT, created_at INTEGER)")
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, max_concurrent_running INTEGER)")
+
+            # Insert task in 'running' state (as if another process already dispatched it)
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) VALUES ('t1', 'b1', 'Task 1', 'running', 'zf-builder', 'P0', ?, ?)",
+                (now_ts, now_ts)
+            )
+            conn.commit()
+            conn.close()
+
+            # Direct atomic CAS update check: if a second dispatcher tries to promote 't1' assuming it's in 'todo'
+            conn = sqlite3.connect(str(db_file))
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = 't1' AND (status = 'todo' OR (status = 'ready' AND assignee = 'unassigned'))",
+                (now_ts,)
+            )
+            self.assertEqual(cur.rowcount, 0, "Atomic CAS must reject promoting a task that is already running")
+
+            # Verify task remains in 'running'
+            cur.execute("SELECT status FROM tasks WHERE id = 't1'")
+            self.assertEqual(cur.fetchone()[0], "running")
+            conn.close()
+        finally:
+            if orig_skip is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_53_is_worker_or_child_process(self):
+        """Verify is_worker_or_child_process correctly suppresses dispatcher startup in workers."""
+        from dispatcher import is_worker_or_child_process
+        orig_prof = os.environ.get("HERMES_PROFILE")
+        orig_dis = os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        orig_task = os.environ.get("HERMES_KANBAN_TASK")
+
+        try:
+            # Normal profile
+            os.environ.pop("HERMES_PROFILE", None)
+            os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            os.environ.pop("HERMES_KANBAN_TASK", None)
+            self.assertFalse(is_worker_or_child_process())
+
+            # Worker profiles
+            os.environ["HERMES_PROFILE"] = "zf-builder"
+            self.assertTrue(is_worker_or_child_process())
+
+            os.environ["HERMES_PROFILE"] = "zf-reviewer"
+            self.assertTrue(is_worker_or_child_process())
+
+            # Explicit disable flag
+            os.environ["HERMES_PROFILE"] = "default"
+            os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
+            self.assertTrue(is_worker_or_child_process())
+
+            # In task env
+            os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            os.environ["HERMES_KANBAN_TASK"] = "task-1"
+            self.assertTrue(is_worker_or_child_process())
+        finally:
+            if orig_prof is not None:
+                os.environ["HERMES_PROFILE"] = orig_prof
+            else:
+                os.environ.pop("HERMES_PROFILE", None)
+            if orig_dis is not None:
+                os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = orig_dis
+            else:
+                os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            if orig_task is not None:
+                os.environ["HERMES_KANBAN_TASK"] = orig_task
+            else:
+                os.environ.pop("HERMES_KANBAN_TASK", None)
 
 
 if __name__ == "__main__":

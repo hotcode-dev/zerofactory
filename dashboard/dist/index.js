@@ -85,7 +85,11 @@
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [settingsForm, setSettingsForm] = useState({
       max_active_tasks: 10,
-      default_max_concurrent_workers: 1
+      default_max_concurrent_workers: 1,
+      scan_on_idle: true,
+      idle_scan_active_threshold: 2,
+      idle_scan_cooldown_minutes: 15,
+      idle_scan_max_todo: 2
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [cronJobs, setCronJobs] = useState([]);
@@ -138,7 +142,11 @@
         if (data && data.settings) {
           setSettingsForm({
             max_active_tasks: data.settings.max_active_tasks ?? 10,
-            default_max_concurrent_workers: data.settings.default_max_concurrent_workers ?? 1
+            default_max_concurrent_workers: data.settings.default_max_concurrent_workers ?? 1,
+            scan_on_idle: data.settings.scan_on_idle ?? true,
+            idle_scan_active_threshold: data.settings.idle_scan_active_threshold ?? 2,
+            idle_scan_cooldown_minutes: data.settings.idle_scan_cooldown_minutes ?? 15,
+            idle_scan_max_todo: data.settings.idle_scan_max_todo ?? 2
           });
         }
       } catch (e) {
@@ -152,7 +160,11 @@
       try {
         const payload = {
           max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
-          default_max_concurrent_workers: Math.max(1, parseInt(settingsForm.default_max_concurrent_workers, 10) || 1)
+          default_max_concurrent_workers: Math.max(1, parseInt(settingsForm.default_max_concurrent_workers, 10) || 1),
+          scan_on_idle: Boolean(settingsForm.scan_on_idle),
+          idle_scan_active_threshold: Math.max(1, parseInt(settingsForm.idle_scan_active_threshold, 10) || 2),
+          idle_scan_cooldown_minutes: Math.max(1, parseInt(settingsForm.idle_scan_cooldown_minutes, 10) || 15),
+          idle_scan_max_todo: Math.max(0, parseInt(settingsForm.idle_scan_max_todo, 10) || 0)
         };
         const res = await fetchJSON(API_BASE + "/settings", {
           method: "PATCH",
@@ -162,7 +174,11 @@
         if (res && res.settings) {
           setSettingsForm({
             max_active_tasks: res.settings.max_active_tasks ?? 10,
-            default_max_concurrent_workers: res.settings.default_max_concurrent_workers ?? 1
+            default_max_concurrent_workers: res.settings.default_max_concurrent_workers ?? 1,
+            scan_on_idle: res.settings.scan_on_idle ?? true,
+            idle_scan_active_threshold: res.settings.idle_scan_active_threshold ?? 2,
+            idle_scan_cooldown_minutes: res.settings.idle_scan_cooldown_minutes ?? 15,
+            idle_scan_max_todo: res.settings.idle_scan_max_todo ?? 2
           });
         }
         showToast("Global settings saved successfully!", "success");
@@ -933,7 +949,7 @@
                   title: "Decompose & Scan",
                   badge: "Todo",
                   bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
-                  desc: "zf-orchestrator decomposes Triage epics AND scans the codebase project every 60m to create actionable TODO tasks."
+                  desc: "zf-orchestrator decomposes Triage epics AND scans the codebase project on idle to create actionable TODO tasks."
                 },
                 {
                   num: "3",
@@ -1313,7 +1329,7 @@
         {
           id: "zero-factory-improvement-scanner-{slug}",
           title: "Codebase Improvement Scanner (zf-orchestrator)",
-          interval: "Every 60 minutes per board",
+          interval: "On Idle (Active < 2)",
           tokens: "0 Tokens on Unchanged Codebase",
           desc: "Executed autonomously by zf-orchestrator inside the codebase workdir using wake-gate change detection (scripts/zf_scanner_gate.py) with independent sessions (continuity: false). Compares Git HEAD against ~/.hermes/scanner_state.json. If unchanged, emits {'wakeAgent': false} (0 tokens). When changes, tech debt, or missing tests exist, zf-orchestrator analyzes the project and creates at most 1 actionable TODO task directly on the board assigned to zf-builder.",
           badge: "Wake-Gate • zf-orchestrator"
@@ -2992,6 +3008,75 @@
               ),
               React.createElement(
                 "div",
+                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-between" },
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Capacity-Driven Idle Improvement Scanning"),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Autonomously scan codebases when running agent workers drop below threshold.")
+                  ),
+                  React.createElement(
+                    "input",
+                    {
+                      type: "checkbox",
+                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                      checked: Boolean(settingsForm.scan_on_idle),
+                      onChange: (e) => setSettingsForm({ ...settingsForm, scan_on_idle: e.target.checked })
+                    }
+                  )
+                ),
+                settingsForm.scan_on_idle && React.createElement(
+                  "div",
+                  { className: "grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1" },
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" },
+                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Active Threshold (< N)"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 1,
+                      step: 1,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                      value: settingsForm.idle_scan_active_threshold ?? 2,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_active_threshold: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Triggers when running workers < this (e.g. 1 or 2).")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" },
+                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Cooldown (Minutes)"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 1,
+                      step: 1,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                      value: settingsForm.idle_scan_cooldown_minutes ?? 15,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_cooldown_minutes: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Minimum interval between scans per board.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" },
+                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Max Todo Limit"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 0,
+                      step: 1,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                      value: settingsForm.idle_scan_max_todo ?? 2,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_max_todo: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Suppresses scan if todo backlog >= this.")
+                  )
+                )
+              ),
+              React.createElement(
+                "div",
                 { className: "flex justify-end gap-2.5 pt-3 border-t border-slate-800/80" },
                 React.createElement(
                   "button",
@@ -3184,7 +3269,7 @@
                       React.createElement(
                         "span",
                         { className: "px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 font-mono text-[11px] text-indigo-300 font-medium" },
-                        "⏱️ " + (job.schedule_display || "Every 60m")
+                        "⏱️ " + (job.schedule_display || "On Idle")
                       ),
                       // Status pill
                       React.createElement(
