@@ -55,21 +55,41 @@ from typing import Any, Dict, List, Optional
 
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
 
+# Kanban WIP Limit: Maximum total active tasks across all boards permitted in ('ready', 'running').
+# Controls Step 2 promotion from 'todo' -> 'ready' and git worktree pre-provisioning to avoid queue flooding.
 MAX_ACTIVE_TASKS = 3
+
+# Worker Concurrency Limit: Fallback cap for concurrent active agent worker subprocesses ('running').
+# Can be overridden globally via the ZEROFACTORY_MAX_RUNNING_WORKERS environment variable, or
+# configured on a per-board basis via the boards.max_concurrent_running column in the UI/DB.
 MAX_CONCURRENT_WORKERS = int(os.environ.get("ZEROFACTORY_MAX_RUNNING_WORKERS", "1"))
+
+# Maximum wall-clock execution duration (in seconds) before an active task worker is terminated as stuck.
 DEFAULT_TASK_TIMEOUT_SECONDS = 3600  # 1 hour max running time
+
+# Maximum idle duration (in seconds) with no log output or session updates before an agent worker is reaped.
 DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 900  # 15 mins with no log/session update
+
+# Interval (in seconds) between background dispatcher polling cycles.
 DISPATCH_INTERVAL_SECONDS = 30
+
+# Background thread handle running the continuous dispatch loop.
 _dispatcher_thread: Optional[threading.Thread] = None
+
+# Global re-entrant lock ensuring only one dispatch cycle executes at any given time.
 _dispatcher_lock = threading.Lock()
+
+# Registry tracking active worker subprocesses keyed by task_id: {task_id: subprocess.Popen}.
 _active_workers: Dict[str, subprocess.Popen] = {}
 
+# Canonical alias mapping to standardize task assignees to recognized agent profiles.
 PROFILE_MAP = {
     "zf-builder": "zf-builder",
     "zf-reviewer": "zf-reviewer",
     "zf-orchestrator": "zf-orchestrator",
 }
 
+# Tuple of all valid agent specialist profiles supported by the dispatcher.
 VALID_PROFILES = ("zf-builder", "zf-reviewer", "zf-orchestrator")
 
 
