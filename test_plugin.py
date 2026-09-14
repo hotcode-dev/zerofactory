@@ -2822,6 +2822,30 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertEqual(res7["scans_triggered"], 0)
                 mock_spawn7.assert_not_called()
 
+            # 7. Failed spawn (returns None) must NOT consume the cooldown or count as triggered
+            reset_idle_scanner_state()
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("DELETE FROM tasks")
+            conn.execute("UPDATE settings SET value = 'true' WHERE key = 'scan_on_idle'")
+            conn.execute("UPDATE settings SET value = '2' WHERE key = 'idle_scan_max_todo'")
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=None) as mock_spawn8:
+                res8 = run_dispatch_cycle(db_file)
+                self.assertTrue(res8["ok"])
+                self.assertEqual(res8["scans_triggered"], 0)
+                # Spawn was attempted (idle conditions met) but failed: cooldown must be untouched
+                mock_spawn8.assert_called_once()
+                self.assertNotIn("b1", _last_idle_scan_times)
+
+            # 8. Next cycle (still within the nominal cooldown window): successful spawn IS triggered
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn9:
+                res9 = run_dispatch_cycle(db_file)
+                self.assertEqual(res9["scans_triggered"], 1)
+                mock_spawn9.assert_called_once()
+                self.assertIn("b1", _last_idle_scan_times)
+
         finally:
             reset_idle_scanner_state()
             shutil.rmtree(td, ignore_errors=True)

@@ -1887,14 +1887,23 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             if board_slug not in _active_scanners:
                                 last_scan = _last_idle_scan_times.get(board_slug, 0)
                                 if (now - last_scan) >= cooldown_seconds:
-                                    _last_idle_scan_times[board_slug] = now
                                     repo_for_task = resolve_task_repo_path(cursor, board_slug, None)
                                     pid = spawn_board_scanner(board_slug, repo_for_task)
-                                    scans_triggered += 1
-                                    _log.info(
-                                        "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %s)",
-                                        board_slug, board_active_running, idle_active_threshold, board_todo_count, pid or "skipped"
-                                    )
+                                    if pid is not None:
+                                        # Consume the cooldown and count the scan only when a
+                                        # scanner process actually started, so a transient spawn
+                                        # failure does not lock the board out for the cooldown.
+                                        _last_idle_scan_times[board_slug] = now
+                                        scans_triggered += 1
+                                        _log.info(
+                                            "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %d)",
+                                            board_slug, board_active_running, idle_active_threshold, board_todo_count, pid
+                                        )
+                                    else:
+                                        _log.warning(
+                                            "Idle improvement scan spawn failed for board '%s'; cooldown NOT consumed, will retry next cycle",
+                                            board_slug
+                                        )
 
                 conn.commit()
 
