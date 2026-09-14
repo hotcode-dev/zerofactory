@@ -82,6 +82,12 @@
     const [showNewBoardModal, setShowNewBoardModal] = useState(false);
     const [showEditBoardModal, setShowEditBoardModal] = useState(false);
     const [showCronModal, setShowCronModal] = useState(false);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [settingsForm, setSettingsForm] = useState({
+      max_active_tasks: 10,
+      default_max_concurrent_workers: 1
+    });
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [cronJobs, setCronJobs] = useState([]);
     const [loadingCron, setLoadingCron] = useState(false);
     const [cronFilterTab, setCronFilterTab] = useState("all");
@@ -124,6 +130,48 @@
       setCreateBoardError("");
       setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1 });
       setShowNewBoardModal(true);
+    };
+
+    const loadSettings = useCallback(async () => {
+      try {
+        const data = await fetchJSON(API_BASE + "/settings");
+        if (data && data.settings) {
+          setSettingsForm({
+            max_active_tasks: data.settings.max_active_tasks ?? 10,
+            default_max_concurrent_workers: data.settings.default_max_concurrent_workers ?? 1
+          });
+        }
+      } catch (e) {
+        console.error("Failed to load settings", e);
+      }
+    }, []);
+
+    const handleSaveSettings = async (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      setIsSavingSettings(true);
+      try {
+        const payload = {
+          max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
+          default_max_concurrent_workers: Math.max(1, parseInt(settingsForm.default_max_concurrent_workers, 10) || 1)
+        };
+        const res = await fetchJSON(API_BASE + "/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (res && res.settings) {
+          setSettingsForm({
+            max_active_tasks: res.settings.max_active_tasks ?? 10,
+            default_max_concurrent_workers: res.settings.default_max_concurrent_workers ?? 1
+          });
+        }
+        showToast("Global settings saved successfully!", "success");
+        setShowSettingsModal(false);
+      } catch (err) {
+        showToast("Failed to save settings: " + (err.message || String(err)), "error");
+      } finally {
+        setIsSavingSettings(false);
+      }
     };
 
     // Toast helper
@@ -322,7 +370,8 @@
       loadBoards();
       loadTasksAndStats(selectedBoard);
       loadCronJobs();
-    }, [loadBoards, loadTasksAndStats, selectedBoard, loadCronJobs]);
+      loadSettings();
+    }, [loadBoards, loadTasksAndStats, selectedBoard, loadCronJobs, loadSettings]);
 
     // Auto-refresh interval
     useEffect(() => {
@@ -1522,6 +1571,18 @@
                   },
                   cronJobs.filter((j) => j.enabled).length + "/" + cronJobs.length
                 )
+            ),
+            React.createElement(
+              "button",
+              {
+                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
+                onClick: () => {
+                  loadSettings();
+                  setShowSettingsModal(true);
+                },
+                title: "Global Zero Factory configuration (WIP limits, worker caps)"
+              },
+              "⚙️ Settings"
             ),
             React.createElement(
               "button",
@@ -2855,6 +2916,100 @@
                     className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
                   },
                   "Save Changes"
+                )
+              )
+            )
+          )
+        ),
+
+      // Global Settings Modal
+      showSettingsModal &&
+        React.createElement(
+          "div",
+          {
+            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
+            onClick: () => setShowSettingsModal(false)
+          },
+          React.createElement(
+            "div",
+            {
+              className: "bg-slate-900 border border-slate-800 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden text-slate-100",
+              onClick: (e) => e.stopPropagation()
+            },
+            React.createElement(
+              "div",
+              { className: "flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/50" },
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-2.5" },
+                React.createElement("span", { className: "text-lg" }, "⚙️"),
+                React.createElement(
+                  "div",
+                  null,
+                  React.createElement("h3", { className: "text-sm font-semibold text-white tracking-tight" }, "Zero Factory Global Settings"),
+                  React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "System-wide orchestration limits and defaults")
+                )
+              ),
+              React.createElement(
+                "button",
+                {
+                  className: "text-slate-400 hover:text-slate-200 transition-colors cursor-pointer",
+                  onClick: () => setShowSettingsModal(false)
+                },
+                "✕"
+              )
+            ),
+            React.createElement(
+              "form",
+              { onSubmit: handleSaveSettings, className: "p-5 space-y-4 text-xs" },
+              React.createElement(
+                "div",
+                { className: "space-y-1.5" },
+                React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Max Active Tasks (WIP Limit)"),
+                React.createElement("input", {
+                  type: "number",
+                  min: 1,
+                  step: 1,
+                  className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                  value: settingsForm.max_active_tasks ?? 10,
+                  onChange: (e) => setSettingsForm({ ...settingsForm, max_active_tasks: e.target.value })
+                }),
+                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps total tasks allowed in 'ready' and 'running' across all boards combined. Controls how many git worktrees are prepared from 'todo' to prevent queue and disk flooding. Default: 10.")
+              ),
+              React.createElement(
+                "div",
+                { className: "space-y-1.5" },
+                React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Default Max Concurrent Workers"),
+                React.createElement("input", {
+                  type: "number",
+                  min: 1,
+                  step: 1,
+                  className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                  value: settingsForm.default_max_concurrent_workers ?? 1,
+                  onChange: (e) => setSettingsForm({ ...settingsForm, default_max_concurrent_workers: e.target.value })
+                }),
+                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Fallback concurrent running agent limit for boards that do not specify a custom running cap. Default: 1.")
+              ),
+              React.createElement(
+                "div",
+                { className: "flex justify-end gap-2.5 pt-3 border-t border-slate-800/80" },
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                    onClick: () => setShowSettingsModal(false)
+                  },
+                  "Cancel"
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    type: "submit",
+                    disabled: isSavingSettings,
+                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+                  },
+                  isSavingSettings ? "Saving..." : "Save Settings"
                 )
               )
             )

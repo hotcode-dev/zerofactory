@@ -2542,6 +2542,118 @@ class TestZeroFactory(unittest.TestCase):
             else:
                 os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
 
+    def test_47_global_settings_api(self):
+        """Global settings API supports GET and PATCH with validation."""
+        # 1. GET returns defaults
+        res = client.get("/api/plugins/zerofactory/settings")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertIn("max_active_tasks", data["settings"])
+        self.assertIn("default_max_concurrent_workers", data["settings"])
+
+        # 2. PATCH updates settings
+        res_patch = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"max_active_tasks": 12, "default_max_concurrent_workers": 2}
+        )
+        self.assertEqual(res_patch.status_code, 200)
+        self.assertEqual(res_patch.json()["settings"]["max_active_tasks"], 12)
+        self.assertEqual(res_patch.json()["settings"]["default_max_concurrent_workers"], 2)
+
+        # Verify GET returns updated values
+        res_after = client.get("/api/plugins/zerofactory/settings")
+        self.assertEqual(res_after.json()["settings"]["max_active_tasks"], 12)
+        self.assertEqual(res_after.json()["settings"]["default_max_concurrent_workers"], 2)
+
+        # 3. Validation: values < 1 are rejected with 422
+        res_bad = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"max_active_tasks": 0}
+        )
+        self.assertEqual(res_bad.status_code, 422)
+
+        # Reset back to default
+        client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"max_active_tasks": 10, "default_max_concurrent_workers": 1}
+        )
+
+    def test_48_dynamic_max_active_tasks_dispatch(self):
+        """Dispatcher dynamically respects max_active_tasks from settings table."""
+        import tempfile
+        import shutil
+        import sqlite3
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        td = tempfile.mkdtemp(prefix="zf-max-active-")
+        ws = Path(td) / "ws"
+        ws.mkdir()
+        db_file = Path(td) / "max_active.db"
+        try:
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, metadata TEXT DEFAULT '{}', tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, actor TEXT, action TEXT, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 10, 1, 1)")
+            # Set max_active_tasks limit to 2
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '2', 1)")
+            # Create 5 tasks in 'todo'
+            for i in range(1, 6):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'unassigned', 'P2', ?, 1000, 1000)",
+                    (f"task-{i}", f"Task {i}", str(ws)),
+                )
+            conn.commit()
+            conn.close()
+
+            # Cycle 1: with max_active_tasks = 2, only 2 tasks should be promoted from todo to ready
+            res = run_dispatch_cycle(db_file)
+            self.assertTrue(res["ok"])
+            conn = sqlite3.connect(str(db_file))
+            todo_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
+            # Since board max_concurrent_running is 10 and worker spawn is skipped,
+            # the 2 promoted tasks will move to ready and then running
+            active_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')").fetchone()[0]
+            conn.close()
+            self.assertEqual(active_count, 2, f"expected exactly 2 active tasks promoted, got {active_count}")
+            self.assertEqual(todo_count, 3, f"expected 3 tasks to remain in todo, got {todo_count}")
+
+            # Raise max_active_tasks to 4 in settings
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("UPDATE settings SET value = '4' WHERE key = 'max_active_tasks'")
+            conn.commit()
+            conn.close()
+
+            # Cycle 2: 2 more tasks should be promoted from todo
+            res2 = run_dispatch_cycle(db_file)
+            self.assertTrue(res2["ok"])
+            conn = sqlite3.connect(str(db_file))
+            active_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')").fetchone()[0]
+            todo_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
+            conn.close()
+            self.assertEqual(active_count2, 4, f"expected 4 active tasks under limit 4, got {active_count2}")
+            self.assertEqual(todo_count2, 1, f"expected 1 task to remain in todo, got {todo_count2}")
+
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is None:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
 
 if __name__ == "__main__":
     unittest.main()

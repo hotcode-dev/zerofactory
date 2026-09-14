@@ -116,6 +116,12 @@ def init_db():
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_slug, status);
             CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
@@ -130,6 +136,17 @@ def init_db():
                 conn.execute(
                     "ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER NOT NULL DEFAULT 1"
                 )
+
+            # Seed default global settings if missing
+            now_ts = int(time.time())
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '10', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('default_max_concurrent_workers', '1', ?)",
+                (now_ts,)
+            )
 
 # Initialize on import
 try:
@@ -256,6 +273,10 @@ class CommentCreate(BaseModel):
 class DependencyLink(BaseModel):
     parent_id: str
     child_id: str
+
+class SettingsUpdate(BaseModel):
+    max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in ready and running")
+    default_max_concurrent_workers: Optional[int] = Field(default=None, ge=1, description="Default max concurrent running workers per board")
 
 
 # --- Helper Functions --------------------------------------------------------
@@ -845,6 +866,59 @@ def delete_board(slug: str):
                 _log.warning("Failed to sync cron jobs after deleting board %s: %s", slug, e)
 
     return {"ok": True, "deleted": slug}
+
+
+# --- Global Settings Endpoints -----------------------------------------------
+
+DEFAULT_MAX_ACTIVE_TASKS = 10
+DEFAULT_MAX_CONCURRENT_WORKERS = 1
+
+@router.get("/settings")
+def get_settings():
+    """Retrieve global Zero Factory settings."""
+    settings = {
+        "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
+        "default_max_concurrent_workers": DEFAULT_MAX_CONCURRENT_WORKERS,
+    }
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        for row in cursor.execute("SELECT key, value FROM settings").fetchall():
+            k, v = row["key"], row["value"]
+            if k == "max_active_tasks":
+                try:
+                    settings["max_active_tasks"] = max(1, int(v))
+                except Exception:
+                    pass
+            elif k == "default_max_concurrent_workers":
+                try:
+                    settings["default_max_concurrent_workers"] = max(1, int(v))
+                except Exception:
+                    pass
+    return {"ok": True, "settings": settings}
+
+
+@router.patch("/settings")
+@router.put("/settings")
+def update_settings(req: SettingsUpdate):
+    """Update global Zero Factory settings."""
+    now = int(time.time())
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        if req.max_active_tasks is not None:
+            val = str(max(1, int(req.max_active_tasks)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', ?, ?)",
+                (val, now)
+            )
+        if req.default_max_concurrent_workers is not None:
+            val = str(max(1, int(req.default_max_concurrent_workers)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('default_max_concurrent_workers', ?, ?)",
+                (val, now)
+            )
+        conn.commit()
+
+    return get_settings()
 
 
 # --- Task Endpoints ----------------------------------------------------------

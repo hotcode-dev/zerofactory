@@ -55,14 +55,14 @@ from typing import Any, Dict, List, Optional
 
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
 
-# Kanban WIP Limit: Maximum total active tasks across all boards permitted in ('ready', 'running').
+# Kanban WIP Limit: Default maximum total active tasks across all boards permitted in ('ready', 'running').
 # Controls Step 2 promotion from 'todo' -> 'ready' and git worktree pre-provisioning to avoid queue flooding.
-MAX_ACTIVE_TASKS = 3
+# Can be customized in the UI settings (persisted in the settings table).
+DEFAULT_MAX_ACTIVE_TASKS = 10
 
 # Worker Concurrency Limit: Fallback cap for concurrent active agent worker subprocesses ('running').
-# Can be overridden globally via the ZEROFACTORY_MAX_RUNNING_WORKERS environment variable, or
-# configured on a per-board basis via the boards.max_concurrent_running column in the UI/DB.
-MAX_CONCURRENT_WORKERS = int(os.environ.get("ZEROFACTORY_MAX_RUNNING_WORKERS", "1"))
+# Defaults to 1; customized per board via the boards.max_concurrent_running column in the UI/DB.
+DEFAULT_MAX_CONCURRENT_WORKERS = 1
 
 # Maximum wall-clock execution duration (in seconds) before an active task worker is terminated as stuck.
 DEFAULT_TASK_TIMEOUT_SECONDS = 3600  # 1 hour max running time
@@ -1350,11 +1350,19 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     unblocked += 1
 
                 # 2. Promote Todo to Ready respecting WIP Limit
+                max_active_tasks = DEFAULT_MAX_ACTIVE_TASKS
+                try:
+                    s_row = cursor.execute("SELECT value FROM settings WHERE key = 'max_active_tasks'").fetchone()
+                    if s_row and s_row[0]:
+                        max_active_tasks = max(1, int(s_row[0]))
+                except Exception:
+                    pass
+
                 cursor.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')")
                 active_count = cursor.fetchone()[0]
 
-                if active_count < MAX_ACTIVE_TASKS:
-                    limit = MAX_ACTIVE_TASKS - active_count
+                if active_count < max_active_tasks:
+                    limit = max_active_tasks - active_count
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, board_slug FROM tasks
                         WHERE status = 'todo' OR (status = 'ready' AND assignee = 'unassigned')
@@ -1379,8 +1387,17 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 # 2.5. Reap finished workers and dispatch Ready tasks to Running
                 reaped = reap_active_workers(cursor, now)
 
+                # Fallback concurrent running workers per board from settings table
+                default_concurrent_workers = DEFAULT_MAX_CONCURRENT_WORKERS
+                try:
+                    s_row = cursor.execute("SELECT value FROM settings WHERE key = 'default_max_concurrent_workers'").fetchone()
+                    if s_row and s_row[0]:
+                        default_concurrent_workers = max(1, int(s_row[0]))
+                except Exception:
+                    pass
+
                 # Per-board concurrent running caps (boards.max_concurrent_running, default 1).
-                # Falls back to the global ZEROFACTORY_MAX_RUNNING_WORKERS constant when the
+                # Falls back to default_concurrent_workers when the
                 # column or boards table is unavailable (e.g. legacy/minimal test harness DBs).
                 board_max_running: Dict[str, int] = {}
                 try:
@@ -1388,7 +1405,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         "SELECT slug, max_concurrent_running FROM boards"
                     ).fetchall():
                         b_mcr = b_row["max_concurrent_running"]
-                        board_max_running[str(b_row["slug"])] = max(1, int(b_mcr)) if b_mcr else MAX_CONCURRENT_WORKERS
+                        board_max_running[str(b_row["slug"])] = max(1, int(b_mcr)) if b_mcr else default_concurrent_workers
                 except Exception:
                     board_max_running = {}
 
@@ -1414,7 +1431,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     branch_name = row["branch_name"] if "branch_name" in row.keys() else None
                     board_slug = row["board_slug"] if "board_slug" in row.keys() else None
                     board_key = str(board_slug or "")
-                    board_cap = board_max_running.get(board_key, MAX_CONCURRENT_WORKERS)
+                    board_cap = board_max_running.get(board_key, default_concurrent_workers)
                     board_active = running_per_board.get(board_key, 0)
                     if board_active >= board_cap:
                         _log.info("Task %s skipped (board %s at running limit %d/%d); will dispatch next cycle", task_id, board_key or "global", board_active, board_cap)
