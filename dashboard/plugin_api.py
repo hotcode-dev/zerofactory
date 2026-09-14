@@ -62,6 +62,7 @@ def init_db():
                 slug TEXT PRIMARY KEY,
                 description TEXT DEFAULT '',
                 git_url TEXT DEFAULT '',
+                max_concurrent_running INTEGER NOT NULL DEFAULT 1,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -123,6 +124,12 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_activity_task ON task_activity(task_id, created_at);
             """)
+            # Idempotent migration: add max_concurrent_running to pre-existing boards tables
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
+            if "max_concurrent_running" not in cols:
+                conn.execute(
+                    "ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER NOT NULL DEFAULT 1"
+                )
 
 # Initialize on import
 try:
@@ -179,10 +186,12 @@ def parse_git_url(git_url: str) -> tuple[str, str, str]:
 class BoardCreate(BaseModel):
     git_url: str = Field(..., min_length=1, description="Remote Git URL (e.g. https://github.com/owner/repo.git)")
     description: Optional[str] = ""
+    max_concurrent_running: Optional[int] = Field(default=1, ge=1, description="Max tasks running in parallel on this board (default 1)")
 
 class BoardUpdate(BaseModel):
     description: Optional[str] = None
     git_url: Optional[str] = None
+    max_concurrent_running: Optional[int] = Field(default=None, ge=1, description="Max tasks running in parallel on this board")
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
@@ -741,6 +750,7 @@ def create_board(req: BoardCreate):
         raise HTTPException(status_code=400, detail="Invalid board slug (could not derive slug from Git URL)")
 
     desc = (req.description or "").strip()
+    mcr = max(1, req.max_concurrent_running or 1)
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -749,8 +759,8 @@ def create_board(req: BoardCreate):
             raise HTTPException(status_code=409, detail=f"Board '{slug}' already exists")
 
         cursor.execute(
-            "INSERT INTO boards (slug, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            (slug, desc, git_url, now, now)
+            "INSERT INTO boards (slug, description, git_url, max_concurrent_running, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (slug, desc, git_url, mcr, now, now)
         )
         conn.commit()
 
@@ -785,6 +795,10 @@ def update_board(slug: str, req: BoardUpdate):
         if req.git_url is not None:
             updates.append("git_url = ?")
             params.append(req.git_url.strip())
+        if req.max_concurrent_running is not None:
+            mcr = max(1, int(req.max_concurrent_running))
+            updates.append("max_concurrent_running = ?")
+            params.append(mcr)
 
         if updates:
             updates.append("updated_at = ?")

@@ -342,10 +342,10 @@ def register(ctx: Any):
                 res = _list_boards()
                 boards = res.get("boards", [])
                 print(f"\nZero Factory Boards ({len(boards)}):")
-                print(f"{'SLUG':<32} {'TASKS':<8} {'RUNNING':<8} {'GIT URL'}")
-                print("-" * 80)
+                print(f"{'SLUG':<32} {'TASKS':<8} {'RUNNING':<8} {'MAX RUN':<8} {'GIT URL'}")
+                print("-" * 96)
                 for b in boards:
-                    print(f"{b['slug']:<32} {b.get('task_count', 0):<8} {b.get('running_count', 0):<8} {b.get('git_url', '')}")
+                    print(f"{b['slug']:<32} {b.get('task_count', 0):<8} {b.get('running_count', 0):<8} {b.get('max_concurrent_running', 1):<8} {b.get('git_url', '')}")
                 print()
             elif b_act == "create":
                 req = BoardCreate(

@@ -15,7 +15,7 @@ os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
 from fastapi.testclient import TestClient
 from dashboard.plugin_api import (
     router, init_db, get_db_conn,
-    BoardCreate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
+    BoardCreate, BoardUpdate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
     list_boards, create_board, list_tasks, create_task, get_task, get_task_session, update_task, move_task,
     add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch
 )
@@ -2399,6 +2399,148 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_45_board_max_concurrent_running_api(self):
+        """The per-board max_concurrent_running setting round-trips through the
+        create + update API, defaults to 1 on fresh boards and on existing rows,
+        and is migrated into pre-existing boards tables."""
+        import sqlite3
+        import shutil
+
+        # --- Fresh DB: column present, default 1 ---
+        with get_db_conn() as conn:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
+        self.assertIn("max_concurrent_running", cols, "boards table must expose max_concurrent_running")
+
+        # --- Create with an explicit value ---
+        res = create_board(BoardCreate(git_url="https://github.com/mcr/explicit.git", max_concurrent_running=3))
+        self.assertTrue(res["ok"])
+        mcr_board = next(b for b in list_boards()["boards"] if b["slug"] == "mcr-explicit")
+        self.assertEqual(mcr_board["max_concurrent_running"], 3)
+
+        # --- Create with default (no value) -> 1 ---
+        create_board(BoardCreate(git_url="https://github.com/mcr/default.git"))
+        def_board = next(b for b in list_boards()["boards"] if b["slug"] == "mcr-default")
+        self.assertEqual(def_board["max_concurrent_running"], 1)
+
+        # --- Update via PATCH ---
+        res_up = client.patch("/api/plugins/zerofactory/boards/mcr-explicit", json={"max_concurrent_running": 2})
+        self.assertEqual(res_up.status_code, 200)
+        self.assertTrue(res_up.json()["ok"])
+        after = next(b for b in list_boards()["boards"] if b["slug"] == "mcr-explicit")
+        self.assertEqual(after["max_concurrent_running"], 2)
+
+        # --- Update only the value (description/git_url omitted) still works ---
+        res_only = client.patch("/api/plugins/zerofactory/boards/mcr-default", json={"max_concurrent_running": 5})
+        self.assertEqual(res_only.status_code, 200)
+        after2 = next(b for b in list_boards()["boards"] if b["slug"] == "mcr-default")
+        self.assertEqual(after2["max_concurrent_running"], 5)
+
+        # --- Validation: below-1 rejected (422) ---
+        res_bad = client.patch("/api/plugins/zerofactory/boards/mcr-explicit", json={"max_concurrent_running": 0})
+        self.assertEqual(res_bad.status_code, 422)
+
+        # --- Migration path: an OLD boards table without the column gains it on init_db() ---
+        old_db = os.environ.get("ZEROFACTORY_DB")
+        td = tempfile.mkdtemp(prefix="zf-mcr-migrate-")
+        old_path = Path(td) / "old.db"
+        try:
+            conn = sqlite3.connect(str(old_path))
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("INSERT INTO boards (slug, created_at, updated_at) VALUES ('legacy-board', 1, 1)")
+            conn.commit()
+            conn.close()
+            os.environ["ZEROFACTORY_DB"] = str(old_path)
+            try:
+                init_db()  # must migrate the legacy table in place
+            finally:
+                if old_db is None:
+                    os.environ.pop("ZEROFACTORY_DB", None)
+                else:
+                    os.environ["ZEROFACTORY_DB"] = old_db
+            conn = sqlite3.connect(str(old_path))
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
+            conn.close()
+            self.assertIn("max_concurrent_running", cols, "legacy boards table must be migrated")
+            # Row retains its original data with the new default applied
+            conn = sqlite3.connect(str(old_path))
+            row = conn.execute("SELECT slug, max_concurrent_running FROM boards WHERE slug = 'legacy-board'").fetchone()
+            conn.close()
+            self.assertEqual(row, ("legacy-board", 1))
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if old_db is None:
+                os.environ.pop("ZEROFACTORY_DB", None)
+            else:
+                os.environ["ZEROFACTORY_DB"] = old_db
+
+    def test_46_board_max_concurrent_running_dispatch(self):
+        """The dispatch cycle caps concurrent 'running' tasks per board at the
+        board's max_concurrent_running (default 1). With cap 1 and three ready
+        tasks only one runs; raising the board cap to 2 lets a second start."""
+        import tempfile
+        import shutil
+        import sqlite3
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        td = tempfile.mkdtemp(prefix="zf-mcr-dispatch-")
+        ws = Path(td) / "ws"
+        ws.mkdir()
+        db_file = Path(td) / "mcr_dispatch.db"
+        try:
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, metadata TEXT DEFAULT '{}', tenant TEXT DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, actor TEXT, action TEXT, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 1, 1, 1)")
+            for i in range(1, 4):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'ready', 'zf-builder', 'P2', ?, 1000, 1000)",
+                    (f"mcr-{i}", f"Task {i}", str(ws)),
+                )
+            conn.commit()
+            conn.close()
+
+            # Cycle 1: cap 1 -> exactly one running, two still ready
+            res = run_dispatch_cycle(db_file)
+            self.assertTrue(res["ok"], f"dispatch cycle should succeed: {res}")
+            conn = sqlite3.connect(str(db_file))
+            conn.row_factory = sqlite3.Row
+            running = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
+            ready = conn.execute("SELECT id FROM tasks WHERE status = 'ready'").fetchall()
+            conn.close()
+            self.assertEqual(len(running), 1, f"expected exactly 1 running under cap 1, got {len(running)}")
+            self.assertEqual(len(ready), 2, f"expected 2 ready to remain, got {len(ready)}")
+
+            # Raise the board cap to 2, run again -> a second task starts
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("UPDATE boards SET max_concurrent_running = 2 WHERE slug = 'b1'")
+            conn.commit()
+            conn.close()
+            res2 = run_dispatch_cycle(db_file)
+            self.assertTrue(res2["ok"], f"second dispatch cycle should succeed: {res2}")
+            conn = sqlite3.connect(str(db_file))
+            running2 = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
+            ready2 = conn.execute("SELECT id FROM tasks WHERE status = 'ready'").fetchall()
+            conn.close()
+            self.assertEqual(len(running2), 2, f"expected 2 running under cap 2, got {len(running2)}")
+            self.assertEqual(len(ready2), 1, f"expected 1 ready to remain, got {len(ready2)}")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is None:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
 
 
 if __name__ == "__main__":
