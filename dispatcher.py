@@ -624,7 +624,8 @@ def spawn_agent_worker(
     log_file_path = log_dir / f"worker_{task_id}.log"
 
     env = os.environ.copy()
-    env["HERMES_KANBAN_TASK"] = task_id
+    env.pop("HERMES_KANBAN_TASK", None)
+    env["HERMES_KANBAN_STOP_NUDGE"] = "0"
     env["HERMES_KANBAN_WORKSPACE"] = str(workdir)
     env["TERMINAL_CWD"] = str(workdir)
     env["HERMES_PROFILE"] = assignee
@@ -1401,7 +1402,23 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         _handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
                                         continue
 
-                        pid, session_id = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
+                        # Atomic claim to prevent double-dispatch across processes
+                        cursor.execute(
+                            "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND status = 'ready'",
+                            (now, task_id)
+                        )
+                        if cursor.rowcount == 0:
+                            # Another process or thread already claimed this task
+                            continue
+                        conn.commit()
+
+                        try:
+                            pid, session_id = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
+                        except Exception as e:
+                            _log.error("Failed to spawn agent worker for %s: %s", task_id, e)
+                            cursor.execute("UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = ?", (now, task_id))
+                            conn.commit()
+                            continue
 
                         meta = {}
                         try:
@@ -1415,13 +1432,14 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         meta["started_at"] = now
 
                         cursor.execute(
-                            "UPDATE tasks SET status = 'running', metadata = ?, updated_at = ? WHERE id = ?",
+                            "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
                             (json.dumps(meta), now, task_id)
                         )
                         cursor.execute(
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', ?, ?)",
                             (task_id, f"Agent {assignee} dispatched to work on task (PID: {pid or 'skipped'}, Session: {session_id or 'auto'})", now)
                         )
+                        conn.commit()
                         dispatched += 1
 
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)

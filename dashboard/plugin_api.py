@@ -1206,22 +1206,25 @@ def move_task(task_id: str, req: TaskMove):
             cursor.execute("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?", (req.status, now, task_id))
             log_activity(conn, task_id, req.actor or "user", "move", f"Moved from {prev_status} to {req.status}")
 
-        # When a task transitions INTO 'blocked' with a reason, record it as a
-        # comment so the handoff reason is auditable. This is the single source
-        # of truth for `Blocked: ...` comments: both `move <id> blocked
-        # --reason "review-required"` and the `block` CLI handler (which
-        # delegates here via TaskMove.reason) produce it through this path.
-        # Guard on the status transition: re-issuing a blocked -> blocked move
-        # with the same reason (e.g. a builder retrying the handoff after a
-        # flake) must not append a duplicate comment with no status change.
-        if req.status == "blocked" and req.reason and prev_status != req.status:
+        # When moving to 'blocked' with a reason, record it as a comment so
+        # the handoff reason is auditable. This is the single source of truth:
+        # both `move <id> blocked --reason ...` and `block` produce comments here.
+        # Deduplicate: do not insert if the most recent comment is already identical.
+        if req.status == "blocked" and req.reason:
             actor = req.actor or "user"
+            comment_body = f"Blocked: {req.reason}"
             cursor.execute(
-                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                (task_id, actor, f"Blocked: {req.reason}", now)
+                "SELECT body FROM task_comments WHERE task_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+                (task_id,)
             )
-            comment_id = cursor.lastrowid
-            log_activity(conn, task_id, actor, "comment", f"Added comment #{comment_id}")
+            last_comment = cursor.fetchone()
+            if not last_comment or last_comment["body"] != comment_body:
+                cursor.execute(
+                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                    (task_id, actor, comment_body, now)
+                )
+                comment_id = cursor.lastrowid
+                log_activity(conn, task_id, actor, "comment", f"Added comment #{comment_id}")
 
         conn.commit()
 

@@ -2202,6 +2202,107 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(len(move_comments), 1)
         self.assertEqual(move_comments[0]["author"], block_comments[0]["author"])
 
+    def test_42_block_and_move_deduplication(self):
+        """Verify that repeated block or move calls with the same reason are idempotent
+        and do not create duplicate comments in task_comments."""
+        from __init__ import register
+        import argparse
+        from unittest.mock import patch
+
+        class _MockCtx:
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.setup_fn = setup_fn
+                self.handler_fn = handler_fn
+
+        ctx = _MockCtx()
+        register(ctx)
+        cmd_parser = argparse.ArgumentParser()
+        ctx.setup_fn(cmd_parser)
+
+        existing_boards = [b["slug"] for b in list_boards()["boards"]]
+        if "hotcode-dev-zerofactory" not in existing_boards:
+            create_board(BoardCreate(
+                git_url="https://github.com/hotcode-dev/zerofactory",
+                description="AI workflow",
+            ))
+
+        t_id = create_task(TaskCreate(
+            title="Idempotency Deduplication Task",
+            status="running",
+            priority="P0",
+            assignee="zf-reviewer",
+            board_slug="hotcode-dev-zerofactory",
+        ))["id"]
+
+        # 1. Block with "Human Review & Merge" via CLI
+        parsed_block1 = cmd_parser.parse_args(["block", t_id, "--reason", "Human Review & Merge"])
+        with patch.dict(os.environ, {"HERMES_PROFILE": "zf-reviewer"}, clear=False):
+            ctx.handler_fn(parsed_block1)
+
+        t_data = get_task(t_id)["task"]
+        self.assertEqual(t_data["status"], "blocked")
+        comments = [c for c in t_data["comments"] if c["body"] == "Blocked: Human Review & Merge"]
+        self.assertEqual(len(comments), 1)
+
+        # 2. Block again with the exact same reason -> should be deduplicated (no duplicate comment)
+        parsed_block2 = cmd_parser.parse_args(["block", t_id, "--reason", "Human Review & Merge"])
+        with patch.dict(os.environ, {"HERMES_PROFILE": "zf-reviewer"}, clear=False):
+            ctx.handler_fn(parsed_block2)
+
+        t_data = get_task(t_id)["task"]
+        comments = [c for c in t_data["comments"] if c["body"] == "Blocked: Human Review & Merge"]
+        self.assertEqual(len(comments), 1, "Duplicate comment should not have been created")
+
+        # 3. Move again with the exact same reason -> still deduplicated
+        parsed_move = cmd_parser.parse_args(["move", t_id, "blocked", "--reason", "Human Review & Merge"])
+        with patch.dict(os.environ, {"HERMES_PROFILE": "zf-reviewer"}, clear=False):
+            ctx.handler_fn(parsed_move)
+
+        t_data = get_task(t_id)["task"]
+        comments = [c for c in t_data["comments"] if c["body"] == "Blocked: Human Review & Merge"]
+        self.assertEqual(len(comments), 1, "Duplicate comment should not have been created on move")
+
+        # 4. Block with a DIFFERENT reason -> should add the new reason
+        parsed_diff = cmd_parser.parse_args(["block", t_id, "--reason", "changes-requested"])
+        with patch.dict(os.environ, {"HERMES_PROFILE": "zf-reviewer"}, clear=False):
+            ctx.handler_fn(parsed_diff)
+
+        t_data = get_task(t_id)["task"]
+        comments_all = [c["body"] for c in t_data["comments"]]
+        self.assertIn("Blocked: Human Review & Merge", comments_all)
+        self.assertIn("Blocked: changes-requested", comments_all)
+        self.assertEqual(comments_all[-1], "Blocked: changes-requested")
+
+    def test_43_worker_env_and_atomic_claim(self):
+        """Verify that spawned workers have HERMES_KANBAN_STOP_NUDGE=0 and no
+        HERMES_KANBAN_TASK in their env, preventing protocol violation nudge loops."""
+        from dispatcher import spawn_agent_worker
+        from unittest.mock import patch, MagicMock
+
+        captured_env = {}
+        def mock_popen(cmd, **kwargs):
+            nonlocal captured_env
+            captured_env = kwargs.get("env", {})
+            mock_proc = MagicMock()
+            mock_proc.pid = 99999
+            return mock_proc
+
+        with patch("subprocess.Popen", side_effect=mock_popen):
+            with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "parent-task-id"}, clear=False):
+                pid, sess = spawn_agent_worker(
+                    task_id="zf-testenv",
+                    title="Test Env Task",
+                    description="Test",
+                    priority="P0",
+                    assignee="zf-reviewer",
+                    workspace_path=None,
+                    branch_name="main",
+                )
+
+        self.assertEqual(pid, 99999)
+        self.assertEqual(captured_env.get("HERMES_KANBAN_STOP_NUDGE"), "0")
+        self.assertNotIn("HERMES_KANBAN_TASK", captured_env)
+
 
 if __name__ == "__main__":
     unittest.main()

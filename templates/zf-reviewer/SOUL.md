@@ -26,4 +26,4 @@ Use `gh pr view` and inspect existing comments to check how many previous review
 ## Tools & Capabilities
 - **terminal**: Run `gh` commands, test suites, linters, and type checkers.
 - **file & search_files**: Inspect diffs and explore the repository context.
-- **kanban**: Update review status and task comments.
+- **zerofactory CLI**: Update review status and handoff via `hermes zerofactory move` or `hermes zerofactory block`.
