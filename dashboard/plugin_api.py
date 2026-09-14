@@ -1206,10 +1206,15 @@ def move_task(task_id: str, req: TaskMove):
             cursor.execute("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?", (req.status, now, task_id))
             log_activity(conn, task_id, req.actor or "user", "move", f"Moved from {prev_status} to {req.status}")
 
-        # When moving to 'blocked' with a reason, record it as a comment (mirrors
-        # the `block` CLI handler) so the handoff reason is auditable. This makes
-        # `move <id> blocked --reason "review-required"` a first-class citizen.
-        if req.status == "blocked" and req.reason:
+        # When a task transitions INTO 'blocked' with a reason, record it as a
+        # comment so the handoff reason is auditable. This is the single source
+        # of truth for `Blocked: ...` comments: both `move <id> blocked
+        # --reason "review-required"` and the `block` CLI handler (which
+        # delegates here via TaskMove.reason) produce it through this path.
+        # Guard on the status transition: re-issuing a blocked -> blocked move
+        # with the same reason (e.g. a builder retrying the handoff after a
+        # flake) must not append a duplicate comment with no status change.
+        if req.status == "blocked" and req.reason and prev_status != req.status:
             actor = req.actor or "user"
             cursor.execute(
                 "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",

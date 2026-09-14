@@ -2112,6 +2112,96 @@ class TestZeroFactory(unittest.TestCase):
             len([c for c in comments_after if c["body"] == "Blocked: "]), 0
         )
 
+    def test_41_block_command_shares_move_path_and_dedups(self):
+        """Regression: `block <id> --reason "X"` and
+        `move <id> blocked --reason "X"` must both yield exactly one identical
+        "Blocked: X" comment produced by a single shared code path in
+        `move_task` (dashboard/plugin_api.py). The `block` CLI handler no
+        longer inserts a comment manually — it delegates via
+        TaskMove(reason=...) — and re-issuing a blocked -> blocked move with
+        the same reason must not append a duplicate comment (no-op guard).
+        """
+        import argparse
+        from unittest.mock import patch
+        from __init__ import register
+
+        # Build the CLI parser + handler the same way the real
+        # `hermes zerofactory` plugin registration does (same pattern as
+        # test_40).
+        class _MockCtx:
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.setup_fn = setup_fn
+                self.handler_fn = handler_fn
+
+        ctx = _MockCtx()
+        register(ctx)
+        cmd_parser = argparse.ArgumentParser()
+        ctx.setup_fn(cmd_parser)
+
+        existing_boards = [b["slug"] for b in list_boards()["boards"]]
+        if "hotcode-dev-zerofactory" not in existing_boards:
+            create_board(BoardCreate(
+                git_url="https://github.com/hotcode-dev/zerofactory",
+                description="AI workflow",
+            ))
+
+        def _new_task():
+            return create_task(TaskCreate(
+                title="Block Dedup Regression Task",
+                status="running",
+                priority="P1",
+                assignee="zf-builder",
+                board_slug="hotcode-dev-zerofactory",
+            ))["id"]
+
+        # 1. `block <id> --reason X` must produce exactly ONE
+        #    "Blocked: X" comment (same single shared write path as
+        #    `move ... blocked --reason`).
+        t_block = _new_task()
+        parsed = cmd_parser.parse_args(
+            ["block", t_block, "--reason", "review-required"]
+        )
+        with patch.dict(os.environ, {"HERMES_PROFILE": "zf-builder"}, clear=False):
+            ctx.handler_fn(parsed)
+        t_data = get_task(t_block)["task"]
+        self.assertEqual(t_data["status"], "blocked")
+        block_comments = [
+            c for c in t_data["comments"] if c["body"] == "Blocked: review-required"
+        ]
+        self.assertEqual(len(block_comments), 1)
+        self.assertEqual(block_comments[0]["author"], "zf-builder")
+
+        # 2. Re-issuing a blocked -> blocked move with the SAME reason must
+        #    NOT append a second identical comment (no-op guard in move_task).
+        resp = client.post(f"/api/plugins/zerofactory/tasks/{t_block}/move", json={
+            "status": "blocked",
+            "reason": "review-required",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["prev_status"], "blocked")
+        comments_after = get_task(t_block)["task"]["comments"]
+        self.assertEqual(
+            len([c for c in comments_after if c["body"] == "Blocked: review-required"]),
+            1,
+            "blocked -> blocked re-handoff must not duplicate the comment",
+        )
+
+        # 3. The `block` command and `move ... blocked --reason` must yield
+        #    identical single comments (same body, same author) — proof they
+        #    go through one shared code path.
+        t_move = _new_task()
+        parsed_move = cmd_parser.parse_args(
+            ["move", t_move, "blocked", "--reason", "review-required"]
+        )
+        with patch.dict(os.environ, {"HERMES_PROFILE": "zf-builder"}, clear=False):
+            ctx.handler_fn(parsed_move)
+        move_comments = [
+            c for c in get_task(t_move)["task"]["comments"]
+            if c["body"] == "Blocked: review-required"
+        ]
+        self.assertEqual(len(move_comments), 1)
+        self.assertEqual(move_comments[0]["author"], block_comments[0]["author"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -229,10 +229,12 @@ def register(ctx: Any):
                 print(f"Moved task {args.task_id} to {args.status}")
 
         elif action == "block":
+            # Delegate to `move_task` with the reason so the single shared
+            # code path in dashboard/plugin_api.py records the "Blocked: ..."
+            # comment — identical to `move <id> blocked --reason ...`.
             actor = os.environ.get("HERMES_PROFILE") or "user"
-            req = TaskMove(status="blocked", actor=actor)
+            req = TaskMove(status="blocked", actor=actor, reason=args.reason)
             _move_task(args.task_id, req)
-            _add_comment(args.task_id, CommentCreate(author=actor, body=f"Blocked: {args.reason}"))
             print(f"Task {args.task_id} marked as BLOCKED ({args.reason})")
 
         elif action == "comment":
