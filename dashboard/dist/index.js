@@ -106,13 +106,15 @@
 
     const [newBoardForm, setNewBoardForm] = useState({
       git_url: "",
-      description: ""
+      description: "",
+      max_concurrent_running: 1
     });
 
     const [editBoardForm, setEditBoardForm] = useState({
       slug: "",
       git_url: "",
-      description: ""
+      description: "",
+      max_concurrent_running: 1
     });
 
     const [createBoardError, setCreateBoardError] = useState("");
@@ -120,7 +122,7 @@
 
     const handleOpenNewBoardModal = () => {
       setCreateBoardError("");
-      setNewBoardForm({ git_url: "", description: "" });
+      setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1 });
       setShowNewBoardModal(true);
     };
 
@@ -603,13 +605,14 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             git_url: gitUrl,
-            description: (newBoardForm.description || "").trim()
+            description: (newBoardForm.description || "").trim(),
+            max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1)
           })
         });
         const createdSlug = (res && res.slug) ? res.slug : autoSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        setNewBoardForm({ git_url: "", description: "" });
+        setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1 });
         setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
@@ -630,7 +633,8 @@
         setEditBoardForm({
           slug: curr.slug || "",
           description: curr.description || "",
-          git_url: curr.git_url || ""
+          git_url: curr.git_url || "",
+          max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1
         });
         setShowEditBoardModal(true);
       }
@@ -647,7 +651,8 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             description: (editBoardForm.description || "").trim(),
-            git_url: (editBoardForm.git_url || "").trim()
+            git_url: (editBoardForm.git_url || "").trim(),
+            max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1)
           })
         });
         showToast("Board '" + editBoardForm.slug + "' updated!", "success");
@@ -2700,6 +2705,21 @@
                       value: newBoardForm.description || "",
                       onChange: (e) => setNewBoardForm({ ...newBoardForm, description: e.target.value })
                     })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 1,
+                      step: 1,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "Max tasks running in parallel on this board (minimum 1)",
+                      value: newBoardForm.max_concurrent_running ?? 1,
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, max_concurrent_running: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once. Other boards keep their own limits.")
                   )
                 ),
                 React.createElement(
@@ -2789,6 +2809,21 @@
                     value: editBoardForm.description,
                     onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
                   })
+                ),
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
+                  React.createElement("input", {
+                    type: "number",
+                    min: 1,
+                    step: 1,
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                    placeholder: "Max tasks running in parallel on this board (minimum 1)",
+                    value: editBoardForm.max_concurrent_running ?? 1,
+                    onChange: (e) => setEditBoardForm({ ...editBoardForm, max_concurrent_running: e.target.value })
+                  }),
+                  React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once. Other boards keep their own limits.")
                 )
               ),
               React.createElement(

@@ -1359,88 +1359,110 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 # 2.5. Reap finished workers and dispatch Ready tasks to Running
                 reaped = reap_active_workers(cursor, now)
 
-                cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'")
-                running_count = cursor.fetchone()[0]
+                # Per-board concurrent running caps (boards.max_concurrent_running, default 1).
+                # Falls back to the global ZEROFACTORY_MAX_RUNNING_WORKERS constant when the
+                # column or boards table is unavailable (e.g. legacy/minimal test harness DBs).
+                board_max_running: Dict[str, int] = {}
+                try:
+                    for b_row in cursor.execute(
+                        "SELECT slug, max_concurrent_running FROM boards"
+                    ).fetchall():
+                        b_mcr = b_row["max_concurrent_running"]
+                        board_max_running[str(b_row["slug"])] = max(1, int(b_mcr)) if b_mcr else MAX_CONCURRENT_WORKERS
+                except Exception:
+                    board_max_running = {}
 
-                if running_count < MAX_CONCURRENT_WORKERS:
-                    spawn_limit = MAX_CONCURRENT_WORKERS - running_count
-                    cursor.execute("""
-                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
-                        WHERE status = 'ready'
-                        ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
-                        LIMIT ?
-                    """, (spawn_limit,))
-                    for row in cursor.fetchall():
-                        task_id = str(row["id"])
-                        assignee = normalize_assignee(row["assignee"] or "zf-builder")
-                        title = row["title"] or ""
-                        description = row["description"] or ""
-                        priority = row["priority"] or "P2"
-                        tenant = row["tenant"] if "tenant" in row.keys() else None
-                        workspace_path = row["workspace_path"]
-                        branch_name = row["branch_name"] if "branch_name" in row.keys() else None
-                        board_slug = row["board_slug"] if "board_slug" in row.keys() else None
+                running_per_board: Dict[str, int] = {}
+                for rc_row in cursor.execute(
+                    "SELECT board_slug, COUNT(*) AS cnt FROM tasks WHERE status = 'running' GROUP BY board_slug"
+                ).fetchall():
+                    running_per_board[str(rc_row["board_slug"] or "")] = rc_row["cnt"]
 
-                        if not workspace_path or not Path(workspace_path).exists():
-                            wt = setup_worktree(cursor, task_id, title, assignee, tenant, db_path, board_slug=board_slug)
-                            if wt:
-                                workspace_path = wt
+                cursor.execute("""
+                    SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
+                    WHERE status = 'ready'
+                    ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
+                """)
+                for row in cursor.fetchall():
+                    task_id = str(row["id"])
+                    assignee = normalize_assignee(row["assignee"] or "zf-builder")
+                    title = row["title"] or ""
+                    description = row["description"] or ""
+                    priority = row["priority"] or "P2"
+                    tenant = row["tenant"] if "tenant" in row.keys() else None
+                    workspace_path = row["workspace_path"]
+                    branch_name = row["branch_name"] if "branch_name" in row.keys() else None
+                    board_slug = row["board_slug"] if "board_slug" in row.keys() else None
+                    board_key = str(board_slug or "")
+                    board_cap = board_max_running.get(board_key, MAX_CONCURRENT_WORKERS)
+                    board_active = running_per_board.get(board_key, 0)
+                    if board_active >= board_cap:
+                        _log.info("Task %s skipped (board %s at running limit %d/%d); will dispatch next cycle", task_id, board_key or "global", board_active, board_cap)
+                        continue
 
-                        # Guardrail: Always pull git to latest before implement
-                        if not os.environ.get("ZEROFACTORY_SKIP_GIT") and assignee == "zf-builder" and workspace_path and Path(workspace_path).exists():
-                            is_conflict_resolution = (
-                                "[pr conflict]" in title.lower()
-                                or "[merge conflict]" in title.lower()
-                                or bool(check_unresolved_conflicts(Path(workspace_path)))
-                            )
-                            if not is_conflict_resolution:
-                                repo_for_task = resolve_task_repo_path(cursor, board_slug, tenant)
-                                if repo_for_task and repo_for_task.exists():
-                                    merged_ok, conflict_files, merge_err = pull_and_merge_main(Path(workspace_path), repo_for_task)
-                                    if not merged_ok:
-                                        _log.warning("Task %s pre-implement merge conflict with main: %s (%s)", task_id, conflict_files, merge_err)
-                                        _handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
-                                        continue
+                    if not workspace_path or not Path(workspace_path).exists():
+                        wt = setup_worktree(cursor, task_id, title, assignee, tenant, db_path, board_slug=board_slug)
+                        if wt:
+                            workspace_path = wt
 
-                        # Atomic claim to prevent double-dispatch across processes
-                        cursor.execute(
-                            "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND status = 'ready'",
-                            (now, task_id)
+                    # Guardrail: Always pull git to latest before implement
+                    if not os.environ.get("ZEROFACTORY_SKIP_GIT") and assignee == "zf-builder" and workspace_path and Path(workspace_path).exists():
+                        is_conflict_resolution = (
+                            "[pr conflict]" in title.lower()
+                            or "[merge conflict]" in title.lower()
+                            or bool(check_unresolved_conflicts(Path(workspace_path)))
                         )
-                        if cursor.rowcount == 0:
-                            # Another process or thread already claimed this task
-                            continue
+                        if not is_conflict_resolution:
+                            repo_for_task = resolve_task_repo_path(cursor, board_slug, tenant)
+                            if repo_for_task and repo_for_task.exists():
+                                merged_ok, conflict_files, merge_err = pull_and_merge_main(Path(workspace_path), repo_for_task)
+                                if not merged_ok:
+                                    _log.warning("Task %s pre-implement merge conflict with main: %s (%s)", task_id, conflict_files, merge_err)
+                                    _handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
+                                    continue
+
+                    # Atomic claim to prevent double-dispatch across processes
+                    cursor.execute(
+                        "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND status = 'ready'",
+                        (now, task_id)
+                    )
+                    if cursor.rowcount == 0:
+                        # Another process or thread already claimed this task
+                        continue
+                    conn.commit()
+
+                    try:
+                        pid, session_id = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
+                    except Exception as e:
+                        _log.error("Failed to spawn agent worker for %s: %s", task_id, e)
+                        cursor.execute("UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = ?", (now, task_id))
                         conn.commit()
+                        continue
 
-                        try:
-                            pid, session_id = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
-                        except Exception as e:
-                            _log.error("Failed to spawn agent worker for %s: %s", task_id, e)
-                            cursor.execute("UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = ?", (now, task_id))
-                            conn.commit()
-                            continue
+                    meta = {}
+                    try:
+                        meta = json.loads(row["metadata"] or "{}")
+                    except Exception:
+                        pass
+                    if pid:
+                        meta["worker_pid"] = pid
+                    if session_id:
+                        meta["session_id"] = session_id
+                    meta["started_at"] = now
 
-                        meta = {}
-                        try:
-                            meta = json.loads(row["metadata"] or "{}")
-                        except Exception:
-                            pass
-                        if pid:
-                            meta["worker_pid"] = pid
-                        if session_id:
-                            meta["session_id"] = session_id
-                        meta["started_at"] = now
-
-                        cursor.execute(
-                            "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
-                            (json.dumps(meta), now, task_id)
-                        )
-                        cursor.execute(
-                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', ?, ?)",
-                            (task_id, f"Agent {assignee} dispatched to work on task (PID: {pid or 'skipped'}, Session: {session_id or 'auto'})", now)
-                        )
-                        conn.commit()
-                        dispatched += 1
+                    cursor.execute(
+                        "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(meta), now, task_id)
+                    )
+                    cursor.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', ?, ?)",
+                        (task_id, f"Agent {assignee} dispatched to work on task (PID: {pid or 'skipped'}, Session: {session_id or 'auto'})", now)
+                    )
+                    conn.commit()
+                    # Track the slot we just filled so subsequent tasks in this
+                    # cycle respect the board's running cap (including this board).
+                    running_per_board[board_key] = board_active + 1
+                    dispatched += 1
 
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
                 if not os.environ.get("ZEROFACTORY_SKIP_GIT"):
