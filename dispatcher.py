@@ -1497,12 +1497,12 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     continue
 
                                 subject, commit_body = format_conventional_message(title, task_id)
-                                status_res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True)
+                                status_res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True, timeout=5)
                                 if status_res.stdout.strip():
-                                    subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True)
+                                    subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True, timeout=60)
                                     subprocess.run(
                                         ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit", "-m", subject, "-m", commit_body],
-                                        check=True, cwd=workspace_path, capture_output=True
+                                        check=True, cwd=workspace_path, capture_output=True, timeout=60
                                     )
 
                                 # 2. Guardrail: Always pull and merge latest main branch before pushing
@@ -1518,11 +1518,11 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     _handle_local_merge_conflict(cursor, task_id, title, workspace_path, leftover_conflicts, now, "Leftover conflict markers detected after merge")
                                     continue
 
-                                subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True)
+                                subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True, timeout=180)
 
                                 pr_url = row["pr_url"] or ""
                                 if not pr_url:
-                                    gh_view = subprocess.run(["gh", "pr", "view", f"task/{task_id}", "--json", "url"], cwd=workspace_path, capture_output=True, text=True)
+                                    gh_view = subprocess.run(["gh", "pr", "view", f"task/{task_id}", "--json", "url"], cwd=workspace_path, capture_output=True, text=True, timeout=30)
                                     if gh_view.returncode == 0:
                                         try:
                                             pr_url = json.loads(gh_view.stdout).get("url") or ""
@@ -1531,7 +1531,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     else:
                                         pr_title = subject
                                         pr_body = f"{commit_body}\n\nAutomated PR for task {task_id}\n\nCompleted by: @{assignee}"
-                                        pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True)
+                                        pr_res = subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True, timeout=180)
                                         pr_url = pr_res.stdout.strip()
 
                                 # Cleanup author worktree
@@ -1557,6 +1557,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             except subprocess.CalledProcessError as e:
                                 err_msg = (e.stderr or "").strip() or str(e)
                                 _log.warning("Task %s commit/PR command failed: %s", task_id, err_msg)
+                            except subprocess.TimeoutExpired as e:
+                                _log.warning("Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)", task_id, e.timeout, e.cmd)
                             except Exception as e:
                                 _log.warning("Task %s commit/PR failed: %s", task_id, e)
                         else:

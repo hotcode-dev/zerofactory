@@ -2303,6 +2303,103 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(captured_env.get("HERMES_KANBAN_STOP_NUDGE"), "0")
         self.assertNotIn("HERMES_KANBAN_TASK", captured_env)
 
+    def test_44_dispatch_cycle_survives_subprocess_timeout(self):
+        """A hung network step (git push / gh) in the author-handoff path must not
+        stall the dispatch cycle or leave the task in a half-committed state:
+        the cycle completes, the task stays in its pre-PR status, and a warning
+        is logged so the next cycle retries idempotently."""
+        import shutil
+        import subprocess
+        import tempfile
+        import sqlite3
+        from unittest.mock import patch
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            # Real repo + worktree so git rev-parse / merge-base work for real
+            repo_path = Path(td) / "timeout_repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+            (repo_path / "README.md").write_text("# Timeout Test\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(repo_path), check=True, capture_output=True)
+
+            worktree_dir = Path(td) / "worktree_timeout"
+            subprocess.run(
+                ["git", "worktree", "add", str(worktree_dir), "-b", "task/to-1"],
+                cwd=str(repo_path), check=True, capture_output=True
+            )
+            # Clean worktree (no uncommitted changes -> add/commit steps are skipped)
+
+            # Dedicated task DB so no other tasks interfere
+            db_file = Path(td) / "timeout_test.db"
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    CREATE TABLE tasks (
+                        id TEXT PRIMARY KEY, title TEXT, description TEXT, priority TEXT,
+                        status TEXT, assignee TEXT, skills TEXT, workspace_kind TEXT,
+                        workspace_path TEXT, branch_name TEXT, pr_url TEXT, metadata TEXT,
+                        tenant TEXT, board_slug TEXT, created_at REAL, updated_at REAL
+                    )
+                """)
+                conn.execute("""
+                    CREATE TABLE task_activity (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT,
+                        actor TEXT, action TEXT, details TEXT, created_at REAL
+                    )
+                """)
+                conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at REAL)")
+                conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+                conn.execute("CREATE TABLE boards (id INTEGER PRIMARY KEY, slug TEXT UNIQUE, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)")
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
+                    VALUES ('to-1', 'Timed out push task', 'blocked', 'zf-builder', ?, 'task/to-1', 1000, 1000)
+                """, (str(worktree_dir),))
+                conn.commit()
+
+            orig_run = subprocess.run
+            push_calls = []
+
+            def fake_run(cmd, *args, **kwargs):
+                # Simulate a hung remote: git push raises TimeoutExpired
+                if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
+                    push_calls.append(cmd)
+                    raise subprocess.TimeoutExpired(cmd=cmd, timeout=180)
+                return orig_run(cmd, *args, **kwargs)
+
+            with patch("subprocess.run", side_effect=fake_run), \
+                 self.assertLogs("zerofactory.kanban.dispatcher", level="WARNING") as log_cm:
+                # The cycle must not raise despite the timed-out push
+                cycle_res = run_dispatch_cycle(db_file)
+
+            self.assertTrue(cycle_res["ok"], f"Dispatch cycle should survive the timeout, got: {cycle_res}")
+            self.assertGreaterEqual(len(push_calls), 1, "git push should have been attempted")
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT * FROM tasks WHERE id = 'to-1'")
+                t_row = cur.fetchone()
+                # Task must NOT be marked done and must not be routed to the reviewer
+                self.assertNotEqual(t_row["status"], "done", "Task must not be marked done on push timeout")
+                self.assertNotEqual(t_row["assignee"], "zf-reviewer", "Task must not be handed to reviewer on push timeout")
+                self.assertIsNone(t_row["pr_url"], "No PR URL should be recorded on push timeout")
+                # Task stays in its pre-PR status so the next cycle retries idempotently
+                self.assertEqual(t_row["status"], "blocked")
+                self.assertEqual(t_row["assignee"], "zf-builder")
+
+            # A warning including the task id and the timeout was logged
+            matched = [line for line in log_cm.output if "to-1" in line and "timed out" in line]
+            self.assertTrue(matched, f"Expected a timeout warning for task to-1, got: {log_cm.output}")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
 
 if __name__ == "__main__":
     unittest.main()
