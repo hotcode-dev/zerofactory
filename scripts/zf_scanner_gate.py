@@ -60,6 +60,60 @@ def save_state(state: Dict[str, Any]) -> None:
         pass
 
 
+def _auto_sync_repo(repo_dir: Path) -> None:
+    """Safely fetch and fast-forward pull the default branch if worktree is clean."""
+    try:
+        # 1. Check if git remote origin exists
+        remotes = _run_cmd(["git", "remote"], cwd=repo_dir).split()
+        if "origin" not in remotes:
+            return
+
+        # 2. Check worktree cleanliness - never auto-pull if uncommitted changes exist
+        status = _run_cmd(["git", "status", "--porcelain"], cwd=repo_dir)
+        if status.strip():
+            return
+
+        # 3. Detect default branch: try origin/HEAD symbolic ref, fallback to checking main/master
+        default_branch = ""
+        sym_ref = _run_cmd(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=repo_dir)
+        if sym_ref and "/" in sym_ref:
+            default_branch = sym_ref.split("/", 1)[1].strip()
+
+        if not default_branch:
+            for cand in ("main", "master"):
+                check_branch = subprocess.run(
+                    ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{cand}"],
+                    cwd=str(repo_dir), timeout=3
+                )
+                if check_branch.returncode == 0:
+                    default_branch = cand
+                    break
+
+        if not default_branch:
+            default_branch = "main"
+
+        # 4. Check currently checked out branch - only sync if on the default branch
+        curr_branch = _run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir).strip()
+        if curr_branch != default_branch:
+            return
+
+        # 5. Fetch from origin for default branch (bounded 10s timeout)
+        fetch_res = subprocess.run(
+            ["git", "fetch", "origin", default_branch],
+            cwd=str(repo_dir), capture_output=True, text=True, timeout=10
+        )
+        if fetch_res.returncode != 0:
+            return
+
+        # 6. Fast-forward merge origin/<default_branch> (bounded 5s timeout)
+        subprocess.run(
+            ["git", "merge", "--ff-only", f"origin/{default_branch}"],
+            cwd=str(repo_dir), capture_output=True, text=True, timeout=5
+        )
+    except Exception:
+        pass
+
+
 def get_existing_task_titles(board_slug: str) -> List[str]:
     db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
     if not db_path.exists():
@@ -126,6 +180,9 @@ def resolve_board_slug(repo_dir: Path) -> str:
 def run_scanner_gate() -> int:
     repo_dir = Path.cwd()
     board_slug = resolve_board_slug(repo_dir)
+
+    # Auto-sync/pull default branch from remote before evaluating commit SHA
+    _auto_sync_repo(repo_dir)
 
     # Check if this is a git repo
     head_sha = _run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_dir)

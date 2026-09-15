@@ -62,6 +62,7 @@ def init_db():
                 slug TEXT PRIMARY KEY,
                 description TEXT DEFAULT '',
                 git_url TEXT DEFAULT '',
+                max_concurrent_running INTEGER NOT NULL DEFAULT 1,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -115,6 +116,12 @@ def init_db():
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_slug, status);
             CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
@@ -123,10 +130,53 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_activity_task ON task_activity(task_id, created_at);
             """)
+            # Idempotent migration: add max_concurrent_running to pre-existing boards tables
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
+            if "max_concurrent_running" not in cols:
+                conn.execute(
+                    "ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER NOT NULL DEFAULT 1"
+                )
+
+            # Seed default global settings if missing
+            now_ts = int(time.time())
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '10', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('default_max_concurrent_workers', '1', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('scan_on_idle', 'true', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', '2', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', '15', ?)",
+                (now_ts,)
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', '2', ?)",
+                (now_ts,)
+            )
 
 # Initialize on import
 try:
     init_db()
+    if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER"):
+        try:
+            from ..dispatcher import start_background_dispatcher
+            start_background_dispatcher()
+        except Exception:
+            try:
+                from dispatcher import start_background_dispatcher  # type: ignore
+                start_background_dispatcher()
+            except Exception:
+                pass
 except Exception as e:
     _log.error("Failed to initialize Zero Factory Kanban database: %s", e)
 
@@ -179,10 +229,12 @@ def parse_git_url(git_url: str) -> tuple[str, str, str]:
 class BoardCreate(BaseModel):
     git_url: str = Field(..., min_length=1, description="Remote Git URL (e.g. https://github.com/owner/repo.git)")
     description: Optional[str] = ""
+    max_concurrent_running: Optional[int] = Field(default=1, ge=1, description="Max tasks running in parallel on this board (default 1)")
 
 class BoardUpdate(BaseModel):
     description: Optional[str] = None
     git_url: Optional[str] = None
+    max_concurrent_running: Optional[int] = Field(default=None, ge=1, description="Max tasks running in parallel on this board")
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
@@ -247,6 +299,14 @@ class CommentCreate(BaseModel):
 class DependencyLink(BaseModel):
     parent_id: str
     child_id: str
+
+class SettingsUpdate(BaseModel):
+    max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in ready and running")
+    default_max_concurrent_workers: Optional[int] = Field(default=None, ge=1, description="Default max concurrent running workers per board")
+    scan_on_idle: Optional[bool] = Field(default=None, description="Automatically trigger improvement scans when active workers are below threshold")
+    idle_scan_active_threshold: Optional[int] = Field(default=None, ge=1, description="Max active running workers on a board to trigger idle scan")
+    idle_scan_cooldown_minutes: Optional[int] = Field(default=None, ge=1, description="Minimum cooldown in minutes between idle improvement scans per board")
+    idle_scan_max_todo: Optional[int] = Field(default=None, ge=0, description="Max todo backlog tasks on board before suppressing idle scan")
 
 
 # --- Helper Functions --------------------------------------------------------
@@ -741,6 +801,7 @@ def create_board(req: BoardCreate):
         raise HTTPException(status_code=400, detail="Invalid board slug (could not derive slug from Git URL)")
 
     desc = (req.description or "").strip()
+    mcr = max(1, req.max_concurrent_running or 1)
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -749,8 +810,8 @@ def create_board(req: BoardCreate):
             raise HTTPException(status_code=409, detail=f"Board '{slug}' already exists")
 
         cursor.execute(
-            "INSERT INTO boards (slug, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-            (slug, desc, git_url, now, now)
+            "INSERT INTO boards (slug, description, git_url, max_concurrent_running, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (slug, desc, git_url, mcr, now, now)
         )
         conn.commit()
 
@@ -785,6 +846,10 @@ def update_board(slug: str, req: BoardUpdate):
         if req.git_url is not None:
             updates.append("git_url = ?")
             params.append(req.git_url.strip())
+        if req.max_concurrent_running is not None:
+            mcr = max(1, int(req.max_concurrent_running))
+            updates.append("max_concurrent_running = ?")
+            params.append(mcr)
 
         if updates:
             updates.append("updated_at = ?")
@@ -831,6 +896,108 @@ def delete_board(slug: str):
                 _log.warning("Failed to sync cron jobs after deleting board %s: %s", slug, e)
 
     return {"ok": True, "deleted": slug}
+
+
+# --- Global Settings Endpoints -----------------------------------------------
+
+DEFAULT_MAX_ACTIVE_TASKS = 10
+DEFAULT_MAX_CONCURRENT_WORKERS = 1
+DEFAULT_SCAN_ON_IDLE = True
+DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD = 2
+DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES = 15
+DEFAULT_IDLE_SCAN_MAX_TODO = 2
+
+@router.get("/settings")
+def get_settings():
+    """Retrieve global Zero Factory settings."""
+    settings = {
+        "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
+        "default_max_concurrent_workers": DEFAULT_MAX_CONCURRENT_WORKERS,
+        "scan_on_idle": DEFAULT_SCAN_ON_IDLE,
+        "idle_scan_active_threshold": DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
+        "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+        "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
+    }
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        for row in cursor.execute("SELECT key, value FROM settings").fetchall():
+            k, v = row["key"], row["value"]
+            if k == "max_active_tasks":
+                try:
+                    settings["max_active_tasks"] = max(1, int(v))
+                except Exception:
+                    pass
+            elif k == "default_max_concurrent_workers":
+                try:
+                    settings["default_max_concurrent_workers"] = max(1, int(v))
+                except Exception:
+                    pass
+            elif k == "scan_on_idle":
+                settings["scan_on_idle"] = str(v).lower() in ("true", "1", "yes")
+            elif k == "idle_scan_active_threshold":
+                try:
+                    settings["idle_scan_active_threshold"] = max(1, int(v))
+                except Exception:
+                    pass
+            elif k == "idle_scan_cooldown_minutes":
+                try:
+                    settings["idle_scan_cooldown_minutes"] = max(1, int(v))
+                except Exception:
+                    pass
+            elif k == "idle_scan_max_todo":
+                try:
+                    settings["idle_scan_max_todo"] = max(0, int(v))
+                except Exception:
+                    pass
+    return {"ok": True, "settings": settings}
+
+
+@router.patch("/settings")
+@router.put("/settings")
+def update_settings(req: SettingsUpdate):
+    """Update global Zero Factory settings."""
+    now = int(time.time())
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        if req.max_active_tasks is not None:
+            val = str(max(1, int(req.max_active_tasks)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', ?, ?)",
+                (val, now)
+            )
+        if req.default_max_concurrent_workers is not None:
+            val = str(max(1, int(req.default_max_concurrent_workers)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('default_max_concurrent_workers', ?, ?)",
+                (val, now)
+            )
+        if req.scan_on_idle is not None:
+            val = "true" if req.scan_on_idle else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('scan_on_idle', ?, ?)",
+                (val, now)
+            )
+        if req.idle_scan_active_threshold is not None:
+            val = str(max(1, int(req.idle_scan_active_threshold)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', ?, ?)",
+                (val, now)
+            )
+        if req.idle_scan_cooldown_minutes is not None:
+            val = str(max(1, int(req.idle_scan_cooldown_minutes)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', ?, ?)",
+                (val, now)
+            )
+        if req.idle_scan_max_todo is not None:
+            val = str(max(0, int(req.idle_scan_max_todo)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', ?, ?)",
+                (val, now)
+            )
+        conn.commit()
+
+    return get_settings()
 
 
 # --- Task Endpoints ----------------------------------------------------------
@@ -1578,9 +1745,15 @@ def import_legacy():
 def get_builtin_cron_jobs():
     """List all built-in Zero Factory cron jobs and their current runtime status."""
     helpers = _get_cron_helpers()
+    ensure_cron = helpers[0] if len(helpers) > 0 else None
     list_cron = helpers[3] if len(helpers) > 3 else None
     if not list_cron:
         return {"ok": False, "error": "Builtin cron engine not available", "jobs": [], "count": 0}
+    if ensure_cron:
+        try:
+            ensure_cron()
+        except Exception:
+            pass
     jobs = list_cron()
     return {"ok": True, "jobs": jobs, "count": len(jobs)}
 

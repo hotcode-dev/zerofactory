@@ -3,7 +3,7 @@
 Natively embeds and orchestrates all Zero Factory periodic automation:
 1. zero-factory-task-queue-check (every 120m)
 2. zero-factory-daily-report (0 9 * * *)
-3. zero-factory-improvement-scanner-{board_slug} (every 60m per board, with workdir set to repo)
+3. zero-factory-improvement-scanner-{board_slug} (on idle when active sessions < 2, with workdir set to repo)
 
 Automatically synchronizes with the active Hermes profile's cron store and
 allows background ticking and on-demand execution.
@@ -348,10 +348,10 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "continuity": False,
             "schedule": {
                 "kind": "interval",
-                "minutes": 60,
-                "display": "every 60m"
+                "minutes": 10080,
+                "display": "on idle (active < 2)"
             },
-            "schedule_display": "every 60m",
+            "schedule_display": "on idle (active < 2)",
             "enabled": True,
             "state": "scheduled",
             "paused_at": None,
@@ -578,9 +578,18 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                         curr[field] = builtin_def.get(field)
                         changed = True
 
+                # Re-activate any scanner job that was retired as a one-shot completed job
+                if curr.get("state") in ("completed", "paused") and not is_custom:
+                    curr["state"] = "scheduled"
+                    curr["enabled"] = True
+                    curr["paused_at"] = None
+                    curr["paused_reason"] = None
+                    changed = True
+
                 # Ensure next_run_at is populated for active scheduled jobs
+                sched = curr.get("schedule", builtin_def.get("schedule", {}))
                 if curr.get("enabled", True) and not curr.get("next_run_at"):
-                    curr["next_run_at"] = compute_job_next_run(curr.get("schedule", builtin_def.get("schedule", {})), curr.get("last_run_at"))
+                    curr["next_run_at"] = compute_job_next_run(sched, curr.get("last_run_at"))
                     changed = True
 
                 # Unblock job if it was previously blocked by preflight credential missing

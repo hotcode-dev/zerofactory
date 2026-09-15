@@ -170,7 +170,7 @@ Zero Factory is architected to drastically minimize LLM token consumption (up to
   - Pre-computes 24h velocity, cycle time, blockers, and column distributions via `scripts/zf_daily_stats.py`.
   - Automatically chains upstream output from `zero-factory-task-queue-check` via `context_from`.
   - Pre-loads all metrics directly into prompt context, eliminating 15+ tool queries and completing in a single turn.
-- **`zero-factory-improvement-scanner-{board_slug}`** (every 60m per board, **0 Tokens on Idle**):
+- **`zero-factory-improvement-scanner-{board_slug}`** (on idle when active workers < 2, **0 Tokens on Idle**):
   - Executed by **`zf-orchestrator`** inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py` with independent sessions (`continuity: false`).
   - Compares Git HEAD and working tree changes against `~/.hermes/scanner_state.json`.
   - Suppresses unchanged runs with `{"wakeAgent": false}` (0 LLM tokens).

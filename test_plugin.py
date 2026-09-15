@@ -15,7 +15,7 @@ os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
 from fastapi.testclient import TestClient
 from dashboard.plugin_api import (
     router, init_db, get_db_conn,
-    BoardCreate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
+    BoardCreate, BoardUpdate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
     list_boards, create_board, list_tasks, create_task, get_task, get_task_session, update_task, move_task,
     add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch
 )
@@ -1047,6 +1047,138 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ.pop("ZEROFACTORY_BOARD", None)
             else:
                 os.environ["ZEROFACTORY_BOARD"] = old_board
+    def test_25c_scanner_gate_auto_pull_remote(self):
+        """Verify that zf_scanner_gate automatically fast-forwards clean tracking branch
+        when remote origin has new commits, waking the agent.
+        """
+        import contextlib
+        import importlib.util
+        import io
+        import json
+        import sqlite3
+        import subprocess
+
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+
+        def git(repo, *args):
+            return subprocess.run(
+                ["git", *args], cwd=str(repo), check=True,
+                capture_output=True, text=True,
+                env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            )
+
+        def load_gate():
+            spec = importlib.util.spec_from_file_location("zf_scanner_gate_under_test", gate_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            slug = "gate-remote-test-board"
+
+            # 1. Bare remote repository
+            remote_repo = td / "remote.git"
+            remote_repo.mkdir()
+            git(remote_repo, "init", "--bare", "-b", "main")
+
+            # 2. Local clone
+            local_repo = td / "local_repo"
+            git(td, "clone", str(remote_repo), str(local_repo))
+            git(local_repo, "config", "user.email", "scan@test.local")
+            git(local_repo, "config", "user.name", "Scan Test")
+            (local_repo / "main.py").write_text("print('v1')\n", encoding="utf-8")
+            git(local_repo, "add", ".")
+            git(local_repo, "commit", "-qm", "initial commit")
+            git(local_repo, "push", "-u", "origin", "main")
+
+            # 3. Temp zerofactory.db
+            db_path = td / "gate.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.executescript(
+                "CREATE TABLE boards ("
+                " slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+                "CREATE TABLE tasks ("
+                " id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL,"
+                " description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage',"
+                " assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2',"
+                " workspace_path TEXT, workspace_kind TEXT DEFAULT 'worktree', branch_name TEXT,"
+                " pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]',"
+                " tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+            )
+            conn.execute(
+                "INSERT INTO boards (slug, created_at, updated_at) VALUES (?, 1, 1)",
+                (slug,),
+            )
+            conn.commit()
+            conn.close()
+
+            state_path = td / "scanner_state.json"
+
+            def run_gate():
+                mod = load_gate()
+                mod.STATE_FILE = state_path
+                old_argv, old_cwd = sys.argv, os.getcwd()
+                old_db = os.environ.get("ZEROFACTORY_DB")
+                sys.argv = [gate_path.name, slug]
+                os.chdir(str(local_repo))
+                os.environ["ZEROFACTORY_DB"] = str(db_path)
+                os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                buf = io.StringIO()
+                try:
+                    with contextlib.redirect_stdout(buf):
+                        rc = mod.run_scanner_gate()
+                finally:
+                    sys.argv = old_argv
+                    os.chdir(old_cwd)
+                    if old_db is None:
+                        os.environ.pop("ZEROFACTORY_DB", None)
+                    else:
+                        os.environ["ZEROFACTORY_DB"] = old_db
+                    os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                out = buf.getvalue()
+                wake = json.loads(out.strip().splitlines()[-1])
+                return rc, wake.get("wakeAgent"), out
+
+            # Baseline scan
+            rc1, wake1, _ = run_gate()
+            self.assertEqual(rc1, 0)
+            self.assertTrue(wake1)
+
+            # Steady state scan -> suppressed (0 tokens)
+            rc2, wake2, _ = run_gate()
+            self.assertEqual(rc2, 0)
+            self.assertFalse(wake2)
+
+            # Push a new commit to remote from a secondary clone
+            worker_repo = td / "worker_repo"
+            git(td, "clone", str(remote_repo), str(worker_repo))
+            git(worker_repo, "config", "user.email", "remote@test.local")
+            git(worker_repo, "config", "user.name", "Remote Worker")
+            (worker_repo / "main.py").write_text("print('v2-merged-pr')\n", encoding="utf-8")
+            git(worker_repo, "commit", "-am", "merged PR into main")
+            git(worker_repo, "push", "origin", "main")
+            remote_sha = git(worker_repo, "rev-parse", "HEAD").stdout.strip()
+
+            # Verify local_repo is initially behind before gate runs
+            local_sha_before = git(local_repo, "rev-parse", "HEAD").stdout.strip()
+            self.assertNotEqual(local_sha_before, remote_sha)
+
+            # Gate runs on local_repo: should auto-pull remote and wake agent
+            rc3, wake3, out3 = run_gate()
+            self.assertEqual(rc3, 0)
+            self.assertTrue(wake3, "auto-pulling new remote commit should wake agent")
+
+            # Verify local_repo HEAD was fast-forwarded to remote_sha
+            local_sha_after = git(local_repo, "rev-parse", "HEAD").stdout.strip()
+            self.assertEqual(local_sha_after, remote_sha)
+
+            # Next run without new remote commits suppresses again
+            rc4, wake4, _ = run_gate()
+            self.assertEqual(rc4, 0)
+            self.assertFalse(wake4)
 
     def test_26_task_pr_url_and_stats(self):
         """Verify task pr_url persistence, update, and get_stats pr_count metric."""
@@ -2449,6 +2581,608 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_45_board_max_concurrent_running_api(self):
+        """The per-board max_concurrent_running setting round-trips through the
+        create + update API, defaults to 1 on fresh boards and on existing rows,
+        and is migrated into pre-existing boards tables."""
+        import sqlite3
+        import shutil
+
+        # --- Fresh DB: column present, default 1 ---
+        with get_db_conn() as conn:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
+        self.assertIn("max_concurrent_running", cols, "boards table must expose max_concurrent_running")
+
+        # --- Create with an explicit value ---
+        res = create_board(BoardCreate(git_url="https://github.com/mcr/explicit.git", max_concurrent_running=3))
+        self.assertTrue(res["ok"])
+        mcr_board = next(b for b in list_boards()["boards"] if b["slug"] == "mcr-explicit")
+        self.assertEqual(mcr_board["max_concurrent_running"], 3)
+
+        # --- Create with default (no value) -> 1 ---
+        create_board(BoardCreate(git_url="https://github.com/mcr/default.git"))
+        def_board = next(b for b in list_boards()["boards"] if b["slug"] == "mcr-default")
+        self.assertEqual(def_board["max_concurrent_running"], 1)
+
+        # --- Update via PATCH ---
+        res_up = client.patch("/api/plugins/zerofactory/boards/mcr-explicit", json={"max_concurrent_running": 2})
+        self.assertEqual(res_up.status_code, 200)
+        self.assertTrue(res_up.json()["ok"])
+        after = next(b for b in list_boards()["boards"] if b["slug"] == "mcr-explicit")
+        self.assertEqual(after["max_concurrent_running"], 2)
+
+        # --- Update only the value (description/git_url omitted) still works ---
+        res_only = client.patch("/api/plugins/zerofactory/boards/mcr-default", json={"max_concurrent_running": 5})
+        self.assertEqual(res_only.status_code, 200)
+        after2 = next(b for b in list_boards()["boards"] if b["slug"] == "mcr-default")
+        self.assertEqual(after2["max_concurrent_running"], 5)
+
+        # --- Validation: below-1 rejected (422) ---
+        res_bad = client.patch("/api/plugins/zerofactory/boards/mcr-explicit", json={"max_concurrent_running": 0})
+        self.assertEqual(res_bad.status_code, 422)
+
+        # --- Migration path: an OLD boards table without the column gains it on init_db() ---
+        old_db = os.environ.get("ZEROFACTORY_DB")
+        td = tempfile.mkdtemp(prefix="zf-mcr-migrate-")
+        old_path = Path(td) / "old.db"
+        try:
+            conn = sqlite3.connect(str(old_path))
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("INSERT INTO boards (slug, created_at, updated_at) VALUES ('legacy-board', 1, 1)")
+            conn.commit()
+            conn.close()
+            os.environ["ZEROFACTORY_DB"] = str(old_path)
+            try:
+                init_db()  # must migrate the legacy table in place
+            finally:
+                if old_db is None:
+                    os.environ.pop("ZEROFACTORY_DB", None)
+                else:
+                    os.environ["ZEROFACTORY_DB"] = old_db
+            conn = sqlite3.connect(str(old_path))
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
+            conn.close()
+            self.assertIn("max_concurrent_running", cols, "legacy boards table must be migrated")
+            # Row retains its original data with the new default applied
+            conn = sqlite3.connect(str(old_path))
+            row = conn.execute("SELECT slug, max_concurrent_running FROM boards WHERE slug = 'legacy-board'").fetchone()
+            conn.close()
+            self.assertEqual(row, ("legacy-board", 1))
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if old_db is None:
+                os.environ.pop("ZEROFACTORY_DB", None)
+            else:
+                os.environ["ZEROFACTORY_DB"] = old_db
+
+    def test_46_board_max_concurrent_running_dispatch(self):
+        """The dispatch cycle caps concurrent 'running' tasks per board at the
+        board's max_concurrent_running (default 1). With cap 1 and three ready
+        tasks only one runs; raising the board cap to 2 lets a second start."""
+        import tempfile
+        import shutil
+        import sqlite3
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        td = tempfile.mkdtemp(prefix="zf-mcr-dispatch-")
+        ws = Path(td) / "ws"
+        ws.mkdir()
+        db_file = Path(td) / "mcr_dispatch.db"
+        try:
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, metadata TEXT DEFAULT '{}', tenant TEXT DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, actor TEXT, action TEXT, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 1, 1, 1)")
+            for i in range(1, 4):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'ready', 'zf-builder', 'P2', ?, 1000, 1000)",
+                    (f"mcr-{i}", f"Task {i}", str(ws)),
+                )
+            conn.commit()
+            conn.close()
+
+            # Cycle 1: cap 1 -> exactly one running, two still ready
+            res = run_dispatch_cycle(db_file)
+            self.assertTrue(res["ok"], f"dispatch cycle should succeed: {res}")
+            conn = sqlite3.connect(str(db_file))
+            conn.row_factory = sqlite3.Row
+            running = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
+            ready = conn.execute("SELECT id FROM tasks WHERE status = 'ready'").fetchall()
+            conn.close()
+            self.assertEqual(len(running), 1, f"expected exactly 1 running under cap 1, got {len(running)}")
+            self.assertEqual(len(ready), 2, f"expected 2 ready to remain, got {len(ready)}")
+
+            # Raise the board cap to 2, run again -> a second task starts
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("UPDATE boards SET max_concurrent_running = 2 WHERE slug = 'b1'")
+            conn.commit()
+            conn.close()
+            res2 = run_dispatch_cycle(db_file)
+            self.assertTrue(res2["ok"], f"second dispatch cycle should succeed: {res2}")
+            conn = sqlite3.connect(str(db_file))
+            running2 = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
+            ready2 = conn.execute("SELECT id FROM tasks WHERE status = 'ready'").fetchall()
+            conn.close()
+            self.assertEqual(len(running2), 2, f"expected 2 running under cap 2, got {len(running2)}")
+            self.assertEqual(len(ready2), 1, f"expected 1 ready to remain, got {len(ready2)}")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is None:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
+    def test_47_global_settings_api(self):
+        """Global settings API supports GET and PATCH with validation."""
+        # 1. GET returns defaults
+        res = client.get("/api/plugins/zerofactory/settings")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        self.assertIn("max_active_tasks", data["settings"])
+        self.assertIn("default_max_concurrent_workers", data["settings"])
+        self.assertIn("scan_on_idle", data["settings"])
+        self.assertIn("idle_scan_active_threshold", data["settings"])
+        self.assertIn("idle_scan_cooldown_minutes", data["settings"])
+        self.assertIn("idle_scan_max_todo", data["settings"])
+        self.assertTrue(data["settings"]["scan_on_idle"])
+        self.assertEqual(data["settings"]["idle_scan_active_threshold"], 2)
+        self.assertEqual(data["settings"]["idle_scan_cooldown_minutes"], 15)
+        self.assertEqual(data["settings"]["idle_scan_max_todo"], 2)
+
+        # 2. PATCH updates settings
+        res_patch = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={
+                "max_active_tasks": 12,
+                "default_max_concurrent_workers": 2,
+                "scan_on_idle": False,
+                "idle_scan_active_threshold": 1,
+                "idle_scan_cooldown_minutes": 30,
+                "idle_scan_max_todo": 3,
+            }
+        )
+        self.assertEqual(res_patch.status_code, 200)
+        settings = res_patch.json()["settings"]
+        self.assertEqual(settings["max_active_tasks"], 12)
+        self.assertEqual(settings["default_max_concurrent_workers"], 2)
+        self.assertFalse(settings["scan_on_idle"])
+        self.assertEqual(settings["idle_scan_active_threshold"], 1)
+        self.assertEqual(settings["idle_scan_cooldown_minutes"], 30)
+        self.assertEqual(settings["idle_scan_max_todo"], 3)
+
+        # Verify GET returns updated values
+        res_after = client.get("/api/plugins/zerofactory/settings")
+        self.assertEqual(res_after.json()["settings"]["max_active_tasks"], 12)
+        self.assertEqual(res_after.json()["settings"]["default_max_concurrent_workers"], 2)
+        self.assertFalse(res_after.json()["settings"]["scan_on_idle"])
+        self.assertEqual(res_after.json()["settings"]["idle_scan_active_threshold"], 1)
+        self.assertEqual(res_after.json()["settings"]["idle_scan_cooldown_minutes"], 30)
+        self.assertEqual(res_after.json()["settings"]["idle_scan_max_todo"], 3)
+
+        # 3. Validation: values < 1 are rejected with 422
+        res_bad = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"max_active_tasks": 0}
+        )
+        self.assertEqual(res_bad.status_code, 422)
+
+        res_bad_threshold = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"idle_scan_active_threshold": 0}
+        )
+        self.assertEqual(res_bad_threshold.status_code, 422)
+
+        # Reset back to default
+        client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={
+                "max_active_tasks": 10,
+                "default_max_concurrent_workers": 1,
+                "scan_on_idle": True,
+                "idle_scan_active_threshold": 2,
+                "idle_scan_cooldown_minutes": 15,
+                "idle_scan_max_todo": 2,
+            }
+        )
+
+    def test_48_dynamic_max_active_tasks_dispatch(self):
+        """Dispatcher dynamically respects max_active_tasks from settings table."""
+        import tempfile
+        import shutil
+        import sqlite3
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        td = tempfile.mkdtemp(prefix="zf-max-active-")
+        ws = Path(td) / "ws"
+        ws.mkdir()
+        db_file = Path(td) / "max_active.db"
+        try:
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, metadata TEXT DEFAULT '{}', tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, actor TEXT, action TEXT, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 10, 1, 1)")
+            # Set max_active_tasks limit to 2
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '2', 1)")
+            # Create 5 tasks in 'todo'
+            for i in range(1, 6):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'unassigned', 'P2', ?, 1000, 1000)",
+                    (f"task-{i}", f"Task {i}", str(ws)),
+                )
+            conn.commit()
+            conn.close()
+
+            # Cycle 1: with max_active_tasks = 2, only 2 tasks should be promoted from todo to ready
+            res = run_dispatch_cycle(db_file)
+            self.assertTrue(res["ok"])
+            conn = sqlite3.connect(str(db_file))
+            todo_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
+            # Since board max_concurrent_running is 10 and worker spawn is skipped,
+            # the 2 promoted tasks will move to ready and then running
+            active_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')").fetchone()[0]
+            conn.close()
+            self.assertEqual(active_count, 2, f"expected exactly 2 active tasks promoted, got {active_count}")
+            self.assertEqual(todo_count, 3, f"expected 3 tasks to remain in todo, got {todo_count}")
+
+            # Raise max_active_tasks to 4 in settings
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("UPDATE settings SET value = '4' WHERE key = 'max_active_tasks'")
+            conn.commit()
+            conn.close()
+
+            # Cycle 2: 2 more tasks should be promoted from todo
+            res2 = run_dispatch_cycle(db_file)
+            self.assertTrue(res2["ok"])
+            conn = sqlite3.connect(str(db_file))
+            active_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')").fetchone()[0]
+            todo_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
+            conn.close()
+            self.assertEqual(active_count2, 4, f"expected 4 active tasks under limit 4, got {active_count2}")
+            self.assertEqual(todo_count2, 1, f"expected 1 task to remain in todo, got {todo_count2}")
+
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is None:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
+    def test_49_idle_improvement_scan_dispatch(self):
+        """Dispatcher triggers improvement scan on idle and respects threshold, cooldown, and limits."""
+        import time
+        import tempfile
+        import shutil
+        import sqlite3
+        from unittest.mock import patch, MagicMock
+        from dispatcher import run_dispatch_cycle, reset_idle_scanner_state, _active_scanners, _last_idle_scan_times
+
+        orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+
+        td = tempfile.mkdtemp(prefix="zf-idle-scan-")
+        ws = Path(td) / "ws"
+        ws.mkdir()
+        db_file = Path(td) / "idle_scan.db"
+
+        try:
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, metadata TEXT DEFAULT '{}', tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, actor TEXT, action TEXT, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 5, 1, 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('scan_on_idle', 'true', 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', '2', 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', '15', 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', '2', 1)")
+            conn.commit()
+            conn.close()
+
+            # 1. Idle condition met: 0 running workers < threshold 2, 0 todo < max_todo 2 -> triggers scan
+            reset_idle_scanner_state()
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn:
+                res1 = run_dispatch_cycle(db_file)
+                self.assertTrue(res1["ok"])
+                self.assertEqual(res1["scans_triggered"], 1)
+                mock_spawn.assert_called_once()
+                self.assertEqual(mock_spawn.call_args[0][0], "b1")
+
+            # 2. Cooldown suppression: immediately running cycle 2 should NOT trigger another scan
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn2:
+                res2 = run_dispatch_cycle(db_file)
+                self.assertTrue(res2["ok"])
+                self.assertEqual(res2["scans_triggered"], 0)
+                mock_spawn2.assert_not_called()
+
+            # 3. Active running worker suppression: running count = 2 >= threshold 2
+            reset_idle_scanner_state()
+            now_ts = int(time.time())
+            conn = sqlite3.connect(str(db_file))
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES ('r1', 'b1', 'Run 1', 'running', 'zf-builder', 'P2', ?, ?, ?)",
+                (str(ws), now_ts, now_ts)
+            )
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES ('r2', 'b1', 'Run 2', 'running', 'zf-builder', 'P2', ?, ?, ?)",
+                (str(ws), now_ts, now_ts)
+            )
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn3:
+                res3 = run_dispatch_cycle(db_file)
+                self.assertTrue(res3["ok"])
+                self.assertEqual(res3["scans_triggered"], 0)
+                mock_spawn3.assert_not_called()
+
+            # 4. Todo backlog suppression: 3 tasks in todo with max_active_tasks=1 leaves 2 in todo (>= max_todo 2)
+            reset_idle_scanner_state()
+            now_ts = int(time.time())
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("DELETE FROM tasks")
+            conn.execute("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '1', ?)", (now_ts,))
+            conn.execute("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', '2', ?)", (now_ts,))
+            for i in range(1, 4):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'unassigned', 'P2', ?, ?, ?)",
+                    (f"t{i}", f"Todo {i}", str(ws), now_ts, now_ts)
+                )
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn4:
+                # 1 task promoted to running, 2 tasks remain in todo (>= max_todo 2) -> scan suppressed
+                res4 = run_dispatch_cycle(db_file)
+                self.assertEqual(res4["scans_triggered"], 0)
+                mock_spawn4.assert_not_called()
+
+            # 5. In-flight scanner lock suppression
+            reset_idle_scanner_state()
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("DELETE FROM tasks")
+            conn.execute("UPDATE settings SET value = '2' WHERE key = 'idle_scan_max_todo'")
+            conn.commit()
+            conn.close()
+
+            # Place a dummy active process in _active_scanners
+            mock_proc = MagicMock()
+            mock_proc.poll.return_value = None
+            _active_scanners["b1"] = mock_proc
+
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn5:
+                res5 = run_dispatch_cycle(db_file)
+                self.assertEqual(res5["scans_triggered"], 0)
+                mock_spawn5.assert_not_called()
+
+            # Now let the mock proc finish: poll returns 0
+            mock_proc.poll.return_value = 0
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn6:
+                res6 = run_dispatch_cycle(db_file)
+                self.assertEqual(res6["scans_triggered"], 1)
+                mock_spawn6.assert_called_once()
+
+            # 6. Disabled scan_on_idle setting
+            reset_idle_scanner_state()
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("UPDATE settings SET value = 'false' WHERE key = 'scan_on_idle'")
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn7:
+                res7 = run_dispatch_cycle(db_file)
+                self.assertEqual(res7["scans_triggered"], 0)
+                mock_spawn7.assert_not_called()
+
+        finally:
+            reset_idle_scanner_state()
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is None:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
+    def test_51_cross_process_dispatcher_lock(self):
+        """Verify cross-process fcntl.flock prevents concurrent run_dispatch_cycle cycles."""
+        import fcntl
+        import shutil
+        import sqlite3
+        from dispatcher import run_dispatch_cycle, get_dispatcher_lock_path
+        td = tempfile.mkdtemp()
+        orig_lock_env = os.environ.get("ZEROFACTORY_LOCK_PATH")
+        lock_file = Path(td) / "test_dispatcher.lock"
+        os.environ["ZEROFACTORY_LOCK_PATH"] = str(lock_file)
+        db_file = Path(td) / "test.db"
+
+        try:
+            # Initialize minimal DB
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("""
+                CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT,
+                    status TEXT, assignee TEXT, priority TEXT, workspace_path TEXT,
+                    tenant TEXT, branch_name TEXT, metadata TEXT, created_at INTEGER, updated_at INTEGER
+                )
+            """)
+            conn.execute("CREATE TABLE task_links (parent_id TEXT, child_id TEXT)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY, task_id TEXT, actor TEXT, action TEXT, details TEXT, created_at INTEGER)")
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, max_concurrent_running INTEGER)")
+            conn.close()
+
+            # 1. Acquire the lock externally as if another process holds it
+            external_fd = os.open(str(lock_file), os.O_CREAT | os.O_RDWR, 0o666)
+            fcntl.flock(external_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+            # 2. Call run_dispatch_cycle; it should detect the lock and skip immediately
+            res = run_dispatch_cycle(db_file)
+            self.assertTrue(res.get("ok"))
+            self.assertTrue(res.get("skipped"))
+            self.assertEqual(res.get("reason"), "concurrent_cycle_active")
+
+            # 3. Release the external lock
+            fcntl.flock(external_fd, fcntl.LOCK_UN)
+            os.close(external_fd)
+
+            # 4. Now run_dispatch_cycle should successfully acquire the lock and execute
+            res2 = run_dispatch_cycle(db_file)
+            self.assertTrue(res2.get("ok"))
+            self.assertFalse(res2.get("skipped", False))
+        finally:
+            if orig_lock_env is None:
+                os.environ.pop("ZEROFACTORY_LOCK_PATH", None)
+            else:
+                os.environ["ZEROFACTORY_LOCK_PATH"] = orig_lock_env
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_52_atomic_cas_task_promotion(self):
+        """Verify atomic CAS prevents concurrent dispatchers from resetting a running task to ready."""
+        import shutil
+        import sqlite3
+        import time
+        from dispatcher import run_dispatch_cycle
+        td = tempfile.mkdtemp()
+        orig_skip = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        db_file = Path(td) / "test.db"
+
+        try:
+            now_ts = int(time.time())
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("""
+                CREATE TABLE tasks (
+                    id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT,
+                    status TEXT, assignee TEXT, priority TEXT, workspace_path TEXT,
+                    tenant TEXT, branch_name TEXT, metadata TEXT, created_at INTEGER, updated_at INTEGER
+                )
+            """)
+            conn.execute("CREATE TABLE task_links (parent_id TEXT, child_id TEXT)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY, task_id TEXT, actor TEXT, action TEXT, details TEXT, created_at INTEGER)")
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, max_concurrent_running INTEGER)")
+
+            # Insert task in 'running' state (as if another process already dispatched it)
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) VALUES ('t1', 'b1', 'Task 1', 'running', 'zf-builder', 'P0', ?, ?)",
+                (now_ts, now_ts)
+            )
+            conn.commit()
+            conn.close()
+
+            # Direct atomic CAS update check: if a second dispatcher tries to promote 't1' assuming it's in 'todo'
+            conn = sqlite3.connect(str(db_file))
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = 't1' AND (status = 'todo' OR (status = 'ready' AND assignee = 'unassigned'))",
+                (now_ts,)
+            )
+            self.assertEqual(cur.rowcount, 0, "Atomic CAS must reject promoting a task that is already running")
+
+            # Verify task remains in 'running'
+            cur.execute("SELECT status FROM tasks WHERE id = 't1'")
+            self.assertEqual(cur.fetchone()[0], "running")
+            conn.close()
+        finally:
+            if orig_skip is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_53_is_worker_or_child_process(self):
+        """Verify is_worker_or_child_process correctly suppresses dispatcher startup in workers."""
+        from dispatcher import is_worker_or_child_process
+        orig_prof = os.environ.get("HERMES_PROFILE")
+        orig_dis = os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        orig_task = os.environ.get("HERMES_KANBAN_TASK")
+
+        try:
+            # Normal profile
+            os.environ.pop("HERMES_PROFILE", None)
+            os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            os.environ.pop("HERMES_KANBAN_TASK", None)
+            self.assertFalse(is_worker_or_child_process())
+
+            # Worker profiles
+            os.environ["HERMES_PROFILE"] = "zf-builder"
+            self.assertTrue(is_worker_or_child_process())
+
+            os.environ["HERMES_PROFILE"] = "zf-reviewer"
+            self.assertTrue(is_worker_or_child_process())
+
+            # Explicit disable flag
+            os.environ["HERMES_PROFILE"] = "default"
+            os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
+            self.assertTrue(is_worker_or_child_process())
+
+            # In task env
+            os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            os.environ["HERMES_KANBAN_TASK"] = "task-1"
+            self.assertTrue(is_worker_or_child_process())
+        finally:
+            if orig_prof is not None:
+                os.environ["HERMES_PROFILE"] = orig_prof
+            else:
+                os.environ.pop("HERMES_PROFILE", None)
+            if orig_dis is not None:
+                os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = orig_dis
+            else:
+                os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            if orig_task is not None:
+                os.environ["HERMES_KANBAN_TASK"] = orig_task
+            else:
+                os.environ.pop("HERMES_KANBAN_TASK", None)
+
+    def test_54_spawn_board_scanner_syncs_repo_main(self):
+        """Verify that spawn_board_scanner automatically syncs and pulls the repository default branch."""
+        from unittest.mock import patch, MagicMock
+        from dispatcher import spawn_board_scanner
+        with tempfile.TemporaryDirectory() as td:
+            repo_path = Path(td) / "test_repo"
+            repo_path.mkdir()
+            with patch("dispatcher.sync_repo_main") as mock_sync, \
+                 patch("subprocess.Popen") as mock_popen, \
+                 patch("builtin_cron.toggle_builtin_job"):
+                mock_proc = MagicMock()
+                mock_proc.pid = 4321
+                mock_popen.return_value = mock_proc
+                pid = spawn_board_scanner("test-slug", repo_path)
+                self.assertEqual(pid, 4321)
+                mock_sync.assert_called_once_with(repo_path)
 
 
 if __name__ == "__main__":
