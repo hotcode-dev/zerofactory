@@ -1383,6 +1383,69 @@ def _handle_local_merge_conflict(
         _log.debug("Failed to record task comment for conflict: %s", e)
 
 
+# Bounded timeout (seconds) for `git worktree remove` cleanup on the PR-lifecycle
+# hot path. Worktree removal is local and fast; 30s is a generous margin against
+# the 60s commit timeouts. A hung remove (locked .git/index, locks held by a
+# still-terminating worker, slow filesystem) must not stall the whole dispatch
+# cycle or hold the cross-process dispatcher lock indefinitely.
+_WORKTREE_REMOVE_TIMEOUT = 30
+
+
+def _remove_worktree(workspace_path: Optional[str], repo_path: Path) -> None:
+    """Safely remove a git worktree without hanging the dispatch cycle.
+
+    No-ops when the path is missing; otherwise runs `git worktree remove
+    --force` bounded by ``_WORKTREE_REMOVE_TIMEOUT`` and falls back to a bounded
+    ``git worktree prune`` if the remove times out or fails. Any failure or
+    timeout is logged as a warning (never raised) so the dispatch cycle survives
+    and the cleanup failure is auditable in the dispatcher log.
+    """
+    if not workspace_path or not Path(workspace_path).exists():
+        return
+    try:
+        subprocess.run(
+            ["git", "worktree", "remove", workspace_path, "--force"],
+            check=False, cwd=str(repo_path), capture_output=True,
+            timeout=_WORKTREE_REMOVE_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        _log.warning(
+            "Worktree remove timed out after %ss for %s; falling back to 'git worktree prune'",
+            _WORKTREE_REMOVE_TIMEOUT, workspace_path,
+        )
+        try:
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                check=False, cwd=str(repo_path), capture_output=True,
+                timeout=_WORKTREE_REMOVE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as e:
+            _log.warning(
+                "Worktree prune also timed out after %ss for %s: %s",
+                _WORKTREE_REMOVE_TIMEOUT, workspace_path, e.cmd,
+            )
+        return
+    except Exception as e:
+        _log.warning("Worktree remove failed for %s: %s", workspace_path, e)
+
+    if Path(workspace_path).exists():
+        # `worktree remove` returned an error or did not fully delete the
+        # directory; prune to release any remaining metadata.
+        try:
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                check=False, cwd=str(repo_path), capture_output=True,
+                timeout=_WORKTREE_REMOVE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as e:
+            _log.warning(
+                "Worktree prune timed out after %ss for %s: %s",
+                _WORKTREE_REMOVE_TIMEOUT, workspace_path, e.cmd,
+            )
+        if Path(workspace_path).exists():
+            _log.warning("Worktree directory still present after cleanup attempts: %s", workspace_path)
+
+
 def _handle_pr_conflict_from_github(
     cursor: sqlite3.Cursor,
     task_id: str,
@@ -1397,7 +1460,7 @@ def _handle_pr_conflict_from_github(
     """Handle a PR that has merge conflicts on GitHub by routing back to builder."""
     stop_task_worker(task_id, cursor)
     if workspace_path and Path(workspace_path).exists():
-        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
+        _remove_worktree(workspace_path, repo_path)
 
     match = re.search(r"\[PR Opened by (.*?)\]", title)
     author = match.group(1) if match else "zf-builder"
@@ -1760,7 +1823,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                                 # Cleanup author worktree
                                 stop_task_worker(task_id, cursor)
-                                subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
+                                _remove_worktree(workspace_path, repo_path)
 
                                 new_title = title
                                 for tag in ("[PR Conflict]", "[Merge Conflict]"):
@@ -1800,7 +1863,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                                     if pr_state == "MERGED":
                                         stop_task_worker(task_id, cursor)
-                                        subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
+                                        _remove_worktree(workspace_path, repo_path)
                                         cursor.execute(
                                             "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
                                             (now, task_id)
@@ -1814,7 +1877,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     elif row["status"] in ("blocked", "done"):
                                         if decision == "CHANGES_REQUESTED":
                                             stop_task_worker(task_id, cursor)
-                                            subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
+                                            _remove_worktree(workspace_path, repo_path)
                                             match = re.search(r"\[PR Opened by (.*?)\]", title)
                                             author = match.group(1) if match else "zf-builder"
                                             author = normalize_assignee(author)
@@ -1829,7 +1892,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             )
                                         elif decision == "APPROVED":
                                             stop_task_worker(task_id, cursor)
-                                            subprocess.run(["git", "worktree", "remove", workspace_path, "--force"], check=False, cwd=str(repo_path), capture_output=True)
+                                            _remove_worktree(workspace_path, repo_path)
                                             new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
                                             cursor.execute(
                                                 "UPDATE tasks SET title = ?, status = 'blocked', workspace_path = NULL, updated_at = ? WHERE id = ?",
