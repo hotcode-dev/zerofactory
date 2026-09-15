@@ -1584,6 +1584,140 @@ class TestZeroFactory(unittest.TestCase):
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
+    def test_32b_conflict_check_fail_closed(self):
+        """check_unresolved_conflicts must FAIL CLOSED when the authoritative git
+        unmerged-index or status-porcelain query raises (transient git failure,
+        locked index, half-broken repo). It must NOT silently return [] on a
+        worktree that actually has an unresolved conflict, and pull_and_merge_main
+        must not auto-merge / claim-clean an unverifiable worktree.
+
+        Regression guard for dispatcher.py:260 (previously `except Exception: pass`
+        swallowed the error and returned an empty conflict list -> unsafe auto-merge).
+        """
+        import tempfile
+        import shutil
+        import subprocess
+        from unittest.mock import patch
+        from dispatcher import (
+            check_unresolved_conflicts,
+            check_unresolved_conflicts_safe,
+            pull_and_merge_main,
+            GitConflictCheckError,
+        )
+
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "T"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=str(repo_path), check=True)
+            (repo_path / "README.md").write_text("# repo\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo_path), check=True, capture_output=True)
+            wt = Path(td) / "wt"
+            subprocess.run(["git", "worktree", "add", str(wt), "-b", "task/wt"], cwd=str(repo_path), check=True, capture_output=True)
+
+            orig_run = subprocess.run
+
+            # --- Case A: unmerged-index query (step 1, diff-filter=U) raises ---
+            def fail_unmerged(cmd, *a, **k):
+                if isinstance(cmd, list) and any("--diff-filter=U" in c for c in cmd):
+                    raise OSError("index.lock held / transient git failure")
+                return orig_run(cmd, *a, **k)
+
+            with patch("subprocess.run", side_effect=fail_unmerged):
+                # raw function must RAISE, not silently return []
+                with self.assertRaises(GitConflictCheckError):
+                    check_unresolved_conflicts(wt)
+                # safe wrapper must report "could not verify" (verified=False)
+                ok, files, err = check_unresolved_conflicts_safe(wt)
+                self.assertFalse(ok)
+                self.assertEqual(files, [])
+                self.assertIn("could not verify", err)
+                # pull_and_merge_main must NOT auto-merge / claim a clean merge
+                ok2, files2, msg2 = pull_and_merge_main(wt, repo_path, "main")
+                self.assertFalse(ok2)
+                self.assertEqual(files2, ["(unverifiable)"])
+                self.assertIn("fail-closed", msg2)
+
+            # --- Case B: status-porcelain query (step 2) raises ---
+            def fail_porcelain(cmd, *a, **k):
+                if isinstance(cmd, list) and cmd[0] == "git" and "status" in cmd:
+                    raise OSError("status query failed")
+                return orig_run(cmd, *a, **k)
+
+            with patch("subprocess.run", side_effect=fail_porcelain):
+                with self.assertRaises(GitConflictCheckError):
+                    check_unresolved_conflicts(wt)
+                ok, _files, err = check_unresolved_conflicts_safe(wt)
+                self.assertFalse(ok)
+                self.assertIn("status --porcelain", err)
+
+            # --- Case C: healthy path still reports verified-clean (no regression) ---
+            ok, files, err = check_unresolved_conflicts_safe(repo_path)
+            self.assertTrue(ok)
+            self.assertEqual(files, [])
+            self.assertEqual(err, "")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_32c_dispatch_pre_implement_fail_closed_skips_auto_merge(self):
+        """Dispatch-level fail-closed: a ready zf-builder task whose worktree
+        conflict state CANNOT be verified must NOT be auto-merged via
+        pull_and_merge_main (the unsafe advance). The task is still dispatched so
+        the builder can sync with main itself and resolve any real conflict it
+        encounters; the post-worker guardrail is the final safety net before push.
+        """
+        from dispatcher import run_dispatch_cycle
+        import json
+        import shutil
+        import sqlite3
+        import tempfile
+        from unittest.mock import patch
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp(prefix="zf-fail-closed-pre-")
+        try:
+            db_file = Path(td) / "fail_closed.db"
+            self._create_conflict_test_db(db_file)
+            repo_dir = Path(td) / "main_repo"
+            repo_dir.mkdir()
+            ws_dir = Path(td) / "ws_task_unverifiable"
+            ws_dir.mkdir()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
+                    VALUES ('task-fc-1', 'Build feature Z', 'ready', 'zf-builder', ?, 'task/task-fc-1', 1000, 1000)
+                """, (str(ws_dir),))
+                conn.commit()
+
+            # check_unresolved_conflicts_safe reports the worktree as UNVERIFIABLE
+            with patch("dispatcher.reap_active_workers", return_value=0), \
+                 patch("dispatcher.resolve_task_repo_path", return_value=repo_dir), \
+                 patch("dispatcher.check_unresolved_conflicts_safe", return_value=(False, [], "simulated git error")) as mock_safe, \
+                 patch("dispatcher.pull_and_merge_main", return_value=(True, [], "ok")) as mock_pull, \
+                 patch("dispatcher.spawn_agent_worker", return_value=(99903, "sess-fc")) as mock_spawn:
+                res = run_dispatch_cycle(db_file)
+                self.assertTrue(res.get("ok"))
+                mock_safe.assert_called_once()
+                # The critical assertion: the worktree was NOT auto-merged.
+                mock_pull.assert_not_called()
+                # The task was still dispatched (builder syncs/itself resolves).
+                mock_spawn.assert_called_once()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT status, metadata FROM tasks WHERE id = 'task-fc-1'").fetchone()
+                self.assertEqual(row["status"], "running")
+                meta = json.loads(row["metadata"])
+                self.assertEqual(meta["worker_pid"], 99903)
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
     def test_33_worktree_symlink_guardrail_and_resolution(self):
         """Verify that get_plugin_root() resolves main repo from inside worktrees and ensure_plugin_symlinks cleans up worktree symlinks."""
         from profile_manager import get_plugin_root, ensure_plugin_symlinks
