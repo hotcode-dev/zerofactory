@@ -945,6 +945,12 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
 
     workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()
 
+    if repo_path and repo_path.is_dir():
+        try:
+            sync_repo_main(repo_path)
+        except Exception as e:
+            _log.debug("Auto-pull before idle scanner spawn failed for '%s': %s", board_slug, e)
+
     try:
         log_f = open(log_file_path, "ab")
         proc = subprocess.Popen(

@@ -998,6 +998,139 @@ class TestZeroFactory(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue(wake6, "a dirty worktree must re-trigger the scanner")
 
+    def test_25b_scanner_gate_auto_pull_remote(self):
+        """Verify that zf_scanner_gate automatically fast-forwards clean tracking branch
+        when remote origin has new commits, waking the agent.
+        """
+        import contextlib
+        import importlib.util
+        import io
+        import json
+        import sqlite3
+        import subprocess
+
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+
+        def git(repo, *args):
+            return subprocess.run(
+                ["git", *args], cwd=str(repo), check=True,
+                capture_output=True, text=True,
+                env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            )
+
+        def load_gate():
+            spec = importlib.util.spec_from_file_location("zf_scanner_gate_under_test", gate_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            slug = "gate-remote-test-board"
+
+            # 1. Bare remote repository
+            remote_repo = td / "remote.git"
+            remote_repo.mkdir()
+            git(remote_repo, "init", "--bare", "-b", "main")
+
+            # 2. Local clone
+            local_repo = td / "local_repo"
+            git(td, "clone", str(remote_repo), str(local_repo))
+            git(local_repo, "config", "user.email", "scan@test.local")
+            git(local_repo, "config", "user.name", "Scan Test")
+            (local_repo / "main.py").write_text("print('v1')\n", encoding="utf-8")
+            git(local_repo, "add", ".")
+            git(local_repo, "commit", "-qm", "initial commit")
+            git(local_repo, "push", "-u", "origin", "main")
+
+            # 3. Temp zerofactory.db
+            db_path = td / "gate.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.executescript(
+                "CREATE TABLE boards ("
+                " slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+                "CREATE TABLE tasks ("
+                " id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL,"
+                " description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage',"
+                " assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2',"
+                " workspace_path TEXT, workspace_kind TEXT DEFAULT 'worktree', branch_name TEXT,"
+                " pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]',"
+                " tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+            )
+            conn.execute(
+                "INSERT INTO boards (slug, created_at, updated_at) VALUES (?, 1, 1)",
+                (slug,),
+            )
+            conn.commit()
+            conn.close()
+
+            state_path = td / "scanner_state.json"
+
+            def run_gate():
+                mod = load_gate()
+                mod.STATE_FILE = state_path
+                old_argv, old_cwd = sys.argv, os.getcwd()
+                old_db = os.environ.get("ZEROFACTORY_DB")
+                sys.argv = [gate_path.name, slug]
+                os.chdir(str(local_repo))
+                os.environ["ZEROFACTORY_DB"] = str(db_path)
+                os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                buf = io.StringIO()
+                try:
+                    with contextlib.redirect_stdout(buf):
+                        rc = mod.run_scanner_gate()
+                finally:
+                    sys.argv = old_argv
+                    os.chdir(old_cwd)
+                    if old_db is None:
+                        os.environ.pop("ZEROFACTORY_DB", None)
+                    else:
+                        os.environ["ZEROFACTORY_DB"] = old_db
+                    os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                out = buf.getvalue()
+                wake = json.loads(out.strip().splitlines()[-1])
+                return rc, wake.get("wakeAgent"), out
+
+            # Baseline scan
+            rc1, wake1, _ = run_gate()
+            self.assertEqual(rc1, 0)
+            self.assertTrue(wake1)
+
+            # Steady state scan -> suppressed (0 tokens)
+            rc2, wake2, _ = run_gate()
+            self.assertEqual(rc2, 0)
+            self.assertFalse(wake2)
+
+            # Push a new commit to remote from a secondary clone
+            worker_repo = td / "worker_repo"
+            git(td, "clone", str(remote_repo), str(worker_repo))
+            git(worker_repo, "config", "user.email", "remote@test.local")
+            git(worker_repo, "config", "user.name", "Remote Worker")
+            (worker_repo / "main.py").write_text("print('v2-merged-pr')\n", encoding="utf-8")
+            git(worker_repo, "commit", "-am", "merged PR into main")
+            git(worker_repo, "push", "origin", "main")
+            remote_sha = git(worker_repo, "rev-parse", "HEAD").stdout.strip()
+
+            # Verify local_repo is initially behind before gate runs
+            local_sha_before = git(local_repo, "rev-parse", "HEAD").stdout.strip()
+            self.assertNotEqual(local_sha_before, remote_sha)
+
+            # Gate runs on local_repo: should auto-pull remote and wake agent
+            rc3, wake3, out3 = run_gate()
+            self.assertEqual(rc3, 0)
+            self.assertTrue(wake3, "auto-pulling new remote commit should wake agent")
+
+            # Verify local_repo HEAD was fast-forwarded to remote_sha
+            local_sha_after = git(local_repo, "rev-parse", "HEAD").stdout.strip()
+            self.assertEqual(local_sha_after, remote_sha)
+
+            # Next run without new remote commits suppresses again
+            rc4, wake4, _ = run_gate()
+            self.assertEqual(rc4, 0)
+            self.assertFalse(wake4)
+
     def test_26_task_pr_url_and_stats(self):
         """Verify task pr_url persistence, update, and get_stats pr_count metric."""
         # 1. Create task with pr_url
@@ -2984,6 +3117,23 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ["HERMES_KANBAN_TASK"] = orig_task
             else:
                 os.environ.pop("HERMES_KANBAN_TASK", None)
+
+    def test_54_spawn_board_scanner_syncs_repo_main(self):
+        """Verify that spawn_board_scanner automatically syncs and pulls the repository default branch."""
+        from unittest.mock import patch, MagicMock
+        from dispatcher import spawn_board_scanner
+        with tempfile.TemporaryDirectory() as td:
+            repo_path = Path(td) / "test_repo"
+            repo_path.mkdir()
+            with patch("dispatcher.sync_repo_main") as mock_sync, \
+                 patch("subprocess.Popen") as mock_popen, \
+                 patch("builtin_cron.toggle_builtin_job"):
+                mock_proc = MagicMock()
+                mock_proc.pid = 4321
+                mock_popen.return_value = mock_proc
+                pid = spawn_board_scanner("test-slug", repo_path)
+                self.assertEqual(pid, 4321)
+                mock_sync.assert_called_once_with(repo_path)
 
 
 if __name__ == "__main__":
