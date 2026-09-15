@@ -263,7 +263,18 @@ def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
         return []
     conflicted: set[str] = set()
 
-    # 1. Check git unmerged index entries (diff-filter=U)
+    # A real git conflict is a structured block: a start line (<{7} plus an
+    # optional branch label), a separator line (={7} alone), and an end line
+    # (>{7} plus an optional branch label). We detect a file as conflicted only
+    # when a full start->sep->end sequence is present (see
+    # _has_unresolved_conflict_markers). A naive substring search
+    # (e.g. b"<<<<<<< " AND b"=======") false-positives on source files that
+    # merely *mention* the markers — most notably test fixtures that embed a
+    # conflict block as a single-line string (see test_35 in test_plugin.py) —
+    # and would then re-route the task to zf-builder on every dispatch cycle.
+
+    # 1. Check git unmerged index entries (diff-filter=U) — the authoritative
+    #    signal of an in-progress conflicted merge.
     try:
         res = subprocess.run(
             ["git", "diff", "--name-only", "--diff-filter=U"],
