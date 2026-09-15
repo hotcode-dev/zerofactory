@@ -54,6 +54,33 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Shared global settings definitions: the six settings defaults and the
+# load_settings() table reader live in the settings module (settings.py) and are
+# imported by both dispatcher.py and dashboard/plugin_api.py so the defaults and
+# the settings-parsing logic cannot drift between the two.
+try:
+    from .settings import (  # type: ignore
+        DEFAULT_MAX_ACTIVE_TASKS,
+        DEFAULT_MAX_CONCURRENT_WORKERS,
+        DEFAULT_SCAN_ON_IDLE,
+        DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
+        DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+        DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
+        DEFAULT_IDLE_SCAN_MAX_TODO,
+        load_settings,
+    )
+except ImportError:
+    from settings import (  # type: ignore
+        DEFAULT_MAX_ACTIVE_TASKS,
+        DEFAULT_MAX_CONCURRENT_WORKERS,
+        DEFAULT_SCAN_ON_IDLE,
+        DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
+        DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+        DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
+        DEFAULT_IDLE_SCAN_MAX_TODO,
+        load_settings,
+    )
+
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
 
 
@@ -78,14 +105,9 @@ def is_worker_or_child_process() -> bool:
         return True
     return False
 
-# Kanban WIP Limit: Default maximum total active tasks across all boards permitted in ('ready', 'running').
-# Controls Step 2 promotion from 'todo' -> 'ready' and git worktree pre-provisioning to avoid queue flooding.
-# Can be customized in the UI settings (persisted in the settings table).
-DEFAULT_MAX_ACTIVE_TASKS = 10
-
-# Worker Concurrency Limit: Fallback cap for concurrent active agent worker subprocesses ('running').
-# Defaults to 1; customized per board via the boards.max_concurrent_running column in the UI/DB.
-DEFAULT_MAX_CONCURRENT_WORKERS = 1
+# Kanban WIP Limit and Worker Concurrency Limit defaults are imported from the
+# shared ``settings`` module (see the import at the top of this file); the values
+# are persisted in the settings table and can be customized in the UI settings.
 
 # Maximum wall-clock execution duration (in seconds) before an active task worker is terminated as stuck.
 DEFAULT_TASK_TIMEOUT_SECONDS = 3600  # 1 hour max running time
@@ -102,21 +124,13 @@ _dispatcher_thread: Optional[threading.Thread] = None
 # Global re-entrant lock ensuring only one dispatch cycle executes at any given time.
 _dispatcher_lock = threading.Lock()
 
-# Registry tracking active worker subprocesses keyed by task_id: {task_id: subprocess.Popen}.
+# Registry tracking active worker subprocesses keyed by task_id: {task_id: subprocess.Popen}
 _active_workers: Dict[str, subprocess.Popen] = {}
 
-# Idle Improvement Scanner Configuration
-# Automatically scan workspace repository for code quality improvements when running workers are below threshold.
-DEFAULT_SCAN_ON_IDLE = True
-
-# Threshold of active running workers on a board below which an improvement scan is considered (e.g. < 2, meaning 0 or 1 active workers).
-DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD = 2
-
-# Minimum duration (in seconds) between idle improvement scans for the same board.
-DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = 900  # 15 mins cooldown
-
-# Maximum backlog tasks allowed in 'todo' before suppressing idle scans to prevent backlog flooding.
-DEFAULT_IDLE_SCAN_MAX_TODO = 2
+# Idle Improvement Scanner defaults (DEFAULT_SCAN_ON_IDLE,
+# DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
+# DEFAULT_IDLE_SCAN_MAX_TODO) are imported from the shared ``settings`` module at
+# the top of this file; they can be customized in the UI settings.
 
 # Timestamp tracking when an idle improvement scan was last triggered per board slug: {board_slug: timestamp}
 _last_idle_scan_times: Dict[str, int] = {}
@@ -1548,6 +1562,17 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
+                # 0. Load global settings (single shared read of the settings
+                #    table). The WIP limit, the per-board concurrent-worker
+                #    fallback, and the idle-scan knobs all derive from this one
+                #    call so the parsing/clamping logic lives in one place.
+                #    load_settings() returns defaults for any missing key and
+                #    falls back to defaults if the settings table is absent.
+                try:
+                    settings = load_settings(cursor)
+                except Exception:
+                    settings = {}
+
                 # 1. Unblock tasks whose parent dependencies are all done
                 cursor.execute("""
                     SELECT id, title FROM tasks
@@ -1568,13 +1593,12 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     unblocked += 1
 
                 # 2. Promote Todo to Ready respecting WIP Limit
-                max_active_tasks = DEFAULT_MAX_ACTIVE_TASKS
-                try:
-                    s_row = cursor.execute("SELECT value FROM settings WHERE key = 'max_active_tasks'").fetchone()
-                    if s_row and s_row[0]:
-                        max_active_tasks = max(1, int(s_row[0]))
-                except Exception:
-                    pass
+                # Derive the WIP limit from the shared settings read above.
+                # load_settings() already clamps to >= 1 and falls back to the
+                # shared default for a missing/unparseable value; the .get()
+                # default is a belt-and-suspenders guard for the rare case where
+                # the settings dict is empty.
+                max_active_tasks = int(settings.get("max_active_tasks", DEFAULT_MAX_ACTIVE_TASKS))
 
                 cursor.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')")
                 active_count = cursor.fetchone()[0]
@@ -1616,13 +1640,9 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 reaped = reap_active_workers(cursor, now)
 
                 # Fallback concurrent running workers per board from settings table
-                default_concurrent_workers = DEFAULT_MAX_CONCURRENT_WORKERS
-                try:
-                    s_row = cursor.execute("SELECT value FROM settings WHERE key = 'default_max_concurrent_workers'").fetchone()
-                    if s_row and s_row[0]:
-                        default_concurrent_workers = max(1, int(s_row[0]))
-                except Exception:
-                    pass
+                default_concurrent_workers = int(
+                    settings.get("default_max_concurrent_workers", DEFAULT_MAX_CONCURRENT_WORKERS)
+                )
 
                 # Per-board concurrent running caps (boards.max_concurrent_running, default 1).
                 # Falls back to default_concurrent_workers when the
@@ -1908,26 +1928,17 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 # 4. Capacity-driven / Idle Improvement Scanner Check
                 reap_active_scanners()
 
-                scan_on_idle = DEFAULT_SCAN_ON_IDLE
-                idle_active_threshold = DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD
-                cooldown_seconds = DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS
-                max_todo = DEFAULT_IDLE_SCAN_MAX_TODO
-
-                try:
-                    s_rows = cursor.execute(
-                        "SELECT key, value FROM settings WHERE key IN ('scan_on_idle', 'idle_scan_active_threshold', 'idle_scan_cooldown_minutes', 'idle_scan_max_todo')"
-                    ).fetchall()
-                    for s_k, s_v in [(r["key"], r["value"]) for r in s_rows]:
-                        if s_k == "scan_on_idle":
-                            scan_on_idle = str(s_v).lower() in ("true", "1", "yes")
-                        elif s_k == "idle_scan_active_threshold":
-                            idle_active_threshold = max(1, int(s_v))
-                        elif s_k == "idle_scan_cooldown_minutes":
-                            cooldown_seconds = max(1, int(s_v)) * 60
-                        elif s_k == "idle_scan_max_todo":
-                            max_todo = max(0, int(s_v))
-                except Exception:
-                    pass
+                # Derive the idle-scan knobs from the shared settings read above.
+                # load_settings() stores idle_scan_cooldown_minutes in MINUTES; the
+                # dispatcher works in seconds, so the single minutes->seconds
+                # conversion (value * 60) is performed exactly here and nowhere
+                # else (see the settings module docstring for the unit boundary).
+                # .get() defaults only guard the rare empty-settings case; the
+                # stored values themselves are already clamped by load_settings().
+                scan_on_idle = bool(settings.get("scan_on_idle", DEFAULT_SCAN_ON_IDLE))
+                idle_active_threshold = int(settings.get("idle_scan_active_threshold", DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD))
+                cooldown_seconds = int(settings.get("idle_scan_cooldown_minutes", DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES)) * 60
+                max_todo = int(settings.get("idle_scan_max_todo", DEFAULT_IDLE_SCAN_MAX_TODO))
 
                 if scan_on_idle:
                     try:
@@ -1956,14 +1967,23 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             if board_slug not in _active_scanners:
                                 last_scan = _last_idle_scan_times.get(board_slug, 0)
                                 if (now - last_scan) >= cooldown_seconds:
-                                    _last_idle_scan_times[board_slug] = now
                                     repo_for_task = resolve_task_repo_path(cursor, board_slug, None)
                                     pid = spawn_board_scanner(board_slug, repo_for_task)
-                                    scans_triggered += 1
-                                    _log.info(
-                                        "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %s)",
-                                        board_slug, board_active_running, idle_active_threshold, board_todo_count, pid or "skipped"
-                                    )
+                                    if pid is not None:
+                                        # Consume the cooldown and count the scan only when a
+                                        # scanner process actually started, so a transient spawn
+                                        # failure does not lock the board out for the cooldown.
+                                        _last_idle_scan_times[board_slug] = now
+                                        scans_triggered += 1
+                                        _log.info(
+                                            "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %d)",
+                                            board_slug, board_active_running, idle_active_threshold, board_todo_count, pid
+                                        )
+                                    else:
+                                        _log.warning(
+                                            "Idle improvement scan spawn failed for board '%s'; cooldown NOT consumed, will retry next cycle",
+                                            board_slug
+                                        )
 
                 conn.commit()
 

@@ -2956,6 +2956,30 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertEqual(res7["scans_triggered"], 0)
                 mock_spawn7.assert_not_called()
 
+            # 7. Failed spawn (returns None) must NOT consume the cooldown or count as triggered
+            reset_idle_scanner_state()
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("DELETE FROM tasks")
+            conn.execute("UPDATE settings SET value = 'true' WHERE key = 'scan_on_idle'")
+            conn.execute("UPDATE settings SET value = '2' WHERE key = 'idle_scan_max_todo'")
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=None) as mock_spawn8:
+                res8 = run_dispatch_cycle(db_file)
+                self.assertTrue(res8["ok"])
+                self.assertEqual(res8["scans_triggered"], 0)
+                # Spawn was attempted (idle conditions met) but failed: cooldown must be untouched
+                mock_spawn8.assert_called_once()
+                self.assertNotIn("b1", _last_idle_scan_times)
+
+            # 8. Next cycle (still within the nominal cooldown window): successful spawn IS triggered
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn9:
+                res9 = run_dispatch_cycle(db_file)
+                self.assertEqual(res9["scans_triggered"], 1)
+                mock_spawn9.assert_called_once()
+                self.assertIn("b1", _last_idle_scan_times)
+
         finally:
             reset_idle_scanner_state()
             shutil.rmtree(td, ignore_errors=True)
@@ -3398,6 +3422,312 @@ class TestZeroFactory(unittest.TestCase):
             self.assertIn("conflicting", acts[0][0].lower())
         finally:
             shutil.rmtree(td, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Hermetic mock helpers for the repo auto-sync / fast-forward guard tests.
+# These pin the guard behavior of dispatcher.sync_repo_main,
+# dispatcher.get_default_branch, and zf_scanner_gate._auto_sync_repo without
+# touching the real network or any git remotes.
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock  # noqa: E402
+
+
+class _ProcRecorder:
+    """Stands in for subprocess.run.
+
+    Keyed on the argv tuple. Canned results are returned for known commands;
+    unknown commands return a success MagicMock (returncode 0). A canned value
+    that is an Exception instance is raised instead of returned. Every call
+    (including raised ones) is recorded in ``calls``.
+    """
+
+    def __init__(self, results=None, default_rc=0, default_stdout=""):
+        self.results = dict(results or {})
+        self.calls = []
+        self.default_rc = default_rc
+        self.default_stdout = default_stdout
+
+    def __call__(self, cmd, *args, **kwargs):
+        key = tuple(cmd)
+        self.calls.append(key)
+        if key in self.results:
+            res = self.results[key]
+            if isinstance(res, BaseException):
+                raise res
+            return res
+        m = MagicMock()
+        m.returncode = self.default_rc
+        m.stdout = self.default_stdout
+        m.stderr = ""
+        return m
+
+
+class _StrRecorder:
+    """Stands in for zf_scanner_gate._run_cmd (returns a stripped str).
+
+    Same keying/raise semantics as _ProcRecorder but yields strings.
+    """
+
+    def __init__(self, results=None, default=""):
+        self.results = dict(results or {})
+        self.calls = []
+        self.default = default
+
+    def __call__(self, cmd, cwd=None):
+        key = tuple(cmd)
+        self.calls.append(key)
+        if key in self.results:
+            res = self.results[key]
+            if isinstance(res, BaseException):
+                raise res
+            return res
+        return self.default
+
+
+def _proc_result(rc=0, stdout=""):
+    m = MagicMock()
+    m.returncode = rc
+    m.stdout = stdout
+    m.stderr = ""
+    return m
+
+
+def _merge_cmds(rec):
+    return [c for c in rec.calls if c[:2] == ("git", "merge")]
+
+
+class TestSyncRepoMainGuards(unittest.TestCase):
+    """Pin the guard logic of dispatcher.sync_repo_main / get_default_branch."""
+
+    def _call_sync(self, default_branch, proc_results):
+        from unittest.mock import patch
+        import dispatcher
+
+        rec = _ProcRecorder(proc_results)
+        with patch.object(dispatcher, "get_default_branch", return_value=default_branch), \
+             patch.object(dispatcher.subprocess, "run", new=rec):
+            out = dispatcher.sync_repo_main(Path("/tmp/fake_repo"))
+        return out, rec
+
+    def test_55_merge_skipped_when_not_on_default_branch(self):
+        rec_results = {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, ""),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "feature-x\n"),
+        }
+        out, rec = self._call_sync("main", rec_results)
+        self.assertEqual(out, "main")
+        self.assertEqual(_merge_cmds(rec), [], "merge must not run when off the default branch")
+
+    def test_56_merge_skipped_when_worktree_dirty(self):
+        rec_results = {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, " M dirty.txt\n"),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "main\n"),
+        }
+        out, rec = self._call_sync("main", rec_results)
+        self.assertEqual(out, "main")
+        self.assertEqual(_merge_cmds(rec), [], "merge must not run on a dirty worktree")
+
+    def test_57_merge_uses_origin_default_branch_ref(self):
+        rec_results = {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, ""),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "main\n"),
+            ("git", "merge", "--ff-only", "origin/main"): _proc_result(),
+        }
+        out, rec = self._call_sync("main", rec_results)
+        self.assertEqual(out, "main")
+        self.assertIn(("git", "merge", "--ff-only", "origin/main"), rec.calls)
+
+    def test_58_merge_ref_uses_resolved_default_branch_master(self):
+        rec_results = {
+            ("git", "fetch", "origin", "master"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, ""),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "master\n"),
+            ("git", "merge", "--ff-only", "origin/master"): _proc_result(),
+        }
+        out, rec = self._call_sync("master", rec_results)
+        self.assertEqual(out, "master")
+        self.assertIn(("git", "merge", "--ff-only", "origin/master"), rec.calls)
+
+    def test_59_returns_branch_when_fetch_times_out(self):
+        import subprocess as sp
+        rec_results = {
+            ("git", "fetch", "origin", "main"): sp.TimeoutExpired(cmd="git", timeout=10),
+        }
+        out, rec = self._call_sync("main", rec_results)
+        self.assertEqual(out, "main", "sync_repo_main must return the branch even when fetch raises")
+        self.assertEqual(_merge_cmds(rec), [])
+
+    # --- get_default_branch fallback chain ---
+
+    def _call_default_branch(self, results):
+        from unittest.mock import patch
+        import dispatcher
+
+        rec = _ProcRecorder(results)
+        with patch.object(dispatcher.subprocess, "run", new=rec):
+            out = dispatcher.get_default_branch(Path("/tmp/fake_repo"))
+        return out, rec
+
+    def test_60_default_branch_origin_head_hit(self):
+        out, rec = self._call_default_branch({
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(0, "refs/remotes/origin/main"),
+        })
+        self.assertEqual(out, "main")
+        self.assertIn(("git", "symbolic-ref", "refs/remotes/origin/HEAD"), rec.calls)
+
+    def test_61_default_branch_origin_main_showref(self):
+        out, rec = self._call_default_branch({
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(0, ""),
+        })
+        self.assertEqual(out, "main")
+
+    def test_62_default_branch_origin_master_showref(self):
+        out, rec = self._call_default_branch({
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(0, ""),
+        })
+        self.assertEqual(out, "master")
+
+    def test_63_default_branch_fallback_literal_main(self):
+        out, rec = self._call_default_branch({
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/heads/main"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/heads/master"): _proc_result(1, ""),
+        })
+        self.assertEqual(out, "main")
+
+
+class TestAutoSyncRepoGuards(unittest.TestCase):
+    """Pin the six guard/exit branches of zf_scanner_gate._auto_sync_repo."""
+
+    def _load_gate(self):
+        import importlib.util
+
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+        spec = importlib.util.spec_from_file_location("zf_scanner_gate_guard_test", gate_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _call_gate(self, str_results, proc_results):
+        from unittest.mock import patch
+
+        mod = self._load_gate()
+        str_rec = _StrRecorder(str_results)
+        proc_rec = _ProcRecorder(proc_results)
+        with patch.object(mod, "_run_cmd", new=str_rec), \
+             patch.object(mod.subprocess, "run", new=proc_rec):
+            out = mod._auto_sync_repo(Path("/tmp/fake_repo"))
+        return out, str_rec, proc_rec
+
+    def test_64_no_origin_early_return(self):
+        out, str_rec, proc_rec = self._call_gate({("git", "remote"): "upstream"}, {})
+        self.assertIsNone(out)
+        self.assertEqual(str_rec.calls, [("git", "remote")])
+        self.assertEqual(proc_rec.calls, [], "no fetch/show-ref/merge when origin is absent")
+
+    def test_65_dirty_worktree_early_return(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): " M dirty.txt\n"},
+            {},
+        )
+        self.assertIsNone(out)
+        self.assertNotIn(("git", "fetch", "origin", "main"), proc_rec.calls)
+        self.assertNotIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_66_symbolic_ref_preferred(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/feature-x",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "feature-x\n"},
+            {("git", "fetch", "origin", "feature-x"): _proc_result(0, ""),
+             ("git", "merge", "--ff-only", "origin/feature-x"): _proc_result(0, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "merge", "--ff-only", "origin/feature-x"), proc_rec.calls)
+
+    def test_67_fallback_main_showref(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n"},
+            {("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(0, ""),
+             ("git", "fetch", "origin", "main"): _proc_result(0, ""),
+             ("git", "merge", "--ff-only", "origin/main"): _proc_result(0, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"), proc_rec.calls)
+        self.assertIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_68_fallback_master_showref(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "master\n"},
+            {("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
+             ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(0, ""),
+             ("git", "fetch", "origin", "master"): _proc_result(0, ""),
+             ("git", "merge", "--ff-only", "origin/master"): _proc_result(0, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "merge", "--ff-only", "origin/master"), proc_rec.calls)
+
+    def test_69_default_literal_main_when_no_remote_refs(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n"},
+            {("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
+             ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(1, ""),
+             ("git", "fetch", "origin", "main"): _proc_result(0, ""),
+             ("git", "merge", "--ff-only", "origin/main"): _proc_result(0, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_70_not_on_default_branch_early_return(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/main",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "feature\n"},
+            {},
+        )
+        self.assertIsNone(out)
+        self.assertNotIn(("git", "fetch", "origin", "main"), proc_rec.calls)
+        self.assertNotIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_71_fetch_nonzero_aborts_before_merge(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/main",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n"},
+            {("git", "fetch", "origin", "main"): _proc_result(1, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "fetch", "origin", "main"), proc_rec.calls)
+        self.assertNotIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_72_exceptions_swallowed(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): RuntimeError("boom")}, {},
+        )
+        self.assertIsNone(out, "_auto_sync_repo must swallow exceptions and return cleanly")
 
 
 if __name__ == "__main__":
