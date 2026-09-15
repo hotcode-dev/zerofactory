@@ -22,6 +22,22 @@ from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+# Shared global-settings source of truth (defaults + parsing). Imported via the
+# relative (package) path when loaded as ``zerofactory.dashboard.plugin_api`` and
+# via the bare module name when the dashboard dir is placed on ``sys.path``.
+try:
+    from ..settings import (  # type: ignore
+        DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
+        DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_SETTING_VALUES, load_settings,
+    )
+except ImportError:
+    from settings import (  # type: ignore
+        DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
+        DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_SETTING_VALUES, load_settings,
+    )
+
 _log = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -137,32 +153,15 @@ def init_db():
                     "ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER NOT NULL DEFAULT 1"
                 )
 
-            # Seed default global settings if missing
+            # Seed default global settings if missing. Values are derived from the
+            # shared constants (settings.DEFAULT_SETTING_VALUES) so the seed rows and
+            # the in-code defaults can never drift apart.
             now_ts = int(time.time())
-            conn.execute(
-                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '10', ?)",
-                (now_ts,)
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('default_max_concurrent_workers', '1', ?)",
-                (now_ts,)
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('scan_on_idle', 'true', ?)",
-                (now_ts,)
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', '2', ?)",
-                (now_ts,)
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', '15', ?)",
-                (now_ts,)
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', '2', ?)",
-                (now_ts,)
-            )
+            for _key, _value in DEFAULT_SETTING_VALUES.items():
+                conn.execute(
+                    "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    (_key, _value, now_ts)
+                )
 
 # Initialize on import
 try:
@@ -899,56 +898,19 @@ def delete_board(slug: str):
 
 
 # --- Global Settings Endpoints -----------------------------------------------
-
-DEFAULT_MAX_ACTIVE_TASKS = 10
-DEFAULT_MAX_CONCURRENT_WORKERS = 1
-DEFAULT_SCAN_ON_IDLE = True
-DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD = 2
-DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES = 15
-DEFAULT_IDLE_SCAN_MAX_TODO = 2
+# Global settings defaults and parsing live in the shared ``settings`` module
+# (imported at the top of this file) as the single source of truth. The
+# ``DEFAULT_*`` names remain importable here for backwards compatibility.
 
 @router.get("/settings")
 def get_settings():
-    """Retrieve global Zero Factory settings."""
-    settings = {
-        "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
-        "default_max_concurrent_workers": DEFAULT_MAX_CONCURRENT_WORKERS,
-        "scan_on_idle": DEFAULT_SCAN_ON_IDLE,
-        "idle_scan_active_threshold": DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
-        "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-        "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
-    }
+    """Retrieve global Zero Factory settings.
+
+    Delegates to the shared :func:`settings.load_settings` helper (defaults +
+    clamping + fallback), so the API and the dispatcher read identical values.
+    """
     with get_db_conn() as conn:
-        cursor = conn.cursor()
-        for row in cursor.execute("SELECT key, value FROM settings").fetchall():
-            k, v = row["key"], row["value"]
-            if k == "max_active_tasks":
-                try:
-                    settings["max_active_tasks"] = max(1, int(v))
-                except Exception:
-                    pass
-            elif k == "default_max_concurrent_workers":
-                try:
-                    settings["default_max_concurrent_workers"] = max(1, int(v))
-                except Exception:
-                    pass
-            elif k == "scan_on_idle":
-                settings["scan_on_idle"] = str(v).lower() in ("true", "1", "yes")
-            elif k == "idle_scan_active_threshold":
-                try:
-                    settings["idle_scan_active_threshold"] = max(1, int(v))
-                except Exception:
-                    pass
-            elif k == "idle_scan_cooldown_minutes":
-                try:
-                    settings["idle_scan_cooldown_minutes"] = max(1, int(v))
-                except Exception:
-                    pass
-            elif k == "idle_scan_max_todo":
-                try:
-                    settings["idle_scan_max_todo"] = max(0, int(v))
-                except Exception:
-                    pass
+        settings = load_settings(conn)
     return {"ok": True, "settings": settings}
 
 
