@@ -1,6 +1,7 @@
 """Tests for Zero Factory plugin backend and database."""
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -3158,6 +3159,269 @@ class TestZeroFactory(unittest.TestCase):
                 pid = spawn_board_scanner("test-slug", repo_path)
                 self.assertEqual(pid, 4321)
                 mock_sync.assert_called_once_with(repo_path)
+
+    def _make_reviewer_test_repo(self, td: str):
+        """Create a real git repo + a reviewer worktree so the dispatcher can
+        resolve the repo root via `git rev-parse --git-common-dir`."""
+        import subprocess
+        repo_path = Path(td) / "wt_repo"
+        repo_path.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path))
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path))
+        (repo_path / "README.md").write_text("# Worktree Cleanup Test\n")
+        subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(repo_path), check=True, capture_output=True)
+        reviewer_ws = Path(td) / "ws_reviewer"
+        subprocess.run(
+            ["git", "worktree", "add", str(reviewer_ws), "-b", "task/wt-clean"],
+            cwd=str(repo_path), check=True, capture_output=True
+        )
+        self.assertTrue(reviewer_ws.exists())
+        return repo_path, reviewer_ws
+
+    def _run_reviewer_pr_cycle(self, db_file: Path, gh_payload: dict, task_id: str = "wt-clean"):
+        """Run one dispatch cycle against a reviewer task, faking the GitHub PR
+        state via `gh pr view` and stubbing the worktree cleanup helper."""
+        import json
+        import subprocess
+        import sqlite3
+        from unittest.mock import patch, MagicMock
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        orig_run = subprocess.run
+        captured_gh = []
+
+        def fake_run(cmd, *args, **kwargs):
+            if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr" and cmd[2] == "view":
+                captured_gh.append(list(cmd))
+                res = MagicMock()
+                res.returncode = 0
+                res.stdout = json.dumps(gh_payload)
+                return res
+            return orig_run(cmd, *args, **kwargs)
+
+        res = None
+        try:
+            with patch("dispatcher._remove_worktree") as mock_remove, \
+                 patch("dispatcher.setup_worktree", return_value=None), \
+                 patch("dispatcher.check_unresolved_conflicts", return_value=[]), \
+                 patch("fcntl.flock", return_value=0), \
+                 patch("subprocess.run", side_effect=fake_run):
+                res = run_dispatch_cycle(db_file)
+        finally:
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+        def fetch(query):
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                return cur.execute(query).fetchall()
+
+        return res, captured_gh, mock_remove, fetch, task_id
+
+    def test_55_remove_worktree_missing_path_noops(self):
+        """(a) _remove_worktree returns cleanly (no git subprocess, no logs) when
+        the worktree path doesn't exist or is None/empty."""
+        import subprocess
+        from unittest.mock import patch
+        from dispatcher import _remove_worktree
+
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "repo"
+            repo_path.mkdir()
+            with patch("subprocess.run") as mock_run:
+                # Missing path: pure no-op, no git invocation
+                _remove_worktree(str(Path(td) / "does_not_exist"), repo_path)
+                mock_run.assert_not_called()
+                # None / empty path: pure no-op as well
+                _remove_worktree(None, repo_path)
+                _remove_worktree("", repo_path)
+                mock_run.assert_not_called()
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_56_remove_worktree_survives_hanging_remove(self):
+        """(b) _remove_worktree survives a hanging `git worktree remove`:
+        subprocess.TimeoutExpired is caught, a warning is logged, the bounded
+        `git worktree prune` fallback is attempted, and no exception escapes."""
+        import shutil
+        import subprocess
+        from unittest.mock import patch
+        from dispatcher import _remove_worktree
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_path, worktree_ws = self._make_reviewer_test_repo(td)
+
+            prune_calls = []
+
+            def fake_run(cmd, *args, **kwargs):
+                if isinstance(cmd, list) and cmd[:3] == ["git", "worktree", "remove"]:
+                    self.assertIsNotNone(kwargs.get("timeout"), "worktree remove must be bounded by a timeout")
+                    raise subprocess.TimeoutExpired(cmd=cmd, timeout=30)
+                if isinstance(cmd, list) and cmd[:3] == ["git", "worktree", "prune"]:
+                    prune_calls.append((cmd, kwargs))
+                    self.assertIsNotNone(kwargs.get("timeout"), "worktree prune fallback must be bounded by a timeout")
+                return orig_run(cmd, *args, **kwargs)
+
+            # Capture the real subprocess.run BEFORE patching: inside the
+            # patch context, `subprocess.run` is the mock itself.
+            orig_run = subprocess.run
+
+            with patch("subprocess.run", side_effect=fake_run), \
+                 self.assertLogs("zerofactory.kanban.dispatcher", level="WARNING") as log_cm:
+                # Must NOT raise despite the hung remove
+                _remove_worktree(str(worktree_ws), repo_path)
+
+            self.assertEqual(len(prune_calls), 1, "prune fallback should run exactly once on remove timeout")
+            matched = [line for line in log_cm.output if "timed out" in line and str(worktree_ws) in line]
+            self.assertTrue(matched, f"Expected a remove-timeout warning for {worktree_ws}, got: {log_cm.output}")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_57_pr_lifecycle_survives_with_mocked_cleanup(self):
+        """(c) The PR-lifecycle paths still complete and record their
+        task_activity rows when the worktree cleanup helper is mocked:
+        merged -> done, approved -> blocked, changes-requested -> ready,
+        and the conflict path re-routes to the author."""
+        import json
+        import shutil
+        import sqlite3
+        from unittest.mock import patch
+
+        td = tempfile.mkdtemp()
+        try:
+            # --- MERGED ---
+            repo_path, reviewer_ws = self._make_reviewer_test_repo(td)
+            db_file = Path(td) / "merged.db"
+            self._create_conflict_test_db(db_file)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('wt-merged', 'Merged task', 'blocked', 'zf-reviewer', ?, 'task/wt-merged',
+                            'https://github.com/hotcode-dev/zerofactory/pull/901', 1000, 1000)
+                """, (str(reviewer_ws),))
+                conn.commit()
+            res, captured_gh, mock_remove, fetch, _ = self._run_reviewer_pr_cycle(
+                db_file, {"state": "MERGED", "reviewDecision": None,
+                          "url": "https://github.com/hotcode-dev/zerofactory/pull/901",
+                          "mergeable": "MERGEABLE"}, task_id="wt-merged"
+            )
+            self.assertTrue(res.get("ok"), f"merged cycle should succeed: {res}")
+            self.assertTrue(captured_gh, "gh pr view should have been called")
+            mock_remove.assert_called()
+            t_row = fetch("SELECT status, assignee, pr_url FROM tasks WHERE id = 'wt-merged'")[0]
+            self.assertEqual(t_row["status"], "done")
+            acts = fetch("SELECT action FROM task_activity WHERE task_id = 'wt-merged' AND action = 'merged'")
+            self.assertEqual(len(acts), 1, "merged activity row missing")
+            self.assertEqual(acts[0][0], "merged")
+
+            # --- APPROVED ---
+            td2 = tempfile.mkdtemp()
+            try:
+                repo_path2, reviewer_ws2 = self._make_reviewer_test_repo(td2)
+                db_file2 = Path(td2) / "approved.db"
+                self._create_conflict_test_db(db_file2)
+                with sqlite3.connect(str(db_file2)) as conn:
+                    conn.execute("""
+                        INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                        VALUES ('wt-approved', 'Approved task [PR Opened by zf-builder]', 'blocked', 'zf-reviewer', ?, 'task/wt-approved',
+                                'https://github.com/hotcode-dev/zerofactory/pull/902', 1000, 1000)
+                    """, (str(reviewer_ws2),))
+                    conn.commit()
+                res, captured_gh, mock_remove, fetch2, _ = self._run_reviewer_pr_cycle(
+                    db_file2, {"state": "OPEN", "reviewDecision": "APPROVED",
+                               "url": "https://github.com/hotcode-dev/zerofactory/pull/902",
+                               "mergeable": "MERGEABLE"}, task_id="wt-approved"
+                )
+                self.assertTrue(res.get("ok"), f"approved cycle should succeed: {res}")
+                mock_remove.assert_called()
+                t_row = fetch2("SELECT title, status, assignee FROM tasks WHERE id = 'wt-approved'")[0]
+                self.assertEqual(t_row["status"], "blocked")
+                self.assertIn("[Human Review]", t_row["title"])
+                acts = fetch2("SELECT action FROM task_activity WHERE task_id = 'wt-approved' AND action = 'approved'")
+                self.assertEqual(len(acts), 1, "approved activity row missing")
+                self.assertEqual(acts[0][0], "approved")
+            finally:
+                shutil.rmtree(td2, ignore_errors=True)
+
+            # --- CHANGES_REQUESTED ---
+            td3 = tempfile.mkdtemp()
+            try:
+                repo_path3, reviewer_ws3 = self._make_reviewer_test_repo(td3)
+                db_file3 = Path(td3) / "changes.db"
+                self._create_conflict_test_db(db_file3)
+                with sqlite3.connect(str(db_file3)) as conn:
+                    conn.execute("""
+                        INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                        VALUES ('wt-changes', 'Changes task [PR Opened by zf-builder]', 'blocked', 'zf-reviewer', ?, 'task/wt-changes',
+                                'https://github.com/hotcode-dev/zerofactory/pull/903', 1000, 1000)
+                    """, (str(reviewer_ws3),))
+                    conn.commit()
+                res, captured_gh, mock_remove, fetch3, _ = self._run_reviewer_pr_cycle(
+                    db_file3, {"state": "OPEN", "reviewDecision": "CHANGES_REQUESTED",
+                               "url": "https://github.com/hotcode-dev/zerofactory/pull/903",
+                               "mergeable": "MERGEABLE"}, task_id="wt-changes"
+                )
+                self.assertTrue(res.get("ok"), f"changes-requested cycle should succeed: {res}")
+                mock_remove.assert_called()
+                t_row = fetch3("SELECT status, assignee FROM tasks WHERE id = 'wt-changes'")[0]
+                self.assertEqual(t_row["status"], "ready")
+                self.assertEqual(t_row["assignee"], "zf-builder")
+                acts = fetch3("SELECT action FROM task_activity WHERE task_id = 'wt-changes' AND action = 'changes_requested'")
+                self.assertEqual(len(acts), 1, "changes_requested activity row missing")
+                self.assertEqual(acts[0][0], "changes_requested")
+            finally:
+                shutil.rmtree(td3, ignore_errors=True)
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_58_pr_conflict_path_survives_with_mocked_cleanup(self):
+        """(c, continued) The GitHub-CONFLICTING path re-routes to the author,
+        records the pr_conflict activity row, and invokes the cleanup helper
+        (mocked) without stalling the cycle."""
+        import json
+        import shutil
+        import sqlite3
+        from unittest.mock import patch, MagicMock
+
+        td = tempfile.mkdtemp()
+        try:
+            repo_path, reviewer_ws = self._make_reviewer_test_repo(td)
+            db_file = Path(td) / "conflict_wt.db"
+            self._create_conflict_test_db(db_file)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('wt-conflict', 'Conflict task [PR Opened by zf-builder]', 'blocked', 'zf-reviewer', ?, 'task/wt-conflict',
+                            'https://github.com/hotcode-dev/zerofactory/pull/904', 1000, 1000)
+                """, (str(reviewer_ws),))
+                conn.commit()
+
+            res, captured_gh, mock_remove, fetch, _ = self._run_reviewer_pr_cycle(
+                db_file, {"state": "OPEN", "reviewDecision": None,
+                          "url": "https://github.com/hotcode-dev/zerofactory/pull/904",
+                          "mergeable": "CONFLICTING"}, task_id="wt-conflict"
+            )
+            self.assertTrue(res.get("ok"), f"conflict cycle should succeed: {res}")
+            self.assertTrue(captured_gh)
+            mock_remove.assert_called()
+            t_row = fetch("SELECT title, status, assignee FROM tasks WHERE id = 'wt-conflict'")[0]
+            self.assertEqual(t_row["status"], "ready")
+            self.assertEqual(t_row["assignee"], "zf-builder")
+            self.assertIn("[PR Conflict]", t_row["title"])
+            acts = fetch("SELECT details FROM task_activity WHERE task_id = 'wt-conflict' AND action = 'pr_conflict'")
+            self.assertEqual(len(acts), 1)
+            self.assertIn("conflicting", acts[0][0].lower())
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
