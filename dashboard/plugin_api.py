@@ -14,11 +14,17 @@ import re
 import secrets
 import sqlite3
 import subprocess
+import sys
 import time
 from datetime import datetime
 from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+
+# Ensure zerofactory plugin root is in sys.path for direct module imports
+_PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PLUGIN_ROOT not in sys.path:
+    sys.path.insert(0, _PLUGIN_ROOT)
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -32,7 +38,7 @@ try:
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
         DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_SETTING_VALUES, load_settings,
     )
-except ImportError:
+except (ImportError, ValueError):
     from settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
