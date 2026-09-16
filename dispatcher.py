@@ -1233,6 +1233,13 @@ def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optiona
             b_row = cursor.fetchone()
             if b_row:
                 b_dict = dict(b_row)
+                if b_dict.get("git_url"):
+                    try:
+                        p = Path(b_dict["git_url"])
+                        if p.is_dir() and (p / ".git").exists():
+                            return p.resolve()
+                    except Exception:
+                        pass
                 try:
                     from .builtin_cron import resolve_board_repo_path
                 except Exception:
@@ -1873,26 +1880,25 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                         if not workspace_path or not Path(workspace_path).exists():
                             repo_for_task = resolve_task_repo_path(cursor, board_slug, tenant)
-                            cand_wt = repo_for_task.parent / f"{repo_for_task.name}-worktrees" / task_id
-                            if cand_wt.exists():
-                                workspace_path = str(cand_wt)
-                                cursor.execute("UPDATE tasks SET workspace_path = ? WHERE id = ?", (workspace_path, task_id))
+                            if repo_for_task:
+                                cand_wt = repo_for_task.parent / f"{repo_for_task.name}-worktrees" / task_id
+                                if cand_wt.exists():
+                                    workspace_path = str(cand_wt)
+                                    cursor.execute("UPDATE tasks SET workspace_path = ? WHERE id = ?", (workspace_path, task_id))
 
-                        if not workspace_path or not Path(workspace_path).exists():
-                            continue
-
-                        # Determine repository root reliably from git worktree
+                        # Determine repository root reliably from git worktree or board
                         repo_path = None
-                        try:
-                            rev_res = subprocess.run(
-                                ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                                cwd=workspace_path, capture_output=True, text=True, timeout=5
-                            )
-                            if rev_res.returncode == 0:
-                                common_git = Path(rev_res.stdout.strip())
-                                repo_path = common_git.parent if common_git.name == ".git" else common_git
-                        except Exception:
-                            pass
+                        if workspace_path and Path(workspace_path).exists():
+                            try:
+                                rev_res = subprocess.run(
+                                    ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                    cwd=workspace_path, capture_output=True, text=True, timeout=5
+                                )
+                                if rev_res.returncode == 0:
+                                    common_git = Path(rev_res.stdout.strip())
+                                    repo_path = common_git.parent if common_git.name == ".git" else common_git
+                            except Exception:
+                                pass
 
                         if not repo_path or not repo_path.exists():
                             repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
@@ -1901,6 +1907,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             continue
 
                         if assignee != "zf-reviewer":
+                            if not workspace_path or not Path(workspace_path).exists():
+                                continue
                             # Author finished work -> check conflicts, commit, pull/merge main, push, create PR, hand off to reviewer
                             try:
                                 # 1. Guardrail: Check if worktree is already in an unmerged conflict state

@@ -12,6 +12,9 @@ test_dir = tempfile.TemporaryDirectory()
 os.environ["ZEROFACTORY_DB"] = str(Path(test_dir.name) / "test.db")
 os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
 os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
+os.environ["ZEROFACTORY_SKIP_DISPATCHER"] = "1"
+if "ZEROFACTORY_LOCK_PATH" not in os.environ:
+    os.environ["ZEROFACTORY_LOCK_PATH"] = str(Path(test_dir.name) / "test_dispatcher.lock")
 
 from fastapi.testclient import TestClient
 from dashboard.plugin_api import (

@@ -99,11 +99,13 @@ def get_db_conn():
         conn.close()
 
 _DB_INITIALIZED = False
+_INITIALIZED_DBS = set()
 
 def init_db(force: bool = False):
     """Idempotently initialize all database tables."""
     global _DB_INITIALIZED
-    if _DB_INITIALIZED and not force:
+    db_key = str(get_db_path().resolve())
+    if not force and db_key in _INITIALIZED_DBS:
         return
     with get_db_conn() as conn:
         try:
@@ -206,8 +208,6 @@ def init_db(force: bool = False):
                     "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
                     (_key, _value, now_ts)
                 )
-    _DB_INITIALIZED = True
-
             # Retention: the task_activity log is append-only, so prune rows older
             # than the configured window to keep every full-scan-free query fast.
             # Throttled to at most once per hour (init_db() runs per request) and
@@ -230,6 +230,8 @@ def init_db(force: bool = False):
                         _log.debug("Pruned %d task_activity rows past retention", _deleted)
             except Exception as _prune_err:  # pragma: no cover - defensive
                 _log.warning("task_activity retention prune skipped: %s", _prune_err)
+    _DB_INITIALIZED = True
+    _INITIALIZED_DBS.add(db_key)
 
 # Maximum interval between retention prunes when driven by per-request init_db().
 ACTIVITY_PRUNE_INTERVAL_SECONDS = 3600
@@ -267,8 +269,9 @@ def prune_old_activity(
         _close = True
     deleted = 0
     try:
-        days = DEFAULT_ACTIVITY_RETENTION_DAYS
-        if retention_days is None:
+        if retention_days is not None:
+            days = retention_days
+        else:
             # No explicit window given: read the configured setting, falling
             # back to the module default when the settings table is absent.
             try:
@@ -436,8 +439,9 @@ class CommentCreate(BaseModel):
     body: str = Field(..., min_length=1)
 
 class DependencyLink(BaseModel):
-    parent_id: str
-    child_id: str
+    parent_id: Optional[str] = None
+    child_id: Optional[str] = None
+    link_type: Optional[str] = "blocks"
 
 class SettingsUpdate(BaseModel):
     max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in ready and running")
@@ -982,6 +986,10 @@ def update_board(slug: str, req: BoardUpdate):
             cursor.execute(f"UPDATE boards SET {', '.join(updates)} WHERE slug = ?", params)
             conn.commit()
 
+        cursor.execute("SELECT * FROM boards WHERE slug = ?", (slug,))
+        row = cursor.fetchone()
+        board_data = dict(row) if row else {"slug": slug}
+
     # Sync builtin cron jobs so updated board properties are reflected
     if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         ensure_cron, *_ = _get_cron_helpers()
@@ -991,7 +999,7 @@ def update_board(slug: str, req: BoardUpdate):
             except Exception as e:
                 _log.warning("Failed to sync cron jobs after updating board %s: %s", slug, e)
 
-    return {"ok": True, "slug": slug}
+    return {"ok": True, "slug": slug, "board": board_data}
 
 @router.delete("/boards/{slug}")
 def delete_board(slug: str):
@@ -1553,27 +1561,33 @@ def add_comment(task_id: str, req: CommentCreate):
 @router.post("/tasks/{task_id}/dependencies")
 def add_dependency(task_id: str, link: DependencyLink):
     """Add a dependency link between parent and child."""
+    parent_id = link.parent_id or (task_id if link.child_id else None)
+    child_id = link.child_id or (task_id if link.parent_id else None)
+    if not parent_id or not child_id:
+        parent_id = link.parent_id or task_id
+        child_id = link.child_id or task_id
+
     now = int(time.time())
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM tasks WHERE id = ?", (link.parent_id,))
+        cursor.execute("SELECT id FROM tasks WHERE id = ?", (parent_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Parent task '{link.parent_id}' not found")
-        cursor.execute("SELECT id FROM tasks WHERE id = ?", (link.child_id,))
+            raise HTTPException(status_code=404, detail=f"Parent task '{parent_id}' not found")
+        cursor.execute("SELECT id FROM tasks WHERE id = ?", (child_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Child task '{link.child_id}' not found")
+            raise HTTPException(status_code=404, detail=f"Child task '{child_id}' not found")
 
-        if link.parent_id == link.child_id:
+        if parent_id == child_id:
             raise HTTPException(status_code=400, detail="Task cannot depend on itself")
 
         cursor.execute(
             "INSERT OR IGNORE INTO task_links (parent_id, child_id, created_at) VALUES (?, ?, ?)",
-            (link.parent_id, link.child_id, now)
+            (parent_id, child_id, now)
         )
-        log_activity(conn, link.child_id, "user", "link", f"Added parent dependency #{link.parent_id}")
+        log_activity(conn, child_id, "user", "link", f"Added parent dependency #{parent_id}")
         conn.commit()
 
-    return {"ok": True, "parent_id": link.parent_id, "child_id": link.child_id}
+    return {"ok": True, "parent_id": parent_id, "child_id": child_id}
 
 @router.delete("/tasks/{task_id}/dependencies/{parent_id}")
 def remove_dependency(task_id: str, parent_id: str):
