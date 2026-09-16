@@ -511,28 +511,70 @@
     }, [liveAgents, tasks]);
 
     const effectiveActivities = useMemo(() => {
-      return activities || [];
-    }, [activities]);
+      let list = activities || [];
+
+      if (activityActorFilter && activityActorFilter !== "all") {
+        list = list.filter((item) =>
+          item.actor === activityActorFilter ||
+          item.actor === activityActorFilter.replace("zf-", "") ||
+          (item.task_assignee === activityActorFilter && item.actor === "dispatcher")
+        );
+      }
+      if (activityActionFilter && activityActionFilter !== "all") {
+        list = list.filter((item) => item.action === activityActionFilter);
+      }
+      if (activityBoardFilter && activityBoardFilter !== "all") {
+        list = list.filter((item) => item.board_slug === activityBoardFilter);
+      }
+      if (activitySearchQuery && activitySearchQuery.trim()) {
+        const q = activitySearchQuery.toLowerCase().trim();
+        list = list.filter((item) =>
+          (item.details || "").toLowerCase().includes(q) ||
+          (item.task_title || "").toLowerCase().includes(q) ||
+          (item.task_id || "").toLowerCase().includes(q) ||
+          (item.actor || "").toLowerCase().includes(q) ||
+          (item.action || "").toLowerCase().includes(q)
+        );
+      }
+      return list;
+    }, [activities, activityActorFilter, activityActionFilter, activityBoardFilter, activitySearchQuery]);
 
     const effectiveFilterOptions = useMemo(() => {
-      return {
-        actors: activitiesFilterOptions.actors || ["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"],
-        actions: activitiesFilterOptions.actions || ["start", "worker_done", "pr_opened", "merged", "scan", "comment", "move"],
-        boards: activitiesFilterOptions.boards || boards.map((b) => b.slug)
+      const opts = {
+        actors: ["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"],
+        actions: ["start", "worker_done", "pr_opened", "merged", "scan", "comment", "move", "unblock", "promote", "approved", "changes_requested"],
+        boards: boards.map((b) => (typeof b === "string" ? b : b.slug || b.name)).filter(Boolean)
       };
-    }, [activitiesFilterOptions, boards]);
+      if (activitiesFilterOptions.actors && activitiesFilterOptions.actors.length > 0) {
+        opts.actors = Array.from(new Set([...opts.actors, ...activitiesFilterOptions.actors]));
+      }
+      if (activitiesFilterOptions.actions && activitiesFilterOptions.actions.length > 0) {
+        opts.actions = Array.from(new Set([...opts.actions, ...activitiesFilterOptions.actions]));
+      }
+      if (activitiesFilterOptions.boards && activitiesFilterOptions.boards.length > 0) {
+        opts.boards = Array.from(new Set([...opts.boards, ...activitiesFilterOptions.boards]));
+      }
+      if (activities && activities.length > 0) {
+        activities.forEach((a) => {
+          if (a.board_slug && !opts.boards.includes(a.board_slug)) opts.boards.push(a.board_slug);
+          if (a.actor && !opts.actors.includes(a.actor)) opts.actors.push(a.actor);
+          if (a.action && !opts.actions.includes(a.action)) opts.actions.push(a.action);
+        });
+      }
+      return opts;
+    }, [activitiesFilterOptions, boards, activities]);
 
     const effectiveStats = useMemo(() => {
       if (activitiesStats && activitiesStats.total_activities !== undefined) {
         return activitiesStats;
       }
       return {
-        total_activities: 0,
-        actions_today: 0,
+        total_activities: effectiveActivities.length,
+        actions_today: effectiveActivities.length,
         active_agents: liveAgents.filter((a) => a.status === "active" && a.id !== "dispatcher").length,
         action_breakdown: {}
       };
-    }, [activitiesStats, liveAgents]);
+    }, [activitiesStats, effectiveActivities.length, liveAgents]);
 
     // Filtered Tasks
     const filteredTasks = useMemo(() => {
@@ -1556,7 +1598,8 @@
         return { label: actor || "user", icon: "👤", role: "User", color: "text-slate-300 bg-slate-700/30 border-slate-600/30" };
       };
 
-      const effectiveTotal = activitiesTotal || effectiveActivities.length;
+      const hasActiveClientFilters = activityActorFilter !== "all" || activityActionFilter !== "all" || activityBoardFilter !== "all" || Boolean(activitySearchQuery.trim());
+      const effectiveTotal = hasActiveClientFilters ? effectiveActivities.length : (activitiesTotal || effectiveActivities.length);
       const totalPages = Math.ceil(effectiveTotal / activityLimit) || 1;
       const startIdx = effectiveTotal === 0 ? 0 : activityPage * activityLimit + 1;
       const endIdx = Math.min((activityPage + 1) * activityLimit, effectiveTotal);
