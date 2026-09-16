@@ -81,6 +81,25 @@ except ImportError:
         load_settings,
     )
 
+# Shared profile-path resolution & assignee normalization (source of truth).
+# Both the dispatcher and the dashboard (dashboard/plugin_api.py) consume these
+# so the canonical-profile table, the normalizer, and the per-profile
+# ``state.db`` resolution strategy cannot drift between the two surfaces.
+try:
+    from .paths import (  # type: ignore
+        PROFILE_MAP,
+        UNASSIGNED,
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
+except ImportError:
+    from paths import (  # type: ignore
+        PROFILE_MAP,
+        UNASSIGNED,
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
+
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
 
 
@@ -94,7 +113,7 @@ def get_dispatcher_lock_path() -> Path:
 
 def is_worker_or_child_process() -> bool:
     """Return True if current process is a worker, cron runner, or child CLI process."""
-    if os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER") == "1":
+    if os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER") == "1" or os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") == "1":
         return True
     profile = os.environ.get("HERMES_PROFILE") or ""
     if profile in ("zf-builder", "zf-reviewer"):
@@ -138,22 +157,12 @@ _last_idle_scan_times: Dict[str, int] = {}
 # Registry tracking active scanner worker subprocesses per board slug: {board_slug: subprocess.Popen}
 _active_scanners: Dict[str, subprocess.Popen] = {}
 
-# Canonical alias mapping to standardize task assignees to recognized agent profiles.
-PROFILE_MAP = {
-    "zf-builder": "zf-builder",
-    "zf-reviewer": "zf-reviewer",
-    "zf-orchestrator": "zf-orchestrator",
-}
-
-# Tuple of all valid agent specialist profiles supported by the dispatcher.
-VALID_PROFILES = ("zf-builder", "zf-reviewer", "zf-orchestrator")
-
-
-def normalize_assignee(assignee: Optional[str]) -> str:
-    """Normalize assignee to canonical zf-* namespaced profile."""
-    if not assignee or assignee == "unassigned":
-        return "unassigned"
-    return PROFILE_MAP.get(assignee, assignee)
+# Canonical alias mapping and profile normalization now live in the shared
+# ``paths`` module (imported above) so the dispatcher and the dashboard share a
+# single source of truth and can no longer drift. ``PROFILE_MAP`` and
+# ``normalize_assignee`` are re-exported here for backward compatibility with
+# importers that reference them via ``dispatcher``.
+VALID_PROFILES = tuple(PROFILE_MAP)
 
 
 def get_task_timeout_seconds() -> int:
@@ -819,19 +828,13 @@ def spawn_agent_worker(
         _active_workers[task_id] = proc
         _log.info("Spawned %s worker for task %s (PID: %d, cwd: %s)", assignee, task_id, proc.pid, workdir)
 
-        # Detect session_id from profile's state.db (only if started around this spawn)
+        # Detect session_id from profile's state.db (only if started around this spawn).
+        # Resolution goes through the shared helper so the dispatcher and the
+        # dashboard agree on which state.db a profile owns (per-profile ->
+        # legacy-un-prefixed -> plugin-relative -> global ~/.hermes/state.db).
         session_id = None
-        state_db_path = Path.home() / ".hermes" / "profiles" / assignee / "state.db"
-        if not state_db_path.exists():
-            unprefixed = assignee.replace("zf-", "")
-            alt_path = Path.home() / ".hermes" / "profiles" / unprefixed / "state.db"
-            if alt_path.exists():
-                state_db_path = alt_path
-            else:
-                p_root = Path.home() / ".hermes" / "state.db"
-                if p_root.exists():
-                    state_db_path = p_root
-        if state_db_path.exists():
+        state_db_path = resolve_profile_state_db(assignee)
+        if state_db_path is not None and state_db_path.exists():
             try:
                 resolved_state = state_db_path.resolve()
                 uri = resolved_state.as_uri() + "?mode=ro"
@@ -1230,6 +1233,13 @@ def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optiona
             b_row = cursor.fetchone()
             if b_row:
                 b_dict = dict(b_row)
+                if b_dict.get("git_url"):
+                    try:
+                        p = Path(b_dict["git_url"])
+                        if p.is_dir() and (p / ".git").exists():
+                            return p.resolve()
+                    except Exception:
+                        pass
                 try:
                     from .builtin_cron import resolve_board_repo_path
                 except Exception:
@@ -1276,7 +1286,7 @@ def format_conventional_message(title: str, task_id: str = "") -> tuple[str, str
     """
     raw_title = title
     # 1. Strip role and priority badges
-    cleaned = re.sub(r"\[(?:zf-builder|zf-reviewer|zf-orchestrator|builder|reviewer|orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]", "", title)
+    cleaned = re.sub(r"\[(?:zf-builder|zf-reviewer|zf-orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]", "", title)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     # 2. Check if already conventional
@@ -1376,11 +1386,11 @@ def setup_worktree(
     """Ensure git worktree and branch exist for task execution."""
     valid_profiles = VALID_PROFILES
     if not assignee or assignee == "unassigned" or assignee not in valid_profiles:
-        if "[reviewer]" in title or "[zf-reviewer]" in title:
+        if "[zf-reviewer]" in title:
             assignee = "zf-reviewer"
-        elif "[builder]" in title or "[zf-builder]" in title:
+        elif "[zf-builder]" in title:
             assignee = "zf-builder"
-        elif "[orchestrator]" in title or "[zf-orchestrator]" in title:
+        elif "[zf-orchestrator]" in title:
             assignee = "zf-orchestrator"
         else:
             assignee = "zf-builder"
@@ -1870,26 +1880,25 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                         if not workspace_path or not Path(workspace_path).exists():
                             repo_for_task = resolve_task_repo_path(cursor, board_slug, tenant)
-                            cand_wt = repo_for_task.parent / f"{repo_for_task.name}-worktrees" / task_id
-                            if cand_wt.exists():
-                                workspace_path = str(cand_wt)
-                                cursor.execute("UPDATE tasks SET workspace_path = ? WHERE id = ?", (workspace_path, task_id))
+                            if repo_for_task:
+                                cand_wt = repo_for_task.parent / f"{repo_for_task.name}-worktrees" / task_id
+                                if cand_wt.exists():
+                                    workspace_path = str(cand_wt)
+                                    cursor.execute("UPDATE tasks SET workspace_path = ? WHERE id = ?", (workspace_path, task_id))
 
-                        if not workspace_path or not Path(workspace_path).exists():
-                            continue
-
-                        # Determine repository root reliably from git worktree
+                        # Determine repository root reliably from git worktree or board
                         repo_path = None
-                        try:
-                            rev_res = subprocess.run(
-                                ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                                cwd=workspace_path, capture_output=True, text=True, timeout=5
-                            )
-                            if rev_res.returncode == 0:
-                                common_git = Path(rev_res.stdout.strip())
-                                repo_path = common_git.parent if common_git.name == ".git" else common_git
-                        except Exception:
-                            pass
+                        if workspace_path and Path(workspace_path).exists():
+                            try:
+                                rev_res = subprocess.run(
+                                    ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                    cwd=workspace_path, capture_output=True, text=True, timeout=5
+                                )
+                                if rev_res.returncode == 0:
+                                    common_git = Path(rev_res.stdout.strip())
+                                    repo_path = common_git.parent if common_git.name == ".git" else common_git
+                            except Exception:
+                                pass
 
                         if not repo_path or not repo_path.exists():
                             repo_path = resolve_task_repo_path(cursor, board_slug, tenant)
@@ -1898,6 +1907,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             continue
 
                         if assignee != "zf-reviewer":
+                            if not workspace_path or not Path(workspace_path).exists():
+                                continue
                             # Author finished work -> check conflicts, commit, pull/merge main, push, create PR, hand off to reviewer
                             try:
                                 # 1. Guardrail: Check if worktree is already in an unmerged conflict state

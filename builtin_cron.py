@@ -132,6 +132,15 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
     home = Path.home()
     candidates: List[Path] = []
 
+    # 0. Check if git_url is an existing local directory
+    if git_url:
+        try:
+            local_p = Path(git_url)
+            if local_p.is_dir() and (local_p / ".git").exists():
+                return local_p.resolve()
+        except Exception:
+            pass
+
     # 1. Direct owner/repo matches under ~/git/
     if owner and repo:
         candidates.append(home / "git" / owner / repo)

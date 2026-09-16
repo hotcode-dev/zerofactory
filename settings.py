@@ -1,6 +1,7 @@
 """Zero Factory — shared global-settings definitions and parsing.
 
-Single source of truth for the six keys persisted in the ``settings`` table:
+Single source of truth for the global settings keys persisted in the
+``settings`` table:
 
 * their default values,
 * the seed rows written on first ``init_db()``, and
@@ -48,11 +49,17 @@ DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES = 15
 # Max 'todo' backlog tasks allowed on a board before idle scans are suppressed.
 DEFAULT_IDLE_SCAN_MAX_TODO = 2
 
+# Retention window (days) for the append-only ``task_activity`` log. Rows older
+# than this are pruned by ``dashboard.plugin_api.prune_old_activity``. A value of
+# ``0`` disables pruning (the table then grows without bound). Kept >= 1 by the
+# parser when set via the API so a stray "0" can't accidentally delete everything.
+DEFAULT_ACTIVITY_RETENTION_DAYS = 30
+
 # Seconds view of the cooldown default — the single unit-conversion point for the
 # default path. The DB stores minutes; the dispatcher converts to seconds where needed.
 DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES * 60
 
-# Canonical list of the six settings keys (order is only for readability/seed order).
+# Canonical list of the global settings keys (order is only for readability/seed order).
 SETTING_KEYS = (
     "max_active_tasks",
     "default_max_concurrent_workers",
@@ -60,6 +67,7 @@ SETTING_KEYS = (
     "idle_scan_active_threshold",
     "idle_scan_cooldown_minutes",
     "idle_scan_max_todo",
+    "activity_retention_days",
 )
 
 # Seed values for the settings table, derived from the constants above (NOT
@@ -71,6 +79,7 @@ DEFAULT_SETTING_VALUES: Dict[str, str] = {
     "idle_scan_active_threshold": str(DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD),
     "idle_scan_cooldown_minutes": str(DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES),
     "idle_scan_max_todo": str(DEFAULT_IDLE_SCAN_MAX_TODO),
+    "activity_retention_days": str(DEFAULT_ACTIVITY_RETENTION_DAYS),
 }
 
 
@@ -95,7 +104,7 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
     preserving the historical clamping semantics (``max(1, ...)`` /
     ``max(0, ...)``). Unknown keys in the table are ignored.
 
-    Returns a dict with exactly the six :data:`SETTING_KEYS` in their native
+    Returns a dict with exactly the :data:`SETTING_KEYS` in their native
     types. ``idle_scan_cooldown_minutes`` is returned in MINUTES (the DB unit);
     see the module docstring for the unit boundary.
     """
@@ -106,6 +115,7 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
         "idle_scan_active_threshold": DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
         "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
         "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
+        "activity_retention_days": DEFAULT_ACTIVITY_RETENTION_DAYS,
     }
     try:
         rows = conn_or_cursor.execute("SELECT key, value FROM settings").fetchall()
@@ -146,5 +156,11 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
             c = _clamp_int(v, 0)
             if c is not None:
                 settings["idle_scan_max_todo"] = c
+        elif k == "activity_retention_days":
+            # Clamp to >= 1 so a stored "0"/garbage can never wipe the whole log;
+            # 0 only disables pruning when passed programmatically to prune_old_activity.
+            c = _clamp_int(v, 1)
+            if c is not None:
+                settings["activity_retention_days"] = c
 
     return settings

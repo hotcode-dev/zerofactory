@@ -36,13 +36,39 @@ try:
     from ..settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_SETTING_VALUES, load_settings,
+        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_ACTIVITY_RETENTION_DAYS,
+        DEFAULT_SETTING_VALUES, load_settings,
     )
 except (ImportError, ValueError):
     from settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_SETTING_VALUES, load_settings,
+        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_ACTIVITY_RETENTION_DAYS,
+        DEFAULT_SETTING_VALUES, load_settings,
+    )
+
+# Shared profile-path resolution & assignee normalization (source of truth).
+# Imported via the relative (package) path when loaded as
+# ``zerofactory.dashboard.plugin_api`` and via the bare module name when the
+# plugin root has been added to ``sys.path`` (see the import guard above). The
+# dispatcher imports the same module so the canonical-profile table, the
+# normalizer, and the per-profile ``state.db`` resolution strategy cannot drift
+# between the two surfaces.
+try:
+    from ..paths import (  # type: ignore
+        PROFILE_MAP,
+        UNASSIGNED,
+        VALID_ASSIGNEES,
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
+except (ImportError, ValueError):
+    from paths import (  # type: ignore
+        PROFILE_MAP,
+        UNASSIGNED,
+        VALID_ASSIGNEES,
+        normalize_assignee,
+        resolve_profile_state_db,
     )
 
 _log = logging.getLogger(__name__)
@@ -161,6 +187,12 @@ def init_db(force: bool = False):
             CREATE INDEX IF NOT EXISTS idx_links_child ON task_links(child_id);
             CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_activity_task ON task_activity(task_id, created_at);
+            -- task_activity is an append-only log read by the /activities endpoint.
+            -- idx_activity_created backs the "ORDER BY created_at DESC, id DESC"
+            -- paginated list and the "created_at >= ?" today-counts; idx_activity_actor
+            -- backs the per-agent last-activity / actions-today lookups.
+            CREATE INDEX IF NOT EXISTS idx_activity_created ON task_activity(created_at, id);
+            CREATE INDEX IF NOT EXISTS idx_activity_actor ON task_activity(actor, created_at);
             """)
             # Idempotent migration: add max_concurrent_running to pre-existing boards tables
             cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
@@ -178,7 +210,101 @@ def init_db(force: bool = False):
                     "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
                     (_key, _value, now_ts)
                 )
+            # Retention: the task_activity log is append-only, so prune rows older
+            # than the configured window to keep every full-scan-free query fast.
+            # Throttled to at most once per hour (init_db() runs per request) and
+            # executed inside this transaction on this single connection — the
+            # DELETE is idempotent, so a re-run only trims rows aged past the cutoff.
+            try:
+                _last_prune_row = conn.execute(
+                    "SELECT value FROM settings WHERE key = 'activity_last_prune'"
+                ).fetchone()
+                if _last_prune_row is None or (
+                    now_ts - int(_last_prune_row[0])
+                ) >= ACTIVITY_PRUNE_INTERVAL_SECONDS:
+                    _deleted = prune_old_activity(conn=conn)
+                    conn.execute(
+                        "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                        "VALUES ('activity_last_prune', ?, ?)",
+                        (str(now_ts), now_ts),
+                    )
+                    if _deleted:
+                        _log.debug("Pruned %d task_activity rows past retention", _deleted)
+            except Exception as _prune_err:  # pragma: no cover - defensive
+                _log.warning("task_activity retention prune skipped: %s", _prune_err)
     _DB_INITIALIZED_PATHS.add(db_path)
+
+# Maximum interval between retention prunes when driven by per-request init_db().
+ACTIVITY_PRUNE_INTERVAL_SECONDS = 3600
+
+
+def prune_old_activity(
+    conn: Optional[sqlite3.Connection] = None,
+    retention_days: Optional[int] = None,
+    vacuum: bool = True,
+) -> int:
+    """Delete ``task_activity`` rows older than the retention window.
+
+    Idempotent and safe under WAL: the work is a single
+    ``DELETE FROM task_activity WHERE created_at < ?`` — re-running it only
+    trims rows that have since aged past the (recomputed) cutoff.
+
+    When ``conn`` is ``None`` a short-lived connection is opened, committed and
+    closed here; an occasional ``VACUUM`` (which cannot run inside a
+    transaction) is issued on that path only, after the commit, when the prune
+    actually freed rows. When a connection is supplied the DELETE runs on it and
+    the commit is left to the caller, so the call can share a transaction with
+    ``init_db()``.
+
+    ``retention_days=None`` reads ``activity_retention_days`` from the settings
+    table (falling back to :data:`DEFAULT_ACTIVITY_RETENTION_DAYS`); a value
+    ``<= 0`` disables pruning. Returns the number of rows deleted.
+    """
+    _close = False
+    if conn is None:
+        db_path = get_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path), timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000;")
+        _close = True
+    deleted = 0
+    try:
+        if retention_days is not None:
+            days = retention_days
+        else:
+            # No explicit window given: read the configured setting, falling
+            # back to the module default when the settings table is absent.
+            try:
+                days = load_settings(conn).get(
+                    "activity_retention_days", DEFAULT_ACTIVITY_RETENTION_DAYS
+                )
+            except Exception:  # no settings table — keep the default window
+                days = DEFAULT_ACTIVITY_RETENTION_DAYS
+        try:
+            days = int(days)
+        except (TypeError, ValueError):
+            days = DEFAULT_ACTIVITY_RETENTION_DAYS
+        if days <= 0:
+            return 0  # retention disabled
+        cutoff = int(time.time()) - days * 86400
+        cur = conn.execute("DELETE FROM task_activity WHERE created_at < ?", (cutoff,))
+        deleted = cur.rowcount if cur.rowcount is not None else 0
+    finally:
+        if _close:
+            try:
+                conn.commit()
+            except Exception:
+                pass
+            # Occasional VACUUM to return the freed pages to disk. Runs outside
+            # the (now-committed) transaction, on the short-lived connection only.
+            if vacuum and deleted > 0:
+                try:
+                    conn.execute("VACUUM")
+                except Exception as _vac_err:  # pragma: no cover - best effort
+                    _log.debug("post-prune VACUUM skipped: %s", _vac_err)
+            conn.close()
+    return deleted
 
 # Initialize on import
 try:
@@ -314,8 +440,9 @@ class CommentCreate(BaseModel):
     body: str = Field(..., min_length=1)
 
 class DependencyLink(BaseModel):
-    parent_id: str
-    child_id: str
+    parent_id: Optional[str] = None
+    child_id: Optional[str] = None
+    link_type: Optional[str] = "blocks"
 
 class SettingsUpdate(BaseModel):
     max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in ready and running")
@@ -324,28 +451,17 @@ class SettingsUpdate(BaseModel):
     idle_scan_active_threshold: Optional[int] = Field(default=None, ge=1, description="Max active running workers on a board to trigger idle scan")
     idle_scan_cooldown_minutes: Optional[int] = Field(default=None, ge=1, description="Minimum cooldown in minutes between idle improvement scans per board")
     idle_scan_max_todo: Optional[int] = Field(default=None, ge=0, description="Max todo backlog tasks on board before suppressing idle scan")
+    activity_retention_days: Optional[int] = Field(default=None, ge=1, description="Days to retain task_activity log rows before pruning (default 30)")
 
 
 # --- Helper Functions --------------------------------------------------------
 
 VALID_STATUSES = {"triage", "todo", "ready", "running", "blocked", "done"}
 VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
-VALID_ASSIGNEES = {
-    "unassigned",
-    "zf-orchestrator", "zf-builder", "zf-reviewer"
-}
-
-PROFILE_MAP = {
-    "zf-builder": "zf-builder",
-    "zf-reviewer": "zf-reviewer",
-    "zf-orchestrator": "zf-orchestrator",
-}
-
-def normalize_assignee(assignee: Optional[str]) -> str:
-    """Normalize assignee to zf-* namespaced profile."""
-    if not assignee or assignee == "unassigned":
-        return "unassigned"
-    return PROFILE_MAP.get(assignee, assignee)
+# VALID_ASSIGNEES, PROFILE_MAP and normalize_assignee are the shared source of
+# truth re-exported from the ``paths`` module (imported above). They are kept
+# in this module's namespace so existing in-module callers (e.g. create_task,
+# update_task, list tasks) and any external importers keep working unchanged.
 
 def generate_task_id() -> str:
     token = secrets.token_hex(4)
@@ -365,7 +481,7 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
             d["metadata"] = {}
     return d
 
-STRICT_ACTIVITY_ACTORS: List[str] = [
+ACTIVITY_ACTORS: List[str] = [
     "zf-orchestrator",
     "zf-builder",
     "zf-reviewer",
@@ -375,33 +491,8 @@ STRICT_ACTIVITY_ACTORS: List[str] = [
 ]
 
 
-def normalize_activity_actor(actor: Optional[str]) -> str:
-    """Normalize any activity actor to one of the 6 strict canonical actors:
-    - zf-orchestrator
-    - zf-builder
-    - zf-reviewer
-    - dispatcher
-    - user (includes ui and cli)
-    - other
-    """
-    if not actor:
-        return "user"
-    a = str(actor).strip().lower()
-    if a in ("zf-orchestrator", "orchestrator"):
-        return "zf-orchestrator"
-    if a in ("zf-builder", "builder"):
-        return "zf-builder"
-    if a in ("zf-reviewer", "reviewer"):
-        return "zf-reviewer"
-    if a == "dispatcher":
-        return "dispatcher"
-    if a in ("user", "ui", "cli"):
-        return "user"
-    return "other"
-
-
 def log_activity(conn: sqlite3.Connection, task_id: str, actor: str, action: str, details: str = ""):
-    actor = normalize_activity_actor(actor)
+    actor = actor or "user"
     now = int(time.time())
     conn.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -432,31 +523,16 @@ def compute_dedup_key(files: Optional[List[str]], category: Optional[str] = None
     return f"{','.join(sorted_files)}:{cat}"
 
 def get_profile_state_db(assignee: str) -> Optional[Path]:
-    """Find the SQLite state.db for an agent profile."""
-    norm_asgn = normalize_assignee(assignee)
-    # 1. ~/.hermes/profiles/{norm_asgn}/state.db
-    p1 = Path.home() / ".hermes" / "profiles" / norm_asgn / "state.db"
-    if p1.exists():
-        return p1
-    # 2. Legacy un-prefixed ~/.hermes/profiles/{assignee}/state.db
-    unprefixed = norm_asgn.replace("zf-", "")
-    p2 = Path.home() / ".hermes" / "profiles" / unprefixed / "state.db"
-    if p2.exists():
-        return p2
-    # 3. Path relative to plugin: profiles/{assignee}/state.db
-    try:
-        resolved_parents = Path(__file__).resolve().parents
-        if len(resolved_parents) > 4:
-            p3 = resolved_parents[4] / norm_asgn / "state.db"
-            if p3.exists():
-                return p3
-    except Exception:
-        pass
-    # 4. ~/.hermes/state.db (default fallback)
-    p4 = Path.home() / ".hermes" / "state.db"
-    if p4.exists():
-        return p4
-    return None
+    """Find the SQLite state.db for an agent profile.
+
+    Thin wrapper around the shared :func:`paths.resolve_profile_state_db`
+    (per-profile -> legacy-un-prefixed -> plugin-relative -> global
+    ``~/.hermes/state.db``) so the dashboard and the dispatcher always agree on
+    which state.db a profile owns. The public name is preserved for existing
+    importers.
+    """
+    return resolve_profile_state_db(assignee)
+
 
 def _compute_stuck_status(
     task: Dict[str, Any],
@@ -911,6 +987,10 @@ def update_board(slug: str, req: BoardUpdate):
             cursor.execute(f"UPDATE boards SET {', '.join(updates)} WHERE slug = ?", params)
             conn.commit()
 
+        cursor.execute("SELECT * FROM boards WHERE slug = ?", (slug,))
+        row = cursor.fetchone()
+        board_data = dict(row) if row else {"slug": slug}
+
     # Sync builtin cron jobs so updated board properties are reflected
     if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         ensure_cron, *_ = _get_cron_helpers()
@@ -920,7 +1000,7 @@ def update_board(slug: str, req: BoardUpdate):
             except Exception as e:
                 _log.warning("Failed to sync cron jobs after updating board %s: %s", slug, e)
 
-    return {"ok": True, "slug": slug}
+    return {"ok": True, "slug": slug, "board": board_data}
 
 @router.delete("/boards/{slug}")
 def delete_board(slug: str):
@@ -1009,6 +1089,12 @@ def update_settings(req: SettingsUpdate):
             val = str(max(0, int(req.idle_scan_max_todo)))
             cursor.execute(
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', ?, ?)",
+                (val, now)
+            )
+        if req.activity_retention_days is not None:
+            val = str(max(1, int(req.activity_retention_days)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('activity_retention_days', ?, ?)",
                 (val, now)
             )
         conn.commit()
@@ -1234,8 +1320,6 @@ def create_task(req: TaskCreate):
                 creator_actor = "zf-orchestrator"
             else:
                 creator_actor = "user"
-        else:
-            creator_actor = normalize_activity_actor(creator_actor)
 
         log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
         conn.commit()
@@ -1396,7 +1480,7 @@ def move_task(task_id: str, req: TaskMove):
         prev_status = curr["status"]
         if prev_status != req.status:
             cursor.execute("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?", (req.status, now, task_id))
-            move_actor = normalize_activity_actor(req.actor or "user")
+            move_actor = req.actor or "user"
             log_activity(conn, task_id, move_actor, "move", f"Moved from {prev_status} to {req.status}")
 
         # When moving to 'blocked' with a reason, record it as a comment so
@@ -1404,7 +1488,7 @@ def move_task(task_id: str, req: TaskMove):
         # both `move <id> blocked --reason ...` and `block` produce comments here.
         # Deduplicate: do not insert if the most recent comment is already identical.
         if req.status == "blocked" and req.reason:
-            actor = normalize_activity_actor(req.actor or "user")
+            actor = req.actor or "user"
             comment_body = f"Blocked: {req.reason}"
             cursor.execute(
                 "SELECT body FROM task_comments WHERE task_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
@@ -1456,21 +1540,12 @@ def add_comment(task_id: str, req: CommentCreate):
         body_str = req.body.strip()
         if req.author:
             # Explicit author provided by caller (e.g. from UI, CLI --author, or direct API call)
-            author_val = normalize_activity_actor(req.author)
+            author_val = req.author
         elif os.environ.get("HERMES_PROFILE"):
             # Fall back to active Hermes agent profile
-            author_val = normalize_activity_actor(os.environ.get("HERMES_PROFILE"))
+            author_val = os.environ.get("HERMES_PROFILE")
         else:
-            # Fallback heuristic ONLY when author was completely omitted and no HERMES_PROFILE is set
-            lower_body = body_str.lower()
-            if any(lower_body.startswith(p) for p in ("builder", "build handoff", "fix complete", "conflict resolved", "test-only")):
-                author_val = "zf-builder"
-            elif any(lower_body.startswith(p) for p in ("reviewer", "round", "[reviewer", "review complete")):
-                author_val = "zf-reviewer"
-            elif any(lower_body.startswith(p) for p in ("orchestrator", "decomposed", "[orchestrator")):
-                author_val = "zf-orchestrator"
-            else:
-                author_val = "user"
+            author_val = "user"
 
         cursor.execute(
             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
@@ -1487,27 +1562,33 @@ def add_comment(task_id: str, req: CommentCreate):
 @router.post("/tasks/{task_id}/dependencies")
 def add_dependency(task_id: str, link: DependencyLink):
     """Add a dependency link between parent and child."""
+    parent_id = link.parent_id or (task_id if link.child_id else None)
+    child_id = link.child_id or (task_id if link.parent_id else None)
+    if not parent_id or not child_id:
+        parent_id = link.parent_id or task_id
+        child_id = link.child_id or task_id
+
     now = int(time.time())
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM tasks WHERE id = ?", (link.parent_id,))
+        cursor.execute("SELECT id FROM tasks WHERE id = ?", (parent_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Parent task '{link.parent_id}' not found")
-        cursor.execute("SELECT id FROM tasks WHERE id = ?", (link.child_id,))
+            raise HTTPException(status_code=404, detail=f"Parent task '{parent_id}' not found")
+        cursor.execute("SELECT id FROM tasks WHERE id = ?", (child_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Child task '{link.child_id}' not found")
+            raise HTTPException(status_code=404, detail=f"Child task '{child_id}' not found")
 
-        if link.parent_id == link.child_id:
+        if parent_id == child_id:
             raise HTTPException(status_code=400, detail="Task cannot depend on itself")
 
         cursor.execute(
             "INSERT OR IGNORE INTO task_links (parent_id, child_id, created_at) VALUES (?, ?, ?)",
-            (link.parent_id, link.child_id, now)
+            (parent_id, child_id, now)
         )
-        log_activity(conn, link.child_id, "user", "link", f"Added parent dependency #{link.parent_id}")
+        log_activity(conn, child_id, "user", "link", f"Added parent dependency #{parent_id}")
         conn.commit()
 
-    return {"ok": True, "parent_id": link.parent_id, "child_id": link.child_id}
+    return {"ok": True, "parent_id": parent_id, "child_id": child_id}
 
 @router.delete("/tasks/{task_id}/dependencies/{parent_id}")
 def remove_dependency(task_id: str, parent_id: str):
@@ -1666,53 +1747,16 @@ def get_activities(
         params: List[Any] = []
 
         if actor and actor != "all":
-            norm_filter_actor = normalize_activity_actor(actor)
-            if norm_filter_actor == "zf-builder":
+            if actor in ("zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher", "user"):
+                where_clauses.append("a.actor = ?")
+                params.append(actor)
+            elif actor == "other":
                 where_clauses.append("""(
-                    a.actor IN ('zf-builder', 'builder') 
-                    OR (a.actor = 'user' AND a.action = 'comment' AND EXISTS (
-                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
-                            tc.author IN ('zf-builder', 'builder') 
-                            OR tc.body LIKE 'BUILD%' OR tc.body LIKE 'Builder%' OR tc.body LIKE 'Fix complete%' OR tc.body LIKE 'Conflict resolved%' OR tc.body LIKE 'TEST-ONLY%'
-                        )
-                    ))
-                )""")
-            elif norm_filter_actor == "zf-reviewer":
-                where_clauses.append("""(
-                    a.actor IN ('zf-reviewer', 'reviewer') 
-                    OR (a.actor = 'user' AND a.action = 'comment' AND EXISTS (
-                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
-                            tc.author IN ('zf-reviewer', 'reviewer') 
-                            OR tc.body LIKE '%Reviewer%' OR tc.body LIKE 'Round %' OR tc.body LIKE '[Reviewer%' OR tc.body LIKE 'REVIEW COMPLETE%'
-                        )
-                    ))
-                )""")
-            elif norm_filter_actor == "zf-orchestrator":
-                where_clauses.append("""(
-                    a.actor IN ('zf-orchestrator', 'orchestrator') 
-                    OR (a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%'))
-                )""")
-            elif norm_filter_actor == "dispatcher":
-                where_clauses.append("a.actor = 'dispatcher'")
-            elif norm_filter_actor == "user":
-                where_clauses.append("""(
-                    a.actor = 'user'
-                    AND NOT (a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%'))
-                    AND NOT (a.action = 'comment' AND EXISTS (
-                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
-                            tc.author IN ('zf-builder', 'builder', 'zf-reviewer', 'reviewer', 'dispatcher', 'zf-orchestrator')
-                            OR tc.body LIKE 'BUILD%' OR tc.body LIKE 'Builder%' OR tc.body LIKE 'Fix complete%' OR tc.body LIKE 'Conflict resolved%' OR tc.body LIKE 'TEST-ONLY%'
-                            OR tc.body LIKE '%Reviewer%' OR tc.body LIKE 'Round %' OR tc.body LIKE '[Reviewer%' OR tc.body LIKE 'REVIEW COMPLETE%'
-                        )
-                    ))
-                )""")
-            elif norm_filter_actor == "other":
-                where_clauses.append("""(
-                    a.actor NOT IN ('zf-orchestrator', 'orchestrator', 'zf-builder', 'builder', 'zf-reviewer', 'reviewer', 'dispatcher', 'user')
+                    a.actor NOT IN ('zf-orchestrator', 'zf-builder', 'zf-reviewer', 'dispatcher', 'user')
                 )""")
             else:
                 where_clauses.append("a.actor = ?")
-                params.append(norm_filter_actor)
+                params.append(actor)
 
         if assignee and assignee != "all":
             where_clauses.append("(t.assignee = ? OR a.actor = ?)")
@@ -1749,23 +1793,10 @@ def get_activities(
                 a.id,
                 a.task_id,
                 CASE 
-                    WHEN a.actor IN ('zf-orchestrator', 'orchestrator') THEN 'zf-orchestrator' 
-                    WHEN a.actor IN ('zf-builder', 'builder') THEN 'zf-builder' 
-                    WHEN a.actor IN ('zf-reviewer', 'reviewer') THEN 'zf-reviewer' 
+                    WHEN a.actor = 'zf-orchestrator' THEN 'zf-orchestrator' 
+                    WHEN a.actor = 'zf-builder' THEN 'zf-builder' 
+                    WHEN a.actor = 'zf-reviewer' THEN 'zf-reviewer' 
                     WHEN a.actor = 'dispatcher' THEN 'dispatcher' 
-                    WHEN a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%') THEN 'zf-orchestrator'
-                    WHEN a.actor = 'user' AND a.action = 'comment' AND EXISTS (
-                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
-                            tc.author IN ('zf-builder', 'builder') 
-                            OR tc.body LIKE 'BUILD%' OR tc.body LIKE 'Builder%' OR tc.body LIKE 'Fix complete%' OR tc.body LIKE 'Conflict resolved%' OR tc.body LIKE 'TEST-ONLY%'
-                        )
-                    ) THEN 'zf-builder'
-                    WHEN a.actor = 'user' AND a.action = 'comment' AND EXISTS (
-                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
-                            tc.author IN ('zf-reviewer', 'reviewer') 
-                            OR tc.body LIKE '%Reviewer%' OR tc.body LIKE 'Round %' OR tc.body LIKE '[Reviewer%' OR tc.body LIKE 'REVIEW COMPLETE%'
-                        )
-                    ) THEN 'zf-reviewer'
                     WHEN a.actor = 'user' THEN 'user'
                     ELSE 'other' 
                 END AS actor,
@@ -1804,7 +1835,7 @@ def get_activities(
                 total_count += len(scan_acts)
 
         # Filter options: strictly the 6 allowed actors
-        actors = list(STRICT_ACTIVITY_ACTORS)
+        actors = list(ACTIVITY_ACTORS)
 
         cursor.execute("SELECT DISTINCT action FROM task_activity WHERE action != '' ORDER BY action ASC")
         actions = [r["action"] for r in cursor.fetchall()]
@@ -1843,23 +1874,22 @@ def get_activities(
                 actions_today_cnt = cursor.fetchone()["cnt"]
             else:
                 running_task_row = None
-                short_id = agent_id.replace("zf-", "")
                 if board_slug and board_slug != "all":
                     cursor.execute("""
                         SELECT * FROM tasks 
-                        WHERE (assignee IN (?, ?) OR assignee LIKE ? OR assignee LIKE ?) 
+                        WHERE (assignee = ? OR assignee LIKE ?) 
                           AND status = 'running' AND board_slug = ?
                         ORDER BY updated_at DESC LIMIT 1
-                    """, (agent_id, short_id, f"%{agent_id}%", f"%{short_id}%", board_slug))
+                    """, (agent_id, f"%{agent_id}%", board_slug))
                     running_task_row = cursor.fetchone()
 
                 if not running_task_row:
                     cursor.execute("""
                         SELECT * FROM tasks 
-                        WHERE (assignee IN (?, ?) OR assignee LIKE ? OR assignee LIKE ?) 
+                        WHERE (assignee = ? OR assignee LIKE ?) 
                           AND status = 'running'
                         ORDER BY updated_at DESC LIMIT 1
-                    """, (agent_id, short_id, f"%{agent_id}%", f"%{short_id}%"))
+                    """, (agent_id, f"%{agent_id}%"))
                     running_task_row = cursor.fetchone()
 
                 if running_task_row:
@@ -1888,8 +1918,7 @@ def get_activities(
                         SELECT a.*, t.title as task_title, t.board_slug
                         FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
-                        WHERE a.actor IN ('zf-orchestrator', 'orchestrator')
-                           OR (a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%'))
+                        WHERE a.actor = 'zf-orchestrator'
                         ORDER BY a.created_at DESC, a.id DESC LIMIT 1
                     """)
                     last_act_row = cursor.fetchone()
@@ -1903,8 +1932,7 @@ def get_activities(
                     cursor.execute("""
                         SELECT COUNT(*) as cnt FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
-                        WHERE (a.actor IN ('zf-orchestrator', 'orchestrator')
-                           OR (a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%')))
+                        WHERE a.actor = 'zf-orchestrator'
                           AND a.created_at >= ?
                     """, (one_day_ago,))
                     actions_today_cnt = cursor.fetchone()["cnt"] + count_orchestrator_scans_today(board_slug)
@@ -1914,7 +1942,7 @@ def get_activities(
                         SELECT a.*, t.title as task_title, t.board_slug
                         FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
-                        WHERE a.actor IN ('zf-builder', 'builder')
+                        WHERE a.actor = 'zf-builder'
                            OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-builder%' OR a.action IN ('worker_done', 'worker_failed')))
                         ORDER BY a.created_at DESC, a.id DESC LIMIT 1
                     """)
@@ -1924,7 +1952,7 @@ def get_activities(
                     cursor.execute("""
                         SELECT COUNT(*) as cnt FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
-                        WHERE (a.actor IN ('zf-builder', 'builder')
+                        WHERE (a.actor = 'zf-builder'
                            OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-builder%' OR a.action IN ('worker_done', 'worker_failed'))))
                           AND a.created_at >= ?
                     """, (one_day_ago,))
@@ -1935,8 +1963,8 @@ def get_activities(
                         SELECT a.*, t.title as task_title, t.board_slug
                         FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
-                        WHERE a.actor IN ('zf-reviewer', 'reviewer')
-                           OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.details LIKE '%reviewer%' OR a.action IN ('merged', 'approved')))
+                        WHERE a.actor = 'zf-reviewer'
+                           OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.action IN ('merged', 'approved')))
                         ORDER BY a.created_at DESC, a.id DESC LIMIT 1
                     """)
                     last_act_row = cursor.fetchone()
@@ -1945,8 +1973,8 @@ def get_activities(
                     cursor.execute("""
                         SELECT COUNT(*) as cnt FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
-                        WHERE (a.actor IN ('zf-reviewer', 'reviewer')
-                           OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.details LIKE '%reviewer%' OR a.action IN ('merged', 'approved'))))
+                        WHERE (a.actor = 'zf-reviewer'
+                           OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.action IN ('merged', 'approved'))))
                           AND a.created_at >= ?
                     """, (one_day_ago,))
                     actions_today_cnt = cursor.fetchone()["cnt"]
@@ -1956,18 +1984,18 @@ def get_activities(
                         SELECT a.*, t.title as task_title, t.board_slug
                         FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
-                        WHERE a.actor IN (?, ?) OR (t.assignee IN (?, ?) AND a.actor = 'dispatcher')
+                        WHERE a.actor = ? OR (t.assignee = ? AND a.actor = 'dispatcher')
                         ORDER BY a.created_at DESC, a.id DESC LIMIT 1
-                    """, (agent_id, short_id, agent_id, short_id))
+                    """, (agent_id, agent_id))
                     last_act_row = cursor.fetchone()
                     last_activity = dict(last_act_row) if last_act_row else None
 
                     cursor.execute("""
                         SELECT COUNT(*) as cnt FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
-                        WHERE (a.actor IN (?, ?) OR (t.assignee IN (?, ?) AND a.actor = 'dispatcher'))
+                        WHERE (a.actor = ? OR (t.assignee = ? AND a.actor = 'dispatcher'))
                           AND a.created_at >= ?
-                    """, (agent_id, short_id, agent_id, short_id, one_day_ago))
+                    """, (agent_id, agent_id, one_day_ago))
                     actions_today_cnt = cursor.fetchone()["cnt"]
 
             agents_data.append({
@@ -2005,7 +2033,7 @@ def get_activities(
             "limit": limit,
             "offset": offset,
             "filter_options": {
-                "actors": STRICT_ACTIVITY_ACTORS,
+                "actors": ACTIVITY_ACTORS,
                 "actions": sorted(list(set(actions + ["scan"]))),
                 "boards": boards,
                 "assignees": sorted(list(set(assignees + ["zf-orchestrator", "zf-builder", "zf-reviewer"])))

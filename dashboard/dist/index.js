@@ -476,10 +476,7 @@
           const aid = agent.id.toLowerCase();
           return (
             ass === aid ||
-            ass.includes(aid) ||
-            (aid === "zf-builder" && (ass === "builder" || ass.includes("builder"))) ||
-            (aid === "zf-reviewer" && (ass === "reviewer" || ass.includes("reviewer"))) ||
-            (aid === "zf-orchestrator" && (ass === "orchestrator" || ass.includes("orchestrator")))
+            ass.includes(aid)
           );
         });
 
@@ -521,10 +518,7 @@
           if (activityActorFilter === "other") {
             return item.actor === "other" || !["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher", "user"].includes(item.actor);
           }
-          return (
-            item.actor === activityActorFilter ||
-            item.actor === activityActorFilter.replace("zf-", "")
-          );
+          return item.actor === activityActorFilter;
         });
       }
       if (activityActionFilter && activityActionFilter !== "all") {
@@ -1586,13 +1580,13 @@
       };
 
       const getActorBadge = (actor) => {
-        if (actor === "zf-builder" || actor === "builder") {
+        if (actor === "zf-builder") {
           return { label: "zf-builder", icon: "🔨", role: "Builder", color: "text-amber-300 bg-amber-500/10 border-amber-500/30" };
         }
-        if (actor === "zf-reviewer" || actor === "reviewer") {
+        if (actor === "zf-reviewer") {
           return { label: "zf-reviewer", icon: "🔍", role: "Reviewer", color: "text-purple-300 bg-purple-500/10 border-purple-500/30" };
         }
-        if (actor === "zf-orchestrator" || actor === "orchestrator") {
+        if (actor === "zf-orchestrator") {
           return { label: "zf-orchestrator", icon: "🎯", role: "Orchestrator", color: "text-indigo-300 bg-indigo-500/10 border-indigo-500/30" };
         }
         if (actor === "dispatcher") {
@@ -2043,9 +2037,8 @@
               { className: "grid grid-cols-1 lg:grid-cols-2 gap-4" },
               liveAgents.map((agent) => {
                 const b = getActorBadge(agent.id);
-                const shortId = agent.id.replace("zf-", "");
                 const agentActivities = effectiveActivities.filter((act) =>
-                  act.actor === agent.id || act.actor === shortId || (act.task_assignee === agent.id && act.actor === "dispatcher")
+                  act.actor === agent.id || (act.task_assignee === agent.id && act.actor === "dispatcher")
                 );
 
                 return React.createElement(

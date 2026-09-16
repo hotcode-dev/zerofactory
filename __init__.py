@@ -17,7 +17,7 @@ try:
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate,
-        normalize_activity_actor, STRICT_ACTIVITY_ACTORS
+        ACTIVITY_ACTORS
     )
 except ImportError:
     current_dir = Path(__file__).parent
@@ -29,7 +29,7 @@ except ImportError:
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate,
-        normalize_activity_actor, STRICT_ACTIVITY_ACTORS
+        ACTIVITY_ACTORS
     )
 
 try:
@@ -56,7 +56,8 @@ def register(ctx: Any):
         init_db()
         ensure_zf_profiles()
         ensure_builtin_cron_jobs()
-        start_background_dispatcher()
+        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"):
+            start_background_dispatcher()
     except Exception as e:
         print(f"[zerofactory] Initialization error: {e}")
 
@@ -205,8 +206,7 @@ def register(ctx: Any):
 
             files_arg = getattr(args, "files", None)
             files_list = [f.strip() for f in files_arg.split(",") if f.strip()] if files_arg else []
-            actor_raw = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
-            actor_val = normalize_activity_actor(actor_raw) if actor_raw else None
+            actor_val = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
             req = TaskCreate(
                 title=args.title,
                 description=desc,
@@ -227,7 +227,7 @@ def register(ctx: Any):
                 print(f"Created task {res['id']}: {args.title}")
 
         elif action == "move":
-            actor = normalize_activity_actor(getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user")
+            actor = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user"
             reason = getattr(args, "reason", None)
             req = TaskMove(status=args.status, actor=actor, reason=reason)
             res = _move_task(args.task_id, req)
@@ -240,13 +240,13 @@ def register(ctx: Any):
             # Delegate to `move_task` with the reason so the single shared
             # code path in dashboard/plugin_api.py records the "Blocked: ..."
             # comment — identical to `move <id> blocked --reason ...`.
-            actor = normalize_activity_actor(getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user")
+            actor = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user"
             req = TaskMove(status="blocked", actor=actor, reason=args.reason)
             _move_task(args.task_id, req)
             print(f"Task {args.task_id} marked as BLOCKED ({args.reason})")
 
         elif action == "comment":
-            author = normalize_activity_actor(getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user")
+            author = getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user"
             _add_comment(args.task_id, CommentCreate(author=author, body=args.body))
             print(f"Added comment to task {args.task_id}")
 
