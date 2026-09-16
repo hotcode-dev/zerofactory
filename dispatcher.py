@@ -271,8 +271,29 @@ def _has_unresolved_conflict_markers(content: bytes) -> bool:
     return False
 
 
+class GitConflictCheckError(Exception):
+    """Raised when a git-backed conflict check could not be verified.
+
+    Raised by :func:`check_unresolved_conflicts` when the authoritative
+    unmerged-index query (``git diff --name-only --diff-filter=U``) or the
+    ``git status --porcelain`` unmerged parse errors out. Callers on the
+    dispatch hot path must treat this as "could not verify the worktree is
+    clean" (fail-closed) rather than "no conflicts" (fail-open), because a
+    silent empty result can mask a real merge conflict and let a broken
+    worktree be auto-merged / advanced / shipped.
+    """
+
+
 def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
-    """Return a sorted list of relative file paths with unresolved merge conflicts or conflict markers."""
+    """Return a sorted list of relative file paths with unresolved merge conflicts or conflict markers.
+
+    Fail-closed on git errors: if the authoritative unmerged-index query
+    (``git diff --name-only --diff-filter=U``) or the ``git status
+    --porcelain`` unmerged parse (steps 1-2) raises, a :class:`GitConflictCheckError`
+    is raised so callers can distinguish "verified clean" from "could not
+    verify". The leftover-marker scan (step 3) still swallows its own errors
+    because it is a non-critical secondary signal.
+    """
     if not workspace_path.exists():
         return []
     conflicted: set[str] = set()
@@ -287,8 +308,14 @@ def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
             for line in res.stdout.strip().splitlines():
                 if line.strip():
                     conflicted.add(line.strip())
-    except Exception:
-        pass
+    except Exception as e:
+        _log.warning(
+            "check_unresolved_conflicts: unmerged-index query failed for %s: %s",
+            workspace_path, e,
+        )
+        raise GitConflictCheckError(
+            f"could not verify unmerged index (git diff --diff-filter=U) in {workspace_path}: {e}"
+        ) from e
 
     # 2. Check git status porcelain for unmerged status codes
     try:
@@ -300,8 +327,14 @@ def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
             for line in status_res.stdout.splitlines():
                 if len(line) >= 3 and line[:2] in ("UU", "AA", "UD", "DU", "DD", "AU", "UA"):
                     conflicted.add(line[3:].strip())
-    except Exception:
-        pass
+    except Exception as e:
+        _log.warning(
+            "check_unresolved_conflicts: status-porcelain query failed for %s: %s",
+            workspace_path, e,
+        )
+        raise GitConflictCheckError(
+            f"could not verify unmerged status (git status --porcelain) in {workspace_path}: {e}"
+        ) from e
 
     # 3. Check modified, untracked, or conflicted text files for leftover conflict markers
     try:
@@ -344,6 +377,32 @@ def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
     return sorted(list(conflicted))
 
 
+def check_unresolved_conflicts_safe(workspace_path: Path) -> tuple[bool, List[str], str]:
+    """Fail-safe wrapper around :func:`check_unresolved_conflicts` for the dispatch hot path.
+
+    Returns:
+        tuple[bool, List[str], str]: (verified, conflicted_files, error_message).
+
+        * ``verified=True``  - the check ran cleanly; ``conflicted_files`` is the
+          (possibly empty) list of files with unresolved conflicts/markers.
+        * ``verified=False`` - the authoritative git query raised; the worktree
+          could NOT be verified clean. ``conflicted_files`` is ``[]`` and
+          ``error_message`` explains why. Callers MUST treat ``verified=False``
+          as "do not auto-merge / do not advance" (fail-closed), NOT as "clean".
+    """
+    try:
+        return True, check_unresolved_conflicts(workspace_path), ""
+    except GitConflictCheckError as e:
+        _log.warning("check_unresolved_conflicts_safe: could not verify %s: %s", workspace_path, e)
+        return False, [], str(e)
+
+
+def _unverifiable_result(error: str, label: str = "worktree conflict check") -> tuple[bool, List[str], str]:
+    """Build a fail-closed ``(False, [...], msg)`` tuple for an unverifiable worktree."""
+    files = ["(unverifiable)"]
+    return False, files, f"{label} could not be verified (fail-closed): {error}"
+
+
 def pull_and_merge_main(
     workspace_path: Path,
     repo_path: Path,
@@ -360,8 +419,11 @@ def pull_and_merge_main(
     if not default_branch:
         default_branch = sync_repo_main(repo_path)
 
-    # Check if worktree is already in an unmerged / conflict state
-    existing_conflicts = check_unresolved_conflicts(workspace_path)
+    # Check if worktree is already in an unmerged / conflict state.
+    # Fail-closed: if the worktree cannot be verified clean, do NOT merge.
+    existing_verified, existing_conflicts, existing_err = check_unresolved_conflicts_safe(workspace_path)
+    if not existing_verified:
+        return _unverifiable_result(existing_err, "pre-merge worktree conflict check")
     if existing_conflicts:
         return False, existing_conflicts, f"Worktree already has unresolved conflicts: {', '.join(existing_conflicts)}"
 
@@ -408,13 +470,19 @@ def pull_and_merge_main(
     )
 
     if merge_res.returncode == 0:
-        post_conflicts = check_unresolved_conflicts(workspace_path)
+        post_verified, post_conflicts, post_err = check_unresolved_conflicts_safe(workspace_path)
+        if not post_verified:
+            # Merge command reported success, but we cannot verify the worktree
+            # is clean afterwards. Fail-closed: do not claim a clean merge.
+            return _unverifiable_result(post_err, "post-merge worktree conflict check")
         if post_conflicts:
             return False, post_conflicts, f"Unresolved conflict markers in: {', '.join(post_conflicts)}"
         return True, [], f"Successfully merged {target_ref}"
     else:
-        conflicted_files = check_unresolved_conflicts(workspace_path)
+        post_fail_verified, conflicted_files, post_fail_err = check_unresolved_conflicts_safe(workspace_path)
         err = (merge_res.stderr or "").strip() or (merge_res.stdout or "").strip()
+        if not post_fail_verified:
+            return _unverifiable_result(post_fail_err, f"post-failure worktree conflict check (merge with {target_ref} failed: {err})")
         return False, conflicted_files, f"Merge conflict with {target_ref}: {err}"
 
 
@@ -634,14 +702,35 @@ def spawn_agent_worker(
             f"5. Provide a clear review summary.\n"
         )
     else:
+        # Fail-closed: if the worktree cannot be verified clean, treat it as a
+        # potential conflict and route to the conflict-resolution prompt rather
+        # than the generic implement prompt (an unverifiable worktree must not
+        # be advanced as if it were clean).
+        conflict_check_verified = True
+        _files: List[str] = []
+        _cc_err = ""
+        try:
+            conflict_check_verified, _files, _cc_err = check_unresolved_conflicts_safe(Path(workdir))
+        except Exception as e:  # defensive: safe wrapper should not raise
+            conflict_check_verified, _cc_err = False, str(e)
         has_conflict = (
             "[pr conflict]" in title.lower()
             or "[merge conflict]" in title.lower()
-            or (Path(workdir).exists() and bool(check_unresolved_conflicts(Path(workdir))))
+            or (not conflict_check_verified and Path(workdir).exists())
+            or (conflict_check_verified and Path(workdir).exists() and bool(_files))
         )
         if has_conflict:
-            conflicted_files = check_unresolved_conflicts(Path(workdir)) if Path(workdir).exists() else []
-            file_list_str = "\n".join(f"- {f}" for f in conflicted_files) if conflicted_files else "- (Check git status for unmerged files)"
+            if conflict_check_verified and Path(workdir).exists():
+                conflicted_files = _files
+            elif not conflict_check_verified:
+                conflicted_files = []  # unverifiable -> fall back to marker scan / git status
+            else:
+                conflicted_files = []
+            file_list_str = (
+                "\n".join(f"- {f}" for f in conflicted_files)
+                if conflicted_files
+                else "- (Unverifiable or no unmerged files; check `git status` for unmerged files)"
+            )
             prompt = (
                 f"Task ID: {task_id}\n"
                 f"Title: {title}\n"
@@ -1489,7 +1578,10 @@ def _handle_pr_conflict_from_github(
     wt_path = setup_worktree(cursor, task_id, new_title, author, tenant, db_path, board_slug=board_slug, repo_path=repo_path)
     conflict_files = []
     if wt_path and Path(wt_path).exists():
-        conflict_files = check_unresolved_conflicts(Path(wt_path))
+        # This path is already the "conflict detected" branch (GitHub reported
+        # CONFLICTING), so an unverifiable worktree still routes to zf-builder
+        # (fail-closed); the file list is simply empty when it can't be read.
+        _verified, conflict_files, _err = check_unresolved_conflicts_safe(Path(wt_path))
 
     file_msg = f" in {', '.join(conflict_files)}" if conflict_files else ""
     cursor.execute(
@@ -1692,19 +1784,31 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                     # Guardrail: Always pull git to latest before implement
                     if not os.environ.get("ZEROFACTORY_SKIP_GIT") and assignee == "zf-builder" and workspace_path and Path(workspace_path).exists():
+                        _pre_verify_ok, _pre_verify_files, _pre_verify_err = check_unresolved_conflicts_safe(Path(workspace_path))
                         is_conflict_resolution = (
                             "[pr conflict]" in title.lower()
                             or "[merge conflict]" in title.lower()
-                            or bool(check_unresolved_conflicts(Path(workspace_path)))
+                            or (_pre_verify_ok and bool(_pre_verify_files))
                         )
                         if not is_conflict_resolution:
-                            repo_for_task = resolve_task_repo_path(cursor, board_slug, tenant)
-                            if repo_for_task and repo_for_task.exists():
-                                merged_ok, conflict_files, merge_err = pull_and_merge_main(Path(workspace_path), repo_for_task)
-                                if not merged_ok:
-                                    _log.warning("Task %s pre-implement merge conflict with main: %s (%s)", task_id, conflict_files, merge_err)
-                                    _handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
-                                    continue
+                            if not _pre_verify_ok:
+                                # Fail-closed: the worktree could not be verified
+                                # clean, so do NOT auto-merge/advance it. Skip the
+                                # pre-implement pull; the builder is instructed to
+                                # sync with main itself and will resolve any real
+                                # conflict it encounters.
+                                _log.warning(
+                                    "Task %s pre-implement conflict check unverifiable; skipping auto-merge: %s",
+                                    task_id, _pre_verify_err,
+                                )
+                            else:
+                                repo_for_task = resolve_task_repo_path(cursor, board_slug, tenant)
+                                if repo_for_task and repo_for_task.exists():
+                                    merged_ok, conflict_files, merge_err = pull_and_merge_main(Path(workspace_path), repo_for_task)
+                                    if not merged_ok:
+                                        _log.warning("Task %s pre-implement merge conflict with main: %s (%s)", task_id, conflict_files, merge_err)
+                                        _handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
+                                        continue
 
                     # Atomic claim to prevent double-dispatch across processes
                     cursor.execute(
@@ -1797,7 +1901,22 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             # Author finished work -> check conflicts, commit, pull/merge main, push, create PR, hand off to reviewer
                             try:
                                 # 1. Guardrail: Check if worktree is already in an unmerged conflict state
-                                initial_conflicts = check_unresolved_conflicts(Path(workspace_path))
+                                # Fail-closed: if the worktree cannot be verified clean,
+                                # do NOT commit / merge / push. Leave the task in its
+                                # current (pre-PR) status and retry next cycle.
+                                _initial_verified, initial_conflicts, _initial_err = check_unresolved_conflicts_safe(Path(workspace_path))
+                                if not _initial_verified:
+                                    _log.warning("Task %s worktree conflict state unverifiable; leaving blocked: %s", task_id, _initial_err)
+                                    cursor.execute(
+                                        "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
+                                        (now, task_id)
+                                    )
+                                    cursor.execute(
+                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_unverifiable', ?, ?)",
+                                        (task_id, f"Worktree conflict state could not be verified; left in blocked state (fail-closed): {_initial_err}", now)
+                                    )
+                                    conn.commit()
+                                    continue
                                 if initial_conflicts:
                                     _log.warning("Task %s has unresolved conflicts in worktree: %s", task_id, initial_conflicts)
                                     _handle_local_merge_conflict(cursor, task_id, title, workspace_path, initial_conflicts, now, "Unresolved conflicts in worktree")
@@ -1819,8 +1938,22 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     _handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
                                     continue
 
-                                # 3. Guardrail: Check for any leftover conflict markers post-merge
-                                leftover_conflicts = check_unresolved_conflicts(Path(workspace_path))
+                                # 3. Guardrail: Check for any leftover conflict markers post-merge.
+                                # Fail-closed: if we cannot verify the post-merge
+                                # worktree is clean, do NOT push / open a PR.
+                                _leftover_verified, leftover_conflicts, _leftover_err = check_unresolved_conflicts_safe(Path(workspace_path))
+                                if not _leftover_verified:
+                                    _log.warning("Task %s post-merge conflict state unverifiable; not pushing: %s", task_id, _leftover_err)
+                                    cursor.execute(
+                                        "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
+                                        (now, task_id)
+                                    )
+                                    cursor.execute(
+                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_unverifiable', ?, ?)",
+                                        (task_id, f"Post-merge conflict state could not be verified; not pushing (fail-closed): {_leftover_err}", now)
+                                    )
+                                    conn.commit()
+                                    continue
                                 if leftover_conflicts:
                                     _handle_local_merge_conflict(cursor, task_id, title, workspace_path, leftover_conflicts, now, "Leftover conflict markers detected after merge")
                                     continue

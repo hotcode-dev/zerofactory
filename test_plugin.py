@@ -18,7 +18,7 @@ from dashboard.plugin_api import (
     router, init_db, get_db_conn,
     BoardCreate, BoardUpdate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
     list_boards, create_board, list_tasks, create_task, get_task, get_task_session, update_task, move_task,
-    add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch
+    add_comment, add_dependency, remove_dependency, get_stats, get_activities, trigger_dispatch
 )
 from fastapi import FastAPI
 
@@ -1580,6 +1580,140 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertEqual(t_row["status"], "ready")
                 self.assertEqual(t_row["assignee"], "zf-builder")
                 self.assertIn("[PR Conflict]", t_row["title"])
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_32b_conflict_check_fail_closed(self):
+        """check_unresolved_conflicts must FAIL CLOSED when the authoritative git
+        unmerged-index or status-porcelain query raises (transient git failure,
+        locked index, half-broken repo). It must NOT silently return [] on a
+        worktree that actually has an unresolved conflict, and pull_and_merge_main
+        must not auto-merge / claim-clean an unverifiable worktree.
+
+        Regression guard for dispatcher.py:260 (previously `except Exception: pass`
+        swallowed the error and returned an empty conflict list -> unsafe auto-merge).
+        """
+        import tempfile
+        import shutil
+        import subprocess
+        from unittest.mock import patch
+        from dispatcher import (
+            check_unresolved_conflicts,
+            check_unresolved_conflicts_safe,
+            pull_and_merge_main,
+            GitConflictCheckError,
+        )
+
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "T"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=str(repo_path), check=True)
+            (repo_path / "README.md").write_text("# repo\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo_path), check=True, capture_output=True)
+            wt = Path(td) / "wt"
+            subprocess.run(["git", "worktree", "add", str(wt), "-b", "task/wt"], cwd=str(repo_path), check=True, capture_output=True)
+
+            orig_run = subprocess.run
+
+            # --- Case A: unmerged-index query (step 1, diff-filter=U) raises ---
+            def fail_unmerged(cmd, *a, **k):
+                if isinstance(cmd, list) and any("--diff-filter=U" in c for c in cmd):
+                    raise OSError("index.lock held / transient git failure")
+                return orig_run(cmd, *a, **k)
+
+            with patch("subprocess.run", side_effect=fail_unmerged):
+                # raw function must RAISE, not silently return []
+                with self.assertRaises(GitConflictCheckError):
+                    check_unresolved_conflicts(wt)
+                # safe wrapper must report "could not verify" (verified=False)
+                ok, files, err = check_unresolved_conflicts_safe(wt)
+                self.assertFalse(ok)
+                self.assertEqual(files, [])
+                self.assertIn("could not verify", err)
+                # pull_and_merge_main must NOT auto-merge / claim a clean merge
+                ok2, files2, msg2 = pull_and_merge_main(wt, repo_path, "main")
+                self.assertFalse(ok2)
+                self.assertEqual(files2, ["(unverifiable)"])
+                self.assertIn("fail-closed", msg2)
+
+            # --- Case B: status-porcelain query (step 2) raises ---
+            def fail_porcelain(cmd, *a, **k):
+                if isinstance(cmd, list) and cmd[0] == "git" and "status" in cmd:
+                    raise OSError("status query failed")
+                return orig_run(cmd, *a, **k)
+
+            with patch("subprocess.run", side_effect=fail_porcelain):
+                with self.assertRaises(GitConflictCheckError):
+                    check_unresolved_conflicts(wt)
+                ok, _files, err = check_unresolved_conflicts_safe(wt)
+                self.assertFalse(ok)
+                self.assertIn("status --porcelain", err)
+
+            # --- Case C: healthy path still reports verified-clean (no regression) ---
+            ok, files, err = check_unresolved_conflicts_safe(repo_path)
+            self.assertTrue(ok)
+            self.assertEqual(files, [])
+            self.assertEqual(err, "")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_32c_dispatch_pre_implement_fail_closed_skips_auto_merge(self):
+        """Dispatch-level fail-closed: a ready zf-builder task whose worktree
+        conflict state CANNOT be verified must NOT be auto-merged via
+        pull_and_merge_main (the unsafe advance). The task is still dispatched so
+        the builder can sync with main itself and resolve any real conflict it
+        encounters; the post-worker guardrail is the final safety net before push.
+        """
+        from dispatcher import run_dispatch_cycle
+        import json
+        import shutil
+        import sqlite3
+        import tempfile
+        from unittest.mock import patch
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp(prefix="zf-fail-closed-pre-")
+        try:
+            db_file = Path(td) / "fail_closed.db"
+            self._create_conflict_test_db(db_file)
+            repo_dir = Path(td) / "main_repo"
+            repo_dir.mkdir()
+            ws_dir = Path(td) / "ws_task_unverifiable"
+            ws_dir.mkdir()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
+                    VALUES ('task-fc-1', 'Build feature Z', 'ready', 'zf-builder', ?, 'task/task-fc-1', 1000, 1000)
+                """, (str(ws_dir),))
+                conn.commit()
+
+            # check_unresolved_conflicts_safe reports the worktree as UNVERIFIABLE
+            with patch("dispatcher.reap_active_workers", return_value=0), \
+                 patch("dispatcher.resolve_task_repo_path", return_value=repo_dir), \
+                 patch("dispatcher.check_unresolved_conflicts_safe", return_value=(False, [], "simulated git error")) as mock_safe, \
+                 patch("dispatcher.pull_and_merge_main", return_value=(True, [], "ok")) as mock_pull, \
+                 patch("dispatcher.spawn_agent_worker", return_value=(99903, "sess-fc")) as mock_spawn:
+                res = run_dispatch_cycle(db_file)
+                self.assertTrue(res.get("ok"))
+                mock_safe.assert_called_once()
+                # The critical assertion: the worktree was NOT auto-merged.
+                mock_pull.assert_not_called()
+                # The task was still dispatched (builder syncs/itself resolves).
+                mock_spawn.assert_called_once()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT status, metadata FROM tasks WHERE id = 'task-fc-1'").fetchone()
+                self.assertEqual(row["status"], "running")
+                meta = json.loads(row["metadata"])
+                self.assertEqual(meta["worker_pid"], 99903)
         finally:
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is not None:
@@ -3160,6 +3294,103 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertEqual(pid, 4321)
                 mock_sync.assert_called_once_with(repo_path)
 
+    def test_55_activities_endpoint(self):
+        """Verify GET /activities returns unified activity log, filtering, agent summaries and stats."""
+        # 1. Ensure board exists, create a task and generate some activity
+        try:
+            create_board(BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory", description="AI workflow"))
+        except Exception:
+            pass
+        t_req = TaskCreate(
+            board_slug="hotcode-dev-zerofactory",
+            title="Activity Test Task",
+            description="Testing activities endpoint",
+            assignee="zf-builder",
+            priority="P1"
+        )
+        t_res = create_task(t_req)
+        self.assertTrue(t_res["ok"])
+        task_id = t_res["id"]
+
+        # 2. Add comment, move task, log custom activity
+        with get_db_conn() as conn:
+            conn.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', 'Spawned worker zf-builder (PID 9999)', ?)",
+                (task_id, 1726000000)
+            )
+            conn.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'zf-builder', 'worker_done', 'Finished coding changes', ?)",
+                (task_id, 1726000010)
+            )
+            conn.commit()
+
+        # 3. Test direct call
+        act_res = get_activities(limit=20)
+        self.assertTrue(act_res["ok"])
+        self.assertGreaterEqual(act_res["total"], 2)
+        self.assertIn("agents", act_res)
+        self.assertIn("stats", act_res)
+        self.assertIn("filter_options", act_res)
+
+        # 4. Test HTTP client endpoint
+        resp = client.get("/api/plugins/zerofactory/activities?limit=10")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertIsInstance(data["activities"], list)
+
+        # 5. Test actor filter
+        resp_actor = client.get("/api/plugins/zerofactory/activities?actor=zf-builder")
+        self.assertEqual(resp_actor.status_code, 200)
+        actor_acts = resp_actor.json()["activities"]
+        for a in actor_acts:
+            self.assertEqual(a["actor"], "zf-builder")
+
+        # 6. Test action filter
+        resp_action = client.get("/api/plugins/zerofactory/activities?action=worker_done")
+        self.assertEqual(resp_action.status_code, 200)
+        action_acts = resp_action.json()["activities"]
+        for a in action_acts:
+            self.assertEqual(a["action"], "worker_done")
+
+        # 7. Test search filter
+        resp_search = client.get("/api/plugins/zerofactory/activities?search=Finished coding")
+        self.assertEqual(resp_search.status_code, 200)
+        self.assertGreaterEqual(len(resp_search.json()["activities"]), 1)
+
+        # 8. Test board filter
+        resp_board = client.get("/api/plugins/zerofactory/activities?board_slug=hotcode-dev-zerofactory")
+        self.assertEqual(resp_board.status_code, 200)
+        for a in resp_board.json()["activities"]:
+            if a.get("board_slug"):
+                self.assertEqual(a["board_slug"], "hotcode-dev-zerofactory")
+
+        # 9. Test pagination
+        resp_paged = client.get("/api/plugins/zerofactory/activities?limit=1&offset=0")
+        self.assertEqual(resp_paged.status_code, 200)
+        self.assertEqual(len(resp_paged.json()["activities"]), 1)
+        self.assertEqual(resp_paged.json()["limit"], 1)
+        self.assertEqual(resp_paged.json()["offset"], 0)
+
+        # 10. Verify agent profiles presence in response
+        agents_dict = {a["id"]: a for a in act_res["agents"]}
+        for expected_id in ("zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"):
+            self.assertIn(expected_id, agents_dict)
+            self.assertIn("status", agents_dict[expected_id])
+            self.assertIn("role", agents_dict[expected_id])
+
+        # 11. Test running task prioritization with board scoping
+        with get_db_conn() as conn:
+            conn.execute("UPDATE tasks SET status = 'running', updated_at = 2000000000 WHERE id = ?", (task_id,))
+            conn.commit()
+
+        scoped_res = get_activities(board_slug="hotcode-dev-zerofactory")
+        self.assertTrue(scoped_res["ok"])
+        builder_agent = next(a for a in scoped_res["agents"] if a["id"] == "zf-builder")
+        self.assertIn(builder_agent["status"], ("active", "stuck"))
+        self.assertIsNotNone(builder_agent["current_task"])
+        self.assertEqual(builder_agent["current_task"]["id"], task_id)
+        self.assertEqual(builder_agent["current_task"]["board_slug"], "hotcode-dev-zerofactory")
     def _make_reviewer_test_repo(self, td: str):
         """Create a real git repo + a reviewer worktree so the dispatcher can
         resolve the repo root via `git rev-parse --git-common-dir`."""
