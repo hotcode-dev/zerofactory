@@ -3391,6 +3391,28 @@ class TestZeroFactory(unittest.TestCase):
         self.assertIsNotNone(builder_agent["current_task"])
         self.assertEqual(builder_agent["current_task"]["id"], task_id)
         self.assertEqual(builder_agent["current_task"]["board_slug"], "hotcode-dev-zerofactory")
+
+        # 12. Test task creation actor attribution (scanner tasks vs explicit actor)
+        t_orch = create_task(TaskCreate(
+            board_slug="hotcode-dev-zerofactory",
+            title="Orchestrator Scanner Issue",
+            status="todo",
+            dedup_key="test_file.py:bug-fix",
+            category="bug-fix"
+        ))
+        orch_acts = client.get("/api/plugins/zerofactory/activities?actor=zf-orchestrator").json()["activities"]
+        self.assertTrue(any(a["task_id"] == t_orch["id"] and a["actor"] == "zf-orchestrator" for a in orch_acts))
+
+        t_explicit = create_task(TaskCreate(
+            board_slug="hotcode-dev-zerofactory",
+            title="Explicit Actor Task",
+            actor="zf-orchestrator",
+            status="todo"
+        ))
+        with get_db_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT actor FROM task_activity WHERE task_id = ? AND action = 'create'", (t_explicit["id"],))
+            self.assertEqual(c.fetchone()["actor"], "zf-orchestrator")
     def _make_reviewer_test_repo(self, td: str):
         """Create a real git repo + a reviewer worktree so the dispatcher can
         resolve the repo root via `git rev-parse --git-common-dir`."""

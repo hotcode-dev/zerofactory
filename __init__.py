@@ -96,6 +96,7 @@ def register(ctx: Any):
         p_create.add_argument("--files", default=None, help="Affected relative file path(s), comma-separated")
         p_create.add_argument("--category", default="bug-fix", help="Issue category (e.g. bug-fix, refactoring, performance, test, config)")
         p_create.add_argument("--dedup-key", default=None, help="Explicit deduplication key override")
+        p_create.add_argument("--actor", default=None, help="Actor creating the task (defaults to HERMES_PROFILE or 'user')")
 
         # move
         p_move = subparsers.add_parser("move", help="Move a task to a different column")
@@ -200,6 +201,7 @@ def register(ctx: Any):
 
             files_arg = getattr(args, "files", None)
             files_list = [f.strip() for f in files_arg.split(",") if f.strip()] if files_arg else []
+            actor_val = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
             req = TaskCreate(
                 title=args.title,
                 description=desc,
@@ -211,6 +213,7 @@ def register(ctx: Any):
                 files=files_list,
                 category=getattr(args, "category", "bug-fix"),
                 dedup_key=getattr(args, "dedup_key", None),
+                actor=actor_val,
             )
             res = _create_task(req)
             if res.get("duplicate"):

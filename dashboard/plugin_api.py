@@ -253,6 +253,7 @@ class TaskCreate(BaseModel):
     files: Optional[List[str]] = []
     category: Optional[str] = "bug-fix"
     dedup_key: Optional[str] = None
+    actor: Optional[str] = None
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -1175,7 +1176,14 @@ def create_task(req: TaskCreate):
                     (req.parent_id, task_id, now)
                 )
 
-        log_activity(conn, task_id, "user", "create", f"Task created in {status_val}")
+        creator_actor = req.actor or os.environ.get("HERMES_PROFILE")
+        if not creator_actor:
+            if req.dedup_key or (req.tags and any(t.startswith("cat:") for t in req.tags)) or meta.get("dedup_key"):
+                creator_actor = "zf-orchestrator"
+            else:
+                creator_actor = "user"
+
+        log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
         conn.commit()
 
     return {"ok": True, "id": task_id}
@@ -1605,6 +1613,12 @@ def get_activities(
                     a.actor IN ('zf-orchestrator', 'orchestrator') 
                     OR a.details LIKE '%zf-orchestrator%'
                     OR a.details LIKE '%orchestrator%'
+                    OR (a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%'))
+                )""")
+            elif actor == "user":
+                where_clauses.append("""(
+                    a.actor = 'user'
+                    AND NOT (a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%'))
                 )""")
             else:
                 where_clauses.append("a.actor = ?")
@@ -1651,6 +1665,7 @@ def get_activities(
                     WHEN a.actor = 'dispatcher' AND (a.details LIKE '%zf-builder%' OR a.details LIKE '%Agent builder%' OR a.action IN ('worker_done', 'worker_failed')) THEN 'zf-builder' 
                     WHEN a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.details LIKE '%Agent reviewer%' OR a.action IN ('approved', 'changes_requested')) THEN 'zf-reviewer' 
                     WHEN a.actor = 'dispatcher' AND (a.details LIKE '%zf-orchestrator%' OR a.details LIKE '%orchestrator%') THEN 'zf-orchestrator' 
+                    WHEN a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%') THEN 'zf-orchestrator'
                     ELSE a.actor 
                 END AS actor,
                 a.action,
@@ -1690,6 +1705,9 @@ def get_activities(
         # Filter options
         cursor.execute("SELECT DISTINCT actor FROM task_activity WHERE actor != '' ORDER BY actor ASC")
         actors = [r["actor"] for r in cursor.fetchall()]
+        for std_actor in ["zf-orchestrator", "zf-builder", "zf-reviewer"]:
+            if std_actor not in actors:
+                actors.append(std_actor)
 
         cursor.execute("SELECT DISTINCT action FROM task_activity WHERE action != '' ORDER BY action ASC")
         actions = [r["action"] for r in cursor.fetchall()]
@@ -1774,6 +1792,7 @@ def get_activities(
                         FROM task_activity a
                         LEFT JOIN tasks t ON a.task_id = t.id
                         WHERE a.actor IN ('zf-orchestrator', 'orchestrator')
+                           OR (a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%'))
                         ORDER BY a.created_at DESC, a.id DESC LIMIT 1
                     """)
                     last_act_row = cursor.fetchone()
@@ -1786,7 +1805,10 @@ def get_activities(
 
                     cursor.execute("""
                         SELECT COUNT(*) as cnt FROM task_activity a
-                        WHERE a.actor IN ('zf-orchestrator', 'orchestrator') AND a.created_at >= ?
+                        LEFT JOIN tasks t ON a.task_id = t.id
+                        WHERE (a.actor IN ('zf-orchestrator', 'orchestrator')
+                           OR (a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%')))
+                          AND a.created_at >= ?
                     """, (one_day_ago,))
                     actions_today_cnt = cursor.fetchone()["cnt"] + count_orchestrator_scans_today(board_slug)
 
