@@ -483,7 +483,7 @@
           );
         });
 
-        if (runningTask) {
+        if (runningTask && !agent.current_task) {
           const startedAt = runningTask.metadata?.started_at;
           const runningSec = startedAt ? Math.max(0, Math.floor(Date.now() / 1000) - startedAt) : 0;
           return {
@@ -494,31 +494,8 @@
               title: runningTask.title,
               board_slug: runningTask.board_slug || selectedBoard,
               priority: runningTask.priority,
-              running_seconds: agent.current_task?.running_seconds || runningSec
-            },
-            last_activity: agent.last_activity || {
-              action: "task_started",
-              actor: agent.id,
-              task_id: runningTask.id,
-              task_title: runningTask.title,
-              created_at: startedAt || runningTask.updated_at || Math.floor(Date.now() / 1000),
-              details: `Worker executing task #${runningTask.id} (${runningTask.priority})`
+              running_seconds: runningSec
             }
-          };
-        }
-
-        if (agent.id === "zf-orchestrator" && !agent.last_activity) {
-          return {
-            ...agent,
-            last_activity: {
-              action: "scan",
-              actor: "zf-orchestrator",
-              task_id: null,
-              task_title: "Codebase Improvement Scanner",
-              created_at: Math.floor(Date.now() / 1000) - 180,
-              details: "Codebase Improvement Scan: verified Git HEAD, scanned repo for tech debt & test gaps"
-            },
-            actions_today: agent.actions_today || 21
           };
         }
 
@@ -534,144 +511,28 @@
     }, [liveAgents, tasks]);
 
     const effectiveActivities = useMemo(() => {
-      let list = activities;
-      if (!list || list.length === 0) {
-        list = tasks.flatMap((t) => {
-          const items = [];
-          if (t.status === "running") {
-            items.push({
-              id: `syn-run-${t.id}`,
-              task_id: t.id,
-              task_title: t.title,
-              task_priority: t.priority,
-              actor: "zf-builder",
-              action: "task_started",
-              board_slug: t.board_slug || selectedBoard,
-              created_at: t.metadata?.started_at || t.updated_at || Math.floor(Date.now() / 1000),
-              details: `Worker executing task #${t.id} (${t.priority}): ${t.title}`
-            });
-          }
-          if (t.pr_url) {
-            items.push({
-              id: `syn-pr-${t.id}`,
-              task_id: t.id,
-              task_title: t.title,
-              task_priority: t.priority,
-              actor: "zf-builder",
-              action: "pr_opened",
-              board_slug: t.board_slug || selectedBoard,
-              created_at: t.updated_at || Math.floor(Date.now() / 1000),
-              details: `Pull request opened: ${t.pr_url}`
-            });
-          }
-          if (t.status === "done") {
-            // Task build milestone: zf-builder implemented the code
-            items.push({
-              id: `syn-build-${t.id}`,
-              task_id: t.id,
-              task_title: t.title,
-              task_priority: t.priority,
-              actor: "zf-builder",
-              action: "worker_done",
-              board_slug: t.board_slug || selectedBoard,
-              created_at: (t.updated_at ? t.updated_at - 120 : Math.floor(Date.now() / 1000) - 120),
-              details: `Implemented changes, verified automated test suite in worktree`
-            });
-            // Task review milestone: zf-reviewer approved and merged
-            items.push({
-              id: `syn-appr-${t.id}`,
-              task_id: t.id,
-              task_title: t.title,
-              task_priority: t.priority,
-              actor: "zf-reviewer",
-              action: "approved",
-              board_slug: t.board_slug || selectedBoard,
-              created_at: t.updated_at || Math.floor(Date.now() / 1000),
-              details: `Passed quality gate review and merged to default branch`
-            });
-          }
-          return items;
-        });
-
-        // Include Codebase Improvement Scanner runs from zf-orchestrator
-        const nowSec = Math.floor(Date.now() / 1000);
-        list.push({
-          id: `syn-scan-${selectedBoard}-1`,
-          task_id: null,
-          task_title: "Codebase Improvement Scanner",
-          task_priority: "P0",
-          actor: "zf-orchestrator",
-          action: "scan",
-          board_slug: selectedBoard,
-          created_at: nowSec - 180,
-          details: `Codebase Improvement Scan: verified Git HEAD, scanned repository for tech debt and test gaps`
-        });
-        list.push({
-          id: `syn-scan-${selectedBoard}-2`,
-          task_id: null,
-          task_title: "Codebase Improvement Scanner",
-          task_priority: "P0",
-          actor: "zf-orchestrator",
-          action: "scan",
-          board_slug: selectedBoard,
-          created_at: nowSec - 3600,
-          details: `Pre-flight architecture check and open task fingerprint deduplication`
-        });
-
-        if (activityActorFilter !== "all") {
-          list = list.filter((item) => item.actor === activityActorFilter || item.actor === activityActorFilter.replace("zf-", ""));
-        }
-        if (activityActionFilter !== "all") {
-          list = list.filter((item) => item.action === activityActionFilter);
-        }
-        if (activityBoardFilter !== "all") {
-          list = list.filter((item) => item.board_slug === activityBoardFilter);
-        }
-        if (activitySearchQuery.trim()) {
-          const q = activitySearchQuery.toLowerCase();
-          list = list.filter((item) =>
-            (item.details || "").toLowerCase().includes(q) ||
-            (item.task_title || "").toLowerCase().includes(q) ||
-            (item.task_id || "").toLowerCase().includes(q) ||
-            (item.actor || "").toLowerCase().includes(q)
-          );
-        }
-      }
-      return list.sort((a, b) => b.created_at - a.created_at);
-    }, [activities, tasks, selectedBoard, activityActorFilter, activityActionFilter, activityBoardFilter, activitySearchQuery]);
+      return activities || [];
+    }, [activities]);
 
     const effectiveFilterOptions = useMemo(() => {
-      const opts = {
-        actors: ["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"],
-        actions: ["start", "task_started", "worker_done", "pr_opened", "merged", "changes_requested", "approved", "unblock", "promote"],
-        boards: boards.map((b) => b.slug)
+      return {
+        actors: activitiesFilterOptions.actors || ["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"],
+        actions: activitiesFilterOptions.actions || ["start", "worker_done", "pr_opened", "merged", "scan", "comment", "move"],
+        boards: activitiesFilterOptions.boards || boards.map((b) => b.slug)
       };
-      if (activitiesFilterOptions.actors && activitiesFilterOptions.actors.length > 0) {
-        opts.actors = Array.from(new Set([...opts.actors, ...activitiesFilterOptions.actors]));
-      }
-      if (activitiesFilterOptions.actions && activitiesFilterOptions.actions.length > 0) {
-        opts.actions = Array.from(new Set([...opts.actions, ...activitiesFilterOptions.actions]));
-      }
-      if (activitiesFilterOptions.boards && activitiesFilterOptions.boards.length > 0) {
-        opts.boards = Array.from(new Set([...opts.boards, ...activitiesFilterOptions.boards]));
-      }
-      return opts;
     }, [activitiesFilterOptions, boards]);
 
     const effectiveStats = useMemo(() => {
-      if (activitiesStats && activitiesStats.total_activities) return activitiesStats;
-      const runningCount = tasks.filter((t) => t.status === "running").length;
-      const doneCount = tasks.filter((t) => t.status === "done").length;
+      if (activitiesStats && activitiesStats.total_activities !== undefined) {
+        return activitiesStats;
+      }
       return {
-        total_activities: effectiveActivities.length,
-        actions_today: effectiveActivities.length,
+        total_activities: 0,
+        actions_today: 0,
         active_agents: liveAgents.filter((a) => a.status === "active" && a.id !== "dispatcher").length,
-        action_breakdown: {
-          task_started: runningCount,
-          worker_done: doneCount
-        }
+        action_breakdown: {}
       };
-    }, [activitiesStats, tasks, effectiveActivities, liveAgents]);
+    }, [activitiesStats, liveAgents]);
 
     // Filtered Tasks
     const filteredTasks = useMemo(() => {
