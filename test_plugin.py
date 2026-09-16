@@ -1814,10 +1814,25 @@ class TestZeroFactory(unittest.TestCase):
         """Verify that get_plugin_root() resolves main repo from inside worktrees and ensure_plugin_symlinks cleans up worktree symlinks."""
         from profile_manager import get_plugin_root, ensure_plugin_symlinks
         import shutil
+        import subprocess
         import tempfile
         from unittest.mock import patch
 
-        canonical_repo = Path(__file__).resolve().parent
+        # Resolve the canonical root the same way get_plugin_root() does:
+        # the parent of the git common dir. This is correct whether the suite
+        # runs from the main repo or from an isolated git worktree (the
+        # documented zf-builder execution environment). Previously this
+        # hardcoded Path(__file__).parent, which pointed at the worktree and
+        # failed whenever the suite ran from a worktree.
+        _cd_res = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=str(Path(__file__).resolve().parent),
+            capture_output=True, text=True, timeout=5,
+        )
+        if _cd_res.returncode == 0 and _cd_res.stdout.strip():
+            canonical_repo = Path(_cd_res.stdout.strip()).resolve().parent
+        else:
+            canonical_repo = Path(__file__).resolve().parent
 
         # 1. Normal resolution from main repo
         self.assertEqual(get_plugin_root(), canonical_repo)
