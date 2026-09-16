@@ -4072,6 +4072,197 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
                 os.environ.pop("HERMES_PROFILE", None)
 
 
+class TestSharedProfilePathResolution(unittest.TestCase):
+    """Dedup + correctness tests for the shared profile-path / assignee helpers
+    (``paths.py``) and that both the dispatcher and the dashboard consume the
+    SAME single source of truth (no more divergent copies).
+
+    These tests exercise the resolution strategy hermetically by pointing
+    ``Path.home()`` and the plugin-relative profiles root at a controlled temp
+    tree, so each branch (per-profile -> legacy-un-prefixed -> plugin-relative
+    -> global -> None) is asserted in isolation.
+    """
+
+    def _mk(self, base: Path, *parts: str) -> Path:
+        """Create ``base/parts...`` (parents included) and return the file path."""
+        p = base.joinpath(*parts)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.touch(exist_ok=True)
+        return p
+
+    def _with_fake_home(self, home_root: Path, plugin_root):
+        """Context manager that points ``paths.Path.home`` at ``home_root`` and
+        the plugin-relative root at ``plugin_root`` (which may be ``None``).
+        Returns two context managers that the caller enters with ``with``."""
+        import paths as P
+        from unittest import mock
+        return (
+            mock.patch("pathlib.Path.home", return_value=home_root),
+            mock.patch.object(P, "_plugin_profiles_root", return_value=plugin_root),
+        )
+
+    # --- state.db resolution strategy --------------------------------------
+
+    def test_74_state_db_per_profile(self):
+        """Per-profile path wins when it exists (primary layout)."""
+        from unittest import mock
+        import paths as P
+        with tempfile.TemporaryDirectory() as td:
+            home_root = Path(td) / "home"
+            self._mk(home_root, ".hermes", "profiles", "zf-builder", "state.db")
+            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=None)
+            with home_ctx, plug_ctx:
+                self.assertEqual(
+                    P.resolve_profile_state_db("zf-builder"),
+                    home_root / ".hermes" / "profiles" / "zf-builder" / "state.db",
+                )
+
+    def test_75_state_db_plugin_relative_fallback(self):
+        """Plugin-relative fallback is returned when ONLY that exists — the
+        exact case the old dispatcher's inline copy silently missed (it skipped
+        straight to the global ~/.hermes/state.db and read the wrong DB)."""
+        from unittest import mock
+        import paths as P
+        with tempfile.TemporaryDirectory() as td:
+            home_root = Path(td) / "home"
+            plugin_root = Path(td) / "plugin_profiles"
+            # No per-profile, no legacy, no global; only the plugin-relative one.
+            self._mk(plugin_root, "zf-builder", "state.db")
+            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=plugin_root)
+            with home_ctx, plug_ctx:
+                self.assertEqual(
+                    P.resolve_profile_state_db("zf-builder"),
+                    plugin_root / "zf-builder" / "state.db",
+                )
+
+    def test_76_state_db_global_fallback_and_none(self):
+        """Global ~/.hermes/state.db is the last resort, and None when nothing
+        exists anywhere."""
+        from unittest import mock
+        import paths as P
+        with tempfile.TemporaryDirectory() as td:
+            home_root = Path(td) / "home"
+            self._mk(home_root, ".hermes", "state.db")
+            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=None)
+            with home_ctx, plug_ctx:
+                self.assertEqual(
+                    P.resolve_profile_state_db("zf-builder"),
+                    home_root / ".hermes" / "state.db",
+                )
+
+        # Nothing present -> None.
+        with tempfile.TemporaryDirectory() as td:
+            home_root = Path(td) / "home"  # empty
+            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=None)
+            with home_ctx, plug_ctx:
+                self.assertIsNone(P.resolve_profile_state_db("zf-builder"))
+
+    def test_77_state_db_legacy_unprefixed_and_priority(self):
+        """Legacy un-prefixed profile dir is honored, and priority is
+        per-profile > legacy > plugin-relative > global."""
+        from unittest import mock
+        import paths as P
+        # Legacy un-prefixed "builder" is used when canonical "zf-builder" absent.
+        with tempfile.TemporaryDirectory() as td:
+            home_root = Path(td) / "home"
+            self._mk(home_root, ".hermes", "profiles", "builder", "state.db")
+            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=None)
+            with home_ctx, plug_ctx:
+                self.assertEqual(
+                    P.resolve_profile_state_db("zf-builder"),
+                    home_root / ".hermes" / "profiles" / "builder" / "state.db",
+                )
+
+        # Priority: canonical beats plugin-relative beats global.
+        with tempfile.TemporaryDirectory() as td:
+            home_root = Path(td) / "home"
+            plugin_root = Path(td) / "plugin_profiles"
+            self._mk(home_root, ".hermes", "state.db")
+            self._mk(plugin_root, "zf-builder", "state.db")
+            self._mk(home_root, ".hermes", "profiles", "zf-builder", "state.db")
+            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=plugin_root)
+            with home_ctx, plug_ctx:
+                self.assertEqual(
+                    P.resolve_profile_state_db("zf-builder"),
+                    home_root / ".hermes" / "profiles" / "zf-builder" / "state.db",
+                )
+            # Remove the canonical one; plugin-relative now wins over global.
+            (home_root / ".hermes" / "profiles" / "zf-builder" / "state.db").unlink()
+            with home_ctx, plug_ctx:
+                self.assertEqual(
+                    P.resolve_profile_state_db("zf-builder"),
+                    plugin_root / "zf-builder" / "state.db",
+                )
+
+    # --- assignee normalization --------------------------------------------
+
+    def test_78_normalize_assignee_roundtrip_and_unknown(self):
+        """Round-trips the three profiles, maps unassigned/None/empty to
+        unassigned, and maps UNKNOWN assignees to unassigned (single source)."""
+        import paths as P
+        self.assertEqual(P.normalize_assignee("zf-builder"), "zf-builder")
+        self.assertEqual(P.normalize_assignee("zf-reviewer"), "zf-reviewer")
+        self.assertEqual(P.normalize_assignee("zf-orchestrator"), "zf-orchestrator")
+        self.assertEqual(P.normalize_assignee("unassigned"), "unassigned")
+        self.assertEqual(P.normalize_assignee(None), "unassigned")
+        self.assertEqual(P.normalize_assignee(""), "unassigned")
+        # Unknown assignees are not valid specialist profiles -> unassigned.
+        self.assertEqual(P.normalize_assignee("antigravity"), "unassigned")
+        self.assertEqual(P.normalize_assignee("some-custom-tool"), "unassigned")
+
+    def test_79_dispatcher_and_dashboard_agree(self):
+        """The dispatcher's spawn-path resolver and the dashboard's
+        get_profile_state_db agree on the SAME fixture layout (single source of
+        truth)."""
+        from unittest import mock
+        import paths as P
+        import dispatcher as D
+        from dashboard.plugin_api import get_profile_state_db
+        with tempfile.TemporaryDirectory() as td:
+            home_root = Path(td) / "home"
+            plugin_root = Path(td) / "plugin_profiles"
+            self._mk(plugin_root, "zf-reviewer", "state.db")
+            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=plugin_root)
+            with home_ctx, plug_ctx:
+                expected = plugin_root / "zf-reviewer" / "state.db"
+                self.assertEqual(D.resolve_profile_state_db("zf-reviewer"), expected)
+                self.assertEqual(get_profile_state_db("zf-reviewer"), expected)
+                # The two surfaces must return the identical path.
+                self.assertEqual(
+                    D.resolve_profile_state_db("zf-reviewer"),
+                    get_profile_state_db("zf-reviewer"),
+                )
+                # And the dashboard wrapper must BE the shared helper (not a
+                # re-implemented copy).
+                self.assertIs(D.resolve_profile_state_db, P.resolve_profile_state_db)
+                self.assertEqual(get_profile_state_db("zf-reviewer"), P.resolve_profile_state_db("zf-reviewer"))
+
+    def test_80_single_source_of_truth_identity(self):
+        """dispatcher and dashboard re-export the SAME objects from paths.py —
+        no duplicated PROFILE_MAP / normalize_assignee to drift apart."""
+        import paths as P
+        import dispatcher as D
+        from dashboard.plugin_api import (
+            PROFILE_MAP as PA_PROFILE_MAP,
+            VALID_ASSIGNEES as PA_VALID_ASSIGNEES,
+            normalize_assignee as PA_normalize_assignee,
+        )
+        self.assertIs(D.PROFILE_MAP, P.PROFILE_MAP)
+        self.assertIs(PA_PROFILE_MAP, P.PROFILE_MAP)
+        self.assertIs(D.normalize_assignee, P.normalize_assignee)
+        self.assertIs(PA_normalize_assignee, P.normalize_assignee)
+        self.assertIs(PA_VALID_ASSIGNEES, P.VALID_ASSIGNEES)
+        self.assertCountEqual(
+            PA_VALID_ASSIGNEES,
+            {"unassigned", "zf-builder", "zf-reviewer", "zf-orchestrator"},
+        )
+        self.assertCountEqual(
+            D.VALID_PROFILES,
+            {"zf-builder", "zf-reviewer", "zf-orchestrator"},
+        )
+        self.assertNotIn("unassigned", D.VALID_PROFILES)
+
+
 if __name__ == "__main__":
     unittest.main()
 
