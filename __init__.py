@@ -56,7 +56,8 @@ def register(ctx: Any):
         init_db()
         ensure_zf_profiles()
         ensure_builtin_cron_jobs()
-        start_background_dispatcher()
+        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"):
+            start_background_dispatcher()
     except Exception as e:
         print(f"[zerofactory] Initialization error: {e}")
 

@@ -113,7 +113,7 @@ def get_dispatcher_lock_path() -> Path:
 
 def is_worker_or_child_process() -> bool:
     """Return True if current process is a worker, cron runner, or child CLI process."""
-    if os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER") == "1":
+    if os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER") == "1" or os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") == "1":
         return True
     profile = os.environ.get("HERMES_PROFILE") or ""
     if profile in ("zf-builder", "zf-reviewer"):

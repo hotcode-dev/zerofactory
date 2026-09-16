@@ -13,6 +13,7 @@ os.environ["ZEROFACTORY_DB"] = str(Path(test_dir.name) / "test.db")
 os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
 os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
 os.environ["ZEROFACTORY_SKIP_DISPATCHER"] = "1"
+os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
 if "ZEROFACTORY_LOCK_PATH" not in os.environ:
     os.environ["ZEROFACTORY_LOCK_PATH"] = str(Path(test_dir.name) / "test_dispatcher.lock")
 
@@ -546,6 +547,10 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             if dummy_proc.poll() is None:
                 dummy_proc.kill()
+            try:
+                dummy_proc.wait(timeout=2)
+            except Exception:
+                pass
 
     def test_15_conventional_commit_formatting(self):
         from dispatcher import format_conventional_message
