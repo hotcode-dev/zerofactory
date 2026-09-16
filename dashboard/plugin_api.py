@@ -1404,12 +1404,23 @@ def add_comment(task_id: str, req: CommentCreate):
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
+        author_val = req.author or os.environ.get("HERMES_PROFILE") or "user"
+        body_str = req.body.strip()
+        if author_val == "user":
+            lower_body = body_str.lower()
+            if any(lower_body.startswith(p) for p in ("builder", "build handoff", "fix complete", "conflict resolved", "test-only")):
+                author_val = "zf-builder"
+            elif any(lower_body.startswith(p) for p in ("reviewer", "round", "[reviewer", "review complete")):
+                author_val = "zf-reviewer"
+
         cursor.execute(
             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-            (task_id, req.author, req.body.strip(), now)
+            (task_id, author_val, body_str, now)
         )
         comment_id = cursor.lastrowid
-        log_activity(conn, task_id, req.author, "comment", f"Added comment #{comment_id}")
+        first_line = body_str.split("\n")[0][:60]
+        details_str = f"Added comment #{comment_id}: {first_line}" if first_line else f"Added comment #{comment_id}"
+        log_activity(conn, task_id, author_val, "comment", details_str)
         conn.commit()
 
     return {"ok": True, "id": comment_id}
@@ -1604,6 +1615,12 @@ def get_activities(
                         OR a.details LIKE '%Agent builder%' 
                         OR a.action IN ('worker_done', 'worker_failed')
                     ))
+                    OR (a.actor = 'user' AND a.action = 'comment' AND EXISTS (
+                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
+                            tc.author IN ('zf-builder', 'builder') 
+                            OR tc.body LIKE 'BUILD%' OR tc.body LIKE 'Builder%' OR tc.body LIKE 'Fix complete%' OR tc.body LIKE 'Conflict resolved%' OR tc.body LIKE 'TEST-ONLY%'
+                        )
+                    ))
                 )""")
             elif actor in ("zf-reviewer", "reviewer"):
                 where_clauses.append("""(
@@ -1611,7 +1628,13 @@ def get_activities(
                     OR (a.actor = 'dispatcher' AND (
                         a.details LIKE '%zf-reviewer%' 
                         OR a.details LIKE '%reviewer%'
-                        OR a.action IN ('merged', 'approved', 'changes_requested')
+                        OR a.action IN ('approved', 'changes_requested')
+                    ))
+                    OR (a.actor = 'user' AND a.action = 'comment' AND EXISTS (
+                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
+                            tc.author IN ('zf-reviewer', 'reviewer') 
+                            OR tc.body LIKE '%Reviewer%' OR tc.body LIKE 'Round %' OR tc.body LIKE '[Reviewer%' OR tc.body LIKE 'REVIEW COMPLETE%'
+                        )
                     ))
                 )""")
             elif actor in ("zf-orchestrator", "orchestrator"):
@@ -1625,6 +1648,13 @@ def get_activities(
                 where_clauses.append("""(
                     a.actor = 'user'
                     AND NOT (a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%'))
+                    AND NOT (a.action = 'comment' AND EXISTS (
+                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
+                            tc.author IN ('zf-builder', 'builder', 'zf-reviewer', 'reviewer', 'dispatcher', 'antigravity', 'zf-orchestrator')
+                            OR tc.body LIKE 'BUILD%' OR tc.body LIKE 'Builder%' OR tc.body LIKE 'Fix complete%' OR tc.body LIKE 'Conflict resolved%' OR tc.body LIKE 'TEST-ONLY%'
+                            OR tc.body LIKE '%Reviewer%' OR tc.body LIKE 'Round %' OR tc.body LIKE '[Reviewer%' OR tc.body LIKE 'REVIEW COMPLETE%'
+                        )
+                    ))
                 )""")
             else:
                 where_clauses.append("a.actor = ?")
@@ -1672,6 +1702,18 @@ def get_activities(
                     WHEN a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.details LIKE '%Agent reviewer%' OR a.action IN ('approved', 'changes_requested')) THEN 'zf-reviewer' 
                     WHEN a.actor = 'dispatcher' AND (a.details LIKE '%zf-orchestrator%' OR a.details LIKE '%orchestrator%') THEN 'zf-orchestrator' 
                     WHEN a.actor = 'user' AND a.action = 'create' AND (t.metadata LIKE '%"dedup_key"%' OR t.tags LIKE '%cat:%') THEN 'zf-orchestrator'
+                    WHEN a.actor = 'user' AND a.action = 'comment' AND EXISTS (
+                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
+                            tc.author IN ('zf-builder', 'builder') 
+                            OR tc.body LIKE 'BUILD%' OR tc.body LIKE 'Builder%' OR tc.body LIKE 'Fix complete%' OR tc.body LIKE 'Conflict resolved%' OR tc.body LIKE 'TEST-ONLY%'
+                        )
+                    ) THEN 'zf-builder'
+                    WHEN a.actor = 'user' AND a.action = 'comment' AND EXISTS (
+                        SELECT 1 FROM task_comments tc WHERE tc.task_id = a.task_id AND (
+                            tc.author IN ('zf-reviewer', 'reviewer') 
+                            OR tc.body LIKE '%Reviewer%' OR tc.body LIKE 'Round %' OR tc.body LIKE '[Reviewer%' OR tc.body LIKE 'REVIEW COMPLETE%'
+                        )
+                    ) THEN 'zf-reviewer'
                     ELSE a.actor 
                 END AS actor,
                 a.action,

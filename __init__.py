@@ -113,7 +113,7 @@ def register(ctx: Any):
         p_comment = subparsers.add_parser("comment", help="Add a comment to a task")
         p_comment.add_argument("task_id", help="Task ID")
         p_comment.add_argument("body", help="Comment body")
-        p_comment.add_argument("--author", default="user", help="Author name")
+        p_comment.add_argument("--author", default=None, help="Author name (defaults to HERMES_PROFILE or 'user')")
 
         # stats
         subparsers.add_parser("stats", help="Show Kanban board statistics")
@@ -241,7 +241,8 @@ def register(ctx: Any):
             print(f"Task {args.task_id} marked as BLOCKED ({args.reason})")
 
         elif action == "comment":
-            _add_comment(args.task_id, CommentCreate(author=args.author, body=args.body))
+            author = getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user"
+            _add_comment(args.task_id, CommentCreate(author=author, body=args.body))
             print(f"Added comment to task {args.task_id}")
 
         elif action == "stats":
