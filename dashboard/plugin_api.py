@@ -36,13 +36,15 @@ try:
     from ..settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_SETTING_VALUES, load_settings,
+        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_ACTIVITY_RETENTION_DAYS,
+        DEFAULT_SETTING_VALUES, load_settings,
     )
 except (ImportError, ValueError):
     from settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_SETTING_VALUES, load_settings,
+        DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_ACTIVITY_RETENTION_DAYS,
+        DEFAULT_SETTING_VALUES, load_settings,
     )
 
 # Shared profile-path resolution & assignee normalization (source of truth).
@@ -181,6 +183,12 @@ def init_db(force: bool = False):
             CREATE INDEX IF NOT EXISTS idx_links_child ON task_links(child_id);
             CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_activity_task ON task_activity(task_id, created_at);
+            -- task_activity is an append-only log read by the /activities endpoint.
+            -- idx_activity_created backs the "ORDER BY created_at DESC, id DESC"
+            -- paginated list and the "created_at >= ?" today-counts; idx_activity_actor
+            -- backs the per-agent last-activity / actions-today lookups.
+            CREATE INDEX IF NOT EXISTS idx_activity_created ON task_activity(created_at, id);
+            CREATE INDEX IF NOT EXISTS idx_activity_actor ON task_activity(actor, created_at);
             """)
             # Idempotent migration: add max_concurrent_running to pre-existing boards tables
             cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
@@ -199,6 +207,100 @@ def init_db(force: bool = False):
                     (_key, _value, now_ts)
                 )
     _DB_INITIALIZED = True
+
+            # Retention: the task_activity log is append-only, so prune rows older
+            # than the configured window to keep every full-scan-free query fast.
+            # Throttled to at most once per hour (init_db() runs per request) and
+            # executed inside this transaction on this single connection — the
+            # DELETE is idempotent, so a re-run only trims rows aged past the cutoff.
+            try:
+                _last_prune_row = conn.execute(
+                    "SELECT value FROM settings WHERE key = 'activity_last_prune'"
+                ).fetchone()
+                if _last_prune_row is None or (
+                    now_ts - int(_last_prune_row[0])
+                ) >= ACTIVITY_PRUNE_INTERVAL_SECONDS:
+                    _deleted = prune_old_activity(conn=conn)
+                    conn.execute(
+                        "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+                        "VALUES ('activity_last_prune', ?, ?)",
+                        (str(now_ts), now_ts),
+                    )
+                    if _deleted:
+                        _log.debug("Pruned %d task_activity rows past retention", _deleted)
+            except Exception as _prune_err:  # pragma: no cover - defensive
+                _log.warning("task_activity retention prune skipped: %s", _prune_err)
+
+# Maximum interval between retention prunes when driven by per-request init_db().
+ACTIVITY_PRUNE_INTERVAL_SECONDS = 3600
+
+
+def prune_old_activity(
+    conn: Optional[sqlite3.Connection] = None,
+    retention_days: Optional[int] = None,
+    vacuum: bool = True,
+) -> int:
+    """Delete ``task_activity`` rows older than the retention window.
+
+    Idempotent and safe under WAL: the work is a single
+    ``DELETE FROM task_activity WHERE created_at < ?`` — re-running it only
+    trims rows that have since aged past the (recomputed) cutoff.
+
+    When ``conn`` is ``None`` a short-lived connection is opened, committed and
+    closed here; an occasional ``VACUUM`` (which cannot run inside a
+    transaction) is issued on that path only, after the commit, when the prune
+    actually freed rows. When a connection is supplied the DELETE runs on it and
+    the commit is left to the caller, so the call can share a transaction with
+    ``init_db()``.
+
+    ``retention_days=None`` reads ``activity_retention_days`` from the settings
+    table (falling back to :data:`DEFAULT_ACTIVITY_RETENTION_DAYS`); a value
+    ``<= 0`` disables pruning. Returns the number of rows deleted.
+    """
+    _close = False
+    if conn is None:
+        db_path = get_db_path()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path), timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000;")
+        _close = True
+    deleted = 0
+    try:
+        days = DEFAULT_ACTIVITY_RETENTION_DAYS
+        if retention_days is None:
+            # No explicit window given: read the configured setting, falling
+            # back to the module default when the settings table is absent.
+            try:
+                days = load_settings(conn).get(
+                    "activity_retention_days", DEFAULT_ACTIVITY_RETENTION_DAYS
+                )
+            except Exception:  # no settings table — keep the default window
+                days = DEFAULT_ACTIVITY_RETENTION_DAYS
+        try:
+            days = int(days)
+        except (TypeError, ValueError):
+            days = DEFAULT_ACTIVITY_RETENTION_DAYS
+        if days <= 0:
+            return 0  # retention disabled
+        cutoff = int(time.time()) - days * 86400
+        cur = conn.execute("DELETE FROM task_activity WHERE created_at < ?", (cutoff,))
+        deleted = cur.rowcount if cur.rowcount is not None else 0
+    finally:
+        if _close:
+            try:
+                conn.commit()
+            except Exception:
+                pass
+            # Occasional VACUUM to return the freed pages to disk. Runs outside
+            # the (now-committed) transaction, on the short-lived connection only.
+            if vacuum and deleted > 0:
+                try:
+                    conn.execute("VACUUM")
+                except Exception as _vac_err:  # pragma: no cover - best effort
+                    _log.debug("post-prune VACUUM skipped: %s", _vac_err)
+            conn.close()
+    return deleted
 
 # Initialize on import
 try:
@@ -344,6 +446,7 @@ class SettingsUpdate(BaseModel):
     idle_scan_active_threshold: Optional[int] = Field(default=None, ge=1, description="Max active running workers on a board to trigger idle scan")
     idle_scan_cooldown_minutes: Optional[int] = Field(default=None, ge=1, description="Minimum cooldown in minutes between idle improvement scans per board")
     idle_scan_max_todo: Optional[int] = Field(default=None, ge=0, description="Max todo backlog tasks on board before suppressing idle scan")
+    activity_retention_days: Optional[int] = Field(default=None, ge=1, description="Days to retain task_activity log rows before pruning (default 30)")
 
 
 # --- Helper Functions --------------------------------------------------------
@@ -977,6 +1080,12 @@ def update_settings(req: SettingsUpdate):
             val = str(max(0, int(req.idle_scan_max_todo)))
             cursor.execute(
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', ?, ?)",
+                (val, now)
+            )
+        if req.activity_retention_days is not None:
+            val = str(max(1, int(req.activity_retention_days)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('activity_retention_days', ?, ?)",
                 (val, now)
             )
         conn.commit()
