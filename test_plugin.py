@@ -3984,9 +3984,8 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
 
     def test_73_strict_activity_actors(self):
         """Activity actor must strictly only be one of the 6 canonical actors:
-        zf-orchestrator, zf-builder, zf-reviewer, dispatcher, user (includes ui/cli), other."""
+        zf-orchestrator, zf-builder, zf-reviewer, dispatcher, user, other."""
         from dashboard.plugin_api import (
-            normalize_activity_actor,
             STRICT_ACTIVITY_ACTORS,
             log_activity,
             get_db_conn,
@@ -4002,49 +4001,27 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
         ]
         self.assertEqual(STRICT_ACTIVITY_ACTORS, expected_actors)
 
-        # Normalization checks
-        self.assertEqual(normalize_activity_actor("zf-orchestrator"), "zf-orchestrator")
-        self.assertEqual(normalize_activity_actor("orchestrator"), "zf-orchestrator")
-        self.assertEqual(normalize_activity_actor("zf-builder"), "zf-builder")
-        self.assertEqual(normalize_activity_actor("builder"), "zf-builder")
-        self.assertEqual(normalize_activity_actor("zf-reviewer"), "zf-reviewer")
-        self.assertEqual(normalize_activity_actor("reviewer"), "zf-reviewer")
-        self.assertEqual(normalize_activity_actor("dispatcher"), "dispatcher")
-        self.assertEqual(normalize_activity_actor("user"), "user")
-        self.assertEqual(normalize_activity_actor("ui"), "user")
-        self.assertEqual(normalize_activity_actor("cli"), "user")
-        self.assertEqual(normalize_activity_actor("CLI"), "user")
-        self.assertEqual(normalize_activity_actor("UI"), "user")
-        self.assertEqual(normalize_activity_actor(None), "user")
-        self.assertEqual(normalize_activity_actor(""), "user")
-        self.assertEqual(normalize_activity_actor("antigravity"), "other")
-        self.assertEqual(normalize_activity_actor("some-custom-tool"), "other")
-
-        # Logging activity with non-canonical actor stores normalized actor
         with get_db_conn() as conn:
             # Create a board and task to satisfy FK
             conn.execute("INSERT OR IGNORE INTO boards (slug, description, max_concurrent_running, created_at, updated_at) VALUES ('b-actor-test', 'test', 1, 1, 1)")
             conn.execute("INSERT OR IGNORE INTO tasks (id, board_slug, title, status, created_at, updated_at) VALUES ('t-actor-1', 'b-actor-test', 'Actor Test', 'todo', 1, 1)")
             
-            log_activity(conn, "t-actor-1", "ui", "move", "Moved via UI drag")
-            log_activity(conn, "t-actor-1", "cli", "comment", "Added via CLI")
-            log_activity(conn, "t-actor-1", "antigravity", "fix", "Custom agent action")
+            log_activity(conn, "t-actor-1", "user", "move", "Moved via UI drag")
+            log_activity(conn, "t-actor-1", "user", "comment", "Added via CLI")
             log_activity(conn, "t-actor-1", "dispatcher", "start", "Dispatched task")
             log_activity(conn, "t-actor-1", "zf-builder", "worker_done", "Built feature")
             log_activity(conn, "t-actor-1", "zf-reviewer", "approved", "Review passed")
+            log_activity(conn, "t-actor-1", "custom-script", "fix", "Custom agent action")
             conn.commit()
 
             c = conn.cursor()
             c.execute("SELECT actor, COUNT(*) FROM task_activity WHERE task_id = 't-actor-1' GROUP BY actor")
             actor_counts = dict(c.fetchall())
-            self.assertEqual(actor_counts.get("user"), 2)  # 'ui' and 'cli' became 'user'
-            self.assertEqual(actor_counts.get("other"), 1)  # 'antigravity' became 'other'
+            self.assertEqual(actor_counts.get("user"), 2)
             self.assertEqual(actor_counts.get("dispatcher"), 1)
             self.assertEqual(actor_counts.get("zf-builder"), 1)
             self.assertEqual(actor_counts.get("zf-reviewer"), 1)
-            self.assertNotIn("ui", actor_counts)
-            self.assertNotIn("cli", actor_counts)
-            self.assertNotIn("antigravity", actor_counts)
+            self.assertEqual(actor_counts.get("custom-script"), 1)
 
         # Verify API /activities returns filter_options['actors'] with strict list
         res = client.get("/api/plugins/zerofactory/activities").json()

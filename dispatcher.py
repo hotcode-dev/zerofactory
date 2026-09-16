@@ -823,14 +823,9 @@ def spawn_agent_worker(
         session_id = None
         state_db_path = Path.home() / ".hermes" / "profiles" / assignee / "state.db"
         if not state_db_path.exists():
-            unprefixed = assignee.replace("zf-", "")
-            alt_path = Path.home() / ".hermes" / "profiles" / unprefixed / "state.db"
-            if alt_path.exists():
-                state_db_path = alt_path
-            else:
-                p_root = Path.home() / ".hermes" / "state.db"
-                if p_root.exists():
-                    state_db_path = p_root
+            p_root = Path.home() / ".hermes" / "state.db"
+            if p_root.exists():
+                state_db_path = p_root
         if state_db_path.exists():
             try:
                 resolved_state = state_db_path.resolve()
@@ -1276,7 +1271,7 @@ def format_conventional_message(title: str, task_id: str = "") -> tuple[str, str
     """
     raw_title = title
     # 1. Strip role and priority badges
-    cleaned = re.sub(r"\[(?:zf-builder|zf-reviewer|zf-orchestrator|builder|reviewer|orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]", "", title)
+    cleaned = re.sub(r"\[(?:zf-builder|zf-reviewer|zf-orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]", "", title)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     # 2. Check if already conventional
@@ -1376,11 +1371,11 @@ def setup_worktree(
     """Ensure git worktree and branch exist for task execution."""
     valid_profiles = VALID_PROFILES
     if not assignee or assignee == "unassigned" or assignee not in valid_profiles:
-        if "[reviewer]" in title or "[zf-reviewer]" in title:
+        if "[zf-reviewer]" in title:
             assignee = "zf-reviewer"
-        elif "[builder]" in title or "[zf-builder]" in title:
+        elif "[zf-builder]" in title:
             assignee = "zf-builder"
-        elif "[orchestrator]" in title or "[zf-orchestrator]" in title:
+        elif "[zf-orchestrator]" in title:
             assignee = "zf-orchestrator"
         else:
             assignee = "zf-builder"
