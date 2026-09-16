@@ -1313,12 +1313,15 @@ def create_task(req: TaskCreate):
                     (req.parent_id, task_id, now)
                 )
 
-        creator_actor = req.actor or os.environ.get("HERMES_PROFILE")
-        if not creator_actor:
-            if req.dedup_key or (req.tags and any(t.startswith("cat:") for t in req.tags)) or meta.get("dedup_key"):
-                creator_actor = "zf-orchestrator"
-            else:
-                creator_actor = "user"
+        # Scanner-filed tasks (dedup_key / category tag) are always attributed
+        # to zf-orchestrator — the scanner signals them explicitly, so a
+        # HERMES_PROFILE env (worker or user session) must not override it.
+        if req.actor:
+            creator_actor = req.actor
+        elif req.dedup_key or (req.tags and any(t.startswith("cat:") for t in req.tags)) or meta.get("dedup_key"):
+            creator_actor = "zf-orchestrator"
+        else:
+            creator_actor = os.environ.get("HERMES_PROFILE") or "user"
 
         log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
         conn.commit()
