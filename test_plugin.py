@@ -3986,7 +3986,7 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
         """Activity actor must strictly only be one of the 6 canonical actors:
         zf-orchestrator, zf-builder, zf-reviewer, dispatcher, user, other."""
         from dashboard.plugin_api import (
-            STRICT_ACTIVITY_ACTORS,
+            ACTIVITY_ACTORS,
             log_activity,
             get_db_conn,
         )
@@ -3999,7 +3999,7 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
             "user",
             "other",
         ]
-        self.assertEqual(STRICT_ACTIVITY_ACTORS, expected_actors)
+        self.assertEqual(ACTIVITY_ACTORS, expected_actors)
 
         with get_db_conn() as conn:
             # Create a board and task to satisfy FK
@@ -4028,7 +4028,7 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
         self.assertTrue(res["ok"])
         self.assertEqual(res["filter_options"]["actors"], expected_actors)
 
-        # Verify all activities returned in the list have actor strictly in STRICT_ACTIVITY_ACTORS
+        # Verify all activities returned in the list have actor strictly in ACTIVITY_ACTORS
         for act in res["activities"]:
             self.assertIn(act["actor"], expected_actors, f"Activity actor {act['actor']} is not in strict set")
 

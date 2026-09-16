@@ -361,7 +361,7 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
             d["metadata"] = {}
     return d
 
-STRICT_ACTIVITY_ACTORS: List[str] = [
+ACTIVITY_ACTORS: List[str] = [
     "zf-orchestrator",
     "zf-builder",
     "zf-reviewer",
@@ -1709,7 +1709,7 @@ def get_activities(
                 total_count += len(scan_acts)
 
         # Filter options: strictly the 6 allowed actors
-        actors = list(STRICT_ACTIVITY_ACTORS)
+        actors = list(ACTIVITY_ACTORS)
 
         cursor.execute("SELECT DISTINCT action FROM task_activity WHERE action != '' ORDER BY action ASC")
         actions = [r["action"] for r in cursor.fetchall()]
@@ -1907,7 +1907,7 @@ def get_activities(
             "limit": limit,
             "offset": offset,
             "filter_options": {
-                "actors": STRICT_ACTIVITY_ACTORS,
+                "actors": ACTIVITY_ACTORS,
                 "actions": sorted(list(set(actions + ["scan"]))),
                 "boards": boards,
                 "assignees": sorted(list(set(assignees + ["zf-orchestrator", "zf-builder", "zf-reviewer"])))

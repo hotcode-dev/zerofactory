@@ -17,7 +17,7 @@ try:
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate,
-        STRICT_ACTIVITY_ACTORS
+        ACTIVITY_ACTORS
     )
 except ImportError:
     current_dir = Path(__file__).parent
@@ -29,7 +29,7 @@ except ImportError:
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate,
-        STRICT_ACTIVITY_ACTORS
+        ACTIVITY_ACTORS
     )
 
 try:
