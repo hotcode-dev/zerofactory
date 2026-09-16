@@ -1,6 +1,7 @@
 """Tests for Zero Factory plugin backend and database."""
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -3089,6 +3090,30 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertEqual(res7["scans_triggered"], 0)
                 mock_spawn7.assert_not_called()
 
+            # 7. Failed spawn (returns None) must NOT consume the cooldown or count as triggered
+            reset_idle_scanner_state()
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("DELETE FROM tasks")
+            conn.execute("UPDATE settings SET value = 'true' WHERE key = 'scan_on_idle'")
+            conn.execute("UPDATE settings SET value = '2' WHERE key = 'idle_scan_max_todo'")
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.spawn_board_scanner", return_value=None) as mock_spawn8:
+                res8 = run_dispatch_cycle(db_file)
+                self.assertTrue(res8["ok"])
+                self.assertEqual(res8["scans_triggered"], 0)
+                # Spawn was attempted (idle conditions met) but failed: cooldown must be untouched
+                mock_spawn8.assert_called_once()
+                self.assertNotIn("b1", _last_idle_scan_times)
+
+            # 8. Next cycle (still within the nominal cooldown window): successful spawn IS triggered
+            with patch("dispatcher.spawn_board_scanner", return_value=9999) as mock_spawn9:
+                res9 = run_dispatch_cycle(db_file)
+                self.assertEqual(res9["scans_triggered"], 1)
+                mock_spawn9.assert_called_once()
+                self.assertIn("b1", _last_idle_scan_times)
+
         finally:
             reset_idle_scanner_state()
             shutil.rmtree(td, ignore_errors=True)
@@ -3366,6 +3391,574 @@ class TestZeroFactory(unittest.TestCase):
         self.assertIsNotNone(builder_agent["current_task"])
         self.assertEqual(builder_agent["current_task"]["id"], task_id)
         self.assertEqual(builder_agent["current_task"]["board_slug"], "hotcode-dev-zerofactory")
+    def _make_reviewer_test_repo(self, td: str):
+        """Create a real git repo + a reviewer worktree so the dispatcher can
+        resolve the repo root via `git rev-parse --git-common-dir`."""
+        import subprocess
+        repo_path = Path(td) / "wt_repo"
+        repo_path.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path))
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path))
+        (repo_path / "README.md").write_text("# Worktree Cleanup Test\n")
+        subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(repo_path), check=True, capture_output=True)
+        reviewer_ws = Path(td) / "ws_reviewer"
+        subprocess.run(
+            ["git", "worktree", "add", str(reviewer_ws), "-b", "task/wt-clean"],
+            cwd=str(repo_path), check=True, capture_output=True
+        )
+        self.assertTrue(reviewer_ws.exists())
+        return repo_path, reviewer_ws
+
+    def _run_reviewer_pr_cycle(self, db_file: Path, gh_payload: dict, task_id: str = "wt-clean"):
+        """Run one dispatch cycle against a reviewer task, faking the GitHub PR
+        state via `gh pr view` and stubbing the worktree cleanup helper."""
+        import json
+        import subprocess
+        import sqlite3
+        from unittest.mock import patch, MagicMock
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        orig_run = subprocess.run
+        captured_gh = []
+
+        def fake_run(cmd, *args, **kwargs):
+            if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr" and cmd[2] == "view":
+                captured_gh.append(list(cmd))
+                res = MagicMock()
+                res.returncode = 0
+                res.stdout = json.dumps(gh_payload)
+                return res
+            return orig_run(cmd, *args, **kwargs)
+
+        res = None
+        try:
+            with patch("dispatcher._remove_worktree") as mock_remove, \
+                 patch("dispatcher.setup_worktree", return_value=None), \
+                 patch("dispatcher.check_unresolved_conflicts", return_value=[]), \
+                 patch("fcntl.flock", return_value=0), \
+                 patch("subprocess.run", side_effect=fake_run):
+                res = run_dispatch_cycle(db_file)
+        finally:
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+        def fetch(query):
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                return cur.execute(query).fetchall()
+
+        return res, captured_gh, mock_remove, fetch, task_id
+
+    def test_55_remove_worktree_missing_path_noops(self):
+        """(a) _remove_worktree returns cleanly (no git subprocess, no logs) when
+        the worktree path doesn't exist or is None/empty."""
+        import subprocess
+        from unittest.mock import patch
+        from dispatcher import _remove_worktree
+
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "repo"
+            repo_path.mkdir()
+            with patch("subprocess.run") as mock_run:
+                # Missing path: pure no-op, no git invocation
+                _remove_worktree(str(Path(td) / "does_not_exist"), repo_path)
+                mock_run.assert_not_called()
+                # None / empty path: pure no-op as well
+                _remove_worktree(None, repo_path)
+                _remove_worktree("", repo_path)
+                mock_run.assert_not_called()
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_56_remove_worktree_survives_hanging_remove(self):
+        """(b) _remove_worktree survives a hanging `git worktree remove`:
+        subprocess.TimeoutExpired is caught, a warning is logged, the bounded
+        `git worktree prune` fallback is attempted, and no exception escapes."""
+        import shutil
+        import subprocess
+        from unittest.mock import patch
+        from dispatcher import _remove_worktree
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_path, worktree_ws = self._make_reviewer_test_repo(td)
+
+            prune_calls = []
+
+            def fake_run(cmd, *args, **kwargs):
+                if isinstance(cmd, list) and cmd[:3] == ["git", "worktree", "remove"]:
+                    self.assertIsNotNone(kwargs.get("timeout"), "worktree remove must be bounded by a timeout")
+                    raise subprocess.TimeoutExpired(cmd=cmd, timeout=30)
+                if isinstance(cmd, list) and cmd[:3] == ["git", "worktree", "prune"]:
+                    prune_calls.append((cmd, kwargs))
+                    self.assertIsNotNone(kwargs.get("timeout"), "worktree prune fallback must be bounded by a timeout")
+                return orig_run(cmd, *args, **kwargs)
+
+            # Capture the real subprocess.run BEFORE patching: inside the
+            # patch context, `subprocess.run` is the mock itself.
+            orig_run = subprocess.run
+
+            with patch("subprocess.run", side_effect=fake_run), \
+                 self.assertLogs("zerofactory.kanban.dispatcher", level="WARNING") as log_cm:
+                # Must NOT raise despite the hung remove
+                _remove_worktree(str(worktree_ws), repo_path)
+
+            self.assertEqual(len(prune_calls), 1, "prune fallback should run exactly once on remove timeout")
+            matched = [line for line in log_cm.output if "timed out" in line and str(worktree_ws) in line]
+            self.assertTrue(matched, f"Expected a remove-timeout warning for {worktree_ws}, got: {log_cm.output}")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_57_pr_lifecycle_survives_with_mocked_cleanup(self):
+        """(c) The PR-lifecycle paths still complete and record their
+        task_activity rows when the worktree cleanup helper is mocked:
+        merged -> done, approved -> blocked, changes-requested -> ready,
+        and the conflict path re-routes to the author."""
+        import json
+        import shutil
+        import sqlite3
+        from unittest.mock import patch
+
+        td = tempfile.mkdtemp()
+        try:
+            # --- MERGED ---
+            repo_path, reviewer_ws = self._make_reviewer_test_repo(td)
+            db_file = Path(td) / "merged.db"
+            self._create_conflict_test_db(db_file)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('wt-merged', 'Merged task', 'blocked', 'zf-reviewer', ?, 'task/wt-merged',
+                            'https://github.com/hotcode-dev/zerofactory/pull/901', 1000, 1000)
+                """, (str(reviewer_ws),))
+                conn.commit()
+            res, captured_gh, mock_remove, fetch, _ = self._run_reviewer_pr_cycle(
+                db_file, {"state": "MERGED", "reviewDecision": None,
+                          "url": "https://github.com/hotcode-dev/zerofactory/pull/901",
+                          "mergeable": "MERGEABLE"}, task_id="wt-merged"
+            )
+            self.assertTrue(res.get("ok"), f"merged cycle should succeed: {res}")
+            self.assertTrue(captured_gh, "gh pr view should have been called")
+            mock_remove.assert_called()
+            t_row = fetch("SELECT status, assignee, pr_url FROM tasks WHERE id = 'wt-merged'")[0]
+            self.assertEqual(t_row["status"], "done")
+            acts = fetch("SELECT action FROM task_activity WHERE task_id = 'wt-merged' AND action = 'merged'")
+            self.assertEqual(len(acts), 1, "merged activity row missing")
+            self.assertEqual(acts[0][0], "merged")
+
+            # --- APPROVED ---
+            td2 = tempfile.mkdtemp()
+            try:
+                repo_path2, reviewer_ws2 = self._make_reviewer_test_repo(td2)
+                db_file2 = Path(td2) / "approved.db"
+                self._create_conflict_test_db(db_file2)
+                with sqlite3.connect(str(db_file2)) as conn:
+                    conn.execute("""
+                        INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                        VALUES ('wt-approved', 'Approved task [PR Opened by zf-builder]', 'blocked', 'zf-reviewer', ?, 'task/wt-approved',
+                                'https://github.com/hotcode-dev/zerofactory/pull/902', 1000, 1000)
+                    """, (str(reviewer_ws2),))
+                    conn.commit()
+                res, captured_gh, mock_remove, fetch2, _ = self._run_reviewer_pr_cycle(
+                    db_file2, {"state": "OPEN", "reviewDecision": "APPROVED",
+                               "url": "https://github.com/hotcode-dev/zerofactory/pull/902",
+                               "mergeable": "MERGEABLE"}, task_id="wt-approved"
+                )
+                self.assertTrue(res.get("ok"), f"approved cycle should succeed: {res}")
+                mock_remove.assert_called()
+                t_row = fetch2("SELECT title, status, assignee FROM tasks WHERE id = 'wt-approved'")[0]
+                self.assertEqual(t_row["status"], "blocked")
+                self.assertIn("[Human Review]", t_row["title"])
+                acts = fetch2("SELECT action FROM task_activity WHERE task_id = 'wt-approved' AND action = 'approved'")
+                self.assertEqual(len(acts), 1, "approved activity row missing")
+                self.assertEqual(acts[0][0], "approved")
+            finally:
+                shutil.rmtree(td2, ignore_errors=True)
+
+            # --- CHANGES_REQUESTED ---
+            td3 = tempfile.mkdtemp()
+            try:
+                repo_path3, reviewer_ws3 = self._make_reviewer_test_repo(td3)
+                db_file3 = Path(td3) / "changes.db"
+                self._create_conflict_test_db(db_file3)
+                with sqlite3.connect(str(db_file3)) as conn:
+                    conn.execute("""
+                        INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                        VALUES ('wt-changes', 'Changes task [PR Opened by zf-builder]', 'blocked', 'zf-reviewer', ?, 'task/wt-changes',
+                                'https://github.com/hotcode-dev/zerofactory/pull/903', 1000, 1000)
+                    """, (str(reviewer_ws3),))
+                    conn.commit()
+                res, captured_gh, mock_remove, fetch3, _ = self._run_reviewer_pr_cycle(
+                    db_file3, {"state": "OPEN", "reviewDecision": "CHANGES_REQUESTED",
+                               "url": "https://github.com/hotcode-dev/zerofactory/pull/903",
+                               "mergeable": "MERGEABLE"}, task_id="wt-changes"
+                )
+                self.assertTrue(res.get("ok"), f"changes-requested cycle should succeed: {res}")
+                mock_remove.assert_called()
+                t_row = fetch3("SELECT status, assignee FROM tasks WHERE id = 'wt-changes'")[0]
+                self.assertEqual(t_row["status"], "ready")
+                self.assertEqual(t_row["assignee"], "zf-builder")
+                acts = fetch3("SELECT action FROM task_activity WHERE task_id = 'wt-changes' AND action = 'changes_requested'")
+                self.assertEqual(len(acts), 1, "changes_requested activity row missing")
+                self.assertEqual(acts[0][0], "changes_requested")
+            finally:
+                shutil.rmtree(td3, ignore_errors=True)
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_58_pr_conflict_path_survives_with_mocked_cleanup(self):
+        """(c, continued) The GitHub-CONFLICTING path re-routes to the author,
+        records the pr_conflict activity row, and invokes the cleanup helper
+        (mocked) without stalling the cycle."""
+        import json
+        import shutil
+        import sqlite3
+        from unittest.mock import patch, MagicMock
+
+        td = tempfile.mkdtemp()
+        try:
+            repo_path, reviewer_ws = self._make_reviewer_test_repo(td)
+            db_file = Path(td) / "conflict_wt.db"
+            self._create_conflict_test_db(db_file)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('wt-conflict', 'Conflict task [PR Opened by zf-builder]', 'blocked', 'zf-reviewer', ?, 'task/wt-conflict',
+                            'https://github.com/hotcode-dev/zerofactory/pull/904', 1000, 1000)
+                """, (str(reviewer_ws),))
+                conn.commit()
+
+            res, captured_gh, mock_remove, fetch, _ = self._run_reviewer_pr_cycle(
+                db_file, {"state": "OPEN", "reviewDecision": None,
+                          "url": "https://github.com/hotcode-dev/zerofactory/pull/904",
+                          "mergeable": "CONFLICTING"}, task_id="wt-conflict"
+            )
+            self.assertTrue(res.get("ok"), f"conflict cycle should succeed: {res}")
+            self.assertTrue(captured_gh)
+            mock_remove.assert_called()
+            t_row = fetch("SELECT title, status, assignee FROM tasks WHERE id = 'wt-conflict'")[0]
+            self.assertEqual(t_row["status"], "ready")
+            self.assertEqual(t_row["assignee"], "zf-builder")
+            self.assertIn("[PR Conflict]", t_row["title"])
+            acts = fetch("SELECT details FROM task_activity WHERE task_id = 'wt-conflict' AND action = 'pr_conflict'")
+            self.assertEqual(len(acts), 1)
+            self.assertIn("conflicting", acts[0][0].lower())
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Hermetic mock helpers for the repo auto-sync / fast-forward guard tests.
+# These pin the guard behavior of dispatcher.sync_repo_main,
+# dispatcher.get_default_branch, and zf_scanner_gate._auto_sync_repo without
+# touching the real network or any git remotes.
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock  # noqa: E402
+
+
+class _ProcRecorder:
+    """Stands in for subprocess.run.
+
+    Keyed on the argv tuple. Canned results are returned for known commands;
+    unknown commands return a success MagicMock (returncode 0). A canned value
+    that is an Exception instance is raised instead of returned. Every call
+    (including raised ones) is recorded in ``calls``.
+    """
+
+    def __init__(self, results=None, default_rc=0, default_stdout=""):
+        self.results = dict(results or {})
+        self.calls = []
+        self.default_rc = default_rc
+        self.default_stdout = default_stdout
+
+    def __call__(self, cmd, *args, **kwargs):
+        key = tuple(cmd)
+        self.calls.append(key)
+        if key in self.results:
+            res = self.results[key]
+            if isinstance(res, BaseException):
+                raise res
+            return res
+        m = MagicMock()
+        m.returncode = self.default_rc
+        m.stdout = self.default_stdout
+        m.stderr = ""
+        return m
+
+
+class _StrRecorder:
+    """Stands in for zf_scanner_gate._run_cmd (returns a stripped str).
+
+    Same keying/raise semantics as _ProcRecorder but yields strings.
+    """
+
+    def __init__(self, results=None, default=""):
+        self.results = dict(results or {})
+        self.calls = []
+        self.default = default
+
+    def __call__(self, cmd, cwd=None):
+        key = tuple(cmd)
+        self.calls.append(key)
+        if key in self.results:
+            res = self.results[key]
+            if isinstance(res, BaseException):
+                raise res
+            return res
+        return self.default
+
+
+def _proc_result(rc=0, stdout=""):
+    m = MagicMock()
+    m.returncode = rc
+    m.stdout = stdout
+    m.stderr = ""
+    return m
+
+
+def _merge_cmds(rec):
+    return [c for c in rec.calls if c[:2] == ("git", "merge")]
+
+
+class TestSyncRepoMainGuards(unittest.TestCase):
+    """Pin the guard logic of dispatcher.sync_repo_main / get_default_branch."""
+
+    def _call_sync(self, default_branch, proc_results):
+        from unittest.mock import patch
+        import dispatcher
+
+        rec = _ProcRecorder(proc_results)
+        with patch.object(dispatcher, "get_default_branch", return_value=default_branch), \
+             patch.object(dispatcher.subprocess, "run", new=rec):
+            out = dispatcher.sync_repo_main(Path("/tmp/fake_repo"))
+        return out, rec
+
+    def test_55_merge_skipped_when_not_on_default_branch(self):
+        rec_results = {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, ""),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "feature-x\n"),
+        }
+        out, rec = self._call_sync("main", rec_results)
+        self.assertEqual(out, "main")
+        self.assertEqual(_merge_cmds(rec), [], "merge must not run when off the default branch")
+
+    def test_56_merge_skipped_when_worktree_dirty(self):
+        rec_results = {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, " M dirty.txt\n"),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "main\n"),
+        }
+        out, rec = self._call_sync("main", rec_results)
+        self.assertEqual(out, "main")
+        self.assertEqual(_merge_cmds(rec), [], "merge must not run on a dirty worktree")
+
+    def test_57_merge_uses_origin_default_branch_ref(self):
+        rec_results = {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, ""),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "main\n"),
+            ("git", "merge", "--ff-only", "origin/main"): _proc_result(),
+        }
+        out, rec = self._call_sync("main", rec_results)
+        self.assertEqual(out, "main")
+        self.assertIn(("git", "merge", "--ff-only", "origin/main"), rec.calls)
+
+    def test_58_merge_ref_uses_resolved_default_branch_master(self):
+        rec_results = {
+            ("git", "fetch", "origin", "master"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, ""),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "master\n"),
+            ("git", "merge", "--ff-only", "origin/master"): _proc_result(),
+        }
+        out, rec = self._call_sync("master", rec_results)
+        self.assertEqual(out, "master")
+        self.assertIn(("git", "merge", "--ff-only", "origin/master"), rec.calls)
+
+    def test_59_returns_branch_when_fetch_times_out(self):
+        import subprocess as sp
+        rec_results = {
+            ("git", "fetch", "origin", "main"): sp.TimeoutExpired(cmd="git", timeout=10),
+        }
+        out, rec = self._call_sync("main", rec_results)
+        self.assertEqual(out, "main", "sync_repo_main must return the branch even when fetch raises")
+        self.assertEqual(_merge_cmds(rec), [])
+
+    # --- get_default_branch fallback chain ---
+
+    def _call_default_branch(self, results):
+        from unittest.mock import patch
+        import dispatcher
+
+        rec = _ProcRecorder(results)
+        with patch.object(dispatcher.subprocess, "run", new=rec):
+            out = dispatcher.get_default_branch(Path("/tmp/fake_repo"))
+        return out, rec
+
+    def test_60_default_branch_origin_head_hit(self):
+        out, rec = self._call_default_branch({
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(0, "refs/remotes/origin/main"),
+        })
+        self.assertEqual(out, "main")
+        self.assertIn(("git", "symbolic-ref", "refs/remotes/origin/HEAD"), rec.calls)
+
+    def test_61_default_branch_origin_main_showref(self):
+        out, rec = self._call_default_branch({
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(0, ""),
+        })
+        self.assertEqual(out, "main")
+
+    def test_62_default_branch_origin_master_showref(self):
+        out, rec = self._call_default_branch({
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(0, ""),
+        })
+        self.assertEqual(out, "master")
+
+    def test_63_default_branch_fallback_literal_main(self):
+        out, rec = self._call_default_branch({
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/heads/main"): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/heads/master"): _proc_result(1, ""),
+        })
+        self.assertEqual(out, "main")
+
+
+class TestAutoSyncRepoGuards(unittest.TestCase):
+    """Pin the six guard/exit branches of zf_scanner_gate._auto_sync_repo."""
+
+    def _load_gate(self):
+        import importlib.util
+
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+        spec = importlib.util.spec_from_file_location("zf_scanner_gate_guard_test", gate_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _call_gate(self, str_results, proc_results):
+        from unittest.mock import patch
+
+        mod = self._load_gate()
+        str_rec = _StrRecorder(str_results)
+        proc_rec = _ProcRecorder(proc_results)
+        with patch.object(mod, "_run_cmd", new=str_rec), \
+             patch.object(mod.subprocess, "run", new=proc_rec):
+            out = mod._auto_sync_repo(Path("/tmp/fake_repo"))
+        return out, str_rec, proc_rec
+
+    def test_64_no_origin_early_return(self):
+        out, str_rec, proc_rec = self._call_gate({("git", "remote"): "upstream"}, {})
+        self.assertIsNone(out)
+        self.assertEqual(str_rec.calls, [("git", "remote")])
+        self.assertEqual(proc_rec.calls, [], "no fetch/show-ref/merge when origin is absent")
+
+    def test_65_dirty_worktree_early_return(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): " M dirty.txt\n"},
+            {},
+        )
+        self.assertIsNone(out)
+        self.assertNotIn(("git", "fetch", "origin", "main"), proc_rec.calls)
+        self.assertNotIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_66_symbolic_ref_preferred(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/feature-x",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "feature-x\n"},
+            {("git", "fetch", "origin", "feature-x"): _proc_result(0, ""),
+             ("git", "merge", "--ff-only", "origin/feature-x"): _proc_result(0, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "merge", "--ff-only", "origin/feature-x"), proc_rec.calls)
+
+    def test_67_fallback_main_showref(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n"},
+            {("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(0, ""),
+             ("git", "fetch", "origin", "main"): _proc_result(0, ""),
+             ("git", "merge", "--ff-only", "origin/main"): _proc_result(0, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"), proc_rec.calls)
+        self.assertIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_68_fallback_master_showref(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "master\n"},
+            {("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
+             ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(0, ""),
+             ("git", "fetch", "origin", "master"): _proc_result(0, ""),
+             ("git", "merge", "--ff-only", "origin/master"): _proc_result(0, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "merge", "--ff-only", "origin/master"), proc_rec.calls)
+
+    def test_69_default_literal_main_when_no_remote_refs(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n"},
+            {("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
+             ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(1, ""),
+             ("git", "fetch", "origin", "main"): _proc_result(0, ""),
+             ("git", "merge", "--ff-only", "origin/main"): _proc_result(0, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_70_not_on_default_branch_early_return(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/main",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "feature\n"},
+            {},
+        )
+        self.assertIsNone(out)
+        self.assertNotIn(("git", "fetch", "origin", "main"), proc_rec.calls)
+        self.assertNotIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_71_fetch_nonzero_aborts_before_merge(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): "origin",
+             ("git", "status", "--porcelain"): "",
+             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/main",
+             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n"},
+            {("git", "fetch", "origin", "main"): _proc_result(1, "")},
+        )
+        self.assertIsNone(out)
+        self.assertIn(("git", "fetch", "origin", "main"), proc_rec.calls)
+        self.assertNotIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
+
+    def test_72_exceptions_swallowed(self):
+        out, str_rec, proc_rec = self._call_gate(
+            {("git", "remote"): RuntimeError("boom")}, {},
+        )
+        self.assertIsNone(out, "_auto_sync_repo must swallow exceptions and return cleanly")
 
 
 if __name__ == "__main__":
