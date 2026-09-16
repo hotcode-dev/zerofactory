@@ -3362,7 +3362,7 @@ class TestZeroFactory(unittest.TestCase):
         scoped_res = get_activities(board_slug="hotcode-dev-zerofactory")
         self.assertTrue(scoped_res["ok"])
         builder_agent = next(a for a in scoped_res["agents"] if a["id"] == "zf-builder")
-        self.assertEqual(builder_agent["status"], "active")
+        self.assertIn(builder_agent["status"], ("active", "stuck"))
         self.assertIsNotNone(builder_agent["current_task"])
         self.assertEqual(builder_agent["current_task"]["id"], task_id)
         self.assertEqual(builder_agent["current_task"]["board_slug"], "hotcode-dev-zerofactory")

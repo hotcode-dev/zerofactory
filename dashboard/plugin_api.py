@@ -15,6 +15,7 @@ import secrets
 import sqlite3
 import subprocess
 import time
+from datetime import datetime
 from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -1529,6 +1530,63 @@ def get_stats(board: Optional[str] = None):
         }
 
 
+def get_orchestrator_scan_activities(board_slug: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+    db_path = os.path.expanduser("~/.hermes/profiles/zf-orchestrator/cron/executions.db")
+    if not os.path.exists(db_path):
+        return []
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            q = "SELECT * FROM executions WHERE job_id LIKE '%scanner%' "
+            p: List[Any] = []
+            if board_slug and board_slug != "all":
+                q += "AND job_id LIKE ? "
+                p.append(f"%{board_slug}%")
+            q += "ORDER BY claimed_at DESC LIMIT ?"
+            p.append(limit)
+            rows = conn.execute(q, p).fetchall()
+            res = []
+            for r in rows:
+                try:
+                    ts = int(datetime.fromisoformat(r["claimed_at"]).timestamp())
+                except Exception:
+                    ts = int(time.time())
+                b_slug = r["job_id"].replace("zero-factory-improvement-scanner-", "")
+                res.append({
+                    "id": f"scan-{r['id'][:8]}",
+                    "task_id": None,
+                    "actor": "zf-orchestrator",
+                    "action": "scan",
+                    "details": f"Codebase Improvement Scan ({r['status']}): inspected repository for tech debt, bugs & test gaps",
+                    "created_at": ts,
+                    "task_title": "Codebase Improvement Scanner",
+                    "board_slug": b_slug,
+                    "task_status": "completed",
+                    "task_priority": "P0",
+                    "task_assignee": "zf-orchestrator"
+                })
+            return res
+    except Exception:
+        return []
+
+
+def count_orchestrator_scans_today(board_slug: Optional[str] = None) -> int:
+    db_path = os.path.expanduser("~/.hermes/profiles/zf-orchestrator/cron/executions.db")
+    if not os.path.exists(db_path):
+        return 0
+    try:
+        with sqlite3.connect(db_path) as conn:
+            one_day_iso = datetime.fromtimestamp(time.time() - 86400).isoformat()
+            q = "SELECT COUNT(*) FROM executions WHERE job_id LIKE '%scanner%' AND claimed_at >= ?"
+            p: List[Any] = [one_day_iso]
+            if board_slug and board_slug != "all":
+                q += " AND job_id LIKE ?"
+                p.append(f"%{board_slug}%")
+            return conn.execute(q, p).fetchone()[0]
+    except Exception:
+        return 0
+
+
 @router.get("/activities")
 def get_activities(
     limit: int = Query(50, ge=1, le=200),
@@ -1550,8 +1608,33 @@ def get_activities(
         params: List[Any] = []
 
         if actor and actor != "all":
-            where_clauses.append("a.actor = ?")
-            params.append(actor)
+            if actor in ("zf-builder", "builder"):
+                where_clauses.append("""(
+                    a.actor IN ('zf-builder', 'builder') 
+                    OR (a.actor = 'dispatcher' AND (
+                        a.details LIKE '%zf-builder%' 
+                        OR a.details LIKE '%Agent builder%' 
+                        OR a.action IN ('worker_done', 'worker_failed')
+                    ))
+                )""")
+            elif actor in ("zf-reviewer", "reviewer"):
+                where_clauses.append("""(
+                    a.actor IN ('zf-reviewer', 'reviewer') 
+                    OR (a.actor = 'dispatcher' AND (
+                        a.details LIKE '%zf-reviewer%' 
+                        OR a.details LIKE '%reviewer%'
+                        OR a.action IN ('merged', 'approved', 'changes_requested')
+                    ))
+                )""")
+            elif actor in ("zf-orchestrator", "orchestrator"):
+                where_clauses.append("""(
+                    a.actor IN ('zf-orchestrator', 'orchestrator') 
+                    OR a.details LIKE '%zf-orchestrator%'
+                    OR a.details LIKE '%orchestrator%'
+                )""")
+            else:
+                where_clauses.append("a.actor = ?")
+                params.append(actor)
 
         if assignee and assignee != "all":
             where_clauses.append("(t.assignee = ? OR a.actor = ?)")
@@ -1587,7 +1670,15 @@ def get_activities(
             SELECT 
                 a.id,
                 a.task_id,
-                a.actor,
+                CASE 
+                    WHEN a.actor IN ('zf-builder', 'builder') THEN 'zf-builder' 
+                    WHEN a.actor IN ('zf-reviewer', 'reviewer') THEN 'zf-reviewer' 
+                    WHEN a.actor IN ('zf-orchestrator', 'orchestrator') THEN 'zf-orchestrator' 
+                    WHEN a.actor = 'dispatcher' AND (a.details LIKE '%zf-builder%' OR a.details LIKE '%Agent builder%' OR a.action IN ('worker_done', 'worker_failed')) THEN 'zf-builder' 
+                    WHEN a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.details LIKE '%Agent reviewer%' OR a.action IN ('approved', 'changes_requested')) THEN 'zf-reviewer' 
+                    WHEN a.actor = 'dispatcher' AND (a.details LIKE '%zf-orchestrator%' OR a.details LIKE '%orchestrator%') THEN 'zf-orchestrator' 
+                    ELSE a.actor 
+                END AS actor,
                 a.action,
                 a.details,
                 a.created_at,
@@ -1614,6 +1705,13 @@ def get_activities(
         query_params = list(params) + [actual_limit, actual_offset]
         cursor.execute(query_sql, query_params)
         activities = [dict(r) for r in cursor.fetchall()]
+
+        # Include zf-orchestrator Codebase Improvement Scanner executions if applicable
+        if (not actor or actor in ("all", "zf-orchestrator")) and (not action or action in ("all", "scan")):
+            scan_acts = get_orchestrator_scan_activities(board_slug, limit=actual_limit)
+            if scan_acts:
+                activities = sorted(activities + scan_acts, key=lambda x: x.get("created_at", 0), reverse=True)[:actual_limit]
+                total_count += len(scan_acts)
 
         # Filter options
         cursor.execute("SELECT DISTINCT actor FROM task_activity WHERE actor != '' ORDER BY actor ASC")
@@ -1644,12 +1742,16 @@ def get_activities(
             agent_status = "idle"
             current_task = None
             session_prog = None
+            last_activity = None
+            actions_today_cnt = 0
 
             if agent_id == "dispatcher":
                 agent_status = "active"
                 cursor.execute("SELECT * FROM task_activity WHERE actor = 'dispatcher' ORDER BY created_at DESC LIMIT 1")
                 last_act_row = cursor.fetchone()
                 last_activity = dict(last_act_row) if last_act_row else None
+                cursor.execute("SELECT COUNT(*) as cnt FROM task_activity WHERE actor = 'dispatcher' AND created_at >= ?", (one_day_ago,))
+                actions_today_cnt = cursor.fetchone()["cnt"]
             else:
                 running_task_row = None
                 short_id = agent_id.replace("zf-", "")
@@ -1692,23 +1794,88 @@ def get_activities(
                 else:
                     agent_status = "idle"
 
-                cursor.execute("""
-                    SELECT a.*, t.title as task_title, t.board_slug
-                    FROM task_activity a
-                    LEFT JOIN tasks t ON a.task_id = t.id
-                    WHERE a.actor IN (?, ?) OR (t.assignee IN (?, ?) AND a.actor = 'dispatcher')
-                    ORDER BY a.created_at DESC, a.id DESC LIMIT 1
-                """, (agent_id, short_id, agent_id, short_id))
-                last_act_row = cursor.fetchone()
-                last_activity = dict(last_act_row) if last_act_row else None
+                if agent_id == "zf-orchestrator":
+                    cursor.execute("""
+                        SELECT a.*, t.title as task_title, t.board_slug
+                        FROM task_activity a
+                        LEFT JOIN tasks t ON a.task_id = t.id
+                        WHERE a.actor IN ('zf-orchestrator', 'orchestrator')
+                        ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+                    """)
+                    last_act_row = cursor.fetchone()
+                    last_activity = dict(last_act_row) if last_act_row else None
 
-            cursor.execute("""
-                SELECT COUNT(*) as cnt FROM task_activity a
-                LEFT JOIN tasks t ON a.task_id = t.id
-                WHERE (a.actor IN (?, ?) OR (t.assignee IN (?, ?) AND a.actor = 'dispatcher'))
-                  AND a.created_at >= ?
-            """, (agent_id, short_id, agent_id, short_id, one_day_ago))
-            actions_today_cnt = cursor.fetchone()["cnt"]
+                    scan_acts = get_orchestrator_scan_activities(board_slug, limit=1)
+                    if scan_acts:
+                        if not last_activity or scan_acts[0]["created_at"] > last_activity.get("created_at", 0):
+                            last_activity = scan_acts[0]
+
+                    cursor.execute("""
+                        SELECT COUNT(*) as cnt FROM task_activity a
+                        WHERE a.actor IN ('zf-orchestrator', 'orchestrator') AND a.created_at >= ?
+                    """, (one_day_ago,))
+                    actions_today_cnt = cursor.fetchone()["cnt"] + count_orchestrator_scans_today(board_slug)
+
+                elif agent_id == "zf-builder":
+                    cursor.execute("""
+                        SELECT a.*, t.title as task_title, t.board_slug
+                        FROM task_activity a
+                        LEFT JOIN tasks t ON a.task_id = t.id
+                        WHERE a.actor IN ('zf-builder', 'builder')
+                           OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-builder%' OR a.action IN ('worker_done', 'worker_failed')))
+                        ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+                    """)
+                    last_act_row = cursor.fetchone()
+                    last_activity = dict(last_act_row) if last_act_row else None
+
+                    cursor.execute("""
+                        SELECT COUNT(*) as cnt FROM task_activity a
+                        LEFT JOIN tasks t ON a.task_id = t.id
+                        WHERE (a.actor IN ('zf-builder', 'builder')
+                           OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-builder%' OR a.action IN ('worker_done', 'worker_failed'))))
+                          AND a.created_at >= ?
+                    """, (one_day_ago,))
+                    actions_today_cnt = cursor.fetchone()["cnt"]
+
+                elif agent_id == "zf-reviewer":
+                    cursor.execute("""
+                        SELECT a.*, t.title as task_title, t.board_slug
+                        FROM task_activity a
+                        LEFT JOIN tasks t ON a.task_id = t.id
+                        WHERE a.actor IN ('zf-reviewer', 'reviewer')
+                           OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.details LIKE '%reviewer%' OR a.action IN ('merged', 'approved')))
+                        ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+                    """)
+                    last_act_row = cursor.fetchone()
+                    last_activity = dict(last_act_row) if last_act_row else None
+
+                    cursor.execute("""
+                        SELECT COUNT(*) as cnt FROM task_activity a
+                        LEFT JOIN tasks t ON a.task_id = t.id
+                        WHERE (a.actor IN ('zf-reviewer', 'reviewer')
+                           OR (a.actor = 'dispatcher' AND (a.details LIKE '%zf-reviewer%' OR a.details LIKE '%reviewer%' OR a.action IN ('merged', 'approved'))))
+                          AND a.created_at >= ?
+                    """, (one_day_ago,))
+                    actions_today_cnt = cursor.fetchone()["cnt"]
+
+                else:
+                    cursor.execute("""
+                        SELECT a.*, t.title as task_title, t.board_slug
+                        FROM task_activity a
+                        LEFT JOIN tasks t ON a.task_id = t.id
+                        WHERE a.actor IN (?, ?) OR (t.assignee IN (?, ?) AND a.actor = 'dispatcher')
+                        ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+                    """, (agent_id, short_id, agent_id, short_id))
+                    last_act_row = cursor.fetchone()
+                    last_activity = dict(last_act_row) if last_act_row else None
+
+                    cursor.execute("""
+                        SELECT COUNT(*) as cnt FROM task_activity a
+                        LEFT JOIN tasks t ON a.task_id = t.id
+                        WHERE (a.actor IN (?, ?) OR (t.assignee IN (?, ?) AND a.actor = 'dispatcher'))
+                          AND a.created_at >= ?
+                    """, (agent_id, short_id, agent_id, short_id, one_day_ago))
+                    actions_today_cnt = cursor.fetchone()["cnt"]
 
             agents_data.append({
                 "id": agent_id,
@@ -1730,6 +1897,12 @@ def get_activities(
         cursor.execute("SELECT action, COUNT(*) as cnt FROM task_activity GROUP BY action ORDER BY cnt DESC")
         action_breakdown = {r["action"]: r["cnt"] for r in cursor.fetchall()}
 
+        total_scans = count_orchestrator_scans_today()
+        overall_total += total_scans
+        overall_today += total_scans
+        if total_scans > 0:
+            action_breakdown["scan"] = total_scans
+
         active_agents_count = sum(1 for a in agents_data if a["status"] == "active" and a["id"] != "dispatcher")
 
         return {
@@ -1740,7 +1913,7 @@ def get_activities(
             "offset": offset,
             "filter_options": {
                 "actors": sorted(list(set(actors + ["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"]))),
-                "actions": actions,
+                "actions": sorted(list(set(actions + ["scan"]))),
                 "boards": boards,
                 "assignees": sorted(list(set(assignees + ["zf-orchestrator", "zf-builder", "zf-reviewer"])))
             },
