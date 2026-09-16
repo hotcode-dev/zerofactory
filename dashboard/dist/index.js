@@ -514,11 +514,18 @@
       let list = activities || [];
 
       if (activityActorFilter && activityActorFilter !== "all") {
-        list = list.filter((item) =>
-          item.actor === activityActorFilter ||
-          item.actor === activityActorFilter.replace("zf-", "") ||
-          (item.task_assignee === activityActorFilter && item.actor === "dispatcher")
-        );
+        list = list.filter((item) => {
+          if (activityActorFilter === "user") {
+            return item.actor === "user";
+          }
+          if (activityActorFilter === "other") {
+            return item.actor === "other" || !["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher", "user"].includes(item.actor);
+          }
+          return (
+            item.actor === activityActorFilter ||
+            item.actor === activityActorFilter.replace("zf-", "")
+          );
+        });
       }
       if (activityActionFilter && activityActionFilter !== "all") {
         list = list.filter((item) => item.action === activityActionFilter);
@@ -541,13 +548,10 @@
 
     const effectiveFilterOptions = useMemo(() => {
       const opts = {
-        actors: ["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"],
+        actors: ["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher", "user", "other"],
         actions: ["start", "worker_done", "pr_opened", "merged", "scan", "comment", "move", "unblock", "promote", "approved", "changes_requested"],
         boards: boards.map((b) => (typeof b === "string" ? b : b.slug || b.name)).filter(Boolean)
       };
-      if (activitiesFilterOptions.actors && activitiesFilterOptions.actors.length > 0) {
-        opts.actors = Array.from(new Set([...opts.actors, ...activitiesFilterOptions.actors]));
-      }
       if (activitiesFilterOptions.actions && activitiesFilterOptions.actions.length > 0) {
         opts.actions = Array.from(new Set([...opts.actions, ...activitiesFilterOptions.actions]));
       }
@@ -557,7 +561,6 @@
       if (activities && activities.length > 0) {
         activities.forEach((a) => {
           if (a.board_slug && !opts.boards.includes(a.board_slug)) opts.boards.push(a.board_slug);
-          if (a.actor && !opts.actors.includes(a.actor)) opts.actors.push(a.actor);
           if (a.action && !opts.actions.includes(a.action)) opts.actions.push(a.action);
         });
       }
@@ -663,7 +666,7 @@
         await fetchJSON(API_BASE + "/tasks/" + taskId + "/move", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: targetStatus, actor: "ui" })
+          body: JSON.stringify({ status: targetStatus, actor: "user" })
         });
         showToast("Task " + taskId + " moved to " + targetStatus, "success");
         loadTasksAndStats();
@@ -681,7 +684,7 @@
         await fetchJSON(API_BASE + "/tasks/" + task.id + "/move", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: nextStatus, actor: "ui" })
+          body: JSON.stringify({ status: nextStatus, actor: "user" })
         });
         showToast("Task " + task.id + " advanced to " + nextStatus, "success");
         loadTasksAndStats();
@@ -1583,19 +1586,22 @@
       };
 
       const getActorBadge = (actor) => {
-        if (actor === "zf-builder") {
+        if (actor === "zf-builder" || actor === "builder") {
           return { label: "zf-builder", icon: "🔨", role: "Builder", color: "text-amber-300 bg-amber-500/10 border-amber-500/30" };
         }
-        if (actor === "zf-reviewer") {
+        if (actor === "zf-reviewer" || actor === "reviewer") {
           return { label: "zf-reviewer", icon: "🔍", role: "Reviewer", color: "text-purple-300 bg-purple-500/10 border-purple-500/30" };
         }
-        if (actor === "zf-orchestrator") {
+        if (actor === "zf-orchestrator" || actor === "orchestrator") {
           return { label: "zf-orchestrator", icon: "🎯", role: "Orchestrator", color: "text-indigo-300 bg-indigo-500/10 border-indigo-500/30" };
         }
         if (actor === "dispatcher") {
           return { label: "dispatcher", icon: "⚙️", role: "Dispatcher Engine", color: "text-cyan-300 bg-cyan-500/10 border-cyan-500/30" };
         }
-        return { label: actor || "user", icon: "👤", role: "User", color: "text-slate-300 bg-slate-700/30 border-slate-600/30" };
+        if (actor === "user") {
+          return { label: "user", icon: "👤", role: "User", color: "text-sky-300 bg-sky-500/10 border-sky-500/30" };
+        }
+        return { label: "other", icon: "📦", role: "Other", color: "text-slate-400 bg-slate-700/30 border-slate-600/30" };
       };
 
       const hasActiveClientFilters = activityActorFilter !== "all" || activityActionFilter !== "all" || activityBoardFilter !== "all" || Boolean(activitySearchQuery.trim());
@@ -2232,7 +2238,7 @@
                             "span",
                             { className: `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold border ${actorBadge.color}` },
                             React.createElement("span", null, actorBadge.icon),
-                            item.actor
+                            actorBadge.label
                           ),
                           // Task Link Pill (if associated with a task)
                           item.task_id &&

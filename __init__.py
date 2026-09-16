@@ -16,7 +16,8 @@ try:
         update_task as _update_task, move_task as _move_task, add_comment as _add_comment,
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
-        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate
+        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate,
+        normalize_activity_actor, STRICT_ACTIVITY_ACTORS
     )
 except ImportError:
     current_dir = Path(__file__).parent
@@ -27,7 +28,8 @@ except ImportError:
         update_task as _update_task, move_task as _move_task, add_comment as _add_comment,
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
-        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate
+        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate,
+        normalize_activity_actor, STRICT_ACTIVITY_ACTORS
     )
 
 try:
@@ -103,11 +105,13 @@ def register(ctx: Any):
         p_move.add_argument("task_id", help="Task ID")
         p_move.add_argument("status", choices=["triage", "todo", "ready", "running", "blocked", "done"], help="Target status")
         p_move.add_argument("--reason", default=None, help="Optional reason; recorded as a comment when moving to 'blocked' (mirrors the 'block' command)")
+        p_move.add_argument("--actor", default=None, help="Actor executing move (defaults to HERMES_PROFILE or 'user')")
 
         # block
         p_block = subparsers.add_parser("block", help="Mark a task as blocked")
         p_block.add_argument("task_id", help="Task ID")
         p_block.add_argument("--reason", default="review-required", help="Block reason")
+        p_block.add_argument("--actor", default=None, help="Actor executing block (defaults to HERMES_PROFILE or 'user')")
 
         # comment
         p_comment = subparsers.add_parser("comment", help="Add a comment to a task")
@@ -201,7 +205,8 @@ def register(ctx: Any):
 
             files_arg = getattr(args, "files", None)
             files_list = [f.strip() for f in files_arg.split(",") if f.strip()] if files_arg else []
-            actor_val = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
+            actor_raw = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
+            actor_val = normalize_activity_actor(actor_raw) if actor_raw else None
             req = TaskCreate(
                 title=args.title,
                 description=desc,
@@ -222,7 +227,7 @@ def register(ctx: Any):
                 print(f"Created task {res['id']}: {args.title}")
 
         elif action == "move":
-            actor = os.environ.get("HERMES_PROFILE") or "user"
+            actor = normalize_activity_actor(getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user")
             reason = getattr(args, "reason", None)
             req = TaskMove(status=args.status, actor=actor, reason=reason)
             res = _move_task(args.task_id, req)
@@ -235,13 +240,13 @@ def register(ctx: Any):
             # Delegate to `move_task` with the reason so the single shared
             # code path in dashboard/plugin_api.py records the "Blocked: ..."
             # comment — identical to `move <id> blocked --reason ...`.
-            actor = os.environ.get("HERMES_PROFILE") or "user"
+            actor = normalize_activity_actor(getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user")
             req = TaskMove(status="blocked", actor=actor, reason=args.reason)
             _move_task(args.task_id, req)
             print(f"Task {args.task_id} marked as BLOCKED ({args.reason})")
 
         elif action == "comment":
-            author = getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user"
+            author = normalize_activity_actor(getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user")
             _add_comment(args.task_id, CommentCreate(author=author, body=args.body))
             print(f"Added comment to task {args.task_id}")
 

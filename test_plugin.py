@@ -3982,9 +3982,123 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
         )
         self.assertIsNone(out, "_auto_sync_repo must swallow exceptions and return cleanly")
 
+    def test_73_strict_activity_actors(self):
+        """Activity actor must strictly only be one of the 6 canonical actors:
+        zf-orchestrator, zf-builder, zf-reviewer, dispatcher, user (includes ui/cli), other."""
+        from dashboard.plugin_api import (
+            normalize_activity_actor,
+            STRICT_ACTIVITY_ACTORS,
+            log_activity,
+            get_db_conn,
+        )
+
+        expected_actors = [
+            "zf-orchestrator",
+            "zf-builder",
+            "zf-reviewer",
+            "dispatcher",
+            "user",
+            "other",
+        ]
+        self.assertEqual(STRICT_ACTIVITY_ACTORS, expected_actors)
+
+        # Normalization checks
+        self.assertEqual(normalize_activity_actor("zf-orchestrator"), "zf-orchestrator")
+        self.assertEqual(normalize_activity_actor("orchestrator"), "zf-orchestrator")
+        self.assertEqual(normalize_activity_actor("zf-builder"), "zf-builder")
+        self.assertEqual(normalize_activity_actor("builder"), "zf-builder")
+        self.assertEqual(normalize_activity_actor("zf-reviewer"), "zf-reviewer")
+        self.assertEqual(normalize_activity_actor("reviewer"), "zf-reviewer")
+        self.assertEqual(normalize_activity_actor("dispatcher"), "dispatcher")
+        self.assertEqual(normalize_activity_actor("user"), "user")
+        self.assertEqual(normalize_activity_actor("ui"), "user")
+        self.assertEqual(normalize_activity_actor("cli"), "user")
+        self.assertEqual(normalize_activity_actor("CLI"), "user")
+        self.assertEqual(normalize_activity_actor("UI"), "user")
+        self.assertEqual(normalize_activity_actor(None), "user")
+        self.assertEqual(normalize_activity_actor(""), "user")
+        self.assertEqual(normalize_activity_actor("antigravity"), "other")
+        self.assertEqual(normalize_activity_actor("some-custom-tool"), "other")
+
+        # Logging activity with non-canonical actor stores normalized actor
+        with get_db_conn() as conn:
+            # Create a board and task to satisfy FK
+            conn.execute("INSERT OR IGNORE INTO boards (slug, description, max_concurrent_running, created_at, updated_at) VALUES ('b-actor-test', 'test', 1, 1, 1)")
+            conn.execute("INSERT OR IGNORE INTO tasks (id, board_slug, title, status, created_at, updated_at) VALUES ('t-actor-1', 'b-actor-test', 'Actor Test', 'todo', 1, 1)")
+            
+            log_activity(conn, "t-actor-1", "ui", "move", "Moved via UI drag")
+            log_activity(conn, "t-actor-1", "cli", "comment", "Added via CLI")
+            log_activity(conn, "t-actor-1", "antigravity", "fix", "Custom agent action")
+            log_activity(conn, "t-actor-1", "dispatcher", "start", "Dispatched task")
+            log_activity(conn, "t-actor-1", "zf-builder", "worker_done", "Built feature")
+            log_activity(conn, "t-actor-1", "zf-reviewer", "approved", "Review passed")
+            conn.commit()
+
+            c = conn.cursor()
+            c.execute("SELECT actor, COUNT(*) FROM task_activity WHERE task_id = 't-actor-1' GROUP BY actor")
+            actor_counts = dict(c.fetchall())
+            self.assertEqual(actor_counts.get("user"), 2)  # 'ui' and 'cli' became 'user'
+            self.assertEqual(actor_counts.get("other"), 1)  # 'antigravity' became 'other'
+            self.assertEqual(actor_counts.get("dispatcher"), 1)
+            self.assertEqual(actor_counts.get("zf-builder"), 1)
+            self.assertEqual(actor_counts.get("zf-reviewer"), 1)
+            self.assertNotIn("ui", actor_counts)
+            self.assertNotIn("cli", actor_counts)
+            self.assertNotIn("antigravity", actor_counts)
+
+        # Verify API /activities returns filter_options['actors'] with strict list
+        res = client.get("/api/plugins/zerofactory/activities").json()
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["filter_options"]["actors"], expected_actors)
+
+        # Verify all activities returned in the list have actor strictly in STRICT_ACTIVITY_ACTORS
+        for act in res["activities"]:
+            self.assertIn(act["actor"], expected_actors, f"Activity actor {act['actor']} is not in strict set")
+
+        # Verify filtering by 'other' and 'user'
+        other_res = client.get("/api/plugins/zerofactory/activities?actor=other").json()
+        self.assertTrue(other_res["ok"])
+        for act in other_res["activities"]:
+            self.assertEqual(act["actor"], "other")
+
+        # Verify comment attribution: explicit author="user" stays user even with agent-like prefixes
+        c_user = client.post("/api/plugins/zerofactory/tasks/t-actor-1/comments", json={
+            "author": "user",
+            "body": "Round 2 review complete: human operator verified manual test"
+        }).json()
+        self.assertTrue(c_user["ok"])
+        with get_db_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT author FROM task_comments WHERE id = ?", (c_user["id"],))
+            self.assertEqual(c.fetchone()["author"], "user")
+            c.execute("SELECT actor FROM task_activity WHERE task_id = 't-actor-1' AND action = 'comment' ORDER BY id DESC LIMIT 1")
+            self.assertEqual(c.fetchone()["actor"], "user")
+
+        # Verify comment attribution: omitted author with HERMES_PROFILE=zf-builder credits zf-builder
+        orig_prof = os.environ.get("HERMES_PROFILE")
+        try:
+            os.environ["HERMES_PROFILE"] = "zf-builder"
+            c_builder = client.post("/api/plugins/zerofactory/tasks/t-actor-1/comments", json={
+                "body": "Implemented unit tests and validated"
+            }).json()
+            self.assertTrue(c_builder["ok"])
+            with get_db_conn() as conn:
+                c = conn.cursor()
+                c.execute("SELECT author FROM task_comments WHERE id = ?", (c_builder["id"],))
+                self.assertEqual(c.fetchone()["author"], "zf-builder")
+                c.execute("SELECT actor FROM task_activity WHERE task_id = 't-actor-1' AND action = 'comment' ORDER BY id DESC LIMIT 1")
+                self.assertEqual(c.fetchone()["actor"], "zf-builder")
+        finally:
+            if orig_prof is not None:
+                os.environ["HERMES_PROFILE"] = orig_prof
+            else:
+                os.environ.pop("HERMES_PROFILE", None)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
 
 
 
