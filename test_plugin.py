@@ -3246,12 +3246,14 @@ class TestZeroFactory(unittest.TestCase):
         from dispatcher import is_worker_or_child_process
         orig_prof = os.environ.get("HERMES_PROFILE")
         orig_dis = os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        orig_skip = os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
         orig_task = os.environ.get("HERMES_KANBAN_TASK")
 
         try:
             # Normal profile
             os.environ.pop("HERMES_PROFILE", None)
             os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            os.environ.pop("ZEROFACTORY_SKIP_DISPATCHER", None)
             os.environ.pop("HERMES_KANBAN_TASK", None)
             self.assertFalse(is_worker_or_child_process())
 
@@ -3280,6 +3282,10 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = orig_dis
             else:
                 os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            if orig_skip is not None:
+                os.environ["ZEROFACTORY_SKIP_DISPATCHER"] = orig_skip
+            else:
+                os.environ.pop("ZEROFACTORY_SKIP_DISPATCHER", None)
             if orig_task is not None:
                 os.environ["HERMES_KANBAN_TASK"] = orig_task
             else:
