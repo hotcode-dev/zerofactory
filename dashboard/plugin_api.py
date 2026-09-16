@@ -1576,13 +1576,25 @@ def count_orchestrator_scans_today(board_slug: Optional[str] = None) -> int:
         return 0
     try:
         with sqlite3.connect(db_path) as conn:
-            one_day_iso = datetime.fromtimestamp(time.time() - 86400).isoformat()
-            q = "SELECT COUNT(*) FROM executions WHERE job_id LIKE '%scanner%' AND claimed_at >= ?"
-            p: List[Any] = [one_day_iso]
+            one_day_ago_ts = time.time() - 86400
+            q = "SELECT claimed_at FROM executions WHERE job_id LIKE '%scanner%'"
+            p: List[Any] = []
             if board_slug and board_slug != "all":
                 q += " AND job_id LIKE ?"
                 p.append(f"%{board_slug}%")
-            return conn.execute(q, p).fetchone()[0]
+            rows = conn.execute(q, p).fetchall()
+            count = 0
+            for r in rows:
+                claimed = r[0]
+                if not claimed:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(claimed)
+                    if dt.timestamp() >= one_day_ago_ts:
+                        count += 1
+                except Exception:
+                    pass
+            return count
     except Exception:
         return 0
 
