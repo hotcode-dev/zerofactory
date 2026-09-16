@@ -81,6 +81,25 @@ except ImportError:
         load_settings,
     )
 
+# Shared profile-path resolution & assignee normalization (source of truth).
+# Both the dispatcher and the dashboard (dashboard/plugin_api.py) consume these
+# so the canonical-profile table, the normalizer, and the per-profile
+# ``state.db`` resolution strategy cannot drift between the two surfaces.
+try:
+    from .paths import (  # type: ignore
+        PROFILE_MAP,
+        UNASSIGNED,
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
+except ImportError:
+    from paths import (  # type: ignore
+        PROFILE_MAP,
+        UNASSIGNED,
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
+
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
 
 
@@ -138,22 +157,12 @@ _last_idle_scan_times: Dict[str, int] = {}
 # Registry tracking active scanner worker subprocesses per board slug: {board_slug: subprocess.Popen}
 _active_scanners: Dict[str, subprocess.Popen] = {}
 
-# Canonical alias mapping to standardize task assignees to recognized agent profiles.
-PROFILE_MAP = {
-    "zf-builder": "zf-builder",
-    "zf-reviewer": "zf-reviewer",
-    "zf-orchestrator": "zf-orchestrator",
-}
-
-# Tuple of all valid agent specialist profiles supported by the dispatcher.
-VALID_PROFILES = ("zf-builder", "zf-reviewer", "zf-orchestrator")
-
-
-def normalize_assignee(assignee: Optional[str]) -> str:
-    """Normalize assignee to canonical zf-* namespaced profile."""
-    if not assignee or assignee == "unassigned":
-        return "unassigned"
-    return PROFILE_MAP.get(assignee, assignee)
+# Canonical alias mapping and profile normalization now live in the shared
+# ``paths`` module (imported above) so the dispatcher and the dashboard share a
+# single source of truth and can no longer drift. ``PROFILE_MAP`` and
+# ``normalize_assignee`` are re-exported here for backward compatibility with
+# importers that reference them via ``dispatcher``.
+VALID_PROFILES = tuple(PROFILE_MAP)
 
 
 def get_task_timeout_seconds() -> int:
@@ -819,19 +828,13 @@ def spawn_agent_worker(
         _active_workers[task_id] = proc
         _log.info("Spawned %s worker for task %s (PID: %d, cwd: %s)", assignee, task_id, proc.pid, workdir)
 
-        # Detect session_id from profile's state.db (only if started around this spawn)
+        # Detect session_id from profile's state.db (only if started around this spawn).
+        # Resolution goes through the shared helper so the dispatcher and the
+        # dashboard agree on which state.db a profile owns (per-profile ->
+        # legacy-un-prefixed -> plugin-relative -> global ~/.hermes/state.db).
         session_id = None
-        state_db_path = Path.home() / ".hermes" / "profiles" / assignee / "state.db"
-        if not state_db_path.exists():
-            unprefixed = assignee.replace("zf-", "")
-            alt_path = Path.home() / ".hermes" / "profiles" / unprefixed / "state.db"
-            if alt_path.exists():
-                state_db_path = alt_path
-            else:
-                p_root = Path.home() / ".hermes" / "state.db"
-                if p_root.exists():
-                    state_db_path = p_root
-        if state_db_path.exists():
+        state_db_path = resolve_profile_state_db(assignee)
+        if state_db_path is not None and state_db_path.exists():
             try:
                 resolved_state = state_db_path.resolve()
                 uri = resolved_state.as_uri() + "?mode=ro"

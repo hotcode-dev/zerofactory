@@ -45,6 +45,30 @@ except (ImportError, ValueError):
         DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_SETTING_VALUES, load_settings,
     )
 
+# Shared profile-path resolution & assignee normalization (source of truth).
+# Imported via the relative (package) path when loaded as
+# ``zerofactory.dashboard.plugin_api`` and via the bare module name when the
+# plugin root has been added to ``sys.path`` (see the import guard above). The
+# dispatcher imports the same module so the canonical-profile table, the
+# normalizer, and the per-profile ``state.db`` resolution strategy cannot drift
+# between the two surfaces.
+try:
+    from ..paths import (  # type: ignore
+        PROFILE_MAP,
+        UNASSIGNED,
+        VALID_ASSIGNEES,
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
+except (ImportError, ValueError):
+    from paths import (  # type: ignore
+        PROFILE_MAP,
+        UNASSIGNED,
+        VALID_ASSIGNEES,
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
+
 _log = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -326,22 +350,10 @@ class SettingsUpdate(BaseModel):
 
 VALID_STATUSES = {"triage", "todo", "ready", "running", "blocked", "done"}
 VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
-VALID_ASSIGNEES = {
-    "unassigned",
-    "zf-orchestrator", "zf-builder", "zf-reviewer"
-}
-
-PROFILE_MAP = {
-    "zf-builder": "zf-builder",
-    "zf-reviewer": "zf-reviewer",
-    "zf-orchestrator": "zf-orchestrator",
-}
-
-def normalize_assignee(assignee: Optional[str]) -> str:
-    """Normalize assignee to zf-* namespaced profile."""
-    if not assignee or assignee == "unassigned":
-        return "unassigned"
-    return PROFILE_MAP.get(assignee, assignee)
+# VALID_ASSIGNEES, PROFILE_MAP and normalize_assignee are the shared source of
+# truth re-exported from the ``paths`` module (imported above). They are kept
+# in this module's namespace so existing in-module callers (e.g. create_task,
+# update_task, list tasks) and any external importers keep working unchanged.
 
 def generate_task_id() -> str:
     token = secrets.token_hex(4)
@@ -428,31 +440,15 @@ def compute_dedup_key(files: Optional[List[str]], category: Optional[str] = None
     return f"{','.join(sorted_files)}:{cat}"
 
 def get_profile_state_db(assignee: str) -> Optional[Path]:
-    """Find the SQLite state.db for an agent profile."""
-    norm_asgn = normalize_assignee(assignee)
-    # 1. ~/.hermes/profiles/{norm_asgn}/state.db
-    p1 = Path.home() / ".hermes" / "profiles" / norm_asgn / "state.db"
-    if p1.exists():
-        return p1
-    # 2. Legacy un-prefixed ~/.hermes/profiles/{assignee}/state.db
-    unprefixed = norm_asgn.replace("zf-", "")
-    p2 = Path.home() / ".hermes" / "profiles" / unprefixed / "state.db"
-    if p2.exists():
-        return p2
-    # 3. Path relative to plugin: profiles/{assignee}/state.db
-    try:
-        resolved_parents = Path(__file__).resolve().parents
-        if len(resolved_parents) > 4:
-            p3 = resolved_parents[4] / norm_asgn / "state.db"
-            if p3.exists():
-                return p3
-    except Exception:
-        pass
-    # 4. ~/.hermes/state.db (default fallback)
-    p4 = Path.home() / ".hermes" / "state.db"
-    if p4.exists():
-        return p4
-    return None
+    """Find the SQLite state.db for an agent profile.
+
+    Thin wrapper around the shared :func:`paths.resolve_profile_state_db`
+    (per-profile -> legacy-un-prefixed -> plugin-relative -> global
+    ``~/.hermes/state.db``) so the dashboard and the dispatcher always agree on
+    which state.db a profile owns. The public name is preserved for existing
+    importers.
+    """
+    return resolve_profile_state_db(assignee)
 
 def _compute_stuck_status(
     task: Dict[str, Any],
