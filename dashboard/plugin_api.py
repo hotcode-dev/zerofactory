@@ -1529,6 +1529,231 @@ def get_stats(board: Optional[str] = None):
         }
 
 
+@router.get("/activities")
+def get_activities(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    actor: Optional[str] = None,
+    assignee: Optional[str] = None,
+    action: Optional[str] = None,
+    board_slug: Optional[str] = None,
+    search: Optional[str] = None,
+):
+    try:
+        init_db()
+    except Exception:
+        pass
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+
+        where_clauses = ["1=1"]
+        params: List[Any] = []
+
+        if actor and actor != "all":
+            where_clauses.append("a.actor = ?")
+            params.append(actor)
+
+        if assignee and assignee != "all":
+            where_clauses.append("(t.assignee = ? OR a.actor = ?)")
+            params.extend([assignee, assignee])
+
+        if action and action != "all":
+            where_clauses.append("a.action = ?")
+            params.append(action)
+
+        if board_slug and board_slug != "all":
+            where_clauses.append("t.board_slug = ?")
+            params.append(board_slug)
+
+        if search and search.strip():
+            term = f"%{search.strip()}%"
+            where_clauses.append("(a.details LIKE ? OR a.actor LIKE ? OR a.action LIKE ? OR t.title LIKE ? OR a.task_id LIKE ?)")
+            params.extend([term, term, term, term, term])
+
+        where_str = " AND ".join(where_clauses)
+
+        # Total matching count
+        count_sql = f"""
+            SELECT COUNT(*) as cnt
+            FROM task_activity a
+            LEFT JOIN tasks t ON a.task_id = t.id
+            WHERE {where_str}
+        """
+        cursor.execute(count_sql, params)
+        total_count = cursor.fetchone()["cnt"]
+
+        # Paginated activities
+        query_sql = f"""
+            SELECT 
+                a.id,
+                a.task_id,
+                a.actor,
+                a.action,
+                a.details,
+                a.created_at,
+                t.title AS task_title,
+                t.board_slug,
+                t.status AS task_status,
+                t.priority AS task_priority,
+                t.assignee AS task_assignee
+            FROM task_activity a
+            LEFT JOIN tasks t ON a.task_id = t.id
+            WHERE {where_str}
+            ORDER BY a.created_at DESC, a.id DESC
+            LIMIT ? OFFSET ?
+        """
+        try:
+            actual_limit = int(getattr(limit, "default", limit) if hasattr(limit, "default") else limit)
+        except Exception:
+            actual_limit = 50
+        try:
+            actual_offset = int(getattr(offset, "default", offset) if hasattr(offset, "default") else offset)
+        except Exception:
+            actual_offset = 0
+
+        query_params = list(params) + [actual_limit, actual_offset]
+        cursor.execute(query_sql, query_params)
+        activities = [dict(r) for r in cursor.fetchall()]
+
+        # Filter options
+        cursor.execute("SELECT DISTINCT actor FROM task_activity WHERE actor != '' ORDER BY actor ASC")
+        actors = [r["actor"] for r in cursor.fetchall()]
+
+        cursor.execute("SELECT DISTINCT action FROM task_activity WHERE action != '' ORDER BY action ASC")
+        actions = [r["action"] for r in cursor.fetchall()]
+
+        cursor.execute("SELECT DISTINCT board_slug FROM tasks WHERE board_slug != '' ORDER BY board_slug ASC")
+        boards = [r["board_slug"] for r in cursor.fetchall()]
+
+        cursor.execute("SELECT DISTINCT assignee FROM tasks WHERE assignee != '' AND assignee != 'unassigned' ORDER BY assignee ASC")
+        assignees = [r["assignee"] for r in cursor.fetchall()]
+
+        # Known specialist agents
+        known_agents = [
+            ("zf-orchestrator", "Orchestrator", "Decomposes goals, designs architecture, coordinates board"),
+            ("zf-builder", "Builder", "Executes tasks, tests code, creates PRs in Git worktrees"),
+            ("zf-reviewer", "Reviewer", "Performs thematic 3-round reviews, approves or requests changes"),
+            ("dispatcher", "Dispatcher Engine", "Supervises process lifecycle, auto-unblocks and dispatches workers"),
+        ]
+
+        now = int(time.time())
+        one_day_ago = now - 86400
+
+        agents_data = []
+        for agent_id, agent_name, agent_role in known_agents:
+            agent_status = "idle"
+            current_task = None
+            session_prog = None
+
+            if agent_id == "dispatcher":
+                agent_status = "active"
+                cursor.execute("SELECT * FROM task_activity WHERE actor = 'dispatcher' ORDER BY created_at DESC LIMIT 1")
+                last_act_row = cursor.fetchone()
+                last_activity = dict(last_act_row) if last_act_row else None
+            else:
+                running_task_row = None
+                short_id = agent_id.replace("zf-", "")
+                if board_slug and board_slug != "all":
+                    cursor.execute("""
+                        SELECT * FROM tasks 
+                        WHERE (assignee IN (?, ?) OR assignee LIKE ? OR assignee LIKE ?) 
+                          AND status = 'running' AND board_slug = ?
+                        ORDER BY updated_at DESC LIMIT 1
+                    """, (agent_id, short_id, f"%{agent_id}%", f"%{short_id}%", board_slug))
+                    running_task_row = cursor.fetchone()
+
+                if not running_task_row:
+                    cursor.execute("""
+                        SELECT * FROM tasks 
+                        WHERE (assignee IN (?, ?) OR assignee LIKE ? OR assignee LIKE ?) 
+                          AND status = 'running'
+                        ORDER BY updated_at DESC LIMIT 1
+                    """, (agent_id, short_id, f"%{agent_id}%", f"%{short_id}%"))
+                    running_task_row = cursor.fetchone()
+
+                if running_task_row:
+                    t_dict = row_to_dict(running_task_row)
+                    prog = resolve_task_session_progress(t_dict, backfill=False)
+                    session_prog = prog
+                    if prog.get("is_stuck"):
+                        agent_status = "stuck"
+                    elif prog.get("is_alive") or prog.get("running_seconds", 0) > 0:
+                        agent_status = "active"
+                    else:
+                        agent_status = "active"
+
+                    current_task = {
+                        "id": t_dict["id"],
+                        "title": t_dict["title"],
+                        "board_slug": t_dict["board_slug"],
+                        "priority": t_dict["priority"],
+                        "running_seconds": prog.get("running_seconds", 0)
+                    }
+                else:
+                    agent_status = "idle"
+
+                cursor.execute("""
+                    SELECT a.*, t.title as task_title, t.board_slug
+                    FROM task_activity a
+                    LEFT JOIN tasks t ON a.task_id = t.id
+                    WHERE a.actor IN (?, ?) OR (t.assignee IN (?, ?) AND a.actor = 'dispatcher')
+                    ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+                """, (agent_id, short_id, agent_id, short_id))
+                last_act_row = cursor.fetchone()
+                last_activity = dict(last_act_row) if last_act_row else None
+
+            cursor.execute("""
+                SELECT COUNT(*) as cnt FROM task_activity a
+                LEFT JOIN tasks t ON a.task_id = t.id
+                WHERE (a.actor IN (?, ?) OR (t.assignee IN (?, ?) AND a.actor = 'dispatcher'))
+                  AND a.created_at >= ?
+            """, (agent_id, short_id, agent_id, short_id, one_day_ago))
+            actions_today_cnt = cursor.fetchone()["cnt"]
+
+            agents_data.append({
+                "id": agent_id,
+                "name": agent_name,
+                "role": agent_role,
+                "status": agent_status,
+                "current_task": current_task,
+                "session_progress": session_prog,
+                "last_activity": last_activity,
+                "actions_today": actions_today_cnt
+            })
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM task_activity")
+        overall_total = cursor.fetchone()["cnt"]
+
+        cursor.execute("SELECT COUNT(*) as cnt FROM task_activity WHERE created_at >= ?", (one_day_ago,))
+        overall_today = cursor.fetchone()["cnt"]
+
+        cursor.execute("SELECT action, COUNT(*) as cnt FROM task_activity GROUP BY action ORDER BY cnt DESC")
+        action_breakdown = {r["action"]: r["cnt"] for r in cursor.fetchall()}
+
+        active_agents_count = sum(1 for a in agents_data if a["status"] == "active" and a["id"] != "dispatcher")
+
+        return {
+            "ok": True,
+            "activities": activities,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "filter_options": {
+                "actors": sorted(list(set(actors + ["zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"]))),
+                "actions": actions,
+                "boards": boards,
+                "assignees": sorted(list(set(assignees + ["zf-orchestrator", "zf-builder", "zf-reviewer"])))
+            },
+            "agents": agents_data,
+            "stats": {
+                "total_activities": overall_total,
+                "active_agents": active_agents_count,
+                "actions_today": overall_today,
+                "action_breakdown": action_breakdown
+            }
+        }
+
+
 # --- Dispatcher Controls -----------------------------------------------------
 
 @router.post("/dispatch/run")

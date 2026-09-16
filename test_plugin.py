@@ -17,7 +17,7 @@ from dashboard.plugin_api import (
     router, init_db, get_db_conn,
     BoardCreate, BoardUpdate, TaskCreate, TaskUpdate, TaskMove, CommentCreate, DependencyLink,
     list_boards, create_board, list_tasks, create_task, get_task, get_task_session, update_task, move_task,
-    add_comment, add_dependency, remove_dependency, get_stats, trigger_dispatch
+    add_comment, add_dependency, remove_dependency, get_stats, get_activities, trigger_dispatch
 )
 from fastapi import FastAPI
 
@@ -3268,6 +3268,104 @@ class TestZeroFactory(unittest.TestCase):
                 pid = spawn_board_scanner("test-slug", repo_path)
                 self.assertEqual(pid, 4321)
                 mock_sync.assert_called_once_with(repo_path)
+
+    def test_55_activities_endpoint(self):
+        """Verify GET /activities returns unified activity log, filtering, agent summaries and stats."""
+        # 1. Ensure board exists, create a task and generate some activity
+        try:
+            create_board(BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory", description="AI workflow"))
+        except Exception:
+            pass
+        t_req = TaskCreate(
+            board_slug="hotcode-dev-zerofactory",
+            title="Activity Test Task",
+            description="Testing activities endpoint",
+            assignee="zf-builder",
+            priority="P1"
+        )
+        t_res = create_task(t_req)
+        self.assertTrue(t_res["ok"])
+        task_id = t_res["id"]
+
+        # 2. Add comment, move task, log custom activity
+        with get_db_conn() as conn:
+            conn.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', 'Spawned worker zf-builder (PID 9999)', ?)",
+                (task_id, 1726000000)
+            )
+            conn.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'zf-builder', 'worker_done', 'Finished coding changes', ?)",
+                (task_id, 1726000010)
+            )
+            conn.commit()
+
+        # 3. Test direct call
+        act_res = get_activities(limit=20)
+        self.assertTrue(act_res["ok"])
+        self.assertGreaterEqual(act_res["total"], 2)
+        self.assertIn("agents", act_res)
+        self.assertIn("stats", act_res)
+        self.assertIn("filter_options", act_res)
+
+        # 4. Test HTTP client endpoint
+        resp = client.get("/api/plugins/zerofactory/activities?limit=10")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertIsInstance(data["activities"], list)
+
+        # 5. Test actor filter
+        resp_actor = client.get("/api/plugins/zerofactory/activities?actor=zf-builder")
+        self.assertEqual(resp_actor.status_code, 200)
+        actor_acts = resp_actor.json()["activities"]
+        for a in actor_acts:
+            self.assertEqual(a["actor"], "zf-builder")
+
+        # 6. Test action filter
+        resp_action = client.get("/api/plugins/zerofactory/activities?action=worker_done")
+        self.assertEqual(resp_action.status_code, 200)
+        action_acts = resp_action.json()["activities"]
+        for a in action_acts:
+            self.assertEqual(a["action"], "worker_done")
+
+        # 7. Test search filter
+        resp_search = client.get("/api/plugins/zerofactory/activities?search=Finished coding")
+        self.assertEqual(resp_search.status_code, 200)
+        self.assertGreaterEqual(len(resp_search.json()["activities"]), 1)
+
+        # 8. Test board filter
+        resp_board = client.get("/api/plugins/zerofactory/activities?board_slug=hotcode-dev-zerofactory")
+        self.assertEqual(resp_board.status_code, 200)
+        for a in resp_board.json()["activities"]:
+            if a.get("board_slug"):
+                self.assertEqual(a["board_slug"], "hotcode-dev-zerofactory")
+
+        # 9. Test pagination
+        resp_paged = client.get("/api/plugins/zerofactory/activities?limit=1&offset=0")
+        self.assertEqual(resp_paged.status_code, 200)
+        self.assertEqual(len(resp_paged.json()["activities"]), 1)
+        self.assertEqual(resp_paged.json()["limit"], 1)
+        self.assertEqual(resp_paged.json()["offset"], 0)
+
+        # 10. Verify agent profiles presence in response
+        agents_dict = {a["id"]: a for a in act_res["agents"]}
+        for expected_id in ("zf-orchestrator", "zf-builder", "zf-reviewer", "dispatcher"):
+            self.assertIn(expected_id, agents_dict)
+            self.assertIn("status", agents_dict[expected_id])
+            self.assertIn("role", agents_dict[expected_id])
+
+        # 11. Test running task prioritization with board scoping
+        with get_db_conn() as conn:
+            conn.execute("UPDATE tasks SET status = 'running', updated_at = 2000000000 WHERE id = ?", (task_id,))
+            conn.commit()
+
+        scoped_res = get_activities(board_slug="hotcode-dev-zerofactory")
+        self.assertTrue(scoped_res["ok"])
+        builder_agent = next(a for a in scoped_res["agents"] if a["id"] == "zf-builder")
+        self.assertEqual(builder_agent["status"], "active")
+        self.assertIsNotNone(builder_agent["current_task"])
+        self.assertEqual(builder_agent["current_task"]["id"], task_id)
+        self.assertEqual(builder_agent["current_task"]["board_slug"], "hotcode-dev-zerofactory")
 
 
 if __name__ == "__main__":
