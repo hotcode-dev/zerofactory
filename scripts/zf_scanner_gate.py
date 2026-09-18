@@ -21,6 +21,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -43,19 +44,26 @@ def _run_cmd(cmd: List[str], cwd: Optional[Path] = None) -> str:
         return ""
 
 
+def get_state_file() -> Path:
+    env_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+    return Path(env_override) if env_override else STATE_FILE
+
+
 def load_state() -> Dict[str, Any]:
-    if STATE_FILE.exists():
+    sf = get_state_file()
+    if sf.exists():
         try:
-            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            return json.loads(sf.read_text(encoding="utf-8"))
         except Exception:
             return {}
     return {}
 
 
 def save_state(state: Dict[str, Any]) -> None:
+    sf = get_state_file()
     try:
-        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        sf.parent.mkdir(parents=True, exist_ok=True)
+        sf.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception:
         pass
 
@@ -128,6 +136,25 @@ def get_existing_task_titles(board_slug: str) -> List[str]:
             return [row[0] for row in cursor.fetchall()]
     except Exception:
         return []
+
+
+def has_task_on_or_after_commit(board_slug: str, commit_time: int) -> bool:
+    """Check if any task was created for this board on or after the commit timestamp."""
+    if commit_time <= 0:
+        return False
+    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    if not db_path.exists():
+        return False
+    try:
+        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM tasks WHERE board_slug = ? AND created_at >= ? LIMIT 1",
+                (board_slug, commit_time)
+            )
+            return cursor.fetchone() is not None
+    except Exception:
+        return False
 
 
 def resolve_board_slug(repo_dir: Path) -> str:
@@ -207,24 +234,58 @@ def run_scanner_gate() -> int:
     is_same_commit = (head_sha == last_sha)
     is_same_status = (status_porcelain == last_status)
 
-    # Suppress an unchanged run based purely on whether this exact commit was already
-    # scanned — NOT on the number of open tasks. The baseline (first-ever) scan fires via
-    # the fall-through below when `last_sha` is None (is_same_commit is then False).
+    now_ts = int(time.time())
+    retry_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RETRY_COOLDOWN", "1800"))
+    max_attempts = int(os.environ.get("ZEROFACTORY_SCAN_MAX_ATTEMPTS", "3"))
+
+    # Check for unchanged steady state
     if is_same_commit and is_same_status and not force_scan:
         if last_sha is not None:
-            # Already scanned this exact commit and the worktree is clean -> 0-token
-            # suppress, independent of how many tasks are currently open on the board.
-            print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; board '{board_slug}' already scanned.")
-            print(json.dumps({"wakeAgent": False}))
-            return 0
-        # else: last_sha is None -> board never scanned -> one-time baseline scan.
-        # (Defensive branch: in practice the first-ever scan reaches the fall-through
-        # below, because is_same_commit is False when last_sha is None.)
-        print(f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has never been scanned. Initiating baseline codebase inspection.")
+            # 1. If active/open tasks exist on the board, definitely suppress (pipeline busy)
+            if len(existing_tasks) > 0:
+                print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; active tasks ({len(existing_tasks)}) on board '{board_slug}'.")
+                print(json.dumps({"wakeAgent": False}))
+                return 0
 
-    # Changes detected or baseline scan required! Update state
+            # 2. If no active tasks exist, check if a task was ever created for this commit
+            commit_time_str = _run_cmd(["git", "log", "-1", "--format=%ct", head_sha], cwd=repo_dir)
+            commit_time = int(commit_time_str) if commit_time_str.isdigit() else 0
+            has_tasks = board_state.get("task_created") or has_task_on_or_after_commit(board_slug, commit_time)
+
+            if has_tasks:
+                # Successfully produced tasks for this commit (which are now completed/closed)
+                print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; board '{board_slug}' already scanned.")
+                print(json.dumps({"wakeAgent": False}))
+                return 0
+
+            # 3. No tasks were produced on this commit (potential premature suppression due to failed scan).
+            # Enforce retry cooldown and max attempts before giving up.
+            last_scan_at = int(board_state.get("last_scan_at", 0))
+            attempts = int(board_state.get("scan_attempts", 1))
+
+            if (now_ts - last_scan_at) < retry_cooldown:
+                print(f"SCAN_COOLDOWN_ACTIVE: Scan on commit {head_sha[:8]} recently attempted ({now_ts - last_scan_at}s ago < {retry_cooldown}s); waiting for cooldown.")
+                print(json.dumps({"wakeAgent": False}))
+                return 0
+
+            if attempts >= max_attempts:
+                print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged after {attempts} scan attempts without tasks; suppressing.")
+                print(json.dumps({"wakeAgent": False}))
+                return 0
+
+            # Allow retry! Fall through to wake the agent
+            print(f"RETRY_SCAN_TRIGGERED: Previous scan on {head_sha[:8]} produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan.")
+        else:
+            print(f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has never been scanned. Initiating baseline codebase inspection.")
+
+    # Changes detected or baseline/retry scan required! Update state
+    new_attempts = (int(board_state.get("scan_attempts", 0)) + 1) if is_same_commit else 1
     board_state["last_scanned_sha"] = head_sha
     board_state["last_status"] = status_porcelain
+    board_state["last_scan_at"] = now_ts
+    board_state["scan_attempts"] = new_attempts
+    if not is_same_commit:
+        board_state.pop("task_created", None)
     state[board_slug] = board_state
     save_state(state)
 

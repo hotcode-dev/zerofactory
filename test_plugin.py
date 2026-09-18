@@ -1140,6 +1140,158 @@ class TestZeroFactory(unittest.TestCase):
             self.assertEqual(rc4, 0)
             self.assertFalse(wake4)
 
+    def test_25c_scanner_gate_retries_if_no_task_created_after_cooldown(self):
+        """Verify that when a scan completes without producing any tasks, the scanner gate
+        suppresses during retry cooldown, retries after cooldown expires if 0 tasks exist,
+        caps retries at max_attempts, and permanently suppresses once a task is produced.
+        """
+        import contextlib
+        import importlib.util
+        import io
+        import json
+        import sqlite3
+        import subprocess
+        import time
+
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+
+        def git(repo, *args):
+            subprocess.run(
+                ["git", *args], cwd=str(repo), check=True,
+                capture_output=True, text=True,
+                env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            )
+
+        def load_gate():
+            spec = importlib.util.spec_from_file_location("zf_scanner_gate_under_test", gate_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            slug = "gate-retry-test-board"
+
+            # 1. Fresh git repo with a single commit.
+            repo = td / "repo"
+            repo.mkdir()
+            git(repo, "init", "-q")
+            git(repo, "config", "user.email", "scan@test.local")
+            git(repo, "config", "user.name", "Scan Test")
+            (repo / "main.py").write_text("print('hello')\n", encoding="utf-8")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "initial commit")
+
+            # 2. Temp zerofactory.db
+            db_path = td / "gate.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.executescript(
+                "CREATE TABLE boards ("
+                " slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+                "CREATE TABLE tasks ("
+                " id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL,"
+                " description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage',"
+                " assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2',"
+                " workspace_path TEXT, workspace_kind TEXT DEFAULT 'worktree', branch_name TEXT,"
+                " pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]',"
+                " tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+            )
+            conn.execute(
+                "INSERT INTO boards (slug, created_at, updated_at) VALUES (?, 1, 1)",
+                (slug,),
+            )
+            conn.commit()
+            conn.close()
+
+            state_path = td / "scanner_state.json"
+
+            def run_gate(extra_env=None):
+                mod = load_gate()
+                mod.STATE_FILE = state_path
+                old_argv, old_cwd = sys.argv, os.getcwd()
+                old_db = os.environ.get("ZEROFACTORY_DB")
+                old_state = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+                sys.argv = [gate_path.name, slug]
+                os.chdir(str(repo))
+                os.environ["ZEROFACTORY_DB"] = str(db_path)
+                os.environ["ZEROFACTORY_SCANNER_STATE"] = str(state_path)
+                os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                if extra_env:
+                    for k, v in extra_env.items():
+                        os.environ[k] = str(v)
+                buf = io.StringIO()
+                try:
+                    with contextlib.redirect_stdout(buf):
+                        rc = mod.run_scanner_gate()
+                finally:
+                    sys.argv = old_argv
+                    os.chdir(old_cwd)
+                    if old_db is None:
+                        os.environ.pop("ZEROFACTORY_DB", None)
+                    else:
+                        os.environ["ZEROFACTORY_DB"] = old_db
+                    if old_state is None:
+                        os.environ.pop("ZEROFACTORY_SCANNER_STATE", None)
+                    else:
+                        os.environ["ZEROFACTORY_SCANNER_STATE"] = old_state
+                    os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                    if extra_env:
+                        for k in extra_env:
+                            os.environ.pop(k, None)
+                out = buf.getvalue()
+                wake = json.loads(out.strip().splitlines()[-1])
+                return rc, wake.get("wakeAgent"), out
+
+            # Run 1: Baseline scan fires
+            rc1, wake1, out1 = run_gate()
+            self.assertEqual(rc1, 0)
+            self.assertTrue(wake1, "baseline scan must wake agent")
+
+            # Run 2: Immediate check -> cooldown active, suppresses (wakeAgent=False)
+            rc2, wake2, out2 = run_gate()
+            self.assertEqual(rc2, 0)
+            self.assertFalse(wake2, "cooldown must suppress immediate re-check")
+            self.assertIn("SCAN_COOLDOWN_ACTIVE", out2)
+
+            # Advance state timestamp to simulate cooldown expired (no tasks created)
+            st = json.loads(state_path.read_text(encoding="utf-8"))
+            st[slug]["last_scan_at"] = int(time.time()) - 2000
+            state_path.write_text(json.dumps(st), encoding="utf-8")
+
+            # Run 3: Cooldown expired and 0 tasks created -> RETRY scan wakes agent (attempt 2)
+            rc3, wake3, out3 = run_gate()
+            self.assertEqual(rc3, 0)
+            self.assertTrue(wake3, "expired cooldown without tasks must wake agent for retry")
+            self.assertIn("RETRY_SCAN_TRIGGERED", out3)
+
+            # Verify scan_attempts incremented to 2
+            st = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(st[slug]["scan_attempts"], 2)
+
+            # Advance timestamp again, but set max attempts to 2
+            st[slug]["last_scan_at"] = int(time.time()) - 2000
+            state_path.write_text(json.dumps(st), encoding="utf-8")
+
+            # Run 4: Max attempts reached -> suppresses permanently
+            rc4, wake4, out4 = run_gate(extra_env={"ZEROFACTORY_SCAN_MAX_ATTEMPTS": "2"})
+            self.assertEqual(rc4, 0)
+            self.assertFalse(wake4, "max attempts reached must suppress")
+            self.assertIn("unchanged after 2 scan attempts", out4)
+
+            # Run 5: If a task WAS created (task_created=True or db task created_at >= commit),
+            # gate suppresses permanently even if board currently has 0 open tasks.
+            st[slug]["last_scan_at"] = int(time.time()) - 2000
+            st[slug]["task_created"] = True
+            st[slug]["scan_attempts"] = 0
+            state_path.write_text(json.dumps(st), encoding="utf-8")
+
+            rc5, wake5, out5 = run_gate()
+            self.assertEqual(rc5, 0)
+            self.assertFalse(wake5, "board that already produced tasks must suppress")
+            self.assertIn("NO_CHANGES_DETECTED", out5)
+
     def test_26_task_pr_url_and_stats(self):
         """Verify task pr_url persistence, update, and get_stats pr_count metric."""
         # 1. Create task with pr_url
