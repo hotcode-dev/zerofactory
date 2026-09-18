@@ -89,6 +89,7 @@ Write your detailed context to a temporary file (e.g. `/tmp/task_desc.md`) and r
 
 ## IMPORTANT:
 - Scan ONLY this repository (current working directory). Do not inspect or touch any other folders or projects.
+- DO NOT run destructive bash commands (e.g. rm) or -e/-c script execution in cron mode, as they trigger safety filters.
 - DO NOT create or write any plan files (NEVER write `docs/IMPROVEMENT_PLAN.md` or any other plan files on disk). All issue details belong directly in the Zero Factory Kanban task.
 - DO NOT create more than 1 task per run to avoid overwhelming the local LLM pipeline.
 - DO NOT execute the improvements yet.

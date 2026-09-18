@@ -1326,6 +1326,20 @@ def create_task(req: TaskCreate):
         log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
         conn.commit()
 
+        # Mark scanner state as having successfully produced a task for this board
+        if board_slug:
+            try:
+                state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+                state_file = Path(state_override) if state_override else (Path.home() / ".hermes" / "scanner_state.json")
+                if state_file.exists():
+                    s_data = json.loads(state_file.read_text(encoding="utf-8"))
+                    if board_slug in s_data:
+                        s_data[board_slug]["task_created"] = True
+                        s_data[board_slug]["scan_attempts"] = 0
+                        state_file.write_text(json.dumps(s_data, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+
     return {"ok": True, "id": task_id}
 
 @router.get("/tasks/{task_id}")
