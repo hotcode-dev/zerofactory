@@ -2142,6 +2142,129 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             shutil.rmtree(td, ignore_errors=True)
 
+    def test_35c_stale_git_lock_cleanup_and_conclude_merge(self):
+        """Verify that clean_stale_git_locks removes stale index.lock files and that
+        pull_and_merge_main automatically concludes an in-progress merge when conflict
+        markers are already resolved."""
+        from dispatcher import clean_stale_git_locks, get_git_dir, pull_and_merge_main
+        import subprocess
+        import time
+
+        td = tempfile.mkdtemp()
+        try:
+            repo = Path(td) / "main_repo"
+            repo.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=str(repo), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True)
+            (repo / "f.txt").write_text("v1\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo), check=True)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo), check=True)
+
+            wt_dir = Path(td) / "wt"
+            subprocess.run(["git", "worktree", "add", str(wt_dir), "-b", "task/t1"], cwd=str(repo), check=True)
+
+            # 1. Stale lock cleanup test
+            git_dir = get_git_dir(wt_dir)
+            self.assertIsNotNone(git_dir)
+            stale_lock = git_dir / "index.lock"
+            stale_lock.write_text("")
+            old_time = time.time() - 60
+            os.utime(str(stale_lock), (old_time, old_time))
+
+            removed = clean_stale_git_locks(wt_dir, max_age_seconds=15)
+            self.assertEqual(len(removed), 1)
+            self.assertFalse(stale_lock.exists())
+
+            # Fresh lock (< 15s) should NOT be removed
+            fresh_lock = git_dir / "index.lock"
+            fresh_lock.write_text("")
+            removed_fresh = clean_stale_git_locks(wt_dir, max_age_seconds=15)
+            self.assertEqual(len(removed_fresh), 0)
+            self.assertTrue(fresh_lock.exists())
+            fresh_lock.unlink()
+
+            # 2. Conclude in-progress merge test
+            # Advance main
+            (repo / "f.txt").write_text("v2\n")
+            subprocess.run(["git", "commit", "-am", "v2 on main"], cwd=str(repo), check=True)
+
+            # In worktree, edit f.txt to v3 and commit
+            (wt_dir / "f.txt").write_text("v3\n")
+            subprocess.run(["git", "commit", "-am", "v3 on branch"], cwd=str(wt_dir), check=True)
+
+            # Merge main into worktree -> encounters conflict
+            subprocess.run(["git", "merge", "main"], cwd=str(wt_dir), capture_output=True)
+            self.assertTrue((git_dir / "MERGE_HEAD").exists())
+
+            # Resolve conflict in f.txt and stage it
+            (wt_dir / "f.txt").write_text("v2+v3 resolved\n")
+            subprocess.run(["git", "add", "."], cwd=str(wt_dir), check=True)
+            self.assertTrue((git_dir / "MERGE_HEAD").exists())
+
+            # Now pull_and_merge_main should conclude the merge rather than failing with "MERGE_HEAD exists"
+            ok, conflicts, msg = pull_and_merge_main(wt_dir, repo, "main")
+            self.assertTrue(ok)
+            self.assertEqual(conflicts, [])
+            self.assertFalse((git_dir / "MERGE_HEAD").exists())
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
+    def test_35d_merge_conflict_retry_limit_blocks_infinite_loop(self):
+        """Verify that _handle_local_merge_conflict limits retries to MAX_CONFLICT_RETRIES
+        and moves the task to 'blocked' status, preventing infinite dispatch loops."""
+        from dispatcher import _handle_local_merge_conflict
+        import json
+        import sqlite3
+        import time
+
+        td = tempfile.mkdtemp()
+        try:
+            db_file = Path(td) / "conflict_retry.db"
+            self._create_conflict_test_db(db_file)
+            ws_dir = Path(td) / "ws"
+            ws_dir.mkdir()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
+                    VALUES ('task-retry', 'Feature X', 'running', 'zf-builder', ?, 'task/task-retry', 1000, 1000)
+                """, (str(ws_dir),))
+                conn.commit()
+
+            now = int(time.time())
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+
+                # Calls 1, 2, 3 should keep status 'ready' and increment retries
+                for i in range(1, 4):
+                    _handle_local_merge_conflict(cur, "task-retry", "Feature X", str(ws_dir), ["conflict.txt"], now, "conflict")
+                    conn.commit()
+                    row = cur.execute("SELECT status, metadata FROM tasks WHERE id = 'task-retry'").fetchone()
+                    self.assertEqual(row["status"], "ready")
+                    meta = json.loads(row["metadata"] or "{}")
+                    self.assertEqual(meta.get("conflict_retries"), i)
+
+                # Call 4 should exceed max_retries (3) and move to 'blocked'
+                _handle_local_merge_conflict(cur, "task-retry", "Feature X", str(ws_dir), ["conflict.txt"], now, "conflict")
+                conn.commit()
+                row = cur.execute("SELECT status, metadata FROM tasks WHERE id = 'task-retry'").fetchone()
+                self.assertEqual(row["status"], "blocked")
+                meta = json.loads(row["metadata"] or "{}")
+                self.assertEqual(meta.get("conflict_retries"), 4)
+
+                # Verify failure activity and comment
+                act = cur.execute("SELECT action, details FROM task_activity WHERE task_id = 'task-retry' AND action = 'pr_conflict_failed'").fetchone()
+                self.assertIsNotNone(act)
+                self.assertIn("exceeded 3 attempts", act["details"])
+
+                cmt = cur.execute("SELECT body FROM task_comments WHERE task_id = 'task-retry' ORDER BY id DESC LIMIT 1").fetchone()
+                self.assertIsNotNone(cmt)
+                self.assertIn("Merge Conflict Resolution Failed", cmt["body"])
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+
     def test_36_github_conflicting_pr_routes_to_builder(self):
         """Unit-test the GitHub-CONFLICTING branch: a reviewer task whose PR is
         mergeable == 'CONFLICTING' is re-routed to the author with [PR Conflict] tag,

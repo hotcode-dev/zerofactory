@@ -412,6 +412,46 @@ def _unverifiable_result(error: str, label: str = "worktree conflict check") -> 
     return False, files, f"{label} could not be verified (fail-closed): {error}"
 
 
+def get_git_dir(workspace_path: Path) -> Optional[Path]:
+    """Get the active git directory (.git or worktree git dir) for a workspace."""
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-dir"],
+            cwd=str(workspace_path), capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            p = Path(res.stdout.strip())
+            if p.exists():
+                return p
+    except Exception:
+        pass
+    return None
+
+
+def clean_stale_git_locks(workspace_path: Path, max_age_seconds: int = 15) -> List[Path]:
+    """Find and clean stale git lock files (e.g. index.lock) in workspace git dir."""
+    removed: List[Path] = []
+    if not workspace_path or not workspace_path.exists():
+        return removed
+    git_dir = get_git_dir(workspace_path)
+    if not git_dir or not git_dir.exists():
+        return removed
+    now = time.time()
+    lock_names = ("index.lock", "MERGE_RR.lock", "HEAD.lock")
+    for lock_name in lock_names:
+        lock_file = git_dir / lock_name
+        if lock_file.exists() and lock_file.is_file():
+            try:
+                age = now - lock_file.stat().st_mtime
+                if age > max_age_seconds:
+                    lock_file.unlink()
+                    removed.append(lock_file)
+                    _log.warning("Removed stale git lock file (%0.1fs old): %s", age, lock_file)
+            except Exception as e:
+                _log.debug("Failed to remove stale git lock %s: %s", lock_file, e)
+    return removed
+
+
 def pull_and_merge_main(
     workspace_path: Path,
     repo_path: Path,
@@ -425,6 +465,8 @@ def pull_and_merge_main(
     if not workspace_path.exists():
         return False, [], f"Workspace path does not exist: {workspace_path}"
 
+    clean_stale_git_locks(workspace_path)
+
     if not default_branch:
         default_branch = sync_repo_main(repo_path)
 
@@ -433,6 +475,21 @@ def pull_and_merge_main(
     existing_verified, existing_conflicts, existing_err = check_unresolved_conflicts_safe(workspace_path)
     if not existing_verified:
         return _unverifiable_result(existing_err, "pre-merge worktree conflict check")
+
+    # Check if an in-progress merge exists (MERGE_HEAD)
+    git_dir = get_git_dir(workspace_path)
+    if git_dir and (git_dir / "MERGE_HEAD").exists():
+        if existing_conflicts:
+            return False, existing_conflicts, f"Worktree has in-progress merge with unresolved conflicts: {', '.join(existing_conflicts)}"
+        # All conflicts resolved, conclude the merge before proceeding
+        commit_res = subprocess.run(
+            ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit", "--no-edit"],
+            cwd=str(workspace_path), capture_output=True, text=True, timeout=30
+        )
+        if commit_res.returncode != 0:
+            err = (commit_res.stderr or "").strip()
+            return False, [], f"Failed to conclude existing merge: {err}"
+
     if existing_conflicts:
         return False, existing_conflicts, f"Worktree already has unresolved conflicts: {', '.join(existing_conflicts)}"
 
@@ -492,6 +549,8 @@ def pull_and_merge_main(
         err = (merge_res.stderr or "").strip() or (merge_res.stdout or "").strip()
         if not post_fail_verified:
             return _unverifiable_result(post_fail_err, f"post-failure worktree conflict check (merge with {target_ref} failed: {err})")
+        if not conflicted_files and "conflict" not in err.lower():
+            return False, [], f"Git merge execution failed (not a conflict): {err}"
         return False, conflicted_files, f"Merge conflict with {target_ref}: {err}"
 
 
@@ -1467,14 +1526,54 @@ def _handle_local_merge_conflict(
     err_msg: str = ""
 ) -> None:
     """Handle a local merge conflict when syncing task branch with main before push."""
+    max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
+
+    cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+    row = cursor.fetchone()
+    meta = {}
+    if row and row[0]:
+        try:
+            meta = json.loads(row[0])
+        except Exception:
+            meta = {}
+
+    retries = int(meta.get("conflict_retries", 0)) + 1
+    meta["conflict_retries"] = retries
+
     new_title = title
     if "[PR Conflict]" not in new_title and "[Merge Conflict]" not in new_title:
         new_title = f"{new_title} [PR Conflict]"
 
     file_msg = f" in: {', '.join(conflict_files)}" if conflict_files else ""
+
+    if retries > max_conflict_retries:
+        cursor.execute(
+            "UPDATE tasks SET title = ?, assignee = 'zf-builder', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            (new_title, json.dumps(meta), now, task_id)
+        )
+        cursor.execute(
+            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
+            (task_id, f"Merge conflict resolution exceeded {max_conflict_retries} attempts{file_msg}. Moved to blocked.", now)
+        )
+        try:
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    task_id,
+                    "dispatcher",
+                    f"🚨 **Merge Conflict Resolution Failed**: Pulling latest main branch encountered conflicts{file_msg}. "
+                    f"Automatic resolution was attempted {retries - 1} times without success. "
+                    f"Task has been moved to **blocked** for manual review and resolution.",
+                    now
+                )
+            )
+        except Exception as e:
+            _log.debug("Failed to record task comment for conflict limit: %s", e)
+        return
+
     cursor.execute(
-        "UPDATE tasks SET title = ?, assignee = 'zf-builder', status = 'ready', updated_at = ? WHERE id = ?",
-        (new_title, now, task_id)
+        "UPDATE tasks SET title = ?, assignee = 'zf-builder', status = 'ready', metadata = ?, updated_at = ? WHERE id = ?",
+        (new_title, json.dumps(meta), now, task_id)
     )
     cursor.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
@@ -1571,6 +1670,20 @@ def _handle_pr_conflict_from_github(
     now: int
 ) -> None:
     """Handle a PR that has merge conflicts on GitHub by routing back to builder."""
+    max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
+
+    cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+    row = cursor.fetchone()
+    meta = {}
+    if row and row[0]:
+        try:
+            meta = json.loads(row[0])
+        except Exception:
+            meta = {}
+
+    retries = int(meta.get("conflict_retries", 0)) + 1
+    meta["conflict_retries"] = retries
+
     stop_task_worker(task_id, cursor)
     if workspace_path and Path(workspace_path).exists():
         _remove_worktree(workspace_path, repo_path)
@@ -1585,6 +1698,31 @@ def _handle_pr_conflict_from_github(
     if "[PR Conflict]" not in new_title and "[Merge Conflict]" not in new_title:
         new_title = f"{new_title} [PR Conflict]"
 
+    if retries > max_conflict_retries:
+        cursor.execute(
+            "UPDATE tasks SET title = ?, assignee = ?, status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            (new_title, author, json.dumps(meta), now, task_id)
+        )
+        cursor.execute(
+            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
+            (task_id, f"GitHub PR conflict resolution exceeded {max_conflict_retries} attempts. Moved to blocked.", now)
+        )
+        try:
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    task_id,
+                    "dispatcher",
+                    f"🚨 **PR Conflict Resolution Failed**: GitHub reports mergeable state is CONFLICTING. "
+                    f"Automatic resolution was attempted {retries - 1} times without success. "
+                    f"Task has been moved to **blocked** for manual review and resolution.",
+                    now
+                )
+            )
+        except Exception as e:
+            _log.debug("Failed to record task comment for conflict limit: %s", e)
+        return
+
     wt_path = setup_worktree(cursor, task_id, new_title, author, tenant, db_path, board_slug=board_slug, repo_path=repo_path)
     conflict_files = []
     if wt_path and Path(wt_path).exists():
@@ -1595,8 +1733,8 @@ def _handle_pr_conflict_from_github(
 
     file_msg = f" in {', '.join(conflict_files)}" if conflict_files else ""
     cursor.execute(
-        "UPDATE tasks SET title = ?, assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
-        (new_title, author, now, task_id)
+        "UPDATE tasks SET title = ?, assignee = ?, status = 'ready', metadata = ?, updated_at = ? WHERE id = ?",
+        (new_title, author, json.dumps(meta), now, task_id)
     )
     cursor.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
@@ -1911,6 +2049,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 continue
                             # Author finished work -> check conflicts, commit, pull/merge main, push, create PR, hand off to reviewer
                             try:
+                                clean_stale_git_locks(Path(workspace_path))
+                                git_dir = get_git_dir(Path(workspace_path))
+                                is_merging = bool(git_dir and (git_dir / "MERGE_HEAD").exists())
+
                                 # 1. Guardrail: Check if worktree is already in an unmerged conflict state
                                 # Fail-closed: if the worktree cannot be verified clean,
                                 # do NOT commit / merge / push. Leave the task in its
@@ -1935,10 +2077,15 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                                 subject, commit_body = format_conventional_message(title, task_id)
                                 status_res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True, timeout=5)
-                                if status_res.stdout.strip():
+                                if status_res.stdout.strip() or is_merging:
                                     subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True, timeout=60)
+                                    commit_cmd = ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit"]
+                                    if is_merging and not status_res.stdout.strip():
+                                        commit_cmd.append("--no-edit")
+                                    else:
+                                        commit_cmd.extend(["-m", subject, "-m", commit_body])
                                     subprocess.run(
-                                        ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit", "-m", subject, "-m", commit_body],
+                                        commit_cmd,
                                         check=True, cwd=workspace_path, capture_output=True, timeout=60
                                     )
 
@@ -1995,9 +2142,19 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 if not re.search(r"\[PR Opened by .*?\]", new_title):
                                     new_title = f"{new_title} [PR Opened by {assignee}]"
 
+                                meta = {}
+                                try:
+                                    cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                                    m_row = cursor.fetchone()
+                                    if m_row and m_row[0]:
+                                        meta = json.loads(m_row[0])
+                                        meta.pop("conflict_retries", None)
+                                except Exception:
+                                    pass
+
                                 cursor.execute(
-                                    "UPDATE tasks SET title = ?, assignee = 'zf-reviewer', pr_url = ?, status = 'ready', updated_at = ? WHERE id = ?",
-                                    (new_title, pr_url, now, task_id)
+                                    "UPDATE tasks SET title = ?, assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'ready', updated_at = ? WHERE id = ?",
+                                    (new_title, pr_url, json.dumps(meta), now, task_id)
                                 )
                                 setup_worktree(cursor, task_id, new_title, "zf-reviewer", tenant, db_path, board_slug=board_slug)
                                 cursor.execute(
