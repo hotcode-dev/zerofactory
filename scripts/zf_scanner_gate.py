@@ -122,6 +122,28 @@ def _auto_sync_repo(repo_dir: Path) -> None:
         pass
 
 
+def get_active_pipeline_task_count(board_slug: str) -> int:
+    """Count tasks that actively occupy the builder pipeline (running, ready, todo).
+
+    Blocked tasks (e.g. PRs awaiting human review) and done tasks do not occupy
+    builder worker capacity, so they do not block idle improvement scanning.
+    """
+    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    if not db_path.exists():
+        return 0
+    try:
+        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM tasks WHERE board_slug = ? AND status IN ('running', 'ready', 'todo')",
+                (board_slug,)
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row else 0
+    except Exception:
+        return 0
+
+
 def get_existing_task_titles(board_slug: str) -> List[str]:
     db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
     if not db_path.exists():
@@ -217,6 +239,9 @@ def run_scanner_gate() -> int:
         print(json.dumps({"wakeAgent": True}))
         return 0
 
+    # Fetch active pipeline tasks (running, ready, todo) to determine if pipeline is busy
+    active_in_flight = get_active_pipeline_task_count(board_slug)
+
     # Fetch existing task titles to prevent duplicate suggestions
     existing_tasks = get_existing_task_titles(board_slug)
 
@@ -237,13 +262,14 @@ def run_scanner_gate() -> int:
     now_ts = int(time.time())
     retry_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RETRY_COOLDOWN", "1800"))
     max_attempts = int(os.environ.get("ZEROFACTORY_SCAN_MAX_ATTEMPTS", "3"))
+    reset_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RESET_COOLDOWN", "7200"))
 
     # Check for unchanged steady state
     if is_same_commit and is_same_status and not force_scan:
         if last_sha is not None:
-            # 1. If active/open tasks exist on the board, definitely suppress (pipeline busy)
-            if len(existing_tasks) > 0:
-                print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; active tasks ({len(existing_tasks)}) on board '{board_slug}'.")
+            # 1. If active in-flight tasks exist in the pipeline, definitely suppress (pipeline busy)
+            if active_in_flight > 0:
+                print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; active pipeline tasks ({active_in_flight}) on board '{board_slug}'.")
                 print(json.dumps({"wakeAgent": False}))
                 return 0
 
@@ -269,9 +295,14 @@ def run_scanner_gate() -> int:
                 return 0
 
             if attempts >= max_attempts:
-                print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged after {attempts} scan attempts without tasks; suppressing.")
-                print(json.dumps({"wakeAgent": False}))
-                return 0
+                if (now_ts - last_scan_at) >= reset_cooldown:
+                    # Outage recovery: after reset_cooldown (2h), reset attempts and retry
+                    attempts = 0
+                    board_state["scan_attempts"] = 0
+                else:
+                    print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged after {attempts} scan attempts without tasks; suppressing.")
+                    print(json.dumps({"wakeAgent": False}))
+                    return 0
 
             # Allow retry! Fall through to wake the agent
             print(f"RETRY_SCAN_TRIGGERED: Previous scan on {head_sha[:8]} produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan.")
@@ -346,7 +377,7 @@ def run_scanner_gate() -> int:
         print(f"Instructions for Agent: Baseline scan for board '{board_slug}' (0 active tasks). Inspect candidate source files above for genuine bugs, missing tests, or error-handling debt. Create exactly 1 task using `hermes zerofactory create \"<issue title>\" --description \"<details>\" --board \"{board_slug}\" --files \"<files>\" --category \"<category>\" --priority P0 --status todo --assignee zf-builder`.")
     else:
         print("---")
-        print("Instructions for Agent: Review the above pre-computed diff and tasks. If a genuine bug, refactoring, or improvement is warranted, create AT MOST 1 task in Kanban and finish. Do NOT run redundant git exploration commands.")
+        print(f"Instructions for Agent: Review the codebase for board '{board_slug}' for genuine code quality improvements, refactoring, performance, architecture, or test debt. If warranted, create AT MOST 1 task in Kanban and finish. Do NOT duplicate open tasks.")
     print()
 
     # Emit wakeAgent: true to invoke LLM with this rich context
