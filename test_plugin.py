@@ -3731,12 +3731,14 @@ class TestZeroFactory(unittest.TestCase):
         from dispatcher import is_worker_or_child_process
         orig_prof = os.environ.get("HERMES_PROFILE")
         orig_dis = os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        orig_skip = os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
         orig_task = os.environ.get("HERMES_KANBAN_TASK")
 
         try:
             # Normal profile
             os.environ.pop("HERMES_PROFILE", None)
             os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            os.environ.pop("ZEROFACTORY_SKIP_DISPATCHER", None)
             os.environ.pop("HERMES_KANBAN_TASK", None)
             self.assertFalse(is_worker_or_child_process())
 
@@ -3765,6 +3767,10 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = orig_dis
             else:
                 os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
+            if orig_skip is not None:
+                os.environ["ZEROFACTORY_SKIP_DISPATCHER"] = orig_skip
+            else:
+                os.environ.pop("ZEROFACTORY_SKIP_DISPATCHER", None)
             if orig_task is not None:
                 os.environ["HERMES_KANBAN_TASK"] = orig_task
             else:
@@ -4069,6 +4075,17 @@ class TestZeroFactory(unittest.TestCase):
             self.assertEqual(len(acts), 1, "merged activity row missing")
             self.assertEqual(acts[0][0], "merged")
 
+            # Subsequent dispatch cycle must not re-process the done task or flood task_activity
+            res2, captured_gh2, _, fetch2, _ = self._run_reviewer_pr_cycle(
+                db_file, {"state": "MERGED", "reviewDecision": None,
+                          "url": "https://github.com/hotcode-dev/zerofactory/pull/901",
+                          "mergeable": "MERGEABLE"}, task_id="wt-merged"
+            )
+            self.assertTrue(res2.get("ok"))
+            self.assertEqual(len(captured_gh2), 0, "Subsequent cycle should not query GitHub for completed task")
+            acts2 = fetch2("SELECT action FROM task_activity WHERE task_id = 'wt-merged' AND action = 'merged'")
+            self.assertEqual(len(acts2), 1, "merged activity must not be duplicated on subsequent cycles")
+
             # --- APPROVED ---
             td2 = tempfile.mkdtemp()
             try:
@@ -4095,6 +4112,16 @@ class TestZeroFactory(unittest.TestCase):
                 acts = fetch2("SELECT action FROM task_activity WHERE task_id = 'wt-approved' AND action = 'approved'")
                 self.assertEqual(len(acts), 1, "approved activity row missing")
                 self.assertEqual(acts[0][0], "approved")
+
+                # Subsequent cycle before merge should not re-insert approved activity
+                res_app2, _, _, fetch_app2, _ = self._run_reviewer_pr_cycle(
+                    db_file2, {"state": "OPEN", "reviewDecision": "APPROVED",
+                               "url": "https://github.com/hotcode-dev/zerofactory/pull/902",
+                               "mergeable": "MERGEABLE"}, task_id="wt-approved"
+                )
+                self.assertTrue(res_app2.get("ok"))
+                acts_app2 = fetch_app2("SELECT action FROM task_activity WHERE task_id = 'wt-approved' AND action = 'approved'")
+                self.assertEqual(len(acts_app2), 1, "approved activity row must not be duplicated")
             finally:
                 shutil.rmtree(td2, ignore_errors=True)
 

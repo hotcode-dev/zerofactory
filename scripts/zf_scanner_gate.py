@@ -300,7 +300,7 @@ def run_scanner_gate() -> int:
     now_ts = int(time.time())
     retry_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RETRY_COOLDOWN", "1800"))
     max_attempts = int(os.environ.get("ZEROFACTORY_SCAN_MAX_ATTEMPTS", "3"))
-    reset_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RESET_COOLDOWN", "1800"))
+    reset_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RESET_COOLDOWN", "7200"))
 
     # Check for unchanged steady state
     if is_same_commit and is_same_status and not force_scan:
@@ -334,7 +334,7 @@ def run_scanner_gate() -> int:
 
             if attempts >= max_attempts:
                 if (now_ts - last_scan_at) >= reset_cooldown:
-                    # Outage recovery: after reset_cooldown (default 30m), reset attempts and retry
+                    # Outage recovery: after reset_cooldown (default 2h), reset attempts and retry
                     attempts = 0
                     board_state["scan_attempts"] = 0
                 else:

@@ -2005,8 +2005,9 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 if not os.environ.get("ZEROFACTORY_SKIP_GIT"):
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status FROM tasks
-                        WHERE (status IN ('blocked', 'done') AND assignee != 'zf-reviewer')
-                           OR (assignee = 'zf-reviewer' AND pr_url IS NOT NULL AND pr_url != '')
+                        WHERE (status = 'blocked' AND assignee != 'zf-reviewer')
+                           OR (status = 'done' AND assignee != 'zf-reviewer' AND workspace_path IS NOT NULL)
+                           OR (status != 'done' AND assignee = 'zf-reviewer' AND pr_url IS NOT NULL AND pr_url != '')
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -2178,6 +2179,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 _log.warning("Task %s commit/PR failed: %s", task_id, e)
                         else:
                             # Reviewer check -> inspect GitHub PR state
+                            if row["status"] == "done":
+                                continue
                             try:
                                 res = subprocess.run(
                                     ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url,mergeable"],
@@ -2202,7 +2205,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         )
                                     elif mergeable == "CONFLICTING":
                                         _handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
-                                    elif row["status"] in ("blocked", "done"):
+                                    elif row["status"] == "blocked":
                                         if decision == "CHANGES_REQUESTED":
                                             stop_task_worker(task_id, cursor)
                                             _remove_worktree(workspace_path, repo_path)
@@ -2219,17 +2222,18 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                                 (task_id, now)
                                             )
                                         elif decision == "APPROVED":
-                                            stop_task_worker(task_id, cursor)
-                                            _remove_worktree(workspace_path, repo_path)
-                                            new_title = f"{title} [Human Review]" if "[Human Review]" not in title else title
-                                            cursor.execute(
-                                                "UPDATE tasks SET title = ?, status = 'blocked', workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                                (new_title, now, task_id)
-                                            )
-                                            cursor.execute(
-                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved, waiting for human merge', ?)",
-                                                (task_id, now)
-                                            )
+                                            if "[Human Review]" not in title:
+                                                stop_task_worker(task_id, cursor)
+                                                _remove_worktree(workspace_path, repo_path)
+                                                new_title = f"{title} [Human Review]"
+                                                cursor.execute(
+                                                    "UPDATE tasks SET title = ?, status = 'blocked', workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                                    (new_title, now, task_id)
+                                                )
+                                                cursor.execute(
+                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved, waiting for human merge', ?)",
+                                                    (task_id, now)
+                                                )
                             except Exception as e:
                                 _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
 
