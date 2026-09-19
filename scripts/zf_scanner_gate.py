@@ -365,9 +365,10 @@ def run_scanner_gate() -> int:
     save_state(state)
 
     # Collect pre-digested intelligence to pass to the LLM
+    excluded_diff_pathspecs = [":!*.lock", ":!*package-lock.json", ":!*pnpm-lock.yaml", ":!*yarn.lock", ":!*.min.*", ":!*.map"]
     log_summary = _run_cmd(["git", "log", "-n", "5", "--oneline"], cwd=repo_dir)
-    diffstat = _run_cmd(["git", "diff", "--stat", "HEAD~1..HEAD"], cwd=repo_dir)
-    raw_diff = _run_cmd(["git", "diff", "-U2", "HEAD~1..HEAD"], cwd=repo_dir)
+    diffstat = _run_cmd(["git", "diff", "--stat", "HEAD~1..HEAD", "--", *excluded_diff_pathspecs], cwd=repo_dir)
+    raw_diff = _run_cmd(["git", "diff", "-U2", "HEAD~1..HEAD", "--", *excluded_diff_pathspecs], cwd=repo_dir)
 
     # Cap diff to prevent prompt overflow
     diff_lines = raw_diff.splitlines()[:80]
