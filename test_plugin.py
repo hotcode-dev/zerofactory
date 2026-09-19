@@ -14,6 +14,8 @@ os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
 os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
 os.environ["ZEROFACTORY_SKIP_DISPATCHER"] = "1"
 os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
+os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(Path(test_dir.name) / "test_jobs.json")
 if "ZEROFACTORY_LOCK_PATH" not in os.environ:
     os.environ["ZEROFACTORY_LOCK_PATH"] = str(Path(test_dir.name) / "test_dispatcher.lock")
 
@@ -399,12 +401,18 @@ class TestZeroFactory(unittest.TestCase):
             import builtin_cron
             orig_targets = builtin_cron.get_target_jobs_files
             builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
+            orig_cron_override = os.environ.get("ZEROFACTORY_CRON_JOBS_FILE")
+            os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(test_jobs_path)
 
             os.environ.pop("ZEROFACTORY_SKIP_CRON_SYNC", None)
             try:
                 ensure_builtin_cron_jobs()
             finally:
                 os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
+                if orig_cron_override:
+                    os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = orig_cron_override
+                else:
+                    os.environ.pop("ZEROFACTORY_CRON_JOBS_FILE", None)
                 builtin_cron.get_target_jobs_files = orig_targets
 
             synced = load_jobs_from_file(test_jobs_path)
@@ -440,6 +448,8 @@ class TestZeroFactory(unittest.TestCase):
             import builtin_cron
             orig_targets = builtin_cron.get_target_jobs_files
             builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
+            orig_cron_override = os.environ.get("ZEROFACTORY_CRON_JOBS_FILE")
+            os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(test_jobs_path)
 
             os.environ.pop("ZEROFACTORY_SKIP_CRON_SYNC", None)
             try:
@@ -449,6 +459,10 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertTrue(res_del.json()["ok"])
             finally:
                 os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
+                if orig_cron_override:
+                    os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = orig_cron_override
+                else:
+                    os.environ.pop("ZEROFACTORY_CRON_JOBS_FILE", None)
                 builtin_cron.get_target_jobs_files = orig_targets
 
             # 4. Verify board is removed from list_boards()
@@ -597,6 +611,8 @@ class TestZeroFactory(unittest.TestCase):
 
         orig_targets = builtin_cron.get_target_jobs_files
         builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
+        orig_cron_override = os.environ.get("ZEROFACTORY_CRON_JOBS_FILE")
+        os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(test_jobs_path)
 
         try:
             # 1. Initialize test jobs in target file
@@ -680,6 +696,10 @@ class TestZeroFactory(unittest.TestCase):
             self.assertEqual(reset_job["schedule"]["minutes"], 120)
             self.assertFalse(reset_job["custom_config"])
         finally:
+            if orig_cron_override:
+                os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = orig_cron_override
+            else:
+                os.environ.pop("ZEROFACTORY_CRON_JOBS_FILE", None)
             builtin_cron.get_target_jobs_files = orig_targets
             if test_jobs_path.exists():
                 test_jobs_path.unlink()

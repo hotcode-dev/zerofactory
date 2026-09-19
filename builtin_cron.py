@@ -435,9 +435,25 @@ def get_target_jobs_files() -> List[Path]:
     """Resolve all locations where jobs.json should be synced.
 
     Targets:
-    1. Active profile jobs.json (if active and not default)
-    2. ZF Orchestrator profile jobs.json in ~/.hermes/profiles/zf-orchestrator
+    1. Explicit ZEROFACTORY_CRON_JOBS_FILE environment override (if set)
+    2. Active profile jobs.json (if active and not default)
+    3. ZF Orchestrator profile jobs.json in ~/.hermes/profiles/zf-orchestrator
     """
+    env_target = os.environ.get("ZEROFACTORY_CRON_JOBS_FILE")
+    if env_target:
+        return [Path(env_target)]
+
+    # Safeguard: If ZEROFACTORY_DB points to a custom or test database (not ~/.hermes/zerofactory.db),
+    # never pollute the live ~/.hermes profile unless explicitly requested via ZEROFACTORY_CRON_JOBS_FILE.
+    custom_db = os.environ.get("ZEROFACTORY_DB")
+    default_db = Path.home() / ".hermes" / "zerofactory.db"
+    if custom_db:
+        try:
+            if Path(custom_db).resolve() != default_db.resolve():
+                return []
+        except Exception:
+            return []
+
     files: List[Path] = []
     hermes_root = Path(os.path.expanduser("~/.hermes"))
 

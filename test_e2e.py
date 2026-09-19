@@ -105,6 +105,7 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
             "ZEROFACTORY_DB": os.environ.get("ZEROFACTORY_DB"),
             "ZEROFACTORY_LOCK_PATH": os.environ.get("ZEROFACTORY_LOCK_PATH"),
             "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"),
+            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"),
             "HOME": os.environ.get("HOME"),
             "HERMES_PROFILE": os.environ.get("HERMES_PROFILE"),
         }
@@ -112,6 +113,7 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         os.environ["ZEROFACTORY_DB"] = str(self.db_path)
         os.environ["ZEROFACTORY_LOCK_PATH"] = str(self.lock_path)
         os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
         os.environ["HOME"] = str(self.fake_home)
         init_db(force=True)
 
