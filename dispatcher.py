@@ -484,7 +484,7 @@ def pull_and_merge_main(
             return False, existing_conflicts, f"Worktree has in-progress merge with unresolved conflicts: {', '.join(existing_conflicts)}"
         # All conflicts resolved, conclude the merge before proceeding
         commit_res = subprocess.run(
-            ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit", "--no-edit"],
+            ["git", "commit", "--no-edit"],
             cwd=str(workspace_path), capture_output=True, text=True, timeout=30
         )
         if commit_res.returncode != 0:
@@ -521,8 +521,6 @@ def pull_and_merge_main(
     # Attempt merge
     merge_cmd = [
         "git",
-        "-c", "user.name=Zero Factory",
-        "-c", "user.email=zerofactory@local",
         "merge",
         target_ref,
         "--no-edit",
@@ -2092,7 +2090,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 status_res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True, timeout=5)
                                 if status_res.stdout.strip() or is_merging:
                                     subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True, timeout=60)
-                                    commit_cmd = ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit"]
+                                    commit_cmd = ["git", "commit"]
                                     if is_merging and not status_res.stdout.strip():
                                         commit_cmd.append("--no-edit")
                                     else:
