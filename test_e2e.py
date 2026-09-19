@@ -107,12 +107,18 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
             "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"),
             "HOME": os.environ.get("HOME"),
             "HERMES_PROFILE": os.environ.get("HERMES_PROFILE"),
+            "HERMES_HOME": os.environ.get("HERMES_HOME"),
         }
 
         os.environ["ZEROFACTORY_DB"] = str(self.db_path)
         os.environ["ZEROFACTORY_LOCK_PATH"] = str(self.lock_path)
         os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
         os.environ["HOME"] = str(self.fake_home)
+        # profile_manager.get_hermes_root() prefers HERMES_HOME over HOME, so an
+        # inherited HERMES_HOME (present in any zf-* profile/CI env) would defeat
+        # the HOME redirection above and land profiles outside fake_home. Pop it
+        # so Path.home() falls back to the fake HOME; restored in tearDown.
+        os.environ.pop("HERMES_HOME", None)
         init_db(force=True)
 
         # Build real CLI parser via __init__.register
