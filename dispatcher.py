@@ -517,14 +517,24 @@ def pull_and_merge_main(
     if ancestor_check.returncode == 0:
         return True, [], f"Branch is already up to date with {target_ref}"
 
-    # Attempt merge
+    # Attempt merge.
+    #
+    # Set the merge-commit message explicitly with `-m <msg>` and do NOT also
+    # pass `--no-edit`. The `-m` form gives a deterministic commit message and
+    # is the documented way to supply a draft merge message; omitting `--no-edit`
+    # keeps the command unambiguous across git versions and avoids depending on
+    # the version-specific interplay between the editor / `--no-edit` handling
+    # and `-m`. (If the message flags were ever mis-paired, a non-fast-forward
+    # merge could fail before it runs, leaving the worktree unchanged and no
+    # conflict markers, which this function would misread as a false
+    # "not a conflict" error and the dispatcher would then misroute to
+    # _handle_local_merge_conflict().)
     merge_cmd = [
         "git",
         "-c", "user.name=Zero Factory",
         "-c", "user.email=zerofactory@local",
         "merge",
         target_ref,
-        "--no-edit",
         "-m", f"Merge branch '{target_ref}' into task branch"
     ]
     merge_res = subprocess.run(
