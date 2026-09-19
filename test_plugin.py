@@ -4120,6 +4120,70 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             shutil.rmtree(td, ignore_errors=True)
 
+    def test_59_init_db_path_keyed_flag(self):
+        """init_db() must re-initialize when ZEROFACTORY_DB changes to a new
+        path within the same process (regression: a bare global boolean flag
+        made init_db() path-blind, silently skipping table creation and the
+        legacy-boards migration for the new file)."""
+        import sqlite3
+
+        td = tempfile.mkdtemp(prefix="zf-init-path-")
+        old_db = os.environ.get("ZEROFACTORY_DB")
+        path_a = Path(td) / "a.db"
+        path_b = Path(td) / "b.db"
+        try:
+            # --- Step 1: initialize DB at path A.
+            os.environ["ZEROFACTORY_DB"] = str(path_a)
+            init_db()
+            self.assertTrue(path_a.exists(), "init_db() must create DB file A")
+            with sqlite3.connect(str(path_a)) as conn:
+                tables_a = {r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            self.assertIn("boards", tables_a)
+            self.assertIn("tasks", tables_a)
+
+            # --- Step 2: point ZEROFACTORY_DB at a NEW, empty path and
+            # initialize again. Before the fix this was a silent no-op.
+            os.environ["ZEROFACTORY_DB"] = str(path_b)
+            init_db()
+            self.assertTrue(path_b.exists(), "init_db() must create DB file B after ZEROFACTORY_DB change")
+            with sqlite3.connect(str(path_b)) as conn:
+                tables_b = {r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            self.assertIn("boards", tables_b, "tables must exist in the new DB path B")
+            self.assertIn("tasks", tables_b)
+
+            # --- Step 3: the same legacy-schema migration must run in-place
+            # for a pre-created legacy boards table at a third path.
+            path_c = Path(td) / "legacy.db"
+            conn = sqlite3.connect(str(path_c))
+            conn.execute(
+                "CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', "
+                "git_url TEXT DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"
+            )
+            conn.execute("INSERT INTO boards (slug, created_at, updated_at) VALUES ('legacy-board', 1, 1)")
+            conn.commit()
+            conn.close()
+            os.environ["ZEROFACTORY_DB"] = str(path_c)
+            init_db()
+            conn = sqlite3.connect(str(path_c))
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
+            row = conn.execute(
+                "SELECT slug, max_concurrent_running FROM boards WHERE slug = 'legacy-board'").fetchone()
+            conn.close()
+            self.assertIn("max_concurrent_running", cols, "legacy boards table must be migrated in place")
+            self.assertEqual(row, ("legacy-board", 1))
+
+            # --- Step 4: force still works as an escape hatch.
+            os.environ["ZEROFACTORY_DB"] = str(path_a)
+            init_db(force=True)  # must not raise and must re-run idempotently
+        finally:
+            if old_db is None:
+                os.environ.pop("ZEROFACTORY_DB", None)
+            else:
+                os.environ["ZEROFACTORY_DB"] = old_db
+            shutil.rmtree(td, ignore_errors=True)
+
 
 # ---------------------------------------------------------------------------
 # Hermetic mock helpers for the repo auto-sync / fast-forward guard tests.

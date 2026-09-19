@@ -98,14 +98,16 @@ def get_db_conn():
     finally:
         conn.close()
 
-_DB_INITIALIZED = False
-_INITIALIZED_DBS = set()
+# Paths already initialized by init_db() in this process. Keyed by the resolved
+# DB path (not a bare boolean) so that a later change of ZEROFACTORY_DB to a
+# different file still triggers initialization/migration for that new path.
+_DB_INITIALIZED_PATHS: set = set()
 
 def init_db(force: bool = False):
-    """Idempotently initialize all database tables."""
-    global _DB_INITIALIZED
-    db_key = str(get_db_path().resolve())
-    if not force and db_key in _INITIALIZED_DBS:
+    """Idempotently initialize all database tables for the current DB path."""
+    global _DB_INITIALIZED_PATHS
+    db_path = get_db_path()
+    if not force and db_path in _DB_INITIALIZED_PATHS:
         return
     with get_db_conn() as conn:
         try:
@@ -230,8 +232,7 @@ def init_db(force: bool = False):
                         _log.debug("Pruned %d task_activity rows past retention", _deleted)
             except Exception as _prune_err:  # pragma: no cover - defensive
                 _log.warning("task_activity retention prune skipped: %s", _prune_err)
-    _DB_INITIALIZED = True
-    _INITIALIZED_DBS.add(db_key)
+    _DB_INITIALIZED_PATHS.add(db_path)
 
 # Maximum interval between retention prunes when driven by per-request init_db().
 ACTIVITY_PRUNE_INTERVAL_SECONDS = 3600
