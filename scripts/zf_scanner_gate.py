@@ -180,8 +180,12 @@ def has_task_on_or_after_commit(board_slug: str, commit_time: int) -> bool:
 
 
 def resolve_board_slug(repo_dir: Path) -> str:
-    if len(sys.argv) > 1 and sys.argv[1].strip():
-        return sys.argv[1].strip()
+    # The first positional arg is the board slug. Skip flag tokens such as
+    # `--force` (or any `-`-prefixed arg) so a flag is never mistaken for a slug;
+    # the flag falls through to the ZEROFACTORY_BOARD env / DB / repo-name fallback.
+    for arg in sys.argv[1:]:
+        if not arg.startswith("-") and arg.strip():
+            return arg.strip()
     if os.environ.get("ZEROFACTORY_BOARD"):
         return os.environ["ZEROFACTORY_BOARD"].strip()
 

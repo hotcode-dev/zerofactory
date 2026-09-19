@@ -1007,7 +1007,56 @@ class TestZeroFactory(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertTrue(wake6, "a dirty worktree must re-trigger the scanner")
 
-    def test_25b_scanner_gate_auto_pull_remote(self):
+    def test_25b_scanner_gate_force_flag_not_slug(self):
+        """Regression: `resolve_board_slug` must NOT capture the `--force` CLI flag
+        as the board slug. The first positional arg is the slug; any `-`-prefixed
+        flag token (e.g. `--force`) is skipped so the call falls through to the
+        ZEROFACTORY_BOARD env / DB / repo-name fallback.
+
+        The bug: `sys.argv[1]` was treated as the slug unconditionally, so a
+        `python3 zf_scanner_gate.py --force` invocation returned the literal string
+        `--force` as the board slug, silently disabling the duplicate-task safeguard
+        and defeating the 0-token wake-gate suppression."""
+        import importlib.util
+
+        # Load the script from THIS repo (the source of truth we are testing), NOT the
+        # deployed copy under the Hermes home (which may be a stale pre-fix snapshot).
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+        self.assertTrue(gate_path.is_file(), f"missing {gate_path}")
+        spec = importlib.util.spec_from_file_location("zf_scanner_gate_slug_test", gate_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        old_argv = sys.argv
+        old_board = os.environ.get("ZEROFACTORY_BOARD")
+        try:
+            repo_dir = Path("myrepo")
+            # Deterministic env fallback to fall through to when a flag is skipped.
+            os.environ["ZEROFACTORY_BOARD"] = "env-fallback-board"
+
+            # 1. A real positional slug arg still wins (and beats the env fallback).
+            sys.argv = [gate_path.name, "my-real-board"]
+            self.assertEqual(mod.resolve_board_slug(repo_dir), "my-real-board")
+
+            # 2. `--force` must NOT be captured as the slug — it falls through to env.
+            sys.argv = [gate_path.name, "--force"]
+            self.assertEqual(mod.resolve_board_slug(repo_dir), "env-fallback-board")
+            self.assertNotEqual(mod.resolve_board_slug(repo_dir), "--force")
+
+            # 3. A flag before the positional slug: the slug is still resolved.
+            sys.argv = [gate_path.name, "--force", "my-real-board"]
+            self.assertEqual(mod.resolve_board_slug(repo_dir), "my-real-board")
+
+            # 4. Only flags / no positional args -> falls through to the env fallback.
+            sys.argv = [gate_path.name]
+            self.assertEqual(mod.resolve_board_slug(repo_dir), "env-fallback-board")
+        finally:
+            sys.argv = old_argv
+            if old_board is None:
+                os.environ.pop("ZEROFACTORY_BOARD", None)
+            else:
+                os.environ["ZEROFACTORY_BOARD"] = old_board
+    def test_25c_scanner_gate_auto_pull_remote(self):
         """Verify that zf_scanner_gate automatically fast-forwards clean tracking branch
         when remote origin has new commits, waking the agent.
         """
