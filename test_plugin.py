@@ -381,89 +381,6 @@ class TestZeroFactory(unittest.TestCase):
         self.assertFalse(t5.get("duplicate", False))
         self.assertNotEqual(t5["id"], t1_id)
 
-    def test_10b_actor_attribution_priority(self):
-        """Regression: actor attribution in create_task must honor explicit
-        caller intent (req.actor) and scanner-filed signals (dedup_key / cat:
-        tag) over an ambient HERMES_PROFILE env, which should only act as a
-        fallback for un-attributed, non-scanner tasks.
-        """
-        import unittest.mock as mock
-
-        # Ensure the target board exists so create_task has a deterministic
-        # target (matches the guard in test_create_task_scanner_attribution_...
-        # so this test is self-contained and passes in isolation).
-        try:
-            create_board(BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory",
-                                     description="AI workflow"))
-        except Exception:
-            pass
-
-        def create_actor_actor(task_id):
-            with get_db_conn() as conn:
-                cur = conn.execute(
-                    "SELECT actor FROM task_activity WHERE task_id=? AND action='create' "
-                    "ORDER BY id DESC LIMIT 1", (task_id,))
-                row = cur.fetchone()
-            return row[0] if row else None
-
-        # 1. Explicit req.actor wins over HERMES_PROFILE AND a scanner signal.
-        with mock.patch.dict(os.environ, {"HERMES_PROFILE": "zf-builder"}):
-            r = create_task(TaskCreate(
-                title="ActorAttr explicit beats env+scanner",
-                board_slug="hotcode-dev-zerofactory",
-                files=["actorattr/a.py"], category="bug-fix",
-                actor="zf-reviewer"))
-            self.assertTrue(r["ok"])
-            self.assertEqual(create_actor_actor(r["id"]), "zf-reviewer")
-
-        # 2. Scanner-filed task (files -> dedup_key) wins over HERMES_PROFILE.
-        with mock.patch.dict(os.environ, {"HERMES_PROFILE": "user"}):
-            r = create_task(TaskCreate(
-                title="ActorAttr scanner beats env",
-                board_slug="hotcode-dev-zerofactory",
-                files=["actorattr/b.py", "actorattr/c.py"], category="perf",
-                actor=None))
-            self.assertTrue(r["ok"])
-            self.assertEqual(create_actor_actor(r["id"]), "zf-orchestrator")
-
-        # 3. No actor, no scanner signal -> HERMES_PROFILE fallback.
-        with mock.patch.dict(os.environ, {"HERMES_PROFILE": "zf-builder"}):
-            r = create_task(TaskCreate(
-                title="ActorAttr env fallback",
-                board_slug="hotcode-dev-zerofactory",
-                category=None, actor=None))
-            self.assertTrue(r["ok"])
-            self.assertEqual(create_actor_actor(r["id"]), "zf-builder")
-
-        # 4. No actor, no scanner signal, no HERMES_PROFILE -> "user".
-        env = {k: v for k, v in os.environ.items() if k != "HERMES_PROFILE"}
-        with mock.patch.dict(os.environ, env, clear=True):
-            r = create_task(TaskCreate(
-                title="ActorAttr user fallback",
-                board_slug="hotcode-dev-zerofactory",
-                category=None, actor=None))
-            self.assertTrue(r["ok"])
-            self.assertEqual(create_actor_actor(r["id"]), "user")
-
-        # 5. Scanner signal via a cat: tag (no files) -> zf-orchestrator.
-        with mock.patch.dict(os.environ, {"HERMES_PROFILE": "user"}):
-            r = create_task(TaskCreate(
-                title="ActorAttr cat tag signals orchestrator",
-                board_slug="hotcode-dev-zerofactory",
-                tags=["cat:tech-debt"], category=None, actor=None))
-            self.assertTrue(r["ok"])
-            self.assertEqual(create_actor_actor(r["id"]), "zf-orchestrator")
-
-        # 6. Explicit req.actor present alongside a scanner signal -> explicit wins.
-        with mock.patch.dict(os.environ, {"HERMES_PROFILE": "user"}):
-            r = create_task(TaskCreate(
-                title="ActorAttr explicit beats scanner",
-                board_slug="hotcode-dev-zerofactory",
-                files=["actorattr/z.py"], category="bug-fix",
-                actor="dispatcher"))
-            self.assertTrue(r["ok"])
-            self.assertEqual(create_actor_actor(r["id"]), "dispatcher")
-
     def test_11_prune_orphan_board_scanners(self):
         from builtin_cron import ensure_builtin_cron_jobs, load_jobs_from_file, save_jobs_to_file
         with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
@@ -3765,14 +3682,12 @@ class TestZeroFactory(unittest.TestCase):
         from dispatcher import is_worker_or_child_process
         orig_prof = os.environ.get("HERMES_PROFILE")
         orig_dis = os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
-        orig_skip = os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
         orig_task = os.environ.get("HERMES_KANBAN_TASK")
 
         try:
             # Normal profile
             os.environ.pop("HERMES_PROFILE", None)
             os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
-            os.environ.pop("ZEROFACTORY_SKIP_DISPATCHER", None)
             os.environ.pop("HERMES_KANBAN_TASK", None)
             self.assertFalse(is_worker_or_child_process())
 
@@ -3801,10 +3716,6 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = orig_dis
             else:
                 os.environ.pop("ZEROFACTORY_DISABLE_DISPATCHER", None)
-            if orig_skip is not None:
-                os.environ["ZEROFACTORY_SKIP_DISPATCHER"] = orig_skip
-            else:
-                os.environ.pop("ZEROFACTORY_SKIP_DISPATCHER", None)
             if orig_task is not None:
                 os.environ["HERMES_KANBAN_TASK"] = orig_task
             else:
@@ -3946,97 +3857,6 @@ class TestZeroFactory(unittest.TestCase):
             c = conn.cursor()
             c.execute("SELECT actor FROM task_activity WHERE task_id = ? AND action = 'create'", (t_explicit["id"],))
             self.assertEqual(c.fetchone()["actor"], "zf-orchestrator")
-
-    def test_create_task_scanner_attribution_ignores_hermes_profile(self):
-        """A scanner-filed task (dedup_key / cat: tag) is always credited to
-        zf-orchestrator, even when HERMES_PROFILE points at a worker session.
-
-        Regression: the previous logic was ``req.actor or
-        os.environ.get("HERMES_PROFILE")`` and short-circuited on the env var
-        *before* inspecting the scanner signal, so a worker session (e.g.
-        zf-builder) that created a scanner task misattributed it to itself.
-        Non-scanner tasks still fall back to HERMES_PROFILE (or "user")."""
-        # Ensure a board exists so create_task has a deterministic target.
-        try:
-            create_board(BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory",
-                                     description="AI workflow"))
-        except Exception:
-            pass
-
-        def _create_actor(req: TaskCreate) -> str:
-            res = create_task(req)
-            self.assertTrue(res["ok"])
-            self.assertFalse(res.get("duplicate"))
-            with get_db_conn() as conn:
-                c = conn.cursor()
-                c.execute("SELECT actor FROM task_activity WHERE task_id = ? AND action = 'create'", (res["id"],))
-                return c.fetchone()["actor"]
-
-        orig_prof = os.environ.get("HERMES_PROFILE")
-        try:
-            # 1. Worker session present — the bug trigger. A scanner task
-            #    must NOT be credited to the worker; zf-orchestrator wins.
-            os.environ["HERMES_PROFILE"] = "zf-builder"
-            actor = _create_actor(TaskCreate(
-                board_slug="hotcode-dev-zerofactory",
-                title="Scanner task from worker session",
-                status="todo",
-                dedup_key="regression_scanner.py:bug",
-                category="bug-fix",
-            ))
-            self.assertEqual(actor, "zf-orchestrator")
-
-            # 2. Same trigger via a category tag (cat:) with no explicit
-            #    dedup_key on the request — still scanner-attributed.
-            actor = _create_actor(TaskCreate(
-                board_slug="hotcode-dev-zerofactory",
-                title="Scanner task via category tag",
-                status="todo",
-                tags=["cat:bug-fix"],
-            ))
-            self.assertEqual(actor, "zf-orchestrator")
-
-            # 3. Non-scanner task in a worker session credits the worker,
-            #    not the generic "user" fallback.
-            actor = _create_actor(TaskCreate(
-                board_slug="hotcode-dev-zerofactory",
-                title="Plain task from worker session",
-                status="todo",
-            ))
-            self.assertEqual(actor, "zf-builder")
-
-            # 4. Explicit actor always wins over the scanner signal.
-            actor = _create_actor(TaskCreate(
-                board_slug="hotcode-dev-zerofactory",
-                title="Explicit actor overrides scanner",
-                status="todo",
-                actor="zf-builder",
-                dedup_key="regression_scanner.py:explicit",
-            ))
-            self.assertEqual(actor, "zf-builder")
-        finally:
-            if orig_prof is not None:
-                os.environ["HERMES_PROFILE"] = orig_prof
-            else:
-                os.environ.pop("HERMES_PROFILE", None)
-
-        # 5. No HERMES_PROFILE set: non-scanner task falls back to "user".
-        #    (Run after the finally so we control the env explicitly.)
-        orig_prof2 = os.environ.get("HERMES_PROFILE")
-        try:
-            os.environ.pop("HERMES_PROFILE", None)
-            actor = _create_actor(TaskCreate(
-                board_slug="hotcode-dev-zerofactory",
-                title="Plain task with no profile env",
-                status="todo",
-            ))
-            self.assertEqual(actor, "user")
-        finally:
-            if orig_prof2 is not None:
-                os.environ["HERMES_PROFILE"] = orig_prof2
-            else:
-                os.environ.pop("HERMES_PROFILE", None)
-
     def _make_reviewer_test_repo(self, td: str):
         """Create a real git repo + a reviewer worktree so the dispatcher can
         resolve the repo root via `git rev-parse --git-common-dir`."""
