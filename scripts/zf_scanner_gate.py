@@ -68,6 +68,40 @@ def save_state(state: Dict[str, Any]) -> None:
         pass
 
 
+def is_llm_reachable(timeout: float = 2.0) -> bool:
+    """Quick probe to verify LLM inference server is reachable before waking agent."""
+    if os.environ.get("ZEROFACTORY_SKIP_LLM_PROBE"):
+        return True
+
+    import urllib.request
+    base_url = os.environ.get("OPENAI_BASE_URL")
+    if not base_url:
+        for cfg_path in [
+            Path.home() / ".hermes" / "profiles" / "zf-orchestrator" / "config.yaml",
+            Path.home() / ".hermes" / "config.yaml",
+        ]:
+            if cfg_path.exists():
+                try:
+                    for line in cfg_path.read_text(encoding="utf-8").splitlines():
+                        if "base_url:" in line:
+                            base_url = line.split(":", 1)[1].strip().strip("\"'")
+                            break
+                    if base_url:
+                        break
+                except Exception:
+                    pass
+    if not base_url:
+        return True
+
+    probe_url = base_url.rstrip("/") + "/models"
+    try:
+        req = urllib.request.Request(probe_url, headers={"User-Agent": "zf-gate-probe"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status < 500
+    except Exception:
+        return False
+
+
 def _auto_sync_repo(repo_dir: Path) -> None:
     """Safely fetch and fast-forward pull the default branch if worktree is clean."""
     try:
@@ -266,7 +300,7 @@ def run_scanner_gate() -> int:
     now_ts = int(time.time())
     retry_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RETRY_COOLDOWN", "1800"))
     max_attempts = int(os.environ.get("ZEROFACTORY_SCAN_MAX_ATTEMPTS", "3"))
-    reset_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RESET_COOLDOWN", "7200"))
+    reset_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RESET_COOLDOWN", "1800"))
 
     # Check for unchanged steady state
     if is_same_commit and is_same_status and not force_scan:
@@ -300,7 +334,7 @@ def run_scanner_gate() -> int:
 
             if attempts >= max_attempts:
                 if (now_ts - last_scan_at) >= reset_cooldown:
-                    # Outage recovery: after reset_cooldown (2h), reset attempts and retry
+                    # Outage recovery: after reset_cooldown (default 30m), reset attempts and retry
                     attempts = 0
                     board_state["scan_attempts"] = 0
                 else:
@@ -312,6 +346,12 @@ def run_scanner_gate() -> int:
             print(f"RETRY_SCAN_TRIGGERED: Previous scan on {head_sha[:8]} produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan.")
         else:
             print(f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has never been scanned. Initiating baseline codebase inspection.")
+
+    # Pre-flight LLM probe: verify inference endpoint is reachable before committing state and waking agent
+    if not is_llm_reachable():
+        print("LLM_UNREACHABLE: Inference endpoint is unreachable; deferring scan without consuming attempts.")
+        print(json.dumps({"wakeAgent": False}))
+        return 0
 
     # Changes detected or baseline/retry scan required! Update state
     new_attempts = (int(board_state.get("scan_attempts", 0)) + 1) if is_same_commit else 1

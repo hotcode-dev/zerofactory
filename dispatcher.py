@@ -2164,7 +2164,14 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 prs_opened += 1
                             except subprocess.CalledProcessError as e:
                                 err_msg = (e.stderr or "").strip() or str(e)
-                                _log.warning("Task %s commit/PR command failed: %s", task_id, err_msg)
+                                if "No commits between" in err_msg:
+                                    _log.info("Task %s has no commits between main and branch; completing task without PR.", task_id)
+                                    stop_task_worker(task_id, cursor)
+                                    _remove_worktree(workspace_path, repo_path)
+                                    cursor.execute("UPDATE tasks SET workspace_path = NULL, status = 'done', updated_at = ? WHERE id = ?", (now, task_id))
+                                    cursor.execute("INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'completed_no_diff', 'No commits between branch and main; task marked done', ?)", (task_id, now))
+                                else:
+                                    _log.warning("Task %s commit/PR command failed: %s", task_id, err_msg)
                             except subprocess.TimeoutExpired as e:
                                 _log.warning("Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)", task_id, e.timeout, e.cmd)
                             except Exception as e:

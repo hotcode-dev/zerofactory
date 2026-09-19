@@ -89,6 +89,7 @@ Write your detailed context to a temporary file (e.g. `/tmp/task_desc.md`) and r
 
 ## IMPORTANT:
 - Scan ONLY this repository (current working directory). Do not inspect or touch any other folders or projects.
+- DO NOT use any native kanban_* tools (e.g. kanban_create, kanban_list). The Zero Factory system exclusively uses the CLI commands 'hermes zerofactory create ...' and 'hermes zerofactory list ...' on zerofactory.db.
 - DO NOT run destructive bash commands (e.g. rm) or -e/-c script execution in cron mode, as they trigger safety filters.
 - DO NOT create or write any plan files (NEVER write `docs/IMPROVEMENT_PLAN.md` or any other plan files on disk). All issue details belong directly in the Zero Factory Kanban task.
 - DO NOT create more than 1 task per run to avoid overwhelming the local LLM pipeline.
@@ -272,7 +273,7 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "paused_reason": None,
         "deliver": None,
         "origin": "zerofactory",
-        "enabled_toolsets": ["terminal", "file", "kanban"],
+        "enabled_toolsets": ["terminal", "file"],
         "workdir": None,
         "profile": "zf-orchestrator"
     },
@@ -300,7 +301,7 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "paused_reason": None,
         "deliver": None,
         "origin": "zerofactory",
-        "enabled_toolsets": ["terminal", "file", "kanban"],
+        "enabled_toolsets": ["terminal", "file"],
         "workdir": None,
         "profile": "zf-orchestrator"
     }
@@ -368,7 +369,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "paused_reason": None,
             "deliver": None,
             "origin": "zerofactory",
-            "enabled_toolsets": ["terminal", "file", "web", "kanban"],
+            "enabled_toolsets": ["terminal", "file", "web"],
             "workdir": workdir,
             "profile": "zf-orchestrator"
         }
