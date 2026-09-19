@@ -1975,6 +1975,122 @@ class TestZeroFactory(unittest.TestCase):
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
+    def test_32a_non_ff_merge_succeeds_no_false_conflict(self):
+        """Regression: pull_and_merge_main() must perform a NON-fast-forward
+        merge cleanly (return (True, [], "Successfully merged ...")) and leave a
+        real merge commit on the task branch.
+
+        Context (task zf-8fe05f6a): the merge command was built with BOTH
+        ``--no-edit`` and ``-m <msg>``. The fix keeps only ``-m <msg>`` (the
+        deterministic, documented way to supply a draft merge message) and drops
+        ``--no-edit`` so the command does not depend on the version-specific
+        interplay between the editor/``--no-edit`` handling and ``-m``. If that
+        flag pairing ever misbehaves on a given git, a non-fast-forward merge
+        would fail before it runs, leaving the worktree unchanged (no MERGE_HEAD,
+        no conflict markers); this function would then misread it as a false
+        "not a conflict" error and the dispatcher would misroute a clean
+        diverged branch to _handle_local_merge_conflict(), bumping
+        conflict_retries and eventually blocking the task.
+
+        NOTE on verification: on this environment's git (2.39.5) the ``--no-edit``
+        + ``-m`` combination does NOT abort -- git merges successfully (RC=0) and
+        its own documentation describes the pairing as valid. This test therefore
+        primarily guards the non-fast-forward merge path (merge actually happens,
+        real merge commit exists, main becomes an ancestor, the deterministic
+        -m message is used, and the worktree is left clean); on a git version
+        that rejects the flag pairing it additionally catches the regression.
+
+        Setup (hermetic, offline, local repo + worktree under a tempdir):
+          * base commit on main
+          * task worktree branches from base and commits file "task.txt"
+          * main then commits a DIFFERENT file "main.txt"
+          => the branches genuinely diverge, so a non-fast-forward (3-way)
+             merge is required.
+        """
+        import tempfile
+        import shutil
+        import subprocess
+        from dispatcher import pull_and_merge_main, check_unresolved_conflicts
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+
+            # Base commit on main.
+            (repo_path / "base.txt").write_text("base\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-m", "base"], cwd=str(repo_path), check=True, capture_output=True)
+
+            # Task worktree branching from base; commit a change to a file that
+            # main will NOT touch (so the real merge is clean).
+            worktree_dir = Path(td) / "wt"
+            subprocess.run(
+                ["git", "worktree", "add", str(worktree_dir), "-b", "task/nff"],
+                cwd=str(repo_path), check=True, capture_output=True,
+            )
+            (worktree_dir / "task.txt").write_text("task change\n")
+            subprocess.run(["git", "add", "."], cwd=str(worktree_dir), check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-m", "task commit"], cwd=str(worktree_dir), check=True, capture_output=True)
+
+            # Advance main with a different file so the branches diverge and a
+            # non-fast-forward merge is genuinely required.
+            (repo_path / "main.txt").write_text("main change\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-m", "main commit"], cwd=str(repo_path), check=True, capture_output=True)
+
+            # Sanity: main is NOT yet an ancestor of the task branch HEAD.
+            not_ancestor = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", "main", "HEAD"],
+                cwd=str(worktree_dir), capture_output=True, text=True,
+            )
+            self.assertNotEqual(not_ancestor.returncode, 0, "test must start from a diverged branch (non-ff)")
+
+            # The fix under test: a clean non-fast-forward merge.
+            ok, conflicts, msg = pull_and_merge_main(worktree_dir, repo_path, "main")
+            self.assertTrue(ok, f"expected clean merge, got conflicts={conflicts!r} msg={msg!r}")
+            self.assertEqual(conflicts, [])
+            self.assertIn("Successfully merged", msg)
+            # No conflict markers left anywhere in the worktree.
+            self.assertEqual(check_unresolved_conflicts(worktree_dir), [])
+
+            # A real merge commit exists on the task branch.
+            merges = subprocess.run(
+                ["git", "log", "--merges", "--oneline", "-1"],
+                cwd=str(worktree_dir), capture_output=True, text=True, check=True,
+            )
+            self.assertGreater(len(merges.stdout.strip()), 0, "expected a merge commit on the task branch")
+
+            # main is now an ancestor of the task branch HEAD (the merge happened).
+            is_ancestor = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", "main", "HEAD"],
+                cwd=str(worktree_dir), capture_output=True, text=True,
+            )
+            self.assertEqual(is_ancestor.returncode, 0, "main must be an ancestor after the merge")
+
+            # The deterministic -m message was actually used for the merge commit
+            # (guards against silently dropping the commit message).
+            subject = subprocess.run(
+                ["git", "log", "-1", "--format=%s"],
+                cwd=str(worktree_dir), capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            self.assertIn("into task branch", subject)
+
+            # Worktree is clean after the merge.
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(worktree_dir), capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            self.assertEqual(status, "")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
     def test_32b_conflict_check_fail_closed(self):
         """check_unresolved_conflicts must FAIL CLOSED when the authoritative git
         unmerged-index or status-porcelain query raises (transient git failure,
