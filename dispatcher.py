@@ -137,6 +137,12 @@ DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 900  # 15 mins with no log/session update
 # Interval (in seconds) between background dispatcher polling cycles.
 DISPATCH_INTERVAL_SECONDS = 30
 
+# Cap on how many processed GitHub PR review-comment IDs we retain in a task's
+# metadata. The list is only ever appended to (dedup by membership), so keeping
+# only the most recent N IDs bounds the metadata TEXT column for long-lived tasks
+# without losing dedup correctness (order is irrelevant for the membership check).
+MAX_PROCESSED_REVIEW_COMMENT_IDS = 50
+
 # Background thread handle running the continuous dispatch loop.
 _dispatcher_thread: Optional[threading.Thread] = None
 
@@ -2514,6 +2520,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     if m_row and m_row[0]:
                                         meta = json.loads(m_row[0])
                                         meta.pop("conflict_retries", None)
+                                        # A fresh (re)opened PR starts with a clean review-comment slate;
+                                        # mirror the conflict_retries reset so stale IDs from a superseded
+                                        # PR don't linger in the metadata forever.
+                                        meta.pop("processed_review_comment_ids", None)
                                 except Exception:
                                     pass
 
@@ -2585,11 +2595,13 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     else:
                                         # Check for review feedback (inline diff comments, reviews, PR conversation comments)
                                         task_meta = {}
+                                        original_meta_json = None
                                         try:
                                             cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
                                             m_res = cursor.fetchone()
                                             if m_res and m_res[0]:
                                                 task_meta = json.loads(m_res[0])
+                                                original_meta_json = m_res[0]
                                         except Exception:
                                             pass
 
@@ -2617,7 +2629,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                                 )
                                                 processed_cmt_ids.add(c["comment_id"])
 
-                                            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
+                                            # Cap the retained processed-comment IDs to the most recent N so the
+                                            # metadata blob stays bounded on long-lived tasks. Dedup is a
+                                            # membership check, so order (and dropping oldest IDs) is safe.
+                                            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)[-MAX_PROCESSED_REVIEW_COMMENT_IDS:]
 
                                             stop_task_worker(task_id, cursor)
                                             _remove_worktree(workspace_path, repo_path)
@@ -2626,9 +2641,14 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             author = normalize_assignee(author)
                                             clean_title = title.replace(" [Human Review]", "").replace("[Human Review]", "").strip()
 
+                                            # Only (re)serialize the metadata blob when a new comment actually changed it.
+                                            # On a pure CHANGES_REQUESTED re-route (no new comments) task_meta is
+                                            # untouched, so reuse the raw stored blob to skip the gratuitous
+                                            # json.dumps() round-trip on every dispatch tick.
+                                            new_meta_json = json.dumps(task_meta) if new_pr_comments else original_meta_json
                                             cursor.execute(
                                                 "UPDATE tasks SET title = ?, assignee = ?, status = 'ready', metadata = ?, updated_at = ? WHERE id = ?",
-                                                (clean_title, author, json.dumps(task_meta), now, task_id)
+                                                (clean_title, author, new_meta_json, now, task_id)
                                             )
                                             setup_worktree(cursor, task_id, clean_title, author, tenant, db_path, board_slug=board_slug)
                                             reason_text = (
