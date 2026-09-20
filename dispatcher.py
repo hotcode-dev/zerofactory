@@ -1375,6 +1375,17 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN") or os.environ.get("ZEROFACTORY_SKIP_SCANNER_SPAWN"):
         return None
 
+    try:
+        try:
+            from .builtin_cron import is_cron_scheduler_enabled
+        except ImportError:
+            from builtin_cron import is_cron_scheduler_enabled  # type: ignore
+        if not is_cron_scheduler_enabled():
+            _log.debug("Cron scheduler is disabled in config; skipping scanner spawn for '%s'", board_slug)
+            return None
+    except Exception as e:
+        _log.debug("Scanner cron scheduler check failed: %s", e)
+
     import shutil
     local_hermes = Path.home() / ".local" / "bin" / "hermes"
     hermes_bin = (
@@ -1383,15 +1394,26 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
         or (str(local_hermes) if local_hermes.exists() else "hermes")
     )
     job_id = f"zero-factory-improvement-scanner-{board_slug}"
-    # Ensure job is enabled in profile cron store before running
+    # Check if this scanner job is paused/disabled before running
     try:
         try:
-            from .builtin_cron import toggle_builtin_job
+            from .builtin_cron import list_builtin_jobs, get_target_jobs_files, load_jobs_from_file
         except ImportError:
-            from builtin_cron import toggle_builtin_job  # type: ignore
-        toggle_builtin_job(job_id, enabled=True)
+            from builtin_cron import list_builtin_jobs, get_target_jobs_files, load_jobs_from_file  # type: ignore
+        for tf in get_target_jobs_files():
+            if tf.exists():
+                for j in load_jobs_from_file(tf):
+                    if isinstance(j, dict) and j.get("id") == job_id:
+                        if not j.get("enabled", True) or j.get("state") == "paused":
+                            _log.debug("Scanner job '%s' is paused/disabled in %s; skipping spawn", job_id, tf)
+                            return None
+        all_jobs = list_builtin_jobs()
+        job = next((j for j in all_jobs if j.get("id") == job_id), None)
+        if job and not job.get("enabled", True):
+            _log.debug("Scanner job '%s' is paused/disabled; skipping spawn for board '%s'", job_id, board_slug)
+            return None
     except Exception as e:
-        _log.debug("Pre-spawn job unpause check: %s", e)
+        _log.debug("Scanner enabled check failed: %s", e)
 
     cmd = [hermes_bin, "-p", "zf-orchestrator", "cron", "run", job_id, "--accept-hooks"]
 
@@ -2678,10 +2700,13 @@ def _dispatcher_loop():
 
         try:
             try:
-                from .builtin_cron import tick_builtin_cron
+                from .builtin_cron import is_cron_scheduler_enabled, tick_builtin_cron
             except ImportError:
-                from builtin_cron import tick_builtin_cron  # type: ignore
-            tick_builtin_cron()
+                from builtin_cron import is_cron_scheduler_enabled, tick_builtin_cron  # type: ignore
+            if is_cron_scheduler_enabled():
+                tick_builtin_cron()
+            else:
+                _log.debug("Builtin cron scheduler disabled; skipping periodic tick")
         except Exception as e:
             _log.debug("Builtin cron tick check: %s", e)
 

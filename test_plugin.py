@@ -695,6 +695,51 @@ class TestZeroFactory(unittest.TestCase):
             reset_job = next(j for j in res_after_reset.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")
             self.assertEqual(reset_job["schedule"]["minutes"], 120)
             self.assertFalse(reset_job["custom_config"])
+
+            # 7. POST /cron/scheduler/toggle (master scheduler engine toggle)
+            # Toggle OFF
+            res_sched_off = client.post("/api/plugins/zerofactory/cron/scheduler/toggle", json={"enabled": False})
+            self.assertEqual(res_sched_off.status_code, 200)
+            self.assertFalse(res_sched_off.json()["scheduler_enabled"])
+
+            # Verify all ZF jobs in jobs.json are paused when scheduler is disabled
+            jobs_paused = load_jobs_from_file(test_jobs_path)
+            for j in jobs_paused:
+                if j["id"].startswith("zero-factory-"):
+                    self.assertFalse(j["enabled"])
+                    self.assertEqual(j["state"], "paused")
+
+            # GET /cron reflects scheduler_enabled: false and paused jobs
+            res_cron_paused = client.get("/api/plugins/zerofactory/cron")
+            self.assertFalse(res_cron_paused.json()["scheduler_enabled"])
+            self.assertFalse(next(j for j in res_cron_paused.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")["enabled"])
+
+            # Toggle ON
+            res_sched_on = client.post("/api/plugins/zerofactory/cron/scheduler/toggle", json={"enabled": True})
+            self.assertEqual(res_sched_on.status_code, 200)
+            self.assertTrue(res_sched_on.json()["scheduler_enabled"])
+
+            # Verify ZF jobs are resumed
+            jobs_resumed = load_jobs_from_file(test_jobs_path)
+            for j in jobs_resumed:
+                if j["id"].startswith("zero-factory-"):
+                    self.assertTrue(j["enabled"])
+                    self.assertEqual(j["state"], "scheduled")
+
+            # 8. PATCH /settings with enable_cron_scheduler: false
+            res_patch = client.patch("/api/plugins/zerofactory/settings", json={"enable_cron_scheduler": False})
+            self.assertEqual(res_patch.status_code, 200)
+            self.assertFalse(res_patch.json()["settings"]["enable_cron_scheduler"])
+
+            # Verify jobs in jobs.json are paused by PATCH /settings
+            jobs_settings_paused = load_jobs_from_file(test_jobs_path)
+            for j in jobs_settings_paused:
+                if j["id"].startswith("zero-factory-"):
+                    self.assertFalse(j["enabled"])
+                    self.assertEqual(j["state"], "paused")
+
+            # Restore scheduler to enabled
+            client.patch("/api/plugins/zerofactory/settings", json={"enable_cron_scheduler": True})
         finally:
             if orig_cron_override:
                 os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = orig_cron_override
@@ -5268,6 +5313,211 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             {"zf-builder", "zf-reviewer", "zf-orchestrator"},
         )
         self.assertNotIn("unassigned", D.VALID_PROFILES)
+
+    def test_81_cron_scheduler_disabled_in_config(self):
+        """Verify that the cron scheduler can be disabled via config.yaml, settings table, and env."""
+        import tempfile
+        import sqlite3
+        import yaml
+        from unittest.mock import patch, MagicMock
+        from builtin_cron import (
+            is_cron_scheduler_enabled,
+            tick_builtin_cron,
+            toggle_builtin_job,
+            ensure_builtin_cron_jobs,
+            load_jobs_from_file,
+            save_jobs_to_file,
+        )
+        from dispatcher import spawn_board_scanner
+        import settings
+
+        # 1. Verify default is enabled
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ZEROFACTORY_ENABLE_CRON_SCHEDULER", None)
+            os.environ.pop("ZEROFACTORY_DISABLE_CRON_SCHEDULER", None)
+            os.environ.pop("HERMES_CRON_ENABLED", None)
+            os.environ.pop("ZEROFACTORY_CONFIG_FILE", None)
+            self.assertTrue(is_cron_scheduler_enabled())
+
+        # 2. Environment variable overrides
+        with patch.dict(os.environ, {"ZEROFACTORY_ENABLE_CRON_SCHEDULER": "0"}):
+            self.assertFalse(is_cron_scheduler_enabled())
+        with patch.dict(os.environ, {"ZEROFACTORY_ENABLE_CRON_SCHEDULER": "false"}):
+            self.assertFalse(is_cron_scheduler_enabled())
+        with patch.dict(os.environ, {"ZEROFACTORY_DISABLE_CRON_SCHEDULER": "1"}):
+            self.assertFalse(is_cron_scheduler_enabled())
+        with patch.dict(os.environ, {"HERMES_CRON_ENABLED": "0"}):
+            self.assertFalse(is_cron_scheduler_enabled())
+
+        # 3. Settings table in DB
+        with tempfile.NamedTemporaryFile(suffix=".db") as tf:
+            with sqlite3.connect(tf.name) as conn:
+                conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)")
+                conn.execute("INSERT INTO settings VALUES ('enable_cron_scheduler', 'false', 1000)")
+                conn.commit()
+                self.assertFalse(is_cron_scheduler_enabled(conn))
+
+                # Verify settings module parses it
+                loaded = settings.load_settings(conn)
+                self.assertFalse(loaded["enable_cron_scheduler"])
+
+                # Update to true
+                conn.execute("UPDATE settings SET value = 'true' WHERE key = 'enable_cron_scheduler'")
+                conn.commit()
+                self.assertTrue(is_cron_scheduler_enabled(conn))
+
+        # 4. config.yaml variations
+        configs_to_test = [
+            {"cron": {"enabled": False}},
+            {"cron": {"scheduler": False}},
+            {"cron": {"scheduler": {"enabled": False}}},
+            {"cron": False},
+            {"plugins": {"entries": {"zerofactory": {"cron_scheduler": False}}}},
+            {"plugins": {"entries": {"zerofactory": {"enable_cron_scheduler": False}}}},
+        ]
+        for cfg_data in configs_to_test:
+            with tempfile.NamedTemporaryFile(mode="w+", suffix=".yaml") as yf:
+                yaml.dump(cfg_data, yf)
+                yf.flush()
+                with patch.dict(os.environ, {"ZEROFACTORY_CONFIG_FILE": yf.name}):
+                    self.assertFalse(is_cron_scheduler_enabled(), f"Failed for config: {cfg_data}")
+
+        # 5. tick_builtin_cron skips execution when disabled
+        mock_cron_mod = MagicMock()
+        with patch.dict(sys.modules, {"cron": MagicMock(), "cron.scheduler": mock_cron_mod}):
+            with patch("builtin_cron.is_cron_scheduler_enabled", return_value=False):
+                result = tick_builtin_cron()
+                self.assertEqual(result, 0)
+                mock_cron_mod.tick.assert_not_called()
+
+            with patch("builtin_cron.is_cron_scheduler_enabled", return_value=True):
+                mock_cron_mod.tick.return_value = 2
+                result = tick_builtin_cron()
+                self.assertEqual(result, 2)
+                mock_cron_mod.tick.assert_called()
+
+        # 6. spawn_board_scanner returns None when disabled
+        with patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "", "ZEROFACTORY_SKIP_SCANNER_SPAWN": ""}):
+            with patch("builtin_cron.is_cron_scheduler_enabled", return_value=False):
+                with patch("subprocess.Popen") as mock_popen:
+                    pid = spawn_board_scanner("test-board")
+                    self.assertIsNone(pid)
+                    mock_popen.assert_not_called()
+
+        # 7. Preserving custom_config when toggling job enabled status
+        with tempfile.NamedTemporaryFile(suffix=".json") as jf:
+            jobs_path = Path(jf.name)
+            initial_jobs = [
+                {
+                    "id": "zero-factory-task-queue-check",
+                    "name": "Queue Check",
+                    "schedule": {"kind": "interval", "minutes": 120},
+                    "enabled": True,
+                    "state": "scheduled",
+                    "custom_config": False,
+                }
+            ]
+            save_jobs_to_file(jobs_path, initial_jobs)
+            with patch("builtin_cron.get_target_jobs_files", return_value=[jobs_path]), \
+                 patch.dict(os.environ, {"ZEROFACTORY_CRON_JOBS_FILE": str(jobs_path)}):
+                # Toggle to disabled
+                res = toggle_builtin_job("zero-factory-task-queue-check", enabled=False)
+                self.assertTrue(res["ok"])
+                saved = load_jobs_from_file(jobs_path)
+                self.assertFalse(saved[0]["enabled"])
+                self.assertEqual(saved[0]["state"], "paused")
+                self.assertTrue(saved[0]["custom_config"])
+
+                # ensure_builtin_cron_jobs should preserve the paused state because custom_config is True
+                ensure_builtin_cron_jobs()
+                saved_after_sync = load_jobs_from_file(jobs_path)
+                self.assertFalse(saved_after_sync[0]["enabled"])
+                self.assertEqual(saved_after_sync[0]["state"], "paused")
+
+    def test_82_settings_api_enable_cron_scheduler(self):
+        """Verify GET /settings and PATCH /settings handle enable_cron_scheduler."""
+        # 1. Update setting via PATCH
+        resp = client.patch("/api/plugins/zerofactory/settings", json={"enable_cron_scheduler": False})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data["settings"]["enable_cron_scheduler"])
+
+        # 2. Verify via GET
+        resp_get = client.get("/api/plugins/zerofactory/settings")
+        self.assertEqual(resp_get.status_code, 200)
+        self.assertFalse(resp_get.json()["settings"]["enable_cron_scheduler"])
+
+        # 3. Restore to True
+        resp_restore = client.patch("/api/plugins/zerofactory/settings", json={"enable_cron_scheduler": True})
+        self.assertEqual(resp_restore.status_code, 200)
+        self.assertTrue(resp_restore.json()["settings"]["enable_cron_scheduler"])
+
+    def test_83_cron_config_ui_scheduler_toggle_and_job_pause(self):
+        """Verify scheduler toggle endpoint and that paused jobs remain paused across sync and dispatcher."""
+        from unittest.mock import patch
+        from builtin_cron import get_target_jobs_files, ensure_builtin_cron_jobs, load_jobs_from_file
+        from dispatcher import spawn_board_scanner
+
+        # 1. GET /cron returns scheduler_enabled
+        resp = client.get("/api/plugins/zerofactory/cron")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("scheduler_enabled", data)
+        self.assertTrue(data["scheduler_enabled"])
+
+        # 2. Toggle scheduler off via POST /cron/scheduler/toggle
+        resp_toggle_off = client.post("/api/plugins/zerofactory/cron/scheduler/toggle", json={"enabled": False})
+        self.assertEqual(resp_toggle_off.status_code, 200)
+        self.assertFalse(resp_toggle_off.json()["scheduler_enabled"])
+
+        # Verify reflected in GET /cron
+        resp2 = client.get("/api/plugins/zerofactory/cron")
+        self.assertFalse(resp2.json()["scheduler_enabled"])
+
+        # Toggle scheduler back on
+        resp_toggle_on = client.post("/api/plugins/zerofactory/cron/scheduler/toggle", json={"enabled": True})
+        self.assertEqual(resp_toggle_on.status_code, 200)
+        self.assertTrue(resp_toggle_on.json()["scheduler_enabled"])
+
+        # 3. Test job pause persistence in cron jobs file
+        with tempfile.NamedTemporaryFile(suffix=".json") as jf:
+            jobs_path = Path(jf.name)
+            with patch("builtin_cron.get_target_jobs_files", return_value=[jobs_path]), \
+                 patch.dict(os.environ, {"ZEROFACTORY_CRON_JOBS_FILE": str(jobs_path)}):
+                # Ensure jobs are registered
+                ensure_builtin_cron_jobs()
+
+                # Toggle zero-factory-task-queue-check to disabled
+                resp_job_toggle = client.post(
+                    "/api/plugins/zerofactory/cron/zero-factory-task-queue-check/toggle",
+                    json={"enabled": False}
+                )
+                self.assertEqual(resp_job_toggle.status_code, 200)
+                self.assertTrue(resp_job_toggle.json()["ok"])
+
+                # Verify GET /cron still shows it as paused (ensure_builtin_cron_jobs called inside GET /cron must not re-enable it!)
+                resp_after_get = client.get("/api/plugins/zerofactory/cron")
+                job_state = next(j for j in resp_after_get.json()["jobs"] if j["id"] == "zero-factory-task-queue-check")
+                self.assertFalse(job_state["enabled"])
+                self.assertEqual(job_state["state"], "paused")
+
+                # Verify scanner job pause prevents spawn_board_scanner without re-enabling
+                # First pause scanner job
+                scanner_id = "zero-factory-improvement-scanner-test-board"
+                from builtin_cron import update_builtin_job
+                update_builtin_job(scanner_id, {"enabled": False})
+                with patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "", "ZEROFACTORY_SKIP_SCANNER_SPAWN": ""}):
+                    with patch("subprocess.Popen") as mock_popen:
+                        pid = spawn_board_scanner("test-board")
+                        self.assertIsNone(pid)
+                        mock_popen.assert_not_called()
+
+                # Verify scanner job is STILL paused and was NOT force-unpaused by spawn_board_scanner
+                saved_jobs = load_jobs_from_file(jobs_path)
+                scanner_saved = next((j for j in saved_jobs if j.get("id") == scanner_id), None)
+                if scanner_saved:
+                    self.assertFalse(scanner_saved["enabled"])
+                    self.assertEqual(scanner_saved["state"], "paused")
 
 
 if __name__ == "__main__":

@@ -89,10 +89,12 @@
       scan_on_idle: true,
       idle_scan_active_threshold: 2,
       idle_scan_cooldown_minutes: 15,
-      idle_scan_max_todo: 2
+      idle_scan_max_todo: 2,
+      enable_cron_scheduler: true
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [cronJobs, setCronJobs] = useState([]);
+    const [cronSchedulerEnabled, setCronSchedulerEnabled] = useState(true);
     const [loadingCron, setLoadingCron] = useState(false);
     const [cronFilterTab, setCronFilterTab] = useState("all");
     const [runningCronId, setRunningCronId] = useState(null);
@@ -156,14 +158,17 @@
       try {
         const data = await fetchJSON(API_BASE + "/settings");
         if (data && data.settings) {
+          const isCronEnabled = data.settings.enable_cron_scheduler ?? true;
           setSettingsForm({
             max_active_tasks: data.settings.max_active_tasks ?? 10,
             default_max_concurrent_workers: data.settings.default_max_concurrent_workers ?? 1,
             scan_on_idle: data.settings.scan_on_idle ?? true,
             idle_scan_active_threshold: data.settings.idle_scan_active_threshold ?? 2,
             idle_scan_cooldown_minutes: data.settings.idle_scan_cooldown_minutes ?? 15,
-            idle_scan_max_todo: data.settings.idle_scan_max_todo ?? 2
+            idle_scan_max_todo: data.settings.idle_scan_max_todo ?? 2,
+            enable_cron_scheduler: isCronEnabled
           });
+          setCronSchedulerEnabled(isCronEnabled);
         }
       } catch (e) {
         console.error("Failed to load settings", e);
@@ -180,7 +185,8 @@
           scan_on_idle: Boolean(settingsForm.scan_on_idle),
           idle_scan_active_threshold: Math.max(1, parseInt(settingsForm.idle_scan_active_threshold, 10) || 2),
           idle_scan_cooldown_minutes: Math.max(1, parseInt(settingsForm.idle_scan_cooldown_minutes, 10) || 15),
-          idle_scan_max_todo: Math.max(0, parseInt(settingsForm.idle_scan_max_todo, 10) || 0)
+          idle_scan_max_todo: Math.max(0, parseInt(settingsForm.idle_scan_max_todo, 10) || 0),
+          enable_cron_scheduler: Boolean(settingsForm.enable_cron_scheduler !== false)
         };
         const res = await fetchJSON(API_BASE + "/settings", {
           method: "PATCH",
@@ -188,14 +194,18 @@
           body: JSON.stringify(payload)
         });
         if (res && res.settings) {
+          const isCronEnabled = res.settings.enable_cron_scheduler ?? true;
           setSettingsForm({
             max_active_tasks: res.settings.max_active_tasks ?? 10,
             default_max_concurrent_workers: res.settings.default_max_concurrent_workers ?? 1,
             scan_on_idle: res.settings.scan_on_idle ?? true,
             idle_scan_active_threshold: res.settings.idle_scan_active_threshold ?? 2,
             idle_scan_cooldown_minutes: res.settings.idle_scan_cooldown_minutes ?? 15,
-            idle_scan_max_todo: res.settings.idle_scan_max_todo ?? 2
+            idle_scan_max_todo: res.settings.idle_scan_max_todo ?? 2,
+            enable_cron_scheduler: isCronEnabled
           });
+          setCronSchedulerEnabled(isCronEnabled);
+          loadCronJobs();
         }
         showToast("Global settings saved successfully!", "success");
         setShowSettingsModal(false);
@@ -267,22 +277,28 @@
       try {
         setLoadingCron(true);
         const data = await fetchJSON(API_BASE + "/cron");
-        if (data && data.jobs) {
-          setCronJobs(data.jobs);
-          const forms = {};
-          data.jobs.forEach(j => {
-            const sched = j.schedule || {};
-            forms[j.id] = {
-              minutes: sched.kind === "interval" ? sched.minutes : 60,
-              cron_expr: sched.kind === "cron" ? sched.expr : "0 9 * * *",
-              schedule_kind: sched.kind || "interval",
-              prompt: j.prompt || "",
-              model: j.model || "",
-              workdir: j.workdir || "",
-              name: j.name || ""
-            };
-          });
-          setCronEditForms(forms);
+        if (data) {
+          if (typeof data.scheduler_enabled === "boolean") {
+            setCronSchedulerEnabled(data.scheduler_enabled);
+          }
+          if (data.jobs) {
+            setCronJobs(data.jobs);
+            const forms = {};
+            data.jobs.forEach(j => {
+              const sched = j.schedule || {};
+              forms[j.id] = {
+                minutes: sched.kind === "interval" ? sched.minutes : 60,
+                cron_expr: sched.kind === "cron" ? sched.expr : "0 9 * * *",
+                schedule_kind: sched.kind || "interval",
+                prompt: j.prompt || "",
+                model: j.model || "",
+                workdir: j.workdir || "",
+                name: j.name || "",
+                enabled: j.enabled !== false
+              };
+            });
+            setCronEditForms(forms);
+          }
         }
       } catch (err) {
         showToast("Failed to load cron automation jobs: " + err.message, "error");
@@ -290,6 +306,27 @@
         setLoadingCron(false);
       }
     }, [showToast]);
+
+    const handleToggleCronScheduler = useCallback(async (currentEnabled) => {
+      try {
+        const nextEnabled = !currentEnabled;
+        const res = await fetchJSON(API_BASE + "/cron/scheduler/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: nextEnabled })
+        });
+        if (res && res.ok) {
+          showToast(nextEnabled ? "Cron scheduler activated" : "Cron scheduler paused", "success");
+          setCronSchedulerEnabled(nextEnabled);
+          loadCronJobs();
+          loadSettings();
+        } else {
+          showToast("Failed to toggle cron scheduler: " + (res.error || "Unknown error"), "error");
+        }
+      } catch (err) {
+        showToast("Error toggling cron scheduler: " + err.message, "error");
+      }
+    }, [loadCronJobs, loadSettings, showToast]);
 
     const handleToggleCronJob = useCallback(async (jobId, currentEnabled) => {
       try {
@@ -338,7 +375,8 @@
           name: form.name,
           prompt: form.prompt,
           model: form.model || null,
-          workdir: form.workdir || null
+          workdir: form.workdir || null,
+          enabled: form.enabled !== false
         };
         if (form.schedule_kind === "interval") {
           payload.minutes = parseInt(form.minutes, 10) || 60;
@@ -2610,18 +2648,23 @@
                 title: "Configure built-in Cron schedules and periodic automation"
               },
               "⏰ Cron Config",
-              cronJobs.length > 0 &&
-                React.createElement(
-                  "span",
-                  {
-                    className:
-                      "px-1.5 py-0.5 rounded-full text-[10px] font-bold " +
-                      (cronJobs.some((j) => j.enabled)
-                        ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
-                        : "bg-slate-800 text-slate-400")
-                  },
-                  cronJobs.filter((j) => j.enabled).length + "/" + cronJobs.length
-                )
+              React.createElement(
+                "span",
+                {
+                  className:
+                    "px-1.5 py-0.5 rounded-full text-[10px] font-bold " +
+                    (!cronSchedulerEnabled
+                      ? "bg-rose-950/90 text-rose-300 border border-rose-800/80 shadow-xs"
+                      : cronJobs.some((j) => j.enabled)
+                      ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                      : "bg-slate-800 text-slate-400")
+                },
+                !cronSchedulerEnabled
+                  ? "PAUSED"
+                  : cronJobs.length > 0
+                  ? cronJobs.filter((j) => j.enabled).length + "/" + cronJobs.length
+                  : "CRON"
+              )
             ),
             React.createElement(
               "button",
@@ -4114,6 +4157,29 @@
               ),
               React.createElement(
                 "div",
+                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-between" },
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Background Cron Scheduler"),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Enable periodic background cron ticking for queue health checks, daily metrics, and automated scanners.")
+                  ),
+                  React.createElement(
+                    "input",
+                    {
+                      type: "checkbox",
+                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                      checked: settingsForm.enable_cron_scheduler !== false,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, enable_cron_scheduler: e.target.checked })
+                    }
+                  )
+                )
+              ),
+              React.createElement(
+                "div",
                 { className: "flex justify-end gap-2.5 pt-3 border-t border-slate-800/80" },
                 React.createElement(
                   "button",
@@ -4186,6 +4252,53 @@
                     onClick: () => setShowCronModal(false)
                   },
                   "✕"
+                )
+              )
+            ),
+            // Master Scheduler Engine Control Banner
+            React.createElement(
+              "div",
+              { className: "px-6 py-3.5 bg-slate-950/70 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0" },
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-3" },
+                React.createElement(
+                  "div",
+                  { className: "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold " + (cronSchedulerEnabled ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30") },
+                  cronSchedulerEnabled ? "⚡" : "⏸"
+                ),
+                React.createElement(
+                  "div",
+                  null,
+                  React.createElement(
+                    "div",
+                    { className: "flex items-center gap-2" },
+                    React.createElement("span", { className: "text-xs font-bold text-white tracking-wide" }, "Periodic Cron Scheduler Engine"),
+                    React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-bold " + (cronSchedulerEnabled ? "bg-emerald-950 text-emerald-300 border border-emerald-800/60" : "bg-rose-950 text-rose-300 border border-rose-800/60") }, cronSchedulerEnabled ? "Running (15s Ticks)" : "Disabled / Paused")
+                  ),
+                  React.createElement("p", { className: "text-[11px] text-slate-400 m-0 mt-0.5" },
+                    cronSchedulerEnabled
+                      ? "Background daemon actively ticks due jobs and spawns idle improvement scanners."
+                      : "Master cron scheduler is disabled. All background ticking and autonomous scans are halted."
+                  )
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" },
+                React.createElement("span", { className: "text-xs font-semibold " + (cronSchedulerEnabled ? "text-emerald-400" : "text-slate-500") }, cronSchedulerEnabled ? "Active" : "Disabled"),
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    role: "switch",
+                    "aria-checked": cronSchedulerEnabled,
+                    onClick: () => handleToggleCronScheduler(cronSchedulerEnabled),
+                    className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (cronSchedulerEnabled ? "bg-emerald-600" : "bg-slate-700")
+                  },
+                  React.createElement("span", {
+                    className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (cronSchedulerEnabled ? "translate-x-4" : "translate-x-0")
+                  })
                 )
               )
             ),
@@ -4343,6 +4456,19 @@
                       React.createElement(
                         "button",
                         {
+                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold " +
+                            (job.enabled
+                              ? "bg-slate-800 hover:bg-rose-950/50 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800/60"
+                              : "bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/80") +
+                            " transition-colors cursor-pointer",
+                          onClick: () => handleToggleCronJob(job.id, job.enabled),
+                          title: job.enabled ? "Pause scheduled automation for this job" : "Resume scheduled automation for this job"
+                        },
+                        job.enabled ? "⏸ Pause" : "▶ Resume"
+                      ),
+                      React.createElement(
+                        "button",
+                        {
                           className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
                           onClick: () => setEditingCronId(isEditing ? null : job.id),
                           title: isEditing ? "Close configuration editor" : "Edit schedule and parameters"
@@ -4384,33 +4510,43 @@
                           { label: "Every 120m", kind: "interval", minutes: 120 },
                           { label: "Daily 09:00", kind: "cron", expr: "0 9 * * *" },
                           { label: "Custom Interval", kind: "interval", custom: true },
-                          { label: "Custom Cron", kind: "cron", custom: true }
+                          { label: "Custom Cron", kind: "cron", custom: true },
+                          { label: form.enabled === false ? "⏸ Paused (Selected)" : "⏸ Pause Schedule", kind: "pause_toggle" }
                         ].map((preset, pIdx) => {
-                          const isSel = preset.custom
-                            ? form.schedule_kind === preset.kind && form.is_custom_mode === preset.kind
-                            : form.schedule_kind === preset.kind && (preset.kind === "interval" ? parseInt(form.minutes, 10) === preset.minutes : form.cron_expr === preset.expr);
+                          const isSel = preset.kind === "pause_toggle"
+                            ? form.enabled === false
+                            : form.enabled !== false && (preset.custom
+                              ? form.schedule_kind === preset.kind && form.is_custom_mode === preset.kind
+                              : form.schedule_kind === preset.kind && (preset.kind === "interval" ? parseInt(form.minutes, 10) === preset.minutes : form.cron_expr === preset.expr));
                           return React.createElement(
                             "button",
                             {
                               key: pIdx,
                               type: "button",
                               className: "px-2.5 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer " +
-                                (isSel ? "bg-indigo-600 text-white border-indigo-500 shadow-xs" : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800"),
+                                (isSel
+                                  ? (preset.kind === "pause_toggle" ? "bg-rose-600 text-white border-rose-500 shadow-xs" : "bg-indigo-600 text-white border-indigo-500 shadow-xs")
+                                  : (preset.kind === "pause_toggle" ? "bg-rose-950/40 text-rose-300 border-rose-900/60 hover:bg-rose-900/60" : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800")),
                               onClick: () => {
-                                if (preset.custom) {
+                                if (preset.kind === "pause_toggle") {
                                   setCronEditForms({
                                     ...cronEditForms,
-                                    [job.id]: { ...form, schedule_kind: preset.kind, is_custom_mode: preset.kind }
+                                    [job.id]: { ...form, enabled: form.enabled === false }
+                                  });
+                                } else if (preset.custom) {
+                                  setCronEditForms({
+                                    ...cronEditForms,
+                                    [job.id]: { ...form, schedule_kind: preset.kind, is_custom_mode: preset.kind, enabled: true }
                                   });
                                 } else if (preset.kind === "interval") {
                                   setCronEditForms({
                                     ...cronEditForms,
-                                    [job.id]: { ...form, schedule_kind: "interval", minutes: preset.minutes, is_custom_mode: null }
+                                    [job.id]: { ...form, schedule_kind: "interval", minutes: preset.minutes, is_custom_mode: null, enabled: true }
                                   });
                                 } else {
                                   setCronEditForms({
                                     ...cronEditForms,
-                                    [job.id]: { ...form, schedule_kind: "cron", cron_expr: preset.expr, is_custom_mode: null }
+                                    [job.id]: { ...form, schedule_kind: "cron", cron_expr: preset.expr, is_custom_mode: null, enabled: true }
                                   });
                                 }
                               }
@@ -4486,6 +4622,32 @@
                             [job.id]: { ...form, workdir: e.target.value }
                           })
                         })
+                      )
+                    ),
+                    // Schedule Status control in Edit Drawer
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between p-3 rounded-xl bg-slate-900/90 border border-slate-800" },
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement("span", { className: "text-xs font-semibold text-white block" }, "Schedule Status"),
+                        React.createElement("span", { className: "text-[11px] text-slate-400 block mt-0.5" }, form.enabled !== false ? "Job runs periodically according to schedule." : "Schedule is paused — job will not trigger automatically.")
+                      ),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border " +
+                            (form.enabled !== false
+                              ? "bg-emerald-950 text-emerald-300 border-emerald-700/80 hover:bg-emerald-900"
+                              : "bg-rose-950 text-rose-300 border-rose-700/80 hover:bg-rose-900"),
+                          onClick: () => setCronEditForms({
+                            ...cronEditForms,
+                            [job.id]: { ...form, enabled: form.enabled === false }
+                          })
+                        },
+                        form.enabled !== false ? "✓ Scheduled (Active)" : "⏸ Paused (Disabled)"
                       )
                     ),
                     // Prompt Editor
