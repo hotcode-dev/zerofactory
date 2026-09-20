@@ -37,6 +37,10 @@ class TestZeroFactory(unittest.TestCase):
 
     def setUp(self):
         init_db()
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+
+    def tearDown(self):
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
     def test_01_init_and_boards(self):
         req = BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory", description="AI workflow")
@@ -276,7 +280,7 @@ class TestZeroFactory(unittest.TestCase):
         t_data_fail = get_task(t_id_fail)["task"]
         self.assertEqual(t_data_fail["status"], "blocked")
 
-        os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
     def test_09_session_progress_resolution(self):
         # 1. Create board with omitted optional description (tests None coalesce)
@@ -1769,7 +1773,7 @@ class TestZeroFactory(unittest.TestCase):
             with contextlib.redirect_stdout(buf):
                 rc = wd.run_watchdog()
         finally:
-            os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
         out = buf.getvalue()
         self.assertEqual(rc, 0)
@@ -1802,7 +1806,6 @@ class TestZeroFactory(unittest.TestCase):
 
         import shutil
         orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
-        orig_skip_spawn = os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
         td = tempfile.mkdtemp()
         try:
             repo_path = Path(td) / "test_repo"
@@ -1879,7 +1882,8 @@ class TestZeroFactory(unittest.TestCase):
                     return m
                 return orig_popen(cmd, *args, **kwargs)
 
-            with patch("subprocess.Popen", side_effect=fake_popen):
+            with patch("subprocess.Popen", side_effect=fake_popen), \
+                 patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": ""}):
                 pid, sid = spawn_agent_worker(
                     "task-1",
                     "Implement feature [PR Conflict]",
@@ -2020,8 +2024,7 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
-            if orig_skip_spawn is not None:
-                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+            os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
     def test_32a_non_ff_merge_succeeds_no_false_conflict(self):
         """Regression: pull_and_merge_main() must perform a NON-fast-forward
@@ -2598,6 +2601,20 @@ class TestZeroFactory(unittest.TestCase):
                 cmt = cur.execute("SELECT body FROM task_comments WHERE task_id = 'task-retry' ORDER BY id DESC LIMIT 1").fetchone()
                 self.assertIsNotNone(cmt)
                 self.assertIn("Merge Conflict Resolution Failed", cmt["body"])
+
+                # Call 5 (subsequent call after exceeding limit) must be a no-op
+                _handle_local_merge_conflict(cur, "task-retry", "Feature X", str(ws_dir), ["conflict.txt"], now, "conflict")
+                conn.commit()
+                row = cur.execute("SELECT status, metadata FROM tasks WHERE id = 'task-retry'").fetchone()
+                self.assertEqual(row["status"], "blocked")
+                meta = json.loads(row["metadata"] or "{}")
+                self.assertEqual(meta.get("conflict_retries"), 4)
+                act_count = cur.execute("SELECT count(*) FROM task_activity WHERE task_id = 'task-retry' AND action = 'pr_conflict_failed'").fetchone()[0]
+                self.assertEqual(act_count, 1)
+                cmt_count = cur.execute("SELECT count(*) FROM task_comments WHERE task_id = 'task-retry'").fetchone()[0]
+                self.assertEqual(cmt_count, 4)
+                failed_cmt_count = cur.execute("SELECT count(*) FROM task_comments WHERE task_id = 'task-retry' AND body LIKE '%Resolution Failed%'").fetchone()[0]
+                self.assertEqual(failed_cmt_count, 1)
         finally:
             shutil.rmtree(td, ignore_errors=True)
 
@@ -2695,6 +2712,147 @@ class TestZeroFactory(unittest.TestCase):
 
                 # Reviewer worktree was force-removed before re-setup
                 self.assertFalse(reviewer_ws.exists())
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_36b_github_conflicting_pr_suppresses_flooding_when_blocked(self):
+        """Verify that a task that is already blocked and exceeded conflict retries
+        does NOT flood comments, activity, or increment retries when gh reports CONFLICTING."""
+        from dispatcher import run_dispatch_cycle
+        import json
+        import shutil
+        import sqlite3
+        import subprocess
+        from unittest.mock import patch, MagicMock
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "test_repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+            (repo_path / "README.md").write_text("# Test Repo\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(repo_path), check=True, capture_output=True)
+
+            db_file = Path(td) / "conflict_gh_flood.db"
+            self._create_conflict_test_db(db_file)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, metadata, created_at, updated_at)
+                    VALUES ('task-blocked-conflict', 'Fix bug [PR Opened by zf-builder] [PR Conflict]', 'blocked', 'zf-builder', NULL, 'task/task-blocked-conflict',
+                            'https://github.com/hotcode-dev/zerofactory/pull/123', '{"conflict_retries": 4}', 1000, 1000)
+                """)
+                conn.commit()
+
+            orig_run = subprocess.run
+            def fake_run(cmd, *args, **kwargs):
+                if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr" and cmd[2] == "view":
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = json.dumps({
+                        "state": "OPEN",
+                        "reviewDecision": None,
+                        "url": "https://github.com/hotcode-dev/zerofactory/pull/123",
+                        "mergeable": "CONFLICTING",
+                    })
+                    return res
+                return orig_run(cmd, *args, **kwargs)
+
+            with patch("dispatcher.setup_worktree") as mock_setup_wt, \
+                 patch("subprocess.run", side_effect=fake_run):
+                res = run_dispatch_cycle(db_file)
+
+            self.assertTrue(res.get("ok"))
+            mock_setup_wt.assert_not_called()
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                row = cur.execute("SELECT status, metadata FROM tasks WHERE id = 'task-blocked-conflict'").fetchone()
+                self.assertEqual(row["status"], "blocked")
+                meta = json.loads(row["metadata"] or "{}")
+                self.assertEqual(meta.get("conflict_retries"), 4)
+
+                acts = cur.execute("SELECT count(*) FROM task_activity WHERE task_id = 'task-blocked-conflict'").fetchone()[0]
+                self.assertEqual(acts, 0)
+                cmts = cur.execute("SELECT count(*) FROM task_comments WHERE task_id = 'task-blocked-conflict'").fetchone()[0]
+                self.assertEqual(cmts, 0)
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_36c_author_handoff_with_existing_pr_url(self):
+        """Verify that when an author resolves conflicts on an existing PR, the dispatcher
+        commits and pushes changes instead of bypassing handoff."""
+        from dispatcher import run_dispatch_cycle
+        import json
+        import shutil
+        import sqlite3
+        import subprocess
+        from unittest.mock import patch, MagicMock
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "test_repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+            (repo_path / "README.md").write_text("# Test Repo\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(repo_path), check=True, capture_output=True)
+
+            ws_dir = Path(td) / "ws_author"
+            subprocess.run(
+                ["git", "worktree", "add", str(ws_dir), "-b", "task/author-handoff"],
+                cwd=str(repo_path), check=True, capture_output=True
+            )
+            # Author makes a fix
+            (ws_dir / "fix.txt").write_text("fixed conflict\n")
+
+            db_file = Path(td) / "author_handoff.db"
+            self._create_conflict_test_db(db_file)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('task-author-handoff', 'Fix PR conflict [PR Opened by zf-builder]', 'blocked', 'zf-builder', ?, 'task/author-handoff',
+                            'https://github.com/hotcode-dev/zerofactory/pull/999', 1000, 1000)
+                """, (str(ws_dir),))
+                conn.commit()
+
+            orig_run = subprocess.run
+            pushed_calls = []
+
+            def fake_run(cmd, *args, **kwargs):
+                if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
+                    pushed_calls.append(cmd)
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = ""
+                    return res
+                return orig_run(cmd, *args, **kwargs)
+
+            with patch("subprocess.run", side_effect=fake_run):
+                res = run_dispatch_cycle(db_file)
+
+            self.assertTrue(res.get("ok"))
+            self.assertGreaterEqual(len(pushed_calls), 1)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                row = cur.execute("SELECT status, assignee FROM tasks WHERE id = 'task-author-handoff'").fetchone()
+                self.assertEqual(row["status"], "ready")
+                self.assertEqual(row["assignee"], "zf-reviewer")
         finally:
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is not None:
@@ -3258,7 +3416,7 @@ class TestZeroFactory(unittest.TestCase):
             return mock_proc
 
         with patch("subprocess.Popen", side_effect=mock_popen):
-            with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "parent-task-id"}, clear=False):
+            with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "parent-task-id", "ZEROFACTORY_SKIP_WORKER_SPAWN": ""}, clear=False):
                 pid, sess = spawn_agent_worker(
                     task_id="zf-testenv",
                     title="Test Env Task",
@@ -3994,7 +4152,8 @@ class TestZeroFactory(unittest.TestCase):
             repo_path.mkdir()
             with patch("dispatcher.sync_repo_main") as mock_sync, \
                  patch("subprocess.Popen") as mock_popen, \
-                 patch("builtin_cron.toggle_builtin_job"):
+                 patch("builtin_cron.toggle_builtin_job"), \
+                 patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "", "ZEROFACTORY_SKIP_SCANNER_SPAWN": ""}):
                 mock_proc = MagicMock()
                 mock_proc.pid = 4321
                 mock_popen.return_value = mock_proc
@@ -4586,6 +4745,57 @@ class TestZeroFactory(unittest.TestCase):
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
+    def test_format_inline_comment_line_range_handles_null_line(self):
+        """Regression: format_task_comment_body() must not interpolate a None
+        ``line`` into the inline-review anchor. GitHub leaves ``line`` null
+        (keeping only ``start_line``/``start_side``) for comments anchored to
+        lines no longer present in the diff, so the header must degrade to a
+        plain ``:L<start_line>`` instead of a literal ``:L<start>-None``."""
+        from dispatcher import format_task_comment_body
+
+        # start_line set, line is None (GitHub's line-no-longer-in-diff case)
+        null_line = format_task_comment_body({
+            "type": "inline_review",
+            "path": "dispatcher.py",
+            "line": None,
+            "start_line": 522,
+            "body": "anchored to a line no longer in the diff",
+        })
+        self.assertNotIn("None", null_line)
+        self.assertIn("GitHub Review Comment on `dispatcher.py:L522`", null_line)
+
+        # start_line set, line set and equal -> single-line anchor
+        same_line = format_task_comment_body({
+            "type": "inline_review",
+            "path": "dispatcher.py",
+            "line": 531,
+            "start_line": 531,
+            "body": "single-line anchor",
+        })
+        self.assertNotIn("None", same_line)
+        self.assertIn("GitHub Review Comment on `dispatcher.py:L531`", same_line)
+
+        # start_line and line both set and different -> range anchor (unchanged)
+        range_lines = format_task_comment_body({
+            "type": "inline_review",
+            "path": "dispatcher.py",
+            "line": 531,
+            "start_line": 522,
+            "body": "range anchor",
+        })
+        self.assertIn("GitHub Review Comment on `dispatcher.py:L522-531`", range_lines)
+
+        # neither line nor start_line -> no anchor suffix
+        no_anchor = format_task_comment_body({
+            "type": "inline_review",
+            "path": "dispatcher.py",
+            "line": None,
+            "start_line": None,
+            "body": "file-level comment",
+        })
+        self.assertNotIn("None", no_anchor)
+        self.assertIn("GitHub Review Comment on `dispatcher.py`", no_anchor)
+
     def test_review_comment_routes_to_builder_and_is_idempotent(self):
         """When a review comment is added to a PR on GitHub (even with state COMMENTED),
         the dispatcher must record it in task_comments, route the task to zf-builder,
@@ -4698,7 +4908,6 @@ class TestZeroFactory(unittest.TestCase):
         from unittest.mock import patch, MagicMock
         from dispatcher import spawn_agent_worker
 
-        orig_skip_spawn = os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
         td = tempfile.mkdtemp()
         try:
             db_file = Path(td) / "test_prompt.db"
@@ -4724,7 +4933,7 @@ class TestZeroFactory(unittest.TestCase):
                 proc.poll.return_value = None
                 return proc
 
-            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}), \
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file), "ZEROFACTORY_SKIP_WORKER_SPAWN": ""}), \
                  patch("dispatcher.check_unresolved_conflicts_safe", return_value=(True, [], "")), \
                  patch("subprocess.Popen", side_effect=fake_popen):
                 pid, sid = spawn_agent_worker(
@@ -4749,8 +4958,7 @@ class TestZeroFactory(unittest.TestCase):
             self.assertIn("Your goal as Builder (Fix Review Comments):", prompt)
         finally:
             shutil.rmtree(td, ignore_errors=True)
-            if orig_skip_spawn is not None:
-                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+            os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
 
 
@@ -5543,6 +5751,83 @@ class TestSharedProfilePathResolution(unittest.TestCase):
                 if scanner_saved:
                     self.assertFalse(scanner_saved["enabled"])
                     self.assertEqual(scanner_saved["state"], "paused")
+
+    def test_84_set_cron_scheduler_enabled_persists_to_conn(self):
+        """Regression: set_cron_scheduler_enabled(...) with a caller-provided
+        connection must COMMIT so the setting is durable on disk.
+
+        Prior to the fix, the ``conn is not None`` branch executed the
+        ``INSERT OR REPLACE`` but never called ``conn.commit()``, so the write
+        only survived if the caller happened to commit its own connection (the
+        dashboard endpoints do). Any other caller — or any read of the on-disk
+        state through a fresh connection — would still see the previous value.
+        The ``db_path`` branch and the function's documented "persist the
+        scheduler enabled state to database settings" contract both require the
+        commit, so this test pins the durable-write behavior.
+        """
+        import sqlite3
+        from unittest.mock import patch
+        from builtin_cron import set_cron_scheduler_enabled
+
+        with tempfile.NamedTemporaryFile(suffix=".db") as tf:
+            dbfile = Path(tf.name)
+            conn = sqlite3.connect(str(dbfile))
+            conn.execute(
+                "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)"
+            )
+            # Seed the default (enabled) state and flush it to disk.
+            conn.execute(
+                "INSERT INTO settings VALUES ('enable_cron_scheduler', 'true', 1000)"
+            )
+            conn.commit()
+
+            # Point the module at hermetic targets so the jobs-file sync loop
+            # (which runs after the DB write) never touches live profile stores.
+            with tempfile.NamedTemporaryFile(suffix=".json") as jf:
+                jobs_path = Path(jf.name)
+                with patch.dict(
+                    os.environ,
+                    {
+                        "ZEROFACTORY_DB": str(dbfile),
+                        "ZEROFACTORY_CRON_JOBS_FILE": str(jobs_path),
+                    },
+                ):
+                    # Disable via the caller-provided-connection branch. Crucially we
+                    # do NOT commit ourselves here — the function is responsible for
+                    # persisting the write.
+                    res = set_cron_scheduler_enabled(False, conn=conn)
+                    self.assertTrue(res["ok"])
+                    self.assertFalse(res["scheduler_enabled"])
+
+                    # A fresh, independent connection (what the rest of the system
+                    # sees) must observe the new on-disk value. This is the
+                    # RED->GREEN discriminator: with the missing commit, this read
+                    # returned the stale 'true' (or None) instead of 'false'.
+                    conn2 = sqlite3.connect(str(dbfile))
+                    try:
+                        row = conn2.execute(
+                            "SELECT value FROM settings WHERE key='enable_cron_scheduler'"
+                        ).fetchone()
+                    finally:
+                        conn2.close()
+                    self.assertIsNotNone(row, "enable_cron_scheduler row must exist on disk")
+                    self.assertEqual(row[0], "false")
+
+                    # Re-enable and confirm it persists again through the same branch.
+                    res_on = set_cron_scheduler_enabled(True, conn=conn)
+                    self.assertTrue(res_on["ok"])
+                    self.assertTrue(res_on["scheduler_enabled"])
+                    conn3 = sqlite3.connect(str(dbfile))
+                    try:
+                        row_on = conn3.execute(
+                            "SELECT value FROM settings WHERE key='enable_cron_scheduler'"
+                        ).fetchone()
+                    finally:
+                        conn3.close()
+                    self.assertIsNotNone(row_on)
+                    self.assertEqual(row_on[0], "true")
+
+            conn.close()
 
     def test_85_update_builtin_job_field_update_semantics(self):
         """update_builtin_job field-update semantics live in a single helper
