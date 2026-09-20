@@ -225,7 +225,8 @@ def sync_repo_main(repo_path: Path) -> str:
     try:
         subprocess.run(
             ["git", "fetch", "origin", default_branch],
-            cwd=str(repo_path), capture_output=True, text=True, timeout=10
+            cwd=str(repo_path), capture_output=True, text=True, timeout=10,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}
         )
         status = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -483,7 +484,7 @@ def pull_and_merge_main(
             return False, existing_conflicts, f"Worktree has in-progress merge with unresolved conflicts: {', '.join(existing_conflicts)}"
         # All conflicts resolved, conclude the merge before proceeding
         commit_res = subprocess.run(
-            ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit", "--no-edit"],
+            ["git", "commit", "--no-edit"],
             cwd=str(workspace_path), capture_output=True, text=True, timeout=30
         )
         if commit_res.returncode != 0:
@@ -531,8 +532,6 @@ def pull_and_merge_main(
     # _handle_local_merge_conflict().)
     merge_cmd = [
         "git",
-        "-c", "user.name=Zero Factory",
-        "-c", "user.email=zerofactory@local",
         "merge",
         target_ref,
         "-m", f"Merge branch '{target_ref}' into task branch"
@@ -639,11 +638,22 @@ def digest_reviewer_git_context(
     except Exception:
         pass
 
+    # Pathspec exclusions to avoid token explosion on auto-generated / lock / minified files
+    excluded_diff_pathspecs = [
+        ":!*.lock",
+        ":!*package-lock.json",
+        ":!*pnpm-lock.yaml",
+        ":!*yarn.lock",
+        ":!*.min.*",
+        ":!*.map",
+        ":!*.svg",
+    ]
+
     # 2. Diffstat
     diffstat = ""
     try:
         stat_res = subprocess.run(
-            ["git", "diff", "--stat", diff_range],
+            ["git", "diff", "--stat", diff_range, "--", *excluded_diff_pathspecs],
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
@@ -653,7 +663,7 @@ def digest_reviewer_git_context(
             diffstat = stat_res.stdout.strip()
         else:
             stat_fallback = subprocess.run(
-                ["git", "diff", "--stat", "HEAD"],
+                ["git", "diff", "--stat", "HEAD", "--", *excluded_diff_pathspecs],
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
@@ -668,7 +678,7 @@ def digest_reviewer_git_context(
     diff_content = ""
     try:
         diff_res = subprocess.run(
-            ["git", "diff", "-U2", diff_range],
+            ["git", "diff", "-U2", diff_range, "--", *excluded_diff_pathspecs],
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
@@ -677,7 +687,7 @@ def digest_reviewer_git_context(
         raw_diff = diff_res.stdout.strip() if diff_res.returncode == 0 else ""
         if not raw_diff:
             diff_fallback = subprocess.run(
-                ["git", "diff", "-U2", "HEAD"],
+                ["git", "diff", "-U2", "HEAD", "--", *excluded_diff_pathspecs],
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
@@ -824,12 +834,11 @@ def spawn_agent_worker(
                 f"1. Inspect each conflicted file in {workdir}.\n"
                 f"2. Resolve all conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`), reconciling incoming changes with your task implementation.\n"
                 f"3. Ensure NO conflict markers remain in any files.\n"
-                f"4. Run the repository test suites and linters to verify everything compiles and passes cleanly.\n"
-                f"5. Stage and commit the resolved changes:\n"
-                f"   git add .\n"
-                f"   git commit -m \"fix(merge): resolve merge conflicts with main\"\n"
+                f"4. Apply targeted edits (search/replace or localized chunk edits) rather than rewriting entire files to conserve tokens.\n"
+                f"5. Run the repository test suites and linters to verify everything compiles and passes cleanly.\n"
                 f"6. Hand off for re-review:\n"
-                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n"
+                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n\n"
+                f"NOTE: Do NOT run git commands (git add/commit/push). The factory dispatcher automatically verifies clean conflict resolution and commits with 'fix(merge): resolve merge conflicts with main' upon handoff.\n"
             )
         else:
             prompt = (
@@ -841,15 +850,16 @@ def spawn_agent_worker(
                 f"Workspace: {workdir}\n"
                 f"Git Branch: {branch_name or 'main'}\n\n"
                 f"Your goal:\n"
-                f"1. Ensure your git branch is up to date with the latest main branch before making edits.\n"
-                f"2. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
-                f"3. Implement the required changes cleanly, adhering to repository patterns.\n"
-                f"4. Verify your changes with tests, linters, or typechecks.\n"
-                f"5. When finished, mark the task as complete using:\n"
+                f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
+                f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
+                f"   - TOKEN EFFICIENCY: Apply targeted search/replace or hunk edits instead of rewriting entire files.\n"
+                f"3. Verify your changes with tests, linters, or typechecks.\n"
+                f"4. When finished, mark the task as complete using:\n"
                 f"   hermes zerofactory move {task_id} done\n"
                 f"   (or if human review or external dependencies are required, run:\n"
                 f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
-                f"6. Provide a summary of your changes.\n"
+                f"5. Provide a summary of your changes.\n\n"
+                f"NOTE: Do NOT run git commands (git add/commit/push/checkout). Your worktree is already synced with latest main. The factory dispatcher automatically stages, commits, and opens PRs upon task completion.\n"
             )
 
     cmd = [
@@ -2090,7 +2100,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 status_res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True, timeout=5)
                                 if status_res.stdout.strip() or is_merging:
                                     subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True, timeout=60)
-                                    commit_cmd = ["git", "-c", "user.name=Zero Factory", "-c", "user.email=zerofactory@local", "commit"]
+                                    commit_cmd = ["git", "commit"]
                                     if is_merging and not status_res.stdout.strip():
                                         commit_cmd.append("--no-edit")
                                     else:
@@ -2127,7 +2137,11 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     _handle_local_merge_conflict(cursor, task_id, title, workspace_path, leftover_conflicts, now, "Leftover conflict markers detected after merge")
                                     continue
 
-                                subprocess.run(["git", "push", "-u", "origin", f"task/{task_id}"], check=True, cwd=workspace_path, capture_output=True, timeout=180)
+                                subprocess.run(
+                                    ["git", "push", "-u", "origin", f"task/{task_id}"],
+                                    check=True, cwd=workspace_path, capture_output=True, timeout=180,
+                                    env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+                                )
 
                                 pr_url = row["pr_url"] or ""
                                 if not pr_url:
