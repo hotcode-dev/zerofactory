@@ -37,6 +37,10 @@ class TestZeroFactory(unittest.TestCase):
 
     def setUp(self):
         init_db()
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+
+    def tearDown(self):
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
     def test_01_init_and_boards(self):
         req = BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory", description="AI workflow")
@@ -276,7 +280,7 @@ class TestZeroFactory(unittest.TestCase):
         t_data_fail = get_task(t_id_fail)["task"]
         self.assertEqual(t_data_fail["status"], "blocked")
 
-        os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
     def test_09_session_progress_resolution(self):
         # 1. Create board with omitted optional description (tests None coalesce)
@@ -1769,7 +1773,7 @@ class TestZeroFactory(unittest.TestCase):
             with contextlib.redirect_stdout(buf):
                 rc = wd.run_watchdog()
         finally:
-            os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
         out = buf.getvalue()
         self.assertEqual(rc, 0)
@@ -1802,7 +1806,6 @@ class TestZeroFactory(unittest.TestCase):
 
         import shutil
         orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
-        orig_skip_spawn = os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
         td = tempfile.mkdtemp()
         try:
             repo_path = Path(td) / "test_repo"
@@ -1879,7 +1882,8 @@ class TestZeroFactory(unittest.TestCase):
                     return m
                 return orig_popen(cmd, *args, **kwargs)
 
-            with patch("subprocess.Popen", side_effect=fake_popen):
+            with patch("subprocess.Popen", side_effect=fake_popen), \
+                 patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": ""}):
                 pid, sid = spawn_agent_worker(
                     "task-1",
                     "Implement feature [PR Conflict]",
@@ -2020,8 +2024,7 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
-            if orig_skip_spawn is not None:
-                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+            os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
     def test_32a_non_ff_merge_succeeds_no_false_conflict(self):
         """Regression: pull_and_merge_main() must perform a NON-fast-forward
@@ -3388,7 +3391,7 @@ class TestZeroFactory(unittest.TestCase):
             return mock_proc
 
         with patch("subprocess.Popen", side_effect=mock_popen):
-            with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "parent-task-id"}, clear=False):
+            with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "parent-task-id", "ZEROFACTORY_SKIP_WORKER_SPAWN": ""}, clear=False):
                 pid, sess = spawn_agent_worker(
                     task_id="zf-testenv",
                     title="Test Env Task",
@@ -4124,7 +4127,8 @@ class TestZeroFactory(unittest.TestCase):
             repo_path.mkdir()
             with patch("dispatcher.sync_repo_main") as mock_sync, \
                  patch("subprocess.Popen") as mock_popen, \
-                 patch("builtin_cron.toggle_builtin_job"):
+                 patch("builtin_cron.toggle_builtin_job"), \
+                 patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "", "ZEROFACTORY_SKIP_SCANNER_SPAWN": ""}):
                 mock_proc = MagicMock()
                 mock_proc.pid = 4321
                 mock_popen.return_value = mock_proc
@@ -4879,7 +4883,6 @@ class TestZeroFactory(unittest.TestCase):
         from unittest.mock import patch, MagicMock
         from dispatcher import spawn_agent_worker
 
-        orig_skip_spawn = os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
         td = tempfile.mkdtemp()
         try:
             db_file = Path(td) / "test_prompt.db"
@@ -4905,7 +4908,7 @@ class TestZeroFactory(unittest.TestCase):
                 proc.poll.return_value = None
                 return proc
 
-            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}), \
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file), "ZEROFACTORY_SKIP_WORKER_SPAWN": ""}), \
                  patch("dispatcher.check_unresolved_conflicts_safe", return_value=(True, [], "")), \
                  patch("subprocess.Popen", side_effect=fake_popen):
                 pid, sid = spawn_agent_worker(
@@ -4930,8 +4933,7 @@ class TestZeroFactory(unittest.TestCase):
             self.assertIn("Your goal as Builder (Fix Review Comments):", prompt)
         finally:
             shutil.rmtree(td, ignore_errors=True)
-            if orig_skip_spawn is not None:
-                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+            os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
 
 
