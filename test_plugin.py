@@ -146,10 +146,10 @@ class TestZeroFactory(unittest.TestCase):
         # Mark parent 'done'
         move_task(parent, TaskMove(status="done"))
 
-        # Dispatch again -> child should unblock to 'ready'
+        # Dispatch again -> child should unblock to 'todo'
         d_res2 = trigger_dispatch()
         self.assertTrue(d_res2["ok"])
-        self.assertEqual(get_task(child)["task"]["status"], "ready")
+        self.assertEqual(get_task(child)["task"]["status"], "todo")
 
     def test_06_fastapi_endpoints(self):
         # Test HTTP endpoints via TestClient
@@ -168,16 +168,16 @@ class TestZeroFactory(unittest.TestCase):
 
         # Move task via HTTP
         resp = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/move", json={
-            "status": "ready"
+            "status": "todo"
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "ready")
+        self.assertEqual(resp.json()["status"], "todo")
 
         # Get stats
         resp = client.get("/api/plugins/zerofactory/stats")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("columns", resp.json())
-        self.assertIn("ready", resp.json()["columns"])
+        self.assertIn("todo", resp.json()["columns"])
 
     def test_07_builtin_cron(self):
         # 1. Test GET /cron
@@ -231,10 +231,10 @@ class TestZeroFactory(unittest.TestCase):
             conn.execute("UPDATE tasks SET status = 'done' WHERE status = 'running'")
             conn.commit()
 
-        # 1. Create a task in 'ready'
+        # 1. Create a task in 'todo'
         t_id = create_task(TaskCreate(
             title="Implement Builder Task",
-            status="ready",
+            status="todo",
             priority="P0",
             assignee="zf-builder"
         ))["id"]
@@ -1412,7 +1412,7 @@ class TestZeroFactory(unittest.TestCase):
 
     def test_25d_scanner_gate_blocked_tasks_do_not_suppress_and_outage_recovery(self):
         """Verify that tasks in 'blocked' status (e.g. human PR review) do NOT suppress
-        the scanner gate, active pipeline tasks (running/ready/todo) DO suppress, and
+        the scanner gate, active pipeline tasks (running/todo) DO suppress, and
         the outage recovery reset cooldown clears attempts after a long pause.
         """
         import contextlib
@@ -1744,7 +1744,7 @@ class TestZeroFactory(unittest.TestCase):
         # Clean slate so run_dispatch_cycle() inside run_watchdog() doesn't
         # re-dispatch leftover tasks from earlier tests.
         with get_db_conn() as conn:
-            conn.execute("UPDATE tasks SET status = 'done' WHERE status IN ('running', 'ready')")
+            conn.execute("UPDATE tasks SET status = 'done' WHERE status IN ('running', 'todo')")
             conn.commit()
 
         # Seed a stuck running task: registered worker already exited (poll() -> 1),
@@ -1964,7 +1964,7 @@ class TestZeroFactory(unittest.TestCase):
                 cur = conn.cursor()
                 cur.execute("SELECT * FROM tasks WHERE id = 'task-1'")
                 t_row = cur.fetchone()
-                self.assertEqual(t_row["status"], "ready")
+                self.assertEqual(t_row["status"], "todo")
                 self.assertEqual(t_row["assignee"], "zf-builder")
                 self.assertIn("[PR Conflict]", t_row["title"])
                 # Worktree should NOT be deleted
@@ -2017,7 +2017,7 @@ class TestZeroFactory(unittest.TestCase):
                 cur = conn.cursor()
                 cur.execute("SELECT * FROM tasks WHERE id = 'task-1'")
                 t_row = cur.fetchone()
-                self.assertEqual(t_row["status"], "ready")
+                self.assertEqual(t_row["status"], "todo")
                 self.assertEqual(t_row["assignee"], "zf-builder")
                 self.assertIn("[PR Conflict]", t_row["title"])
         finally:
@@ -2221,7 +2221,7 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
 
     def test_32c_dispatch_pre_implement_fail_closed_skips_auto_merge(self):
-        """Dispatch-level fail-closed: a ready zf-builder task whose worktree
+        """Dispatch-level fail-closed: a todo zf-builder task whose worktree
         conflict state CANNOT be verified must NOT be auto-merged via
         pull_and_merge_main (the unsafe advance). The task is still dispatched so
         the builder can sync with main itself and resolve any real conflict it
@@ -2247,7 +2247,7 @@ class TestZeroFactory(unittest.TestCase):
             with sqlite3.connect(str(db_file)) as conn:
                 conn.execute("""
                     INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
-                    VALUES ('task-fc-1', 'Build feature Z', 'ready', 'zf-builder', ?, 'task/task-fc-1', 1000, 1000)
+                    VALUES ('task-fc-1', 'Build feature Z', 'todo', 'zf-builder', ?, 'task/task-fc-1', 1000, 1000)
                 """, (str(ws_dir),))
                 conn.commit()
 
@@ -2442,7 +2442,7 @@ class TestZeroFactory(unittest.TestCase):
                 row = cur.execute("SELECT title, assignee, status FROM tasks WHERE id = 'task-lc'").fetchone()
                 self.assertEqual(row["title"], "Fix bug [PR Conflict]")
                 self.assertEqual(row["assignee"], "zf-builder")
-                self.assertEqual(row["status"], "ready")
+                self.assertEqual(row["status"], "todo")
 
                 act = cur.execute("SELECT actor, action, details FROM task_activity WHERE task_id = 'task-lc' AND action = 'pr_conflict'").fetchone()
                 self.assertIsNotNone(act)
@@ -2463,7 +2463,7 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertEqual(row2["title"], "Fix bug [PR Conflict]")
                 self.assertNotIn("[PR Conflict] [PR Conflict]", row2["title"])
                 self.assertEqual(row2["assignee"], "zf-builder")
-                self.assertEqual(row2["status"], "ready")
+                self.assertEqual(row2["status"], "todo")
                 # Two activity rows, two comment rows (idempotency covers the title only)
                 self.assertEqual(cur.execute("SELECT COUNT(*) FROM task_activity WHERE task_id = 'task-lc' AND action = 'pr_conflict'").fetchone()[0], 2)
                 self.assertEqual(cur.execute("SELECT COUNT(*) FROM task_comments WHERE task_id = 'task-lc'").fetchone()[0], 2)
@@ -2576,12 +2576,12 @@ class TestZeroFactory(unittest.TestCase):
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
 
-                # Calls 1, 2, 3 should keep status 'ready' and increment retries
+                # Calls 1, 2, 3 should keep status 'todo' and increment retries
                 for i in range(1, 4):
                     _handle_local_merge_conflict(cur, "task-retry", "Feature X", str(ws_dir), ["conflict.txt"], now, "conflict")
                     conn.commit()
                     row = cur.execute("SELECT status, metadata FROM tasks WHERE id = 'task-retry'").fetchone()
-                    self.assertEqual(row["status"], "ready")
+                    self.assertEqual(row["status"], "todo")
                     meta = json.loads(row["metadata"] or "{}")
                     self.assertEqual(meta.get("conflict_retries"), i)
 
@@ -2621,7 +2621,7 @@ class TestZeroFactory(unittest.TestCase):
     def test_36_github_conflicting_pr_routes_to_builder(self):
         """Unit-test the GitHub-CONFLICTING branch: a reviewer task whose PR is
         mergeable == 'CONFLICTING' is re-routed to the author with [PR Conflict] tag,
-        status 'ready', and pr_conflict activity + comment rows."""
+        status 'todo', and pr_conflict activity + comment rows."""
         from dispatcher import run_dispatch_cycle
         import json
         import shutil
@@ -2696,7 +2696,7 @@ class TestZeroFactory(unittest.TestCase):
                 cur = conn.cursor()
 
                 row = cur.execute("SELECT title, assignee, status FROM tasks WHERE id = 'task-gh'").fetchone()
-                self.assertEqual(row["status"], "ready")
+                self.assertEqual(row["status"], "todo")
                 self.assertEqual(row["assignee"], "zf-builder")
                 self.assertIn("[PR Conflict]", row["title"])
                 self.assertEqual(row["title"].count("[PR Conflict]"), 1)
@@ -2851,7 +2851,7 @@ class TestZeroFactory(unittest.TestCase):
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 row = cur.execute("SELECT status, assignee FROM tasks WHERE id = 'task-author-handoff'").fetchone()
-                self.assertEqual(row["status"], "ready")
+                self.assertEqual(row["status"], "todo")
                 self.assertEqual(row["assignee"], "zf-reviewer")
         finally:
             shutil.rmtree(td, ignore_errors=True)
@@ -2882,7 +2882,7 @@ class TestZeroFactory(unittest.TestCase):
             with sqlite3.connect(str(db_file)) as conn:
                 conn.execute("""
                     INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
-                    VALUES ('task-pre-1', 'Build feature X', 'ready', 'zf-builder', ?, 'task/task-pre-1', 1000, 1000)
+                    VALUES ('task-pre-1', 'Build feature X', 'todo', 'zf-builder', ?, 'task/task-pre-1', 1000, 1000)
                 """, (str(ws_dir),))
                 conn.commit()
 
@@ -2910,7 +2910,7 @@ class TestZeroFactory(unittest.TestCase):
             with sqlite3.connect(str(db_file)) as conn:
                 conn.execute("""
                     INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
-                    VALUES ('task-pre-conflict', 'Implement feature Y', 'ready', 'zf-builder', ?, 'task/task-pre-conflict', 1000, 1000)
+                    VALUES ('task-pre-conflict', 'Implement feature Y', 'todo', 'zf-builder', ?, 'task/task-pre-conflict', 1000, 1000)
                 """, (str(ws_dir_conflict),))
                 conn.commit()
 
@@ -2927,7 +2927,7 @@ class TestZeroFactory(unittest.TestCase):
                 conn.row_factory = sqlite3.Row
                 row_c = conn.execute("SELECT title, status, assignee FROM tasks WHERE id = 'task-pre-conflict'").fetchone()
                 self.assertIn("[PR Conflict]", row_c["title"])
-                self.assertEqual(row_c["status"], "ready")
+                self.assertEqual(row_c["status"], "todo")
                 self.assertEqual(row_c["assignee"], "zf-builder")
 
                 act = conn.execute("SELECT action, details FROM task_activity WHERE task_id = 'task-pre-conflict'").fetchone()
@@ -2942,7 +2942,7 @@ class TestZeroFactory(unittest.TestCase):
             with sqlite3.connect(str(db_file)) as conn:
                 conn.execute("""
                     INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, created_at, updated_at)
-                    VALUES ('task-pre-rev', 'Review PR 123', 'ready', 'zf-reviewer', ?, 'task/task-pre-rev', 1000, 1000)
+                    VALUES ('task-pre-rev', 'Review PR 123', 'todo', 'zf-reviewer', ?, 'task/task-pre-rev', 1000, 1000)
                 """, (str(ws_dir_rev),))
                 conn.commit()
 
@@ -2991,7 +2991,7 @@ class TestZeroFactory(unittest.TestCase):
                 with sqlite3.connect(str(db_file)) as conn:
                     conn.execute(
                         "INSERT INTO tasks (id, title, status, assignee, created_at, updated_at) "
-                        "VALUES (?, ?, 'ready', ?, 1000, 1000)",
+                        "VALUES (?, ?, 'todo', ?, 1000, 1000)",
                         (task_id, f"Task {task_id}", assignee),
                     )
                     conn.commit()
@@ -3222,12 +3222,12 @@ class TestZeroFactory(unittest.TestCase):
         # 3. The TaskMove schema now accepts a `reason` field via the HTTP endpoint
         #    (the model no longer rejects it), and a non-blocked move still works.
         resp = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/move", json={
-            "status": "ready",
+            "status": "todo",
             "reason": "unblocked",
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "ready")
-        self.assertEqual(get_task(t_id)["task"]["status"], "ready")
+        self.assertEqual(resp.json()["status"], "todo")
+        self.assertEqual(get_task(t_id)["task"]["status"], "todo")
 
         # 4. A `move ... blocked` WITHOUT a reason must NOT record a comment
         #    (reason is optional; only a provided reason is recorded).
@@ -3602,9 +3602,63 @@ class TestZeroFactory(unittest.TestCase):
             else:
                 os.environ["ZEROFACTORY_DB"] = old_db
 
+    def test_46a_legacy_ready_status_normalized_to_todo_on_init(self):
+        """init_db() must normalize legacy rows still in the removed 'ready'
+        status to 'todo' (logging a task_activity row per normalized task),
+        and the migration must be idempotent on a second run."""
+        import sqlite3
+
+        old_db = os.environ.get("ZEROFACTORY_DB")
+        td = tempfile.mkdtemp(prefix="zf-ready-migrate-")
+        old_path = Path(td) / "legacy_ready.db"
+        try:
+            conn = sqlite3.connect(str(old_path))
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("""CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)""")
+            conn.execute("CREATE TABLE task_links (parent_id TEXT NOT NULL, child_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (parent_id, child_id))")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, author TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("INSERT INTO boards (slug, created_at, updated_at) VALUES ('legacy-board', 1, 1)")
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) "
+                "VALUES ('legacy-1', 'legacy-board', 'Stuck task', 'ready', 'zf-builder', 'P2', 1000, 1000)"
+            )
+            conn.commit()
+            conn.close()
+            os.environ["ZEROFACTORY_DB"] = str(old_path)
+            try:
+                init_db(force=True)  # must normalize the legacy ready row in place
+                conn = sqlite3.connect(str(old_path))
+                row = conn.execute("SELECT status FROM tasks WHERE id = 'legacy-1'").fetchone()
+                acts = conn.execute("SELECT actor, action FROM task_activity WHERE task_id = 'legacy-1' AND action = 'migrate'").fetchall()
+                conn.close()
+                self.assertEqual(row[0], "todo", "legacy 'ready' row must be normalized to 'todo'")
+                self.assertEqual(len(acts), 1, "one migrate activity row per normalized task")
+
+                # Idempotency: a second init_db() must not double-log
+                init_db(force=True)
+                conn = sqlite3.connect(str(old_path))
+                acts2 = conn.execute("SELECT action FROM task_activity WHERE task_id = 'legacy-1' AND action = 'migrate'").fetchall()
+                row2 = conn.execute("SELECT status FROM tasks WHERE id = 'legacy-1'").fetchone()
+                conn.close()
+                self.assertEqual(len(acts2), 1, "migration must be idempotent (no duplicate activity rows)")
+                self.assertEqual(row2[0], "todo")
+            finally:
+                if old_db is None:
+                    os.environ.pop("ZEROFACTORY_DB", None)
+                else:
+                    os.environ["ZEROFACTORY_DB"] = old_db
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if old_db is None:
+                os.environ.pop("ZEROFACTORY_DB", None)
+            else:
+                os.environ["ZEROFACTORY_DB"] = old_db
+
     def test_46_board_max_concurrent_running_dispatch(self):
         """The dispatch cycle caps concurrent 'running' tasks per board at the
-        board's max_concurrent_running (default 1). With cap 1 and three ready
+        board's max_concurrent_running (default 1). With cap 1 and three todo
         tasks only one runs; raising the board cap to 2 lets a second start."""
         import tempfile
         import shutil
@@ -3629,22 +3683,22 @@ class TestZeroFactory(unittest.TestCase):
             conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 1, 1, 1)")
             for i in range(1, 4):
                 conn.execute(
-                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'ready', 'zf-builder', 'P2', ?, 1000, 1000)",
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'zf-builder', 'P2', ?, 1000, 1000)",
                     (f"mcr-{i}", f"Task {i}", str(ws)),
                 )
             conn.commit()
             conn.close()
 
-            # Cycle 1: cap 1 -> exactly one running, two still ready
+            # Cycle 1: cap 1 -> exactly one running, two still todo
             res = run_dispatch_cycle(db_file)
             self.assertTrue(res["ok"], f"dispatch cycle should succeed: {res}")
             conn = sqlite3.connect(str(db_file))
             conn.row_factory = sqlite3.Row
             running = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
-            ready = conn.execute("SELECT id FROM tasks WHERE status = 'ready'").fetchall()
+            todo = conn.execute("SELECT id FROM tasks WHERE status = 'todo'").fetchall()
             conn.close()
             self.assertEqual(len(running), 1, f"expected exactly 1 running under cap 1, got {len(running)}")
-            self.assertEqual(len(ready), 2, f"expected 2 ready to remain, got {len(ready)}")
+            self.assertEqual(len(todo), 2, f"expected 2 todo to remain, got {len(todo)}")
 
             # Raise the board cap to 2, run again -> a second task starts
             conn = sqlite3.connect(str(db_file))
@@ -3655,10 +3709,10 @@ class TestZeroFactory(unittest.TestCase):
             self.assertTrue(res2["ok"], f"second dispatch cycle should succeed: {res2}")
             conn = sqlite3.connect(str(db_file))
             running2 = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
-            ready2 = conn.execute("SELECT id FROM tasks WHERE status = 'ready'").fetchall()
+            todo2 = conn.execute("SELECT id FROM tasks WHERE status = 'todo'").fetchall()
             conn.close()
             self.assertEqual(len(running2), 2, f"expected 2 running under cap 2, got {len(running2)}")
-            self.assertEqual(len(ready2), 1, f"expected 1 ready to remain, got {len(ready2)}")
+            self.assertEqual(len(todo2), 1, f"expected 1 todo to remain, got {len(todo2)}")
         finally:
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is None:
@@ -3780,14 +3834,14 @@ class TestZeroFactory(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            # Cycle 1: with max_active_tasks = 2, only 2 tasks should be promoted from todo to ready
+            # Cycle 1: with max_active_tasks = 2, only 2 tasks should be dispatched from todo to running
             res = run_dispatch_cycle(db_file)
             self.assertTrue(res["ok"])
             conn = sqlite3.connect(str(db_file))
             todo_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
             # Since board max_concurrent_running is 10 and worker spawn is skipped,
-            # the 2 promoted tasks will move to ready and then running
-            active_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')").fetchone()[0]
+            # the 2 dispatched tasks move directly to running
+            active_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
             conn.close()
             self.assertEqual(active_count, 2, f"expected exactly 2 active tasks promoted, got {active_count}")
             self.assertEqual(todo_count, 3, f"expected 3 tasks to remain in todo, got {todo_count}")
@@ -3798,11 +3852,11 @@ class TestZeroFactory(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            # Cycle 2: 2 more tasks should be promoted from todo
+            # Cycle 2: 2 more tasks should be dispatched from todo
             res2 = run_dispatch_cycle(db_file)
             self.assertTrue(res2["ok"])
             conn = sqlite3.connect(str(db_file))
-            active_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')").fetchone()[0]
+            active_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
             todo_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
             conn.close()
             self.assertEqual(active_count2, 4, f"expected 4 active tasks under limit 4, got {active_count2}")
@@ -4040,7 +4094,7 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
 
     def test_52_atomic_cas_task_promotion(self):
-        """Verify atomic CAS prevents concurrent dispatchers from resetting a running task to ready."""
+        """Verify the atomic dispatch claim prevents concurrent dispatchers from re-claiming a running task."""
         import shutil
         import sqlite3
         import time
@@ -4073,14 +4127,15 @@ class TestZeroFactory(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            # Direct atomic CAS update check: if a second dispatcher tries to promote 't1' assuming it's in 'todo'
+            # Direct atomic claim check: if a second dispatcher tries to claim 't1' assuming it's in 'todo',
+            # the claim must be rejected because the task is already running
             conn = sqlite3.connect(str(db_file))
             cur = conn.cursor()
             cur.execute(
-                "UPDATE tasks SET status = 'ready', updated_at = ? WHERE id = 't1' AND (status = 'todo' OR (status = 'ready' AND assignee = 'unassigned'))",
+                "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = 't1' AND status = 'todo'",
                 (now_ts,)
             )
-            self.assertEqual(cur.rowcount, 0, "Atomic CAS must reject promoting a task that is already running")
+            self.assertEqual(cur.rowcount, 0, "Atomic CAS must reject claiming a task that is already running")
 
             # Verify task remains in 'running'
             cur.execute("SELECT status FROM tasks WHERE id = 't1'")
@@ -4414,7 +4469,7 @@ class TestZeroFactory(unittest.TestCase):
     def test_57_pr_lifecycle_survives_with_mocked_cleanup(self):
         """(c) The PR-lifecycle paths still complete and record their
         task_activity rows when the worktree cleanup helper is mocked:
-        merged -> done, approved -> blocked, changes-requested -> ready,
+        merged -> done, approved -> blocked, changes-requested -> todo,
         and the conflict path re-routes to the author."""
         import json
         import shutil
@@ -4519,7 +4574,7 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertTrue(res.get("ok"), f"changes-requested cycle should succeed: {res}")
                 mock_remove.assert_called()
                 t_row = fetch3("SELECT status, assignee FROM tasks WHERE id = 'wt-changes'")[0]
-                self.assertEqual(t_row["status"], "ready")
+                self.assertEqual(t_row["status"], "todo")
                 self.assertEqual(t_row["assignee"], "zf-builder")
                 acts = fetch3("SELECT action FROM task_activity WHERE task_id = 'wt-changes' AND action = 'changes_requested'")
                 self.assertEqual(len(acts), 1, "changes_requested activity row missing")
@@ -4560,7 +4615,7 @@ class TestZeroFactory(unittest.TestCase):
             self.assertTrue(captured_gh)
             mock_remove.assert_called()
             t_row = fetch("SELECT title, status, assignee FROM tasks WHERE id = 'wt-conflict'")[0]
-            self.assertEqual(t_row["status"], "ready")
+            self.assertEqual(t_row["status"], "todo")
             self.assertEqual(t_row["assignee"], "zf-builder")
             self.assertIn("[PR Conflict]", t_row["title"])
             acts = fetch("SELECT details FROM task_activity WHERE task_id = 'wt-conflict' AND action = 'pr_conflict'")
@@ -4870,7 +4925,7 @@ class TestZeroFactory(unittest.TestCase):
                     conn.row_factory = sqlite3.Row
                     cur = conn.cursor()
                     t_row = cur.execute("SELECT status, assignee, metadata FROM tasks WHERE id = 'zf-rev-test'").fetchone()
-                    self.assertEqual(t_row["status"], "ready")
+                    self.assertEqual(t_row["status"], "todo")
                     self.assertEqual(t_row["assignee"], "zf-builder")
 
                     meta = json.loads(t_row["metadata"] or "{}")
@@ -4888,7 +4943,7 @@ class TestZeroFactory(unittest.TestCase):
                     self.assertIn("review_comment", actions)
                     self.assertIn("changes_requested", actions)
 
-                # Second cycle: idempotent, comment must not be re-inserted and task remains in ready
+                # Second cycle: idempotent, comment must not be re-inserted and task remains in todo
                 res2 = run_dispatch_cycle(db_file)
                 self.assertTrue(res2.get("ok"))
 
@@ -4916,7 +4971,7 @@ class TestZeroFactory(unittest.TestCase):
             with sqlite3.connect(str(db_file)) as conn:
                 conn.execute("""
                     INSERT INTO tasks (id, title, status, assignee, created_at, updated_at)
-                    VALUES ('t-prompt', 'My Task', 'ready', 'zf-builder', 1000, 1000)
+                    VALUES ('t-prompt', 'My Task', 'todo', 'zf-builder', 1000, 1000)
                 """)
                 conn.execute("""
                     INSERT INTO task_comments (task_id, author, body, created_at)

@@ -68,8 +68,8 @@ def run_watchdog() -> int:
             "wakeAgent": False,
             "status": "healthy",
             "total_tasks": stats.get("total", 0),
+            "todo": cols.get("todo", 0),
             "running": cols.get("running", 0),
-            "ready": cols.get("ready", 0),
             "dispatched": dispatched
         }
         print(json.dumps(gate))
@@ -85,8 +85,8 @@ def run_watchdog() -> int:
 
     print("### Current Board State:")
     print(f"- **Total Tasks:** {stats.get('total', 0)}")
+    print(f"- **Todo:** {cols.get('todo', 0)}")
     print(f"- **Running:** {cols.get('running', 0)}")
-    print(f"- **Ready:** {cols.get('ready', 0)}")
     print(f"- **Blocked:** {cols.get('blocked', 0)}")
     print(f"- **Dispatched this tick:** {dispatched}")
     print()

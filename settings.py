@@ -28,8 +28,8 @@ from typing import Any, Dict
 
 # --- Default values (source of truth) ---------------------------------------
 
-# Kanban WIP limit: max total active tasks across all boards in ('ready', 'running').
-# Controls todo->ready promotion and worktree pre-provisioning to avoid queue flooding.
+# Kanban WIP limit: max total active tasks across all boards in 'running'.
+# Controls direct todo->running dispatch and worktree pre-provisioning to avoid queue flooding.
 DEFAULT_MAX_ACTIVE_TASKS = 10
 
 # Fallback cap for concurrent active agent worker subprocesses ('running').

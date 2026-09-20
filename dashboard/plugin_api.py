@@ -201,6 +201,27 @@ def init_db(force: bool = False):
                     "ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER NOT NULL DEFAULT 1"
                 )
 
+            # Idempotent migration: the pipeline no longer has a 'ready' column
+            # (dispatch is now direct todo -> running). Normalize any legacy rows
+            # still stuck in 'ready' to 'todo' so the next dispatch cycle picks
+            # them up; the dispatcher's atomic claim CAS (status = 'todo') is
+            # the safety net against double-dispatch.
+            legacy_ready_ids = [
+                r[0] for r in conn.execute("SELECT id FROM tasks WHERE status = 'ready'").fetchall()
+            ]
+            if legacy_ready_ids:
+                now_ts = int(time.time())
+                for _legacy_id in legacy_ready_ids:
+                    conn.execute(
+                        "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ? AND status = 'ready'",
+                        (now_ts, _legacy_id),
+                    )
+                    conn.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) "
+                        "VALUES (?, 'dispatcher', 'migrate', \"Legacy 'ready' status normalized to 'todo'\", ?)",
+                        (_legacy_id, now_ts),
+                    )
+
             # Seed default global settings if missing. Values are derived from the
             # shared constants (settings.DEFAULT_SETTING_VALUES) so the seed rows and
             # the in-code defaults can never drift apart.
@@ -431,7 +452,7 @@ class CronToggleRequest(BaseModel):
     enabled: Optional[bool] = None
 
 class TaskMove(BaseModel):
-    status: str = Field(..., pattern="^(triage|todo|ready|running|blocked|done)$")
+    status: str = Field(..., pattern="^(triage|todo|running|blocked|done)$")
     actor: Optional[str] = "user"
     reason: Optional[str] = None
 
@@ -445,7 +466,7 @@ class DependencyLink(BaseModel):
     link_type: Optional[str] = "blocks"
 
 class SettingsUpdate(BaseModel):
-    max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in ready and running")
+    max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in running")
     default_max_concurrent_workers: Optional[int] = Field(default=None, ge=1, description="Default max concurrent running workers per board")
     scan_on_idle: Optional[bool] = Field(default=None, description="Automatically trigger improvement scans when active workers are below threshold")
     idle_scan_active_threshold: Optional[int] = Field(default=None, ge=1, description="Max active running workers on a board to trigger idle scan")
@@ -457,7 +478,7 @@ class SettingsUpdate(BaseModel):
 
 # --- Helper Functions --------------------------------------------------------
 
-VALID_STATUSES = {"triage", "todo", "ready", "running", "blocked", "done"}
+VALID_STATUSES = {"triage", "todo", "running", "blocked", "done"}
 VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
 # VALID_ASSIGNEES, PROFILE_MAP and normalize_assignee are the shared source of
 # truth re-exported from the ``paths`` module (imported above). They are kept
@@ -1661,7 +1682,7 @@ def get_stats(board: Optional[str] = None):
         total_tasks = cursor.fetchone()["count"]
 
         # Active worktrees count
-        cursor.execute(f"SELECT COUNT(*) as count FROM tasks{base_filter} AND workspace_path IS NOT NULL AND status IN ('ready', 'running')", params)
+        cursor.execute(f"SELECT COUNT(*) as count FROM tasks{base_filter} AND workspace_path IS NOT NULL AND status IN ('running')", params)
         active_worktrees = cursor.fetchone()["count"]
 
         # Pull requests count
@@ -1674,7 +1695,6 @@ def get_stats(board: Optional[str] = None):
             "columns": {
                 "triage": status_counts.get("triage", 0),
                 "todo": status_counts.get("todo", 0),
-                "ready": status_counts.get("ready", 0),
                 "running": status_counts.get("running", 0),
                 "blocked": status_counts.get("blocked", 0),
                 "done": status_counts.get("done", 0),
@@ -2102,7 +2122,7 @@ def get_dispatch_status():
         cursor.execute("""
             SELECT id, title, assignee, status, workspace_path, branch_name, pr_url, updated_at
             FROM tasks
-            WHERE status IN ('ready', 'running', 'blocked')
+            WHERE status IN ('running', 'blocked')
             ORDER BY updated_at DESC
         """)
         in_flight = [dict(r) for r in cursor.fetchall()]

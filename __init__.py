@@ -83,7 +83,7 @@ def register(ctx: Any):
         # list
         p_list = subparsers.add_parser("list", help="List kanban tasks")
         p_list.add_argument("--board", default=None, help="Filter by board slug")
-        p_list.add_argument("--status", default=None, help="Filter by status (triage, todo, ready, running, blocked, done)")
+        p_list.add_argument("--status", default=None, help="Filter by status (triage, todo, running, blocked, done)")
         p_list.add_argument("--assignee", default=None, help="Filter by assignee")
 
         # create
@@ -104,7 +104,7 @@ def register(ctx: Any):
         # move
         p_move = subparsers.add_parser("move", help="Move a task to a different column")
         p_move.add_argument("task_id", help="Task ID")
-        p_move.add_argument("status", choices=["triage", "todo", "ready", "running", "blocked", "done"], help="Target status")
+        p_move.add_argument("status", choices=["triage", "todo", "running", "blocked", "done"], help="Target status")
         p_move.add_argument("--reason", default=None, help="Optional reason; recorded as a comment when moving to 'blocked' (mirrors the 'block' command)")
         p_move.add_argument("--actor", default=None, help="Actor executing move (defaults to HERMES_PROFILE or 'user')")
 

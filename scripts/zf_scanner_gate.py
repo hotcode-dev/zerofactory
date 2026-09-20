@@ -157,7 +157,7 @@ def _auto_sync_repo(repo_dir: Path) -> None:
 
 
 def get_active_pipeline_task_count(board_slug: str) -> int:
-    """Count tasks that actively occupy the builder pipeline (running, ready, todo).
+    """Count tasks that actively occupy the builder pipeline (running, todo).
 
     Blocked tasks (e.g. PRs awaiting human review) and done tasks do not occupy
     builder worker capacity, so they do not block idle improvement scanning.
@@ -169,7 +169,7 @@ def get_active_pipeline_task_count(board_slug: str) -> int:
         with sqlite3.connect(str(db_path), timeout=5.0) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT COUNT(*) FROM tasks WHERE board_slug = ? AND status IN ('running', 'ready', 'todo')",
+                "SELECT COUNT(*) FROM tasks WHERE board_slug = ? AND status IN ('running', 'todo')",
                 (board_slug,)
             )
             row = cursor.fetchone()
@@ -277,7 +277,7 @@ def run_scanner_gate() -> int:
         print(json.dumps({"wakeAgent": True}))
         return 0
 
-    # Fetch active pipeline tasks (running, ready, todo) to determine if pipeline is busy
+    # Fetch active pipeline tasks (running, todo) to determine if pipeline is busy
     active_in_flight = get_active_pipeline_task_count(board_slug)
 
     # Fetch existing task titles to prevent duplicate suggestions
