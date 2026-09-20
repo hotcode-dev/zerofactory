@@ -959,7 +959,18 @@ def format_task_comment_body(comment: Dict[str, Any]) -> str:
 
     parts = []
     if ctype == "inline_review" and path:
-        line_str = f":L{start_line}-{line}" if start_line and start_line != line else (f":L{line}" if line else "")
+        # GitHub leaves `line` null (keeping only `start_line`/`start_side`) for
+        # comments anchored to lines no longer present in the diff. Guard both
+        # sides so a None value is never interpolated into the anchor.
+        line_str = (
+            f":L{start_line}-{line}"
+            if (start_line and line and start_line != line)
+            else (
+                f":L{line}"
+                if line
+                else (f":L{start_line}" if start_line else "")
+            )
+        )
         parts.append(f"**[GitHub Review Comment on `{path}{line_str}`]**")
     elif ctype == "review_summary":
         state = comment.get("state", "COMMENTED")
@@ -1810,10 +1821,31 @@ def setup_worktree(
             )
             base_ref = default_branch if verify_local.returncode == 0 else "HEAD"
 
+        # Ensure worktree_dir is healthy if it exists on disk
+        if worktree_dir.exists():
+            rev_check = subprocess.run(["git", "rev-parse", "--git-dir"], cwd=str(worktree_dir), capture_output=True, timeout=5)
+            if rev_check.returncode != 0:
+                _log.warning("Worktree dir %s has invalid/dangling git pointer; removing to re-create", worktree_dir)
+                import shutil
+                try:
+                    subprocess.run(["git", "worktree", "remove", "--force", str(worktree_dir)], cwd=str(repo_path), capture_output=True, timeout=10)
+                except Exception:
+                    pass
+                try:
+                    subprocess.run(["git", "worktree", "prune"], cwd=str(repo_path), capture_output=True, timeout=10)
+                except Exception:
+                    pass
+                if worktree_dir.exists():
+                    shutil.rmtree(str(worktree_dir), ignore_errors=True)
+
         res = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"], cwd=repo_path, timeout=5)
         if res.returncode == 0:
             if not worktree_dir.exists():
-                subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path, timeout=5)
+                try:
+                    subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path, timeout=5)
+                except subprocess.CalledProcessError:
+                    subprocess.run(["git", "worktree", "prune"], check=False, cwd=repo_path, capture_output=True, timeout=10)
+                    subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path, timeout=5)
             # Sync existing worktree with latest default branch if assignee is builder
             if assignee == "zf-builder" and worktree_dir.exists():
                 pull_and_merge_main(worktree_dir, repo_path, default_branch)
@@ -1857,7 +1889,11 @@ def _handle_local_merge_conflict(
         except Exception:
             meta = {}
 
-    retries = int(meta.get("conflict_retries", 0)) + 1
+    retries = int(meta.get("conflict_retries", 0))
+    if retries > max_conflict_retries:
+        _log.debug("Task %s has already reached conflict retries limit (%d > %d); skipping duplicate conflict failure handling", task_id, retries, max_conflict_retries)
+        return
+    retries += 1
     meta["conflict_retries"] = retries
 
     new_title = title
@@ -2001,7 +2037,11 @@ def _handle_pr_conflict_from_github(
         except Exception:
             meta = {}
 
-    retries = int(meta.get("conflict_retries", 0)) + 1
+    retries = int(meta.get("conflict_retries", 0))
+    if retries > max_conflict_retries:
+        _log.debug("Task %s has already reached conflict retries limit (%d > %d); skipping duplicate PR conflict failure handling", task_id, retries, max_conflict_retries)
+        return
+    retries += 1
     meta["conflict_retries"] = retries
 
     stop_task_worker(task_id, cursor)
@@ -2365,7 +2405,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if not repo_path or not repo_path.exists():
                             continue
 
-                        if assignee != "zf-reviewer" and not row["pr_url"]:
+                        if assignee != "zf-reviewer" and (not row["pr_url"] or (workspace_path and Path(workspace_path).exists())):
                             if not workspace_path or not Path(workspace_path).exists():
                                 continue
                             # Author finished work -> check conflicts, commit, pull/merge main, push, create PR, hand off to reviewer
@@ -2529,7 +2569,19 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             (task_id, now)
                                         )
                                     elif mergeable == "CONFLICTING":
-                                        _handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
+                                        task_meta = {}
+                                        try:
+                                            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                                            m_res = cursor.fetchone()
+                                            if m_res and m_res[0]:
+                                                task_meta = json.loads(m_res[0])
+                                        except Exception:
+                                            pass
+                                        max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
+                                        if row["status"] == "blocked" and int(task_meta.get("conflict_retries", 0)) > max_conflict_retries:
+                                            _log.debug("Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling", task_id, int(task_meta.get("conflict_retries", 0)), max_conflict_retries)
+                                        else:
+                                            _handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
                                     else:
                                         # Check for review feedback (inline diff comments, reviews, PR conversation comments)
                                         task_meta = {}

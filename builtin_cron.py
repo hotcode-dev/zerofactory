@@ -986,6 +986,12 @@ def set_cron_scheduler_enabled(enabled: bool, conn: Optional[Any] = None) -> Dic
             "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('enable_cron_scheduler', ?, ?)",
             (val, now)
         )
+        # Commit so the setting is durable on a caller-provided connection, matching
+        # the ``db_path`` branch below and the function's "persist" contract. Without
+        # this the write only survives if the caller happens to commit its own
+        # connection (the dashboard endpoints do), so any other caller's read of the
+        # on-disk state would still see the previous value.
+        conn.commit()
     elif db_path.exists():
         with sqlite3.connect(str(db_path), timeout=10.0) as c:
             c.execute(
