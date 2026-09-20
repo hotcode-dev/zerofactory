@@ -44,17 +44,16 @@
   const API_BASE = "/api/plugins/zerofactory";
 
   const COLUMNS = [
-    { id: "triage", title: "Triage", icon: "📥", dotColor: "#818cf8", desc: "Initial requirements" },
-    { id: "todo", title: "Todo", icon: "📋", dotColor: "#38bdf8", desc: "Backlog for dispatch" },
-    { id: "ready", title: "Ready", icon: "🚀", dotColor: "#34d399", desc: "Assigned & worktree ready" },
-    { id: "running", title: "Running", icon: "⚡", dotColor: "#fbbf24", desc: "Agent actively executing" },
-    { id: "blocked", title: "Blocked", icon: "🛑", dotColor: "#f43f5e", desc: "PR / Human review needed" },
+    { id: "triage", title: "Triage", icon: "📥", dotColor: "#818cf8", desc: "Raw backlog & epics" },
+    { id: "todo", title: "Todo", icon: "📋", dotColor: "#38bdf8", desc: "Prioritized queue ready for pickup" },
+    { id: "running", title: "Running", icon: "⚡", dotColor: "#fbbf24", desc: "Autonomous AI agents" },
+    { id: "blocked", title: "Blocked", icon: "🛑", dotColor: "#f43f5e", desc: "Human action required" },
     { id: "done", title: "Done", icon: "✅", dotColor: "#a78bfa", desc: "Completed & merged" },
   ];
 
   const NEXT_STATUS_MAP = {
     triage: "todo",
-    todo: "ready",
+    todo: "running",
     ready: "running",
     running: "blocked",
     blocked: "done",
@@ -649,9 +648,12 @@
 
     // Tasks grouped by column
     const tasksByColumn = useMemo(() => {
-      const map = { triage: [], todo: [], ready: [], running: [], blocked: [], done: [] };
+      const map = { triage: [], todo: [], running: [], blocked: [], done: [] };
       filteredTasks.forEach((t) => {
-        const col = t.status || "triage";
+        let col = t.status || "triage";
+        if (col === "ready") {
+          col = "todo";
+        }
         if (map[col]) {
           map[col].push(t);
         } else {
@@ -1120,14 +1122,13 @@
             React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "Kanban Column States & Roles"),
             React.createElement(
               "div",
-              { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs" },
+              { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs" },
               [
                 { step: "1. Triage", color: "bg-indigo-950/90 border-indigo-500/70 text-indigo-100", role: "Intake & Epics", actor: "User / Operator", desc: "Raw user goals and high-level feature epics. Ignored by dispatcher until decomposed into Todo." },
-                { step: "2. Todo", color: "bg-sky-950/90 border-sky-500/70 text-sky-100", role: "Actionable Backlog", actor: "zf-orchestrator", desc: "Actionable tasks: decomposed from Triage, created directly by zf-orchestrator scanner, or rework." },
-                { step: "3. Ready", color: "bg-amber-950/90 border-amber-500/70 text-amber-100", role: "Worktree Queue", actor: "Dispatcher", desc: "WIP slot cleared. Isolated Git worktree provisioned; awaiting worker." },
-                { step: "4. Running", color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100", role: "Active Worker", actor: "zf-builder / reviewer", desc: "Subprocess actively executing. zf-builder coding or zf-reviewer evaluating PR." },
-                { step: "5. Blocked", color: "bg-purple-950/90 border-purple-500/70 text-purple-100", role: "Awaiting Merge (HITL)", actor: "Human Operator", desc: "PR approved by reviewer waiting for human merge, or unmet dependencies." },
-                { step: "6. Done", color: "bg-slate-900 border-emerald-500/70 text-emerald-200", role: "PR Merged & Pruned", actor: "System (Closed)", desc: "PR merged on GitHub. Worktree pruned and metrics recorded." }
+                { step: "2. Todo", color: "bg-sky-950/90 border-sky-500/70 text-sky-100", role: "Actionable Queue", actor: "Queue", desc: "Prioritized, actionable tasks ready for autonomous execution. Isolated Git worktree provisioned on pickup." },
+                { step: "3. Running", color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100", role: "Autonomous AI", actor: "zf-builder / reviewer", desc: "Subprocess actively executing. zf-builder coding or zf-reviewer evaluating PR across continuous review rounds." },
+                { step: "4. Blocked", color: "bg-purple-950/90 border-purple-500/70 text-purple-100", role: "Human Action (HITL)", actor: "Human Operator", desc: "Action required: PR approved waiting for human merge, crashed worker retry, or merge conflict resolution." },
+                { step: "5. Done", color: "bg-slate-900 border-emerald-500/70 text-emerald-200", role: "PR Merged & Pruned", actor: "System (Closed)", desc: "PR merged on GitHub. Worktree pruned and metrics recorded." }
               ].map((col, idx) =>
                 React.createElement(
                   "div",
@@ -1355,10 +1356,9 @@
     const renderLifecycleSection = () => {
       const columns = [
         { id: "triage", title: "Triage", desc: "Incoming raw user goals, feature requests, or epics awaiting decomposition.", trigger: "Submitted via CLI or Board UI" },
-        { id: "todo", title: "Todo", desc: "Actionable backlog: Decomposed tickets from Triage, improvement tasks filed by zf-orchestrator scanner, or reviewer rework.", trigger: "zf-orchestrator decomposes or scans" },
-        { id: "ready", title: "Ready", desc: "Dependencies cleared and worktree provisioned. Queued for worker execution.", trigger: "Dispatcher validates WIP & deps" },
-        { id: "running", title: "Running", desc: "Dedicated worker executing inside isolated Git worktree. Live progress and thoughts stream to card.", trigger: "zf-builder coding or zf-reviewer reviewing" },
-        { id: "blocked", title: "Blocked", desc: "Tasks with unmet parent dependencies, or PR approved by reviewer waiting for human merge.", trigger: "Awaiting Human Merge or Dependencies" },
+        { id: "todo", title: "Todo", desc: "Actionable backlog: Decomposed tickets from Triage, improvement tasks filed by scanner, or reviewer rework.", trigger: "zf-orchestrator decomposes or scans" },
+        { id: "running", title: "Running", desc: "Dedicated worker executing inside isolated Git worktree. zf-builder coding or zf-reviewer reviewing PR diff.", trigger: "Autonomous pickup by dispatcher" },
+        { id: "blocked", title: "Blocked", desc: "Human action required: PR approved waiting for human merge, worker crash retry, or merge conflict resolution.", trigger: "Awaiting Human Merge, Crash, or Conflict" },
         { id: "done", title: "Done", desc: "Completed and merged tickets. Worktrees pruned and metrics updated.", trigger: "PR merged on GitHub" }
       ];
 
@@ -2767,7 +2767,7 @@
                 "div",
                 { className: "flex flex-col min-w-0" },
                 React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.blocked) || 0),
-                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Blocked / Review")
+                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Blocked / Action")
               )
             ),
             React.createElement(
@@ -2918,7 +2918,7 @@
       // Main Kanban Board Grid
       React.createElement(
         "div",
-        { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 items-start" },
+        { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 items-start" },
         COLUMNS.map((col) => {
           const colTasks = tasksByColumn[col.id] || [];
           const isOver = dragOverCol === col.id;
@@ -3031,15 +3031,53 @@
                       (t.status === "running" || (t.session_progress && t.session_progress.has_session)) &&
                         React.createElement(
                           "div",
-                          { className: "flex items-center gap-2 p-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs" },
+                          { className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (t.assignee === "zf-reviewer" ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-300" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300") },
                           React.createElement("span", {
-                            className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
+                            className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? (t.assignee === "zf-reviewer" ? "bg-cyan-400 zfk-pulse-active" : "bg-emerald-400 zfk-pulse-active") : "bg-slate-500")
                           }),
                           React.createElement(
                             "span",
                             { className: "text-[0.6875rem] truncate font-medium" },
-                            (t.session_progress && t.session_progress.turn_count ? t.session_progress.turn_count + " turns" : "Executing") +
+                            (t.assignee === "zf-reviewer" ? "🔍 Reviewing PR" : "🔨 Implementing") +
+                            (t.session_progress && t.session_progress.turn_count ? " • " + t.session_progress.turn_count + " turns" : "") +
                             (t.session_progress && t.session_progress.last_action ? " • " + t.session_progress.last_action : "")
+                          )
+                        ),
+                      t.status === "blocked" &&
+                        React.createElement(
+                          "div",
+                          {
+                            className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (
+                              (t.pr_url || (t.title && t.title.includes("[Human Review]")))
+                                ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
+                                : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                                ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                : t.blocking_parent_count > 0
+                                ? "bg-slate-800 border-slate-700 text-slate-300"
+                                : "bg-rose-500/15 border-rose-500/30 text-rose-300"
+                            )
+                          },
+                          React.createElement("span", {
+                            className: "w-2 h-2 rounded-full shrink-0 " + (
+                              (t.pr_url || (t.title && t.title.includes("[Human Review]")))
+                                ? "bg-teal-400"
+                                : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                                ? "bg-amber-400"
+                                : t.blocking_parent_count > 0
+                                ? "bg-slate-400"
+                                : "bg-rose-400"
+                            )
+                          }),
+                          React.createElement(
+                            "span",
+                            { className: "text-[0.6875rem] truncate font-medium" },
+                            (t.pr_url || (t.title && t.title.includes("[Human Review]")))
+                              ? "🟢 Awaiting Human Merge"
+                              : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                              ? "🟠 Merge Conflict"
+                              : t.blocking_parent_count > 0
+                              ? "⏳ Blocked by Parent Task"
+                              : "🛑 Action Required / Stuck"
                           )
                         ),
                       React.createElement(

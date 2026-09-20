@@ -76,7 +76,7 @@ def run_daily_stats() -> int:
     print("#### Column Distribution:")
     print("| Column | Task Count | Status |")
     print("|---|---|---|")
-    for col in ("triage", "todo", "ready", "running", "blocked", "done"):
+    for col in ("triage", "todo", "running", "blocked", "done"):
         cnt = columns.get(col, 0)
         indicator = "🟢" if col == "done" else ("🔴" if col == "blocked" and cnt > 0 else "⚪")
         print(f"| `{col}` | {cnt} | {indicator} |")
