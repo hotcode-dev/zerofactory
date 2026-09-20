@@ -201,6 +201,50 @@ def init_db(force: bool = False):
                     "ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER NOT NULL DEFAULT 1"
                 )
 
+            # Idempotent data migration: normalize legacy 'ready' task rows to
+            # 'todo'. The ready status was removed from the workflow (tasks
+            # transition directly todo -> running), so the dispatcher only
+            # promotes 'todo' rows; any row still stamped 'ready' in a
+            # pre-refactor database would be silently orphaned — invisible to
+            # dispatch, unmovable via the CLI/API (which reject 'ready'), yet
+            # shown in the Todo column by the UI's display remap. The UPDATE is
+            # a no-op once no 'ready' rows remain, so it is safe on every
+            # init_db() call (runs once per process per DB path via
+            # _DB_INITIALIZED_PATHS; the dispatcher's own defensive re-mapping
+            # in run_dispatch_cycle() covers a DB that is never opened via the
+            # API). A task_activity row is recorded for each migrated task so
+            # the recovery is auditable.
+            _tasks_cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+            if "status" in _tasks_cols:
+                _ready_rows = conn.execute(
+                    "SELECT id FROM tasks WHERE status = 'ready'"
+                ).fetchall()
+                if _ready_rows:
+                    _now_ts = int(time.time())
+                    if "updated_at" in _tasks_cols:
+                        conn.execute(
+                            "UPDATE tasks SET status = 'todo', updated_at = ? WHERE status = 'ready'",
+                            (_now_ts,),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE tasks SET status = 'todo' WHERE status = 'ready'"
+                        )
+                    try:
+                        for _rr in _ready_rows:
+                            conn.execute(
+                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, ?, ?, ?)",
+                                (
+                                    _rr["id"],
+                                    "system",
+                                    "migrate",
+                                    "Legacy 'ready' status normalized to 'todo'",
+                                    _now_ts,
+                                ),
+                            )
+                    except Exception:  # no task_activity table on minimal DBs
+                        pass
+
             # Seed default global settings if missing. Values are derived from the
             # shared constants (settings.DEFAULT_SETTING_VALUES) so the seed rows and
             # the in-code defaults can never drift apart.
