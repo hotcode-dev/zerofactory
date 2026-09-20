@@ -171,7 +171,7 @@ def build_board_scanner_prompt(board: Dict[str, Any], workdir: Optional[str]) ->
 ## STEP 1: Scanner Pre-Flight Board Check (CRITICAL)
 Before inspecting files, review all existing tasks on the board:
 Run: `hermes zerofactory list --board "{slug}"`
-1. Review all open tasks (`triage`, `todo`, `ready`, `running`, `blocked`).
+1. Review all open tasks (`triage`, `todo`, `running`, `blocked`).
 2. Note the files, modules, and issues they already track.
 3. **NEVER** file a task for an issue, function, or file(s) that are already covered by an open task.
 4. Only proceed to file a task if you discover a distinct, unaddressed problem.
@@ -197,7 +197,7 @@ Write your detailed context to a temporary file (e.g. `/tmp/task_desc.md`) and r
 - Always pass `--category` (one of: `bug-fix`, `refactoring`, `performance`, `documentation`, `testing`, `security`, `config`).
 - In description: Clear context with RELATIVE file paths and line numbers only. NEVER use absolute paths in the description!
 - Priority: Assign `P0` (critical) or `P1` (high) so the dispatcher picks it up first.
-- Status: `todo` (the built-in dispatcher will auto-assign, provision an isolated git worktree, and promote to `ready`).
+- Status: `todo` (the built-in dispatcher will auto-assign, provision an isolated git worktree, and dispatch to `running`).
 
 ## Deliver to user:
 - Summary of what was found and the task created in Kanban (or report that all issues were already tracked)

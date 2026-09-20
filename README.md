@@ -9,17 +9,17 @@ graph TD
     User([User / Goal]) --> Triage[Kanban: Triage]:::kanban
     Triage -->|zf-orchestrator decomposes| Todo[Kanban: Todo]:::kanban
     Scanner["zf-orchestrator (Improvement Scanner)"] -->|Scans Project & Creates Task| Todo
-    Todo -->|Dispatcher Assigns & Creates Worktree| Ready[Kanban: Ready]:::kanban
-    Ready -->|Autonomous Pickup| Running[Kanban: Running]:::kanban
+    Todo -->|Dispatcher Assigns, Provisions Worktree & Dispatches| Running[Kanban: Running]:::kanban
     
     subgraph Zero Factory Agents
         Running --> Builder["zf-builder (Code & Tests)"]
+        Running --> Reviewer["zf-reviewer (Review Rounds)"]
     end
     
     Builder -->|Work Done| PR[Dispatcher Pushes & Opens PR]
-    PR --> Reviewer["zf-reviewer (3-Round Polish)"]
-    Reviewer -->|Changes Requested| Todo
-    Reviewer -->|Approved| Blocked[Kanban: Blocked / Human Review]:::kanban
+    PR --> Reviewer
+    Reviewer -->|Changes Requested| Builder
+    Reviewer -->|Approved| Blocked[Kanban: Blocked / Human Action]:::kanban
     Blocked -->|Human Merges PR| Done[Kanban: Done]:::kanban
 ```
 
@@ -115,25 +115,17 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
           ▼
         [Todo]  ◄─────── (Changes Requested by Reviewer)
           │
-     (Human Approves)
+   (Dispatcher provisions worktree & launches zf-builder)
           │
           ▼
-        [Ready]
-          │
-   (Dispatcher assigns isolated Git worktree & spawns zf-builder)
-          │
-          ▼
-       [Running]
+       [Running] (zf-builder: Code & Tests)
           │
    (zf-builder finishes; Dispatcher creates GitHub PR)
           │
-          ▼
-       [Ready]  (Assigned to zf-reviewer)
-          │
-   (zf-reviewer inspects PR diff & commits)
+       [Running] (zf-reviewer: Multi-round Review)
           │
        Approved?
-       ├── Yes ──► [Blocked] (Reason: Human Review & Merge)
+       ├── Yes ──► [Blocked] (Human Action: Review & Merge)
        │                         │
        │                  (Merged on GitHub)
        │                         │
@@ -145,15 +137,10 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 
 1. **Goal Ingestion (`Triage`)**: Submit a high-level goal or feature request via CLI or web UI.
 2. **Decomposition & Codebase Scanning (`Todo`)**: `zf-orchestrator` breaks `Triage` goals down into atomic sub-tasks, and runs periodic codebase scans to directly file actionable `Todo` improvement tasks for `zf-builder`.
-3. **Dispatch & Worktree Provisioning (`Ready`)**: The dispatcher validates dependencies, assigns `zf-builder`, and creates an isolated Git worktree.
-4. **Autonomous Execution (`Running`)**: `zf-builder` works in its isolated worktree, writing code and automated tests.
-5. **PR Creation & Review (`Blocked / Reviewer`)**: When `zf-builder` finishes, the dispatcher commits the branch, opens a GitHub Pull Request, pre-digests the git diff, commit history, and touched files directly into the reviewer prompt, and routes it to `zf-reviewer`.
-6. **Iterative Polish (Rounds 1-3)**:
-   - **Round 1**: Testing, correctness, and edge-case handling.
-   - **Round 2**: Performance, memory, and algorithmic efficiency.
-   - **Round 3**: Clean code, DRY principles, and architectural polish.
-   - **Round 4+**: Approved for human review.
-7. **Human Merge (`Done`)**: The human merges the PR on GitHub, and the dispatcher automatically marks the ticket as `Done`.
+3. **Autonomous Execution (`Running`)**: The dispatcher validates dependencies, provisions an isolated Git worktree, and launches `zf-builder` to write code and tests.
+4. **PR Creation & Agent Review (`Running`)**: When `zf-builder` finishes, the dispatcher commits the branch, opens a GitHub Pull Request, and routes it to `zf-reviewer` in `Running` across 3 continuous review rounds (Correctness ➔ Performance ➔ Clean Code).
+5. **Human Action & Merge (`Blocked`)**: Approved PRs move to `Blocked` awaiting human merge. Any crashed workers or merge conflict escalations also move to `Blocked` for operator review.
+6. **Completion (`Done`)**: The human merges the PR on GitHub, and the dispatcher automatically marks the ticket as `Done` and prunes the worktree.
 
 ---
 
