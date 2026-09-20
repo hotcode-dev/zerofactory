@@ -2280,10 +2280,35 @@ class TestZeroFactory(unittest.TestCase):
         """Verify that get_plugin_root() resolves main repo from inside worktrees and ensure_plugin_symlinks cleans up worktree symlinks."""
         from profile_manager import get_plugin_root, ensure_plugin_symlinks
         import shutil
+        import subprocess
         import tempfile
         from unittest.mock import patch
 
-        canonical_repo = Path(__file__).resolve().parent
+        # Resolve the canonical (main) repo root via git so the ground-truth
+        # holds both when the suite runs from the main repo AND from an
+        # isolated git worktree (where Path(__file__) lives in the worktree,
+        # not the main repo). `--git-common-dir` returns the main repo's .git
+        # directory in either case.
+        test_dir = Path(__file__).resolve().parent
+
+        def _canonical_repo() -> Path:
+            try:
+                res = subprocess.run(
+                    ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                    cwd=str(test_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if res.returncode == 0:
+                    common_git = Path(res.stdout.strip()).resolve()
+                    if (common_git.parent / "plugin.yaml").exists():
+                        return common_git.parent
+            except Exception:
+                pass
+            return test_dir
+
+        canonical_repo = _canonical_repo()
 
         # 1. Normal resolution from main repo
         self.assertEqual(get_plugin_root(), canonical_repo)
@@ -5804,12 +5829,197 @@ class TestSharedProfilePathResolution(unittest.TestCase):
 
             conn.close()
 
+    def test_85_update_builtin_job_field_update_semantics(self):
+        """update_builtin_job field-update semantics live in a single helper
+        shared by both the existing-job and new-job branches."""
+        import builtin_cron
+        from builtin_cron import (
+            update_builtin_job, save_jobs_to_file, load_jobs_from_file,
+        )
+        import builtin_cron as _bc
+        _ensure_builtin_cron_jobs = _bc.ensure_builtin_cron_jobs
+        _reset_builtin_job = _bc.reset_builtin_job
+
+        job_id = "zero-factory-task-queue-check"
+
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
+            existing_target = Path(tf.name)
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
+            new_job_target = Path(tf.name)
+
+        orig_override = os.environ.get("ZEROFACTORY_CRON_JOBS_FILE")
+        try:
+            # ---- Existing-job branch ------------------------------------
+            os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(existing_target)
+            base = {
+                "id": job_id,
+                "name": "Zero Factory task queue check",
+                "schedule": {"kind": "interval", "minutes": 120, "display": "every 120m"},
+                "schedule_display": "every 120m",
+                "enabled": True,
+                "state": "scheduled",
+                "model": "orig-model",
+                "prompt": "Original prompt",
+            }
+
+            # Interval via minutes sets schedule, display and custom_config
+            save_jobs_to_file(existing_target, [dict(base)])
+            res = update_builtin_job(job_id, {"minutes": 45})
+            self.assertTrue(res["ok"])
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertEqual(j["schedule"], {"kind": "interval", "minutes": 45, "display": "every 45m"})
+            self.assertEqual(j["schedule_display"], "every 45m")
+            self.assertTrue(j["custom_config"])
+
+            # Cron via cron_expr (whitespace stripped)
+            res = update_builtin_job(job_id, {"cron_expr": "  */15 * * * *  "})
+            self.assertTrue(res["ok"])
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertEqual(j["schedule"], {"kind": "cron", "expr": "*/15 * * * *", "display": "*/15 * * * *"})
+            self.assertEqual(j["schedule_display"], "*/15 * * * *")
+            self.assertTrue(j["custom_config"])
+
+            # Invalid minutes value is ignored: schedule untouched,
+            # no custom_config flagging from the bad update
+            save_jobs_to_file(existing_target, [dict(base)])
+            res = update_builtin_job(job_id, {"minutes": "not-a-number"})
+            self.assertTrue(res["ok"])
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertEqual(j["schedule"], base["schedule"])
+            self.assertFalse(j.get("custom_config"))
+
+            # context_from: str is normalized to a single-element list
+            res = update_builtin_job(job_id, {"context_from": "zero-factory-daily-report"})
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertEqual(j["context_from"], ["zero-factory-daily-report"])
+            self.assertTrue(j["custom_config"])
+
+            # context_from: list passthrough with strip and empty-drop
+            res = update_builtin_job(job_id, {"context_from": ["  a  ", "", "b"]})
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertEqual(j["context_from"], ["a", "b"])
+            self.assertTrue(j["custom_config"])
+
+            # context_from: empty list normalizes to None
+            res = update_builtin_job(job_id, {"context_from": []})
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertIsNone(j["context_from"])
+            self.assertTrue(j["custom_config"])
+
+            # Each remaining field sets custom_config when applied
+            save_jobs_to_file(existing_target, [dict(base)])
+            res = update_builtin_job(job_id, {
+                "model": " new-model ",
+                "workdir": "/tmp/zf-test-workdir",
+                "prompt": "New prompt",
+                "no_agent": True,
+                "continuity": True,
+            })
+            self.assertTrue(res["ok"])
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertEqual(j["model"], "new-model")
+            self.assertEqual(j["workdir"], "/tmp/zf-test-workdir")
+            self.assertEqual(j["prompt"], "New prompt")
+            self.assertIs(j["no_agent"], True)
+            self.assertIs(j["continuity"], True)
+            self.assertTrue(j["custom_config"])
+
+            # name is applied and sets custom_config so a custom rename
+            # survives periodic ensure_builtin_cron_jobs() syncs
+            save_jobs_to_file(existing_target, [dict(base)])
+            res = update_builtin_job(job_id, {"name": "Renamed job"})
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertEqual(j["name"], "Renamed job")
+            self.assertTrue(j.get("custom_config"))
+
+            # enabled toggle drives state + paused_at both directions
+            res = update_builtin_job(job_id, {"enabled": False})
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertFalse(j["enabled"])
+            self.assertEqual(j["state"], "paused")
+            self.assertIsNotNone(j["paused_at"])
+            res = update_builtin_job(job_id, {"enabled": True})
+            j = load_jobs_from_file(existing_target)[0]
+            self.assertTrue(j["enabled"])
+            self.assertEqual(j["state"], "scheduled")
+            self.assertIsNone(j["paused_at"])
+
+            # ---- Sync-survival regression: a custom rename must not be
+            # reverted by the periodic ensure_builtin_cron_jobs() sync
+            # (rename flags custom_config; sync skips customised fields).
+            with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
+                sync_target = Path(tf.name)
+            orig_targets = builtin_cron.get_target_jobs_files
+            builtin_cron.get_target_jobs_files = lambda: [sync_target]
+            orig_skip = os.environ.pop("ZEROFACTORY_SKIP_CRON_SYNC", None)
+            orig_cjf = os.environ.pop("ZEROFACTORY_CRON_JOBS_FILE", None)
+            try:
+                # Fresh store: sync instantiates the job from builtin_def
+                _ensure_builtin_cron_jobs()
+                j = load_jobs_from_file(sync_target)[0]
+                self.assertEqual(j["name"], "Zero Factory task queue check")
+                self.assertFalse(j.get("custom_config"))
+
+                # User renames the job via the update endpoint
+                res = update_builtin_job(job_id, {"name": "My renamed queue check"})
+                j = load_jobs_from_file(sync_target)[0]
+                self.assertEqual(j["name"], "My renamed queue check")
+                self.assertTrue(j.get("custom_config"))
+
+                # Next periodic sync keeps the custom name
+                _ensure_builtin_cron_jobs()
+                j = load_jobs_from_file(sync_target)[0]
+                self.assertEqual(j["name"], "My renamed queue check")
+                self.assertTrue(j.get("custom_config"))
+
+                # Reset restores the canonical name and clears custom_config
+                res = _reset_builtin_job(job_id)
+                self.assertTrue(res["ok"])
+                j = load_jobs_from_file(sync_target)[0]
+                self.assertEqual(j["name"], "Zero Factory task queue check")
+                self.assertFalse(j.get("custom_config"))
+            finally:
+                if orig_skip is not None:
+                    os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = orig_skip
+                if orig_cjf is not None:
+                    os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = orig_cjf
+                builtin_cron.get_target_jobs_files = orig_targets
+                if sync_target.exists():
+                    sync_target.unlink()
+
+            # ---- New-job branch (instantiate from builtin_def) ----------
+            os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(new_job_target)
+            save_jobs_to_file(new_job_target, [])  # exists, but job absent
+            res = update_builtin_job(job_id, {
+                "minutes": 30,
+                "context_from": "zero-factory-daily-report",
+                "model": "new-model",
+                "enabled": False,
+            })
+            self.assertTrue(res["ok"])
+            jobs = load_jobs_from_file(new_job_target)
+            self.assertEqual(len(jobs), 1)
+            j = jobs[0]
+            self.assertEqual(j["id"], job_id)
+            self.assertIn("created_at", j)
+            # Same semantics as the existing-job branch
+            self.assertEqual(j["schedule"], {"kind": "interval", "minutes": 30, "display": "every 30m"})
+            self.assertEqual(j["schedule_display"], "every 30m")
+            self.assertEqual(j["context_from"], ["zero-factory-daily-report"])
+            self.assertEqual(j["model"], "new-model")
+            self.assertFalse(j["enabled"])
+            self.assertEqual(j["state"], "paused")
+            self.assertIsNotNone(j["paused_at"])
+            self.assertTrue(j["custom_config"])
+        finally:
+            if orig_override is not None:
+                os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = orig_override
+            else:
+                os.environ.pop("ZEROFACTORY_CRON_JOBS_FILE", None)
+            for p in (existing_target, new_job_target):
+                if p.exists():
+                    p.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
-
-
-
-
-
-

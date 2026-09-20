@@ -715,7 +715,7 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                     "enabled_toolsets", "origin", "model", "provider", "base_url", "workdir",
                     "script", "no_agent", "context_from", "continuity"
                 ):
-                    if is_custom and field in ("schedule", "schedule_display", "prompt", "model", "provider", "base_url", "workdir", "script", "no_agent", "context_from", "continuity"):
+                    if is_custom and field in ("name", "schedule", "schedule_display", "prompt", "model", "provider", "base_url", "workdir", "script", "no_agent", "context_from", "continuity"):
                         continue
                     if curr.get(field) != builtin_def.get(field):
                         curr[field] = builtin_def.get(field)
@@ -821,8 +821,88 @@ def list_builtin_jobs() -> List[Dict[str, Any]]:
     return results
 
 
+def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> None:
+    """Apply user-supplied field updates to a single jobs.json entry, in place.
+
+    Single source of truth for update_builtin_job field-update semantics,
+    shared by both the existing-job and new-job (instantiate-from-builtin_def)
+    branches so the two can never silently diverge. Handles:
+    enabled/state/paused_at, minutes interval, cron_expr, schedule dict
+    passthrough, model/workdir/prompt/name/script/no_agent, context_from
+    normalization (str -> list, strip, drop empties, None when empty) and
+    continuity. Sets custom_config on every customised field, including
+    name, so a custom rename survives periodic ensure_builtin_cron_jobs()
+    syncs and is only cleared by reset_builtin_job().
+    """
+    # Enabled / State toggle
+    if "enabled" in updates:
+        is_enabled = bool(updates["enabled"])
+        job["enabled"] = is_enabled
+        job["state"] = "scheduled" if is_enabled else "paused"
+        if not is_enabled:
+            job["paused_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        else:
+            job["paused_at"] = None
+        job["custom_config"] = True
+
+    # Schedule updates
+    if "minutes" in updates and updates["minutes"]:
+        try:
+            m = int(updates["minutes"])
+            if m > 0:
+                job["schedule"] = {"kind": "interval", "minutes": m, "display": f"every {m}m"}
+                job["schedule_display"] = f"every {m}m"
+                job["custom_config"] = True
+        except (ValueError, TypeError):
+            pass
+    elif "cron_expr" in updates and updates["cron_expr"]:
+        expr = str(updates["cron_expr"]).strip()
+        if expr:
+            job["schedule"] = {"kind": "cron", "expr": expr, "display": expr}
+            job["schedule_display"] = expr
+            job["custom_config"] = True
+    elif "schedule" in updates and isinstance(updates["schedule"], dict):
+        job["schedule"] = updates["schedule"]
+        job["schedule_display"] = updates.get("schedule_display") or updates["schedule"].get("display", "configured")
+        job["custom_config"] = True
+
+    # Model / workdir / prompt updates
+    if "model" in updates and updates["model"] is not None:
+        job["model"] = str(updates["model"]).strip() or None
+        job["custom_config"] = True
+    if "workdir" in updates and updates["workdir"] is not None:
+        job["workdir"] = str(updates["workdir"]).strip() or None
+        job["custom_config"] = True
+    if "prompt" in updates and updates["prompt"] is not None:
+        job["prompt"] = str(updates["prompt"])
+        job["custom_config"] = True
+    if "name" in updates and updates["name"]:
+        job["name"] = str(updates["name"])
+        job["custom_config"] = True
+    if "script" in updates:
+        job["script"] = str(updates["script"]).strip() if updates["script"] else None
+        job["custom_config"] = True
+    if "no_agent" in updates:
+        job["no_agent"] = bool(updates["no_agent"])
+        job["custom_config"] = True
+    if "context_from" in updates:
+        cf = updates["context_from"]
+        if isinstance(cf, str):
+            cf = [cf]
+        job["context_from"] = [str(x).strip() for x in cf if str(x).strip()] if cf else None
+        job["custom_config"] = True
+    if "continuity" in updates:
+        job["continuity"] = bool(updates["continuity"])
+        job["custom_config"] = True
+
+
 def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
-    """Update schedule, enabled state, model, workdir, or prompt of a builtin job across targets."""
+    """Update a builtin job configuration across all target cron store files.
+
+    All field-update semantics live in _apply_job_field_updates; both the
+    existing-job branch and the new-job (instantiate-from-builtin_def) branch
+    share it so they cannot diverge.
+    """
     current_builtin_jobs = get_all_builtin_cron_jobs()
     if job_id not in current_builtin_jobs:
         if job_id.startswith("zero-factory-improvement-scanner-"):
@@ -850,66 +930,7 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         for j in jobs:
             if isinstance(j, dict) and j.get("id") == job_id:
                 found = True
-                # Enabled / State toggle
-                if "enabled" in updates:
-                    is_enabled = bool(updates["enabled"])
-                    j["enabled"] = is_enabled
-                    j["state"] = "scheduled" if is_enabled else "paused"
-                    if not is_enabled:
-                        j["paused_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-                    else:
-                        j["paused_at"] = None
-                    j["custom_config"] = True
-
-                # Schedule updates
-                if "minutes" in updates and updates["minutes"]:
-                    try:
-                        m = int(updates["minutes"])
-                        if m > 0:
-                            j["schedule"] = {"kind": "interval", "minutes": m, "display": f"every {m}m"}
-                            j["schedule_display"] = f"every {m}m"
-                            j["custom_config"] = True
-                    except (ValueError, TypeError):
-                        pass
-                elif "cron_expr" in updates and updates["cron_expr"]:
-                    expr = str(updates["cron_expr"]).strip()
-                    if expr:
-                        j["schedule"] = {"kind": "cron", "expr": expr, "display": expr}
-                        j["schedule_display"] = expr
-                        j["custom_config"] = True
-                elif "schedule" in updates and isinstance(updates["schedule"], dict):
-                    j["schedule"] = updates["schedule"]
-                    j["schedule_display"] = updates.get("schedule_display") or updates["schedule"].get("display", "configured")
-                    j["custom_config"] = True
-
-                # Model / workdir / prompt updates
-                if "model" in updates and updates["model"] is not None:
-                    j["model"] = str(updates["model"]).strip() or None
-                    j["custom_config"] = True
-                if "workdir" in updates and updates["workdir"] is not None:
-                    j["workdir"] = str(updates["workdir"]).strip() or None
-                    j["custom_config"] = True
-                if "prompt" in updates and updates["prompt"] is not None:
-                    j["prompt"] = str(updates["prompt"])
-                    j["custom_config"] = True
-                if "name" in updates and updates["name"]:
-                    j["name"] = str(updates["name"])
-                if "script" in updates:
-                    j["script"] = str(updates["script"]).strip() if updates["script"] else None
-                    j["custom_config"] = True
-                if "no_agent" in updates:
-                    j["no_agent"] = bool(updates["no_agent"])
-                    j["custom_config"] = True
-                if "context_from" in updates:
-                    cf = updates["context_from"]
-                    if isinstance(cf, str):
-                        cf = [cf]
-                    j["context_from"] = [str(x).strip() for x in cf if str(x).strip()] if cf else None
-                    j["custom_config"] = True
-                if "continuity" in updates:
-                    j["continuity"] = bool(updates["continuity"])
-                    j["custom_config"] = True
-
+                _apply_job_field_updates(j, updates)
                 updated_job_data = dict(j)
                 break
 
@@ -917,44 +938,7 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
             # If job not in this target yet, instantiate from builtin_def and apply updates
             new_job = dict(builtin_def)
             new_job["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-            if "enabled" in updates:
-                new_job["enabled"] = bool(updates["enabled"])
-                new_job["state"] = "scheduled" if new_job["enabled"] else "paused"
-                new_job["custom_config"] = True
-            if "minutes" in updates and updates["minutes"]:
-                try:
-                    m = int(updates["minutes"])
-                    new_job["schedule"] = {"kind": "interval", "minutes": m, "display": f"every {m}m"}
-                    new_job["schedule_display"] = f"every {m}m"
-                    new_job["custom_config"] = True
-                except (ValueError, TypeError):
-                    pass
-            elif "cron_expr" in updates and updates["cron_expr"]:
-                expr = str(updates["cron_expr"]).strip()
-                new_job["schedule"] = {"kind": "cron", "expr": expr, "display": expr}
-                new_job["schedule_display"] = expr
-                new_job["custom_config"] = True
-            if "model" in updates and updates["model"]:
-                new_job["model"] = str(updates["model"])
-                new_job["custom_config"] = True
-            if "prompt" in updates and updates["prompt"]:
-                new_job["prompt"] = str(updates["prompt"])
-                new_job["custom_config"] = True
-            if "script" in updates:
-                new_job["script"] = str(updates["script"]).strip() if updates["script"] else None
-                new_job["custom_config"] = True
-            if "no_agent" in updates:
-                new_job["no_agent"] = bool(updates["no_agent"])
-                new_job["custom_config"] = True
-            if "context_from" in updates:
-                cf = updates["context_from"]
-                if isinstance(cf, str):
-                    cf = [cf]
-                new_job["context_from"] = [str(x).strip() for x in cf if str(x).strip()] if cf else None
-                new_job["custom_config"] = True
-            if "continuity" in updates:
-                new_job["continuity"] = bool(updates["continuity"])
-                new_job["custom_config"] = True
+            _apply_job_field_updates(new_job, updates)
             jobs.append(new_job)
             updated_job_data = dict(new_job)
 
