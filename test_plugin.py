@@ -4960,6 +4960,185 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
             os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
 
+    def test_60_reap_active_workers_stale_log_mtime_not_reaped(self):
+        """Regression (P0): reap_active_workers must NOT kill a LIVE worker whose
+        log mtime predates task start.
+
+        Before the fix, the inactivity branch only guarded on
+        ``running_time > inactivity_timeout`` and silently degraded
+        ``idle_time`` to ``running_time`` whenever the log mtime was stale
+        (``mtime <= started_at`` — a reused log, or a spawn-time utime the
+        worker never wrote past). That turned any long-running worker into a
+        false-positive reap, corrupting in-flight work.
+
+        The fix routes both detection paths through the shared
+        ``_compute_stuck_state`` double-gate, so a stale/absent log mtime
+        carries no inactivity evidence and cannot alone trigger a reap.
+        """
+        import time as _time
+        import subprocess as _subprocess
+        from unittest.mock import MagicMock, patch
+        from dispatcher import reap_active_workers, _active_workers
+        from dashboard.plugin_api import get_db_conn
+
+        inactivity = 60
+        task_timeout = 100000  # effectively disabled; only inactivity matters
+        old_inactivity = os.environ.get("ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS")
+        old_task_timeout = os.environ.get("ZEROFACTORY_TASK_TIMEOUT_SECONDS")
+
+        # Ensure a board exists so create_task succeeds in isolation.
+        existing = [b["slug"] for b in list_boards()["boards"]]
+        if "hotcode-dev-zerofactory" not in existing:
+            create_board(BoardCreate(
+                git_url="https://github.com/hotcode-dev/zerofactory",
+                description="AI workflow",
+            ))
+
+        t1 = t2 = t3 = None
+        log_dir = Path.home() / ".hermes" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        def _make_running_task(title):
+            t_res = create_task(TaskCreate(
+                title=title,
+                description="reap regression harness",
+                board_slug="hotcode-dev-zerofactory",
+                priority="P1",
+                status="running",
+                assignee="zf-builder",
+            ))
+            return t_res["id"]
+
+        def _set_started_and_pid(t_id, started_at, worker_pid):
+            import json as _json
+            with get_db_conn() as conn:
+                conn.execute(
+                    "UPDATE tasks SET updated_at = ?, metadata = ? WHERE id = ?",
+                    (started_at, _json.dumps({"started_at": started_at, "worker_pid": worker_pid}), t_id),
+                )
+                conn.commit()
+
+        try:
+            os.environ["ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS"] = str(inactivity)
+            os.environ["ZEROFACTORY_TASK_TIMEOUT_SECONDS"] = str(task_timeout)
+
+            now = int(_time.time())
+
+            def _run_reap(t_id):
+                """Run reap_active_workers with terminate_worker_process recorded.
+
+                First mark every OTHER running task 'done' so the reaper sees
+                only our harness task — otherwise leftover running tasks from
+                earlier tests would make the global ``reaped`` count flaky.
+                """
+                terminate_calls = []
+
+                def _record_terminate(proc, pid, *args, **kwargs):
+                    terminate_calls.append((proc, pid))
+
+                with get_db_conn() as conn:
+                    conn.execute(
+                        "UPDATE tasks SET status = 'done' WHERE status = 'running' AND id != ?",
+                        (t_id,),
+                    )
+                    conn.commit()
+                    cursor = conn.cursor()
+                    with patch("dispatcher.terminate_worker_process", side_effect=_record_terminate):
+                        reaped = reap_active_workers(cursor, now)
+                    status = conn.execute("SELECT status FROM tasks WHERE id = ?", (t_id,)).fetchone()[0]
+                    timeout_rows = conn.execute(
+                        "SELECT COUNT(*) FROM task_activity WHERE task_id = ? AND action = 'worker_timeout'",
+                        (t_id,),
+                    ).fetchone()[0]
+                    activity_actions = {r[0] for r in conn.execute(
+                        "SELECT action FROM task_activity WHERE task_id = ?", (t_id,)
+                    ).fetchall()}
+                    conn.commit()
+                return reaped, status, timeout_rows, activity_actions, terminate_calls
+
+            # --- Case 1 (THE BUG): live worker + STALE log mtime -> NOT reaped.
+            t1 = _make_running_task("Stale Mtime Live Worker")
+            started1 = now - (inactivity + 60)  # running_time = inactivity + 60 > inactivity
+            log1 = log_dir / f"worker_{t1}.log"
+            log1.write_text("seed\n")
+            stale_mtime = started1 - 30  # < started_at: a reused/stale log
+            os.utime(log1, (stale_mtime, stale_mtime))
+
+            live_proc = MagicMock()
+            live_proc.poll.return_value = None  # alive
+            live_proc.pid = os.getpid()
+            _active_workers[t1] = live_proc
+            _set_started_and_pid(t1, started1, live_proc.pid)
+
+            reaped1, status1, timeout_rows1, _acts1, term1 = _run_reap(t1)
+
+            self.assertEqual(status1, "running", "live worker with stale log mtime must NOT be reaped")
+            self.assertEqual(len(term1), 0, "terminate_worker_process must not run for a live stale-mtime worker")
+            self.assertEqual(timeout_rows1, 0, "no worker_timeout activity row for the stale-mtime worker")
+            self.assertEqual(reaped1, 0)
+
+            # --- Case 2 (regression guard): LIVE worker + FRESH (post-start) mtime,
+            # idle longer than the threshold -> reaped via the inactivity gate.
+            t2 = _make_running_task("Fresh Mtime Idle Worker")
+            started2 = now - (inactivity + 300)  # running_time well over threshold
+            log2 = log_dir / f"worker_{t2}.log"
+            log2.write_text("last write\n")
+            fresh_mtime = started2 + 60  # > started_at, but idle = now - fresh_mtime >> threshold
+            os.utime(log2, (fresh_mtime, fresh_mtime))
+            live_proc2 = MagicMock()
+            live_proc2.poll.return_value = None
+            live_proc2.pid = os.getpid()
+            _active_workers[t2] = live_proc2
+            _set_started_and_pid(t2, started2, live_proc2.pid)
+
+            reaped2, status2, timeout_rows2, _acts2, term2 = _run_reap(t2)
+
+            self.assertEqual(status2, "blocked", "genuinely idle live worker must still be reaped")
+            self.assertGreaterEqual(timeout_rows2, 1, "inactivity reap must emit a worker_timeout row")
+            self.assertGreaterEqual(reaped2, 1)
+            self.assertEqual(len(term2), 1, "idle worker process must be terminated exactly once")
+
+            # --- Case 3 (regression guard, literal requirement): DEAD pid -> reaped.
+            t3 = _make_running_task("Dead Pid Worker")
+            _proc = _subprocess.Popen(["sleep", "0.05"])
+            _proc.wait()
+            dead_pid = _proc.pid
+            started3 = now - (inactivity + 60)
+            log3 = log_dir / f"worker_{t3}.log"
+            log3.write_text("died after write\n")
+            os.utime(log3, (now, now))  # fresh mtime, then the process died
+            _set_started_and_pid(t3, started3, dead_pid)  # NOT registered in _active_workers
+
+            reaped3, status3, _to3, acts3, term3 = _run_reap(t3)
+
+            self.assertEqual(status3, "blocked", "a dead worker process must be reaped")
+            self.assertTrue(
+                acts3 & {"worker_lost", "worker_timeout"},
+                f"dead worker reap must emit an activity row, got {acts3}",
+            )
+            self.assertGreaterEqual(reaped3, 1)
+
+            # Cleanup the harness tasks so they don't leak into other tests.
+            with get_db_conn() as conn:
+                conn.execute("UPDATE tasks SET status = 'done' WHERE id IN (?, ?, ?)", (t1, t2, t3))
+                conn.commit()
+        finally:
+            for k, v in (
+                ("ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS", old_inactivity),
+                ("ZEROFACTORY_TASK_TIMEOUT_SECONDS", old_task_timeout),
+            ):
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            for t in (t1, t2, t3):
+                if t:
+                    _active_workers.pop(t, None)
+                    try:
+                        (log_dir / f"worker_{t}.log").unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
 
 
 # ---------------------------------------------------------------------------
