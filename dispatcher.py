@@ -733,6 +733,247 @@ def digest_reviewer_git_context(
     return "\n\n".join(sections)
 
 
+def extract_gh_repo_info(pr_url: str) -> Optional[tuple[str, str, int]]:
+    """Parse owner, repo, and pull number from a GitHub PR URL."""
+    if not pr_url:
+        return None
+    match = re.match(r"https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)", pr_url)
+    if not match:
+        return None
+    return match.group(1), match.group(2), int(match.group(3))
+
+
+def fetch_pr_review_comments(
+    repo_path: Path,
+    pr_url: Optional[str] = None,
+    task_id: Optional[str] = None,
+    pr_data: Optional[Dict[str, Any]] = None,
+    exclude_authors: Optional[set[str]] = None
+) -> List[Dict[str, Any]]:
+    """Fetch all types of review comments for a GitHub PR:
+    1. Inline diff review comments (/pulls/{pr}/comments)
+    2. Review summaries and states (/pulls/{pr}/reviews)
+    3. PR issue/conversation comments (/issues/{pr}/comments)
+    4. Code suggestions inside comments
+
+    Returns a standardized list of comment dicts.
+    """
+    if os.environ.get("ZEROFACTORY_SKIP_GIT"):
+        return []
+
+    if exclude_authors is None:
+        exclude_authors = {"github-actions[bot]", "web-flow"}
+
+    comments: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    # If pr_url is not provided, try to get from pr_data or gh pr view
+    if not pr_url and pr_data:
+        pr_url = pr_data.get("url")
+
+    info = extract_gh_repo_info(pr_url or "")
+    if not info and repo_path and task_id:
+        try:
+            res = subprocess.run(
+                ["gh", "pr", "view", f"task/{task_id}", "--json", "url"],
+                cwd=str(repo_path), capture_output=True, text=True, timeout=10
+            )
+            if res.returncode == 0:
+                url_val = json.loads(res.stdout).get("url") or ""
+                info = extract_gh_repo_info(url_val)
+        except Exception:
+            pass
+
+    # 1. Check pr_data if provided (e.g. from gh pr view --json reviews,comments)
+    if pr_data:
+        for rev in pr_data.get("reviews", []):
+            author = (rev.get("author") or {}).get("login") or rev.get("user", {}).get("login") or ""
+            body = (rev.get("body") or "").strip()
+            state = rev.get("state") or ""
+            rev_id = str(rev.get("id") or "")
+            cid = f"review_{rev_id}"
+            if cid not in seen_ids and author and author.lower() not in exclude_authors:
+                if body or state == "CHANGES_REQUESTED":
+                    seen_ids.add(cid)
+                    comments.append({
+                        "comment_id": cid,
+                        "type": "review_summary",
+                        "author": author,
+                        "state": state,
+                        "body": body or f"Review submitted with state: {state}",
+                        "path": None,
+                        "line": None,
+                        "diff_hunk": None,
+                        "suggestion": None,
+                        "created_at": rev.get("submittedAt") or rev.get("submitted_at") or ""
+                    })
+
+        for com in pr_data.get("comments", []):
+            author = (com.get("author") or {}).get("login") or com.get("user", {}).get("login") or ""
+            body = (com.get("body") or "").strip()
+            com_id = str(com.get("id") or "")
+            cid = f"issue_{com_id}"
+            if cid not in seen_ids and author and author.lower() not in exclude_authors:
+                if body and "Automated PR for task" not in body:
+                    seen_ids.add(cid)
+                    comments.append({
+                        "comment_id": cid,
+                        "type": "pr_comment",
+                        "author": author,
+                        "state": "COMMENTED",
+                        "body": body,
+                        "path": None,
+                        "line": None,
+                        "diff_hunk": None,
+                        "suggestion": None,
+                        "created_at": com.get("createdAt") or com.get("created_at") or ""
+                    })
+
+    if not info or os.environ.get("ZEROFACTORY_SKIP_GH_API"):
+        return comments
+
+    owner, repo, pr_num = info
+
+    # 2. Fetch inline diff review comments via GitHub REST API
+    try:
+        res = subprocess.run(
+            ["gh", "api", f"repos/{owner}/{repo}/pulls/{pr_num}/comments"],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0:
+            raw_inline = json.loads(res.stdout)
+            if isinstance(raw_inline, list):
+                for item in raw_inline:
+                    cid = f"inline_{item.get('id')}"
+                    if cid in seen_ids:
+                        continue
+                    author = item.get("user", {}).get("login") or ""
+                    if not author or author.lower() in exclude_authors:
+                        continue
+                    body = (item.get("body") or "").strip()
+                    if not body:
+                        continue
+
+                    suggestion = None
+                    sugg_match = re.search(r"```suggestion\r?\n(.*?)\r?\n```", body, re.DOTALL)
+                    if sugg_match:
+                        suggestion = sugg_match.group(1)
+
+                    seen_ids.add(cid)
+                    comments.append({
+                        "comment_id": cid,
+                        "type": "inline_review",
+                        "author": author,
+                        "state": "COMMENTED",
+                        "body": body,
+                        "path": item.get("path"),
+                        "line": item.get("line") or item.get("original_line"),
+                        "start_line": item.get("start_line") or item.get("original_start_line"),
+                        "diff_hunk": item.get("diff_hunk"),
+                        "suggestion": suggestion,
+                        "created_at": item.get("created_at") or ""
+                    })
+    except Exception as e:
+        _log.debug("Failed to fetch inline review comments for %s/%s#%s: %s", owner, repo, pr_num, e)
+
+    # 3. Fetch PR reviews via GitHub REST API if not already retrieved
+    try:
+        res = subprocess.run(
+            ["gh", "api", f"repos/{owner}/{repo}/pulls/{pr_num}/reviews"],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0:
+            raw_reviews = json.loads(res.stdout)
+            if isinstance(raw_reviews, list):
+                for item in raw_reviews:
+                    cid = f"review_{item.get('id')}"
+                    if cid in seen_ids:
+                        continue
+                    author = item.get("user", {}).get("login") or ""
+                    if not author or author.lower() in exclude_authors:
+                        continue
+                    body = (item.get("body") or "").strip()
+                    state = item.get("state") or ""
+                    if body or state == "CHANGES_REQUESTED":
+                        seen_ids.add(cid)
+                        comments.append({
+                            "comment_id": cid,
+                            "type": "review_summary",
+                            "author": author,
+                            "state": state,
+                            "body": body or f"Review submitted with state: {state}",
+                            "path": None,
+                            "line": None,
+                            "diff_hunk": None,
+                            "suggestion": None,
+                            "created_at": item.get("submitted_at") or ""
+                        })
+    except Exception as e:
+        _log.debug("Failed to fetch reviews for %s/%s#%s: %s", owner, repo, pr_num, e)
+
+    # 4. Fetch PR conversation/issue comments if not already retrieved
+    try:
+        res = subprocess.run(
+            ["gh", "api", f"repos/{owner}/{repo}/issues/{pr_num}/comments"],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+        )
+        if res.returncode == 0:
+            raw_issues = json.loads(res.stdout)
+            if isinstance(raw_issues, list):
+                for item in raw_issues:
+                    cid = f"issue_{item.get('id')}"
+                    if cid in seen_ids:
+                        continue
+                    author = item.get("user", {}).get("login") or ""
+                    if not author or author.lower() in exclude_authors:
+                        continue
+                    body = (item.get("body") or "").strip()
+                    if body and "Automated PR for task" not in body:
+                        seen_ids.add(cid)
+                        comments.append({
+                            "comment_id": cid,
+                            "type": "pr_comment",
+                            "author": author,
+                            "state": "COMMENTED",
+                            "body": body,
+                            "path": None,
+                            "line": None,
+                            "diff_hunk": None,
+                            "suggestion": None,
+                            "created_at": item.get("created_at") or ""
+                        })
+    except Exception as e:
+        _log.debug("Failed to fetch issue comments for %s/%s#%s: %s", owner, repo, pr_num, e)
+
+    return comments
+
+
+def format_task_comment_body(comment: Dict[str, Any]) -> str:
+    """Format a GitHub PR comment into a descriptive task comment."""
+    ctype = comment.get("type", "")
+    body = comment.get("body", "")
+    path = comment.get("path")
+    line = comment.get("line")
+    start_line = comment.get("start_line")
+    suggestion = comment.get("suggestion")
+
+    parts = []
+    if ctype == "inline_review" and path:
+        line_str = f":L{start_line}-{line}" if start_line and start_line != line else (f":L{line}" if line else "")
+        parts.append(f"**[GitHub Review Comment on `{path}{line_str}`]**")
+    elif ctype == "review_summary":
+        state = comment.get("state", "COMMENTED")
+        parts.append(f"**[GitHub PR Review ({state})]**")
+    else:
+        parts.append("**[GitHub PR Comment]**")
+
+    parts.append(body)
+    if suggestion:
+        parts.append(f"\n```suggestion\n{suggestion}\n```")
+
+    return "\n".join(parts)
+
+
 def spawn_agent_worker(
     task_id: str,
     title: str,
@@ -830,14 +1071,50 @@ def spawn_agent_worker(
                 f"NOTE: Do NOT run git commands (git add/commit/push). The factory dispatcher automatically verifies clean conflict resolution and commits with 'fix(merge): resolve merge conflicts with main' upon handoff.\n"
             )
         else:
-            prompt = (
-                f"Task ID: {task_id}\n"
-                f"Title: {title}\n"
-                f"Priority: {priority}\n"
-                f"Assigned Role: {assignee}\n\n"
-                f"Description:\n{description or 'No description provided.'}\n\n"
-                f"Workspace: {workdir}\n"
-                f"Git Branch: {branch_name or 'main'}\n\n"
+            # Check if there are review comments for this task in task_comments
+            review_comments_prompt = ""
+            try:
+                _db = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
+                if _db.exists():
+                    with sqlite3.connect(str(_db)) as _c:
+                        _c.row_factory = sqlite3.Row
+                        _cur = _c.cursor()
+                        _cur.execute(
+                            "SELECT author, body, created_at FROM task_comments WHERE task_id = ? ORDER BY created_at ASC",
+                            (task_id,)
+                        )
+                        _rows = _cur.fetchall()
+                        _rev_rows = [
+                            r for r in _rows
+                            if "[github review" in r["body"].lower()
+                            or "[github pr" in r["body"].lower()
+                            or r["author"] in ("zf-reviewer", "reviewer")
+                            or r["author"] != assignee
+                        ]
+                        if _rev_rows:
+                            _cmt_blocks = []
+                            for idx, r in enumerate(_rev_rows, 1):
+                                _cmt_blocks.append(f"### Review Comment #{idx} (by @{r['author']}):\n{r['body']}")
+                            review_comments_prompt = (
+                                "🚨 CRITICAL: PULL REQUEST REVIEW COMMENTS TO ADDRESS\n"
+                                "The reviewer / human has submitted the following review comments on your Pull Request.\n"
+                                "You must address EVERY review comment in your implementation:\n\n"
+                                + "\n\n".join(_cmt_blocks)
+                                + "\n\n"
+                            )
+            except Exception as e:
+                _log.debug("Could not inspect task_comments for worker prompt: %s", e)
+
+            goal_instructions = (
+                f"Your goal as Builder (Fix Review Comments):\n"
+                f"1. Carefully address every review comment listed above in your workspace ({workdir}).\n"
+                f"2. Apply targeted, concise code edits rather than rewriting or bloating files.\n"
+                f"3. Run automated tests and linters in your workspace to verify correctness.\n"
+                f"4. When finished, hand off for re-review:\n"
+                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n"
+                f"5. Provide a summary of how each review comment was resolved.\n\n"
+                f"NOTE: Do NOT run git commands (git add/commit/push/checkout). The factory dispatcher automatically stages, commits, and pushes your fixes to the PR upon handoff.\n"
+            ) if review_comments_prompt else (
                 f"Your goal:\n"
                 f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
                 f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
@@ -849,6 +1126,18 @@ def spawn_agent_worker(
                 f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
                 f"5. Provide a summary of your changes.\n\n"
                 f"NOTE: Do NOT run git commands (git add/commit/push/checkout). Your worktree is already synced with latest main. The factory dispatcher automatically stages, commits, and opens PRs upon task completion.\n"
+            )
+
+            prompt = (
+                f"Task ID: {task_id}\n"
+                f"Title: {title}\n"
+                f"Priority: {priority}\n"
+                f"Assigned Role: {assignee}\n\n"
+                f"Description:\n{description or 'No description provided.'}\n\n"
+                f"Workspace: {workdir}\n"
+                f"Git Branch: {branch_name or 'main'}\n\n"
+                f"{review_comments_prompt}"
+                f"{goal_instructions}"
             )
 
     cmd = [
@@ -2016,7 +2305,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status FROM tasks
                         WHERE (status = 'blocked' AND assignee != 'zf-reviewer')
                            OR (status = 'done' AND assignee != 'zf-reviewer' AND workspace_path IS NOT NULL)
-                           OR (status != 'done' AND assignee = 'zf-reviewer' AND pr_url IS NOT NULL AND pr_url != '')
+                           OR (status != 'done' AND pr_url IS NOT NULL AND pr_url != '' AND (assignee = 'zf-reviewer' OR status = 'blocked'))
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -2054,7 +2343,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if not repo_path or not repo_path.exists():
                             continue
 
-                        if assignee != "zf-reviewer":
+                        if assignee != "zf-reviewer" and not row["pr_url"]:
                             if not workspace_path or not Path(workspace_path).exists():
                                 continue
                             # Author finished work -> check conflicts, commit, pull/merge main, push, create PR, hand off to reviewer
@@ -2190,8 +2479,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 _log.warning("Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)", task_id, e.timeout, e.cmd)
                             except Exception as e:
                                 _log.warning("Task %s commit/PR failed: %s", task_id, e)
-                        else:
-                            # Reviewer check -> inspect GitHub PR state
+                        elif row["pr_url"]:
+                            # Inspect GitHub PR state & review feedback
                             if row["status"] == "done":
                                 continue
                             try:
@@ -2204,6 +2493,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     pr_state = pr_data.get("state")
                                     decision = pr_data.get("reviewDecision")
                                     mergeable = pr_data.get("mergeable")
+                                    current_pr_url = pr_data.get("url") or row["pr_url"] or ""
 
                                     if pr_state == "MERGED":
                                         stop_task_worker(task_id, cursor)
@@ -2218,23 +2508,64 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         )
                                     elif mergeable == "CONFLICTING":
                                         _handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
-                                    elif row["status"] == "blocked":
-                                        if decision == "CHANGES_REQUESTED":
+                                    else:
+                                        # Check for review feedback (inline diff comments, reviews, PR conversation comments)
+                                        task_meta = {}
+                                        try:
+                                            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                                            m_res = cursor.fetchone()
+                                            if m_res and m_res[0]:
+                                                task_meta = json.loads(m_res[0])
+                                        except Exception:
+                                            pass
+
+                                        processed_cmt_ids = set(task_meta.get("processed_review_comment_ids", []))
+                                        all_pr_comments = fetch_pr_review_comments(
+                                            repo_path=repo_path,
+                                            pr_url=current_pr_url,
+                                            task_id=task_id,
+                                            pr_data=pr_data
+                                        )
+                                        new_pr_comments = [c for c in all_pr_comments if c["comment_id"] not in processed_cmt_ids]
+
+                                        has_review_feedback = bool(new_pr_comments) or (decision == "CHANGES_REQUESTED")
+
+                                        if has_review_feedback and row["status"] in ("blocked", "ready"):
+                                            for c in new_pr_comments:
+                                                cmt_body = format_task_comment_body(c)
+                                                cursor.execute(
+                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                                                    (task_id, c["author"], cmt_body, now)
+                                                )
+                                                cursor.execute(
+                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
+                                                    (task_id, c["author"], f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}", now)
+                                                )
+                                                processed_cmt_ids.add(c["comment_id"])
+
+                                            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
+
                                             stop_task_worker(task_id, cursor)
                                             _remove_worktree(workspace_path, repo_path)
                                             match = re.search(r"\[PR Opened by (.*?)\]", title)
                                             author = match.group(1) if match else "zf-builder"
                                             author = normalize_assignee(author)
+                                            clean_title = title.replace(" [Human Review]", "").replace("[Human Review]", "").strip()
+
                                             cursor.execute(
-                                                "UPDATE tasks SET assignee = ?, status = 'ready', updated_at = ? WHERE id = ?",
-                                                (author, now, task_id)
+                                                "UPDATE tasks SET title = ?, assignee = ?, status = 'ready', metadata = ?, updated_at = ? WHERE id = ?",
+                                                (clean_title, author, json.dumps(task_meta), now, task_id)
                                             )
-                                            setup_worktree(cursor, task_id, title, author, tenant, db_path, board_slug=board_slug)
+                                            setup_worktree(cursor, task_id, clean_title, author, tenant, db_path, board_slug=board_slug)
+                                            reason_text = (
+                                                f"Review feedback received ({len(new_pr_comments)} new comment(s)), routed back to {author}"
+                                                if new_pr_comments else "Changes requested by reviewer, routed back to author"
+                                            )
                                             cursor.execute(
-                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', 'Changes requested by reviewer, routed back to author', ?)",
-                                                (task_id, now)
+                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', ?, ?)",
+                                                (task_id, reason_text, now)
                                             )
-                                        elif decision == "APPROVED":
+                                        elif decision == "APPROVED" and row["status"] == "blocked":
                                             if "[Human Review]" not in title:
                                                 stop_task_worker(task_id, cursor)
                                                 _remove_worktree(workspace_path, repo_path)

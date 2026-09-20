@@ -1757,6 +1757,7 @@ class TestZeroFactory(unittest.TestCase):
 
         import shutil
         orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        orig_skip_spawn = os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
         td = tempfile.mkdtemp()
         try:
             repo_path = Path(td) / "test_repo"
@@ -1974,6 +1975,8 @@ class TestZeroFactory(unittest.TestCase):
             shutil.rmtree(td, ignore_errors=True)
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is not None:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
 
     def test_32a_non_ff_merge_succeeds_no_false_conflict(self):
         """Regression: pull_and_merge_main() must perform a NON-fast-forward
@@ -4088,6 +4091,11 @@ class TestZeroFactory(unittest.TestCase):
                 res.returncode = 0
                 res.stdout = json.dumps(gh_payload)
                 return res
+            if len(cmd) >= 2 and cmd[0] == "gh" and cmd[1] == "api":
+                res = MagicMock()
+                res.returncode = 0
+                res.stdout = json.dumps([])
+                return res
             return orig_run(cmd, *args, **kwargs)
 
         res = None
@@ -4395,6 +4403,285 @@ class TestZeroFactory(unittest.TestCase):
             else:
                 os.environ["ZEROFACTORY_DB"] = old_db
             shutil.rmtree(td, ignore_errors=True)
+
+    def test_pr_review_comments_parsing_and_formatting(self):
+        """Verify fetch_pr_review_comments parses all types of GitHub review comments
+        (inline diff comments, review summaries, issue comments, suggestions) and filters bots."""
+        import json
+        from unittest.mock import patch, MagicMock
+        from dispatcher import (
+            extract_gh_repo_info,
+            fetch_pr_review_comments,
+            format_task_comment_body,
+        )
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        try:
+            # 1. extract_gh_repo_info
+            info = extract_gh_repo_info("https://github.com/hotcode-dev/zerofactory/pull/35")
+            self.assertEqual(info, ("hotcode-dev", "zerofactory", 35))
+            self.assertIsNone(extract_gh_repo_info("not-a-url"))
+            self.assertIsNone(extract_gh_repo_info(""))
+
+            # 2. Mock gh api calls returning all review comment types
+            inline_payload = [
+                {
+                    "id": 4055542985,
+                    "path": "dispatcher.py",
+                    "line": 531,
+                    "start_line": 522,
+                    "diff_hunk": "@@ -517,14 +517,24 @@",
+                    "user": {"login": "ntsd"},
+                    "body": "the comment is too long\n```suggestion\n# Short comment\n```",
+                    "created_at": "2026-09-20T01:26:50Z",
+                },
+                {
+                    "id": 999999,
+                    "path": "dispatcher.py",
+                    "line": 10,
+                    "user": {"login": "github-actions[bot]"},
+                    "body": "bot comment should be excluded",
+                    "created_at": "2026-09-20T01:20:00Z",
+                },
+            ]
+            reviews_payload = [
+                {
+                    "id": 5258780352,
+                    "user": {"login": "alice"},
+                    "state": "CHANGES_REQUESTED",
+                    "body": "Please address performance and shorten comments.",
+                    "submitted_at": "2026-09-20T01:25:00Z",
+                }
+            ]
+            issues_payload = [
+                {
+                    "id": 88888,
+                    "user": {"login": "bob"},
+                    "body": "Can you also check test coverage?",
+                    "created_at": "2026-09-20T01:24:00Z",
+                }
+            ]
+
+            def fake_run(cmd, *args, **kwargs):
+                res = MagicMock()
+                res.returncode = 0
+                if len(cmd) >= 3 and "pulls/35/comments" in cmd[2]:
+                    res.stdout = json.dumps(inline_payload)
+                elif len(cmd) >= 3 and "pulls/35/reviews" in cmd[2]:
+                    res.stdout = json.dumps(reviews_payload)
+                elif len(cmd) >= 3 and "issues/35/comments" in cmd[2]:
+                    res.stdout = json.dumps(issues_payload)
+                else:
+                    res.stdout = json.dumps([])
+                return res
+
+            td = tempfile.mkdtemp()
+            try:
+                repo_path = Path(td)
+                with patch("dispatcher.subprocess.run", side_effect=fake_run):
+                    comments = fetch_pr_review_comments(
+                        repo_path=repo_path,
+                        pr_url="https://github.com/hotcode-dev/zerofactory/pull/35",
+                    )
+
+                # Bot comment filtered, 3 valid comments remain
+                self.assertEqual(len(comments), 3)
+
+                # Check inline comment
+                inline_cmt = next(c for c in comments if c["type"] == "inline_review")
+                self.assertEqual(inline_cmt["author"], "ntsd")
+                self.assertEqual(inline_cmt["path"], "dispatcher.py")
+                self.assertEqual(inline_cmt["line"], 531)
+                self.assertEqual(inline_cmt["suggestion"], "# Short comment")
+                formatted_inline = format_task_comment_body(inline_cmt)
+                self.assertIn("GitHub Review Comment on `dispatcher.py:L522-531`", formatted_inline)
+                self.assertIn("the comment is too long", formatted_inline)
+                self.assertIn("```suggestion", formatted_inline)
+
+                # Check review summary
+                rev_cmt = next(c for c in comments if c["type"] == "review_summary")
+                self.assertEqual(rev_cmt["author"], "alice")
+                self.assertEqual(rev_cmt["state"], "CHANGES_REQUESTED")
+                formatted_rev = format_task_comment_body(rev_cmt)
+                self.assertIn("GitHub PR Review (CHANGES_REQUESTED)", formatted_rev)
+
+                # Check PR issue comment
+                iss_cmt = next(c for c in comments if c["type"] == "pr_comment")
+                self.assertEqual(iss_cmt["author"], "bob")
+                formatted_iss = format_task_comment_body(iss_cmt)
+                self.assertIn("GitHub PR Comment", formatted_iss)
+            finally:
+                shutil.rmtree(td, ignore_errors=True)
+        finally:
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_review_comment_routes_to_builder_and_is_idempotent(self):
+        """When a review comment is added to a PR on GitHub (even with state COMMENTED),
+        the dispatcher must record it in task_comments, route the task to zf-builder,
+        and subsequent dispatch cycles must be idempotent."""
+        import sqlite3
+        from unittest.mock import patch, MagicMock
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_path, reviewer_ws = self._make_reviewer_test_repo(td)
+            db_file = Path(td) / "rev_comment.db"
+            self._create_conflict_test_db(db_file)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('zf-rev-test', 'Fix merge args [PR Opened by zf-builder]', 'blocked', 'zf-reviewer', ?, 'task/zf-rev-test',
+                            'https://github.com/hotcode-dev/zerofactory/pull/35', 1000, 1000)
+                """, (str(reviewer_ws),))
+                conn.commit()
+
+            fake_inline_comments = [
+                {
+                    "id": 4055542985,
+                    "path": "dispatcher.py",
+                    "line": 531,
+                    "start_line": 522,
+                    "diff_hunk": "@@ -517,14 +517,24 @@",
+                    "user": {"login": "ntsd"},
+                    "body": "the comment is too long",
+                    "created_at": "2026-09-20T01:26:50Z",
+                }
+            ]
+
+            import json
+            import subprocess as real_subprocess
+            orig_run = real_subprocess.run
+
+            def fake_run(cmd, *args, **kwargs):
+                if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr" and cmd[2] == "view":
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = json.dumps({
+                        "state": "OPEN",
+                        "reviewDecision": None,
+                        "mergeable": "MERGEABLE",
+                        "url": "https://github.com/hotcode-dev/zerofactory/pull/35"
+                    })
+                    return res
+                if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "api":
+                    res = MagicMock()
+                    res.returncode = 0
+                    if "pulls/35/comments" in cmd[2]:
+                        res.stdout = json.dumps(fake_inline_comments)
+                    else:
+                        res.stdout = json.dumps([])
+                    return res
+                return orig_run(cmd, *args, **kwargs)
+
+            with patch("dispatcher._remove_worktree") as mock_remove, \
+                 patch("dispatcher.setup_worktree", return_value=None), \
+                 patch("dispatcher.check_unresolved_conflicts", return_value=[]), \
+                 patch("fcntl.flock", return_value=0), \
+                 patch("dispatcher.subprocess.run", side_effect=fake_run):
+                # First cycle: should detect comment and route to zf-builder
+                res1 = run_dispatch_cycle(db_file)
+                self.assertTrue(res1.get("ok"))
+
+                with sqlite3.connect(str(db_file)) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    t_row = cur.execute("SELECT status, assignee, metadata FROM tasks WHERE id = 'zf-rev-test'").fetchone()
+                    self.assertEqual(t_row["status"], "ready")
+                    self.assertEqual(t_row["assignee"], "zf-builder")
+
+                    meta = json.loads(t_row["metadata"] or "{}")
+                    self.assertIn("inline_4055542985", meta.get("processed_review_comment_ids", []))
+
+                    # Verify comment in task_comments
+                    cmts = cur.execute("SELECT author, body FROM task_comments WHERE task_id = 'zf-rev-test'").fetchall()
+                    self.assertEqual(len(cmts), 1)
+                    self.assertEqual(cmts[0]["author"], "ntsd")
+                    self.assertIn("the comment is too long", cmts[0]["body"])
+
+                    # Verify task_activity
+                    acts = cur.execute("SELECT action, details FROM task_activity WHERE task_id = 'zf-rev-test' ORDER BY id ASC").fetchall()
+                    actions = [a["action"] for a in acts]
+                    self.assertIn("review_comment", actions)
+                    self.assertIn("changes_requested", actions)
+
+                # Second cycle: idempotent, comment must not be re-inserted and task remains in ready
+                res2 = run_dispatch_cycle(db_file)
+                self.assertTrue(res2.get("ok"))
+
+                with sqlite3.connect(str(db_file)) as conn:
+                    cur = conn.cursor()
+                    cmts2 = cur.execute("SELECT count(*) FROM task_comments WHERE task_id = 'zf-rev-test'").fetchone()
+                    self.assertEqual(cmts2[0], 1, "comments must not be duplicated")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_builder_prompt_embeds_review_comments(self):
+        """When task has review comments in task_comments, spawn_agent_worker embeds them
+        prominently in the builder prompt."""
+        import sqlite3
+        from unittest.mock import patch, MagicMock
+        from dispatcher import spawn_agent_worker
+
+        orig_skip_spawn = os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+        td = tempfile.mkdtemp()
+        try:
+            db_file = Path(td) / "test_prompt.db"
+            self._create_conflict_test_db(db_file)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, created_at, updated_at)
+                    VALUES ('t-prompt', 'My Task', 'ready', 'zf-builder', 1000, 1000)
+                """)
+                conn.execute("""
+                    INSERT INTO task_comments (task_id, author, body, created_at)
+                    VALUES ('t-prompt', 'ntsd', '**[GitHub Review Comment on `dispatcher.py:L522`]**\nthe comment is too long', 1000)
+                """)
+                conn.commit()
+
+            captured_cmds = []
+
+            def fake_popen(cmd, *args, **kwargs):
+                captured_cmds.append(cmd)
+                proc = MagicMock()
+                proc.pid = 99999
+                proc.poll.return_value = None
+                return proc
+
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}), \
+                 patch("dispatcher.check_unresolved_conflicts_safe", return_value=(True, [], "")), \
+                 patch("subprocess.Popen", side_effect=fake_popen):
+                pid, sid = spawn_agent_worker(
+                    task_id="t-prompt",
+                    title="My Task",
+                    description="Desc",
+                    priority="P0",
+                    assignee="zf-builder",
+                    workspace_path=td,
+                    branch_name="task/t-prompt"
+                )
+
+            self.assertEqual(len(captured_cmds), 1)
+            cmd = captured_cmds[0]
+            # The prompt is passed after -q
+            q_idx = cmd.index("-q")
+            prompt = cmd[q_idx + 1]
+
+            self.assertIn("🚨 CRITICAL: PULL REQUEST REVIEW COMMENTS TO ADDRESS", prompt)
+            self.assertIn("Review Comment #1 (by @ntsd):", prompt)
+            self.assertIn("the comment is too long", prompt)
+            self.assertIn("Your goal as Builder (Fix Review Comments):", prompt)
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_spawn is not None:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
 
 
 # ---------------------------------------------------------------------------
@@ -4985,6 +5272,7 @@ class TestSharedProfilePathResolution(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
