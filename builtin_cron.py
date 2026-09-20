@@ -35,6 +35,122 @@ def get_db_path() -> Path:
     return DEFAULT_DB_PATH
 
 
+def is_cron_scheduler_enabled(conn_or_cursor: Any = None) -> bool:
+    """Return True if the cron scheduler is enabled across env, settings table, and config.yaml.
+
+    Resolution precedence:
+    1. Environment variables:
+       - ZEROFACTORY_ENABLE_CRON_SCHEDULER ('0'/'false'/'no' -> False, '1'/'true'/'yes' -> True)
+       - ZEROFACTORY_DISABLE_CRON_SCHEDULER ('1'/'true'/'yes' -> False)
+       - HERMES_CRON_ENABLED ('0'/'false'/'no' -> False)
+    2. Zero Factory global settings table (if DB accessible):
+       - 'enable_cron_scheduler': bool
+    3. Hermes config.yaml (root ~/.hermes/config.yaml or active profile config.yaml):
+       - cron.enabled == False -> False
+       - cron.scheduler == False -> False
+       - cron.scheduler.enabled == False -> False
+       - cron == False -> False
+       - plugins.entries.zerofactory.cron_scheduler == False -> False
+       - plugins.entries.zerofactory.enable_cron_scheduler == False -> False
+    4. Default: True
+    """
+    # 1. Environment variable check
+    env_enable = os.environ.get("ZEROFACTORY_ENABLE_CRON_SCHEDULER")
+    if env_enable is not None:
+        return env_enable.strip().lower() in ("true", "1", "yes")
+
+    env_disable = os.environ.get("ZEROFACTORY_DISABLE_CRON_SCHEDULER")
+    if env_disable is not None and env_disable.strip().lower() in ("true", "1", "yes"):
+        return False
+
+    hermes_cron_enable = os.environ.get("HERMES_CRON_ENABLED")
+    if hermes_cron_enable is not None and hermes_cron_enable.strip().lower() in ("false", "0", "no"):
+        return False
+
+    # 2. Zero Factory global settings table check
+    try:
+        try:
+            from .settings import load_settings
+        except ImportError:
+            from settings import load_settings  # type: ignore
+
+        if conn_or_cursor is not None:
+            db_settings = load_settings(conn_or_cursor)
+            if not db_settings.get("enable_cron_scheduler", True):
+                return False
+        else:
+            db_path = get_db_path()
+            if db_path.exists():
+                with sqlite3.connect(str(db_path), timeout=2.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    db_settings = load_settings(conn)
+                    if not db_settings.get("enable_cron_scheduler", True):
+                        return False
+    except Exception as e:
+        _log.debug("Failed reading settings table for cron scheduler check: %s", e)
+
+    # 3. Hermes config.yaml check
+    try:
+        import yaml
+        search_configs: List[Path] = []
+
+        config_override = os.environ.get("HERMES_CONFIG_FILE") or os.environ.get("ZEROFACTORY_CONFIG_FILE")
+        if config_override:
+            search_configs.append(Path(config_override))
+
+        hermes_home = os.environ.get("HERMES_HOME")
+        if hermes_home:
+            search_configs.append(Path(hermes_home) / "config.yaml")
+
+        active_prof = os.environ.get("HERMES_PROFILE")
+        if active_prof:
+            search_configs.append(Path.home() / ".hermes" / "profiles" / active_prof / "config.yaml")
+
+        search_configs.append(Path.home() / ".hermes" / "profiles" / "zf-orchestrator" / "config.yaml")
+        search_configs.append(Path.home() / ".hermes" / "config.yaml")
+
+        for cfg_path in search_configs:
+            if not cfg_path.exists():
+                continue
+            try:
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f)
+                if not isinstance(cfg, dict):
+                    continue
+
+                # Check plugins.entries.zerofactory.[enable_]cron_scheduler
+                zf_entry = (
+                    cfg.get("plugins", {})
+                    .get("entries", {})
+                    .get("zerofactory", {})
+                    if isinstance(cfg.get("plugins"), dict) and isinstance(cfg.get("plugins", {}).get("entries"), dict)
+                    else {}
+                )
+                if isinstance(zf_entry, dict):
+                    if zf_entry.get("cron_scheduler") is False or zf_entry.get("enable_cron_scheduler") is False:
+                        return False
+
+                # Check top-level cron configuration
+                if "cron" in cfg:
+                    cron_val = cfg["cron"]
+                    if cron_val is False:
+                        return False
+                    if isinstance(cron_val, dict):
+                        if cron_val.get("enabled") is False:
+                            return False
+                        sched_val = cron_val.get("scheduler")
+                        if sched_val is False:
+                            return False
+                        if isinstance(sched_val, dict) and sched_val.get("enabled") is False:
+                            return False
+            except Exception as e:
+                _log.debug("Failed checking config file %s for cron settings: %s", cfg_path, e)
+    except Exception as e:
+        _log.debug("YAML parser unavailable or error inspecting config.yaml: %s", e)
+
+    return True
+
+
 # Canonical Zero Factory Core Job Definitions
 TASK_QUEUE_CHECK_PROMPT = """Check the Zero Factory Kanban board (using `hermes zerofactory list` or querying `~/.hermes/zerofactory.db`) - are any tasks stuck in 'running' too long? Any tasks stuck in 'blocked' with '[Human Review]'? Any PRs stuck waiting for Reviewer feedback? Create a new Kanban task using `hermes zerofactory create "[Report] Queue Health" --description "..." --status done` containing your bottleneck report and recommendations."""
 
@@ -478,7 +594,7 @@ def get_target_jobs_files() -> List[Path]:
 
 def load_jobs_from_file(jobs_file: Path) -> List[Dict[str, Any]]:
     """Load jobs from a given JSON file safely."""
-    if not jobs_file.exists():
+    if not jobs_file.exists() or jobs_file.stat().st_size == 0:
         return []
     try:
         with open(jobs_file, "r", encoding="utf-8") as f:
@@ -605,8 +721,9 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                         curr[field] = builtin_def.get(field)
                         changed = True
 
-                # Re-activate any scanner job that was retired as a one-shot completed job
-                if curr.get("state") in ("completed", "paused") and not is_custom:
+                # Re-activate any scanner job that was retired as a one-shot completed job (only if scheduler enabled)
+                # Note: NEVER re-activate "paused" jobs here — if a job is paused, it was disabled by configuration or user.
+                if curr.get("state") == "completed" and not is_custom and is_cron_scheduler_enabled():
                     curr["state"] = "scheduled"
                     curr["enabled"] = True
                     curr["paused_at"] = None
@@ -726,6 +843,7 @@ def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> No
             job["paused_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         else:
             job["paused_at"] = None
+        job["custom_config"] = True
 
     # Schedule updates
     if "minutes" in updates and updates["minutes"]:
@@ -787,9 +905,21 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
     """
     current_builtin_jobs = get_all_builtin_cron_jobs()
     if job_id not in current_builtin_jobs:
-        return {"ok": False, "error": f"Unknown builtin job ID: {job_id}"}
-
-    builtin_def = current_builtin_jobs[job_id]
+        if job_id.startswith("zero-factory-improvement-scanner-"):
+            slug = job_id.replace("zero-factory-improvement-scanner-", "")
+            builtin_def = {
+                "id": job_id,
+                "name": f"Zero Factory improvement scanner ({slug})",
+                "schedule": {"kind": "interval", "minutes": 10080, "display": "on idle (active < 2)"},
+                "schedule_display": "on idle (active < 2)",
+                "enabled": True,
+                "state": "scheduled",
+                "custom_config": True
+            }
+        else:
+            return {"ok": False, "error": f"Unknown builtin job ID: {job_id}"}
+    else:
+        builtin_def = current_builtin_jobs[job_id]
     target_files = get_target_jobs_files()
     updated_count = 0
     updated_job_data = None
@@ -804,7 +934,7 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
                 updated_job_data = dict(j)
                 break
 
-        if not found and target.exists():
+        if not found:
             # If job not in this target yet, instantiate from builtin_def and apply updates
             new_job = dict(builtin_def)
             new_job["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -812,8 +942,7 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
             jobs.append(new_job)
             updated_job_data = dict(new_job)
 
-        if target.exists() or found:
-            save_jobs_to_file(target, jobs)
+        if save_jobs_to_file(target, jobs):
             updated_count += 1
 
     return {"ok": True, "job_id": job_id, "updated_targets": updated_count, "job": updated_job_data}
@@ -828,6 +957,78 @@ def toggle_builtin_job(job_id: str, enabled: Optional[bool] = None) -> Dict[str,
 
     new_enabled = not target["enabled"] if enabled is None else bool(enabled)
     return update_builtin_job(job_id, {"enabled": new_enabled})
+
+
+def set_cron_scheduler_enabled(enabled: bool, conn: Optional[Any] = None) -> Dict[str, Any]:
+    """Persist the scheduler enabled state to database settings and synchronize all jobs files."""
+    db_path = get_db_path()
+    val = "true" if enabled else "false"
+    now = int(time.time())
+
+    if conn is not None:
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('enable_cron_scheduler', ?, ?)",
+            (val, now)
+        )
+    elif db_path.exists():
+        with sqlite3.connect(str(db_path), timeout=10.0) as c:
+            c.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('enable_cron_scheduler', ?, ?)",
+                (val, now)
+            )
+            c.commit()
+
+    target_files = get_target_jobs_files()
+    updated_targets = 0
+    current_builtin_jobs = get_all_builtin_cron_jobs()
+
+    for target in target_files:
+        if not target.exists():
+            continue
+        jobs = load_jobs_from_file(target)
+        changed = False
+        has_any_paused_by_master = any(j.get("paused_by_master") for j in jobs if isinstance(j, dict))
+        for j in jobs:
+            if not isinstance(j, dict):
+                continue
+            jid = j.get("id", "")
+            is_zf_job = j.get("origin") == "zerofactory" or jid.startswith("zero-factory-") or jid in current_builtin_jobs
+            if not is_zf_job:
+                continue
+
+            if not enabled:
+                # Disabling scheduler -> pause active Zero Factory jobs
+                if j.get("enabled", True) or j.get("state") != "paused":
+                    j["enabled"] = False
+                    j["state"] = "paused"
+                    j["paused_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+                    j["paused_by_master"] = True
+                    j["custom_config"] = True
+                    changed = True
+            else:
+                # Enabling scheduler -> resume jobs paused by master (or all if none tagged)
+                if j.get("paused_by_master") or not has_any_paused_by_master:
+                    j["enabled"] = True
+                    j["state"] = "scheduled"
+                    j["paused_at"] = None
+                    j.pop("paused_by_master", None)
+                    changed = True
+
+        if changed:
+            if save_jobs_to_file(target, jobs):
+                updated_targets += 1
+
+    if not enabled:
+        try:
+            try:
+                from .dispatcher import reset_idle_scanner_state
+            except ImportError:
+                from dispatcher import reset_idle_scanner_state  # type: ignore
+            reset_idle_scanner_state()
+        except Exception as e:
+            _log.debug("Failed resetting scanner state on scheduler pause: %s", e)
+
+    return {"ok": True, "scheduler_enabled": enabled, "updated_targets": updated_targets}
 
 
 def reset_builtin_job(job_id: str) -> Dict[str, Any]:
@@ -848,6 +1049,9 @@ def reset_builtin_job(job_id: str) -> Dict[str, Any]:
             if isinstance(j, dict) and j.get("id") == job_id:
                 for k in ("schedule", "schedule_display", "model", "provider", "base_url", "prompt", "workdir", "name", "script", "no_agent", "context_from", "continuity"):
                     j[k] = builtin_def.get(k)
+                j["enabled"] = builtin_def.get("enabled", True)
+                j["state"] = "scheduled" if j["enabled"] else "paused"
+                j["paused_at"] = None
                 j["custom_config"] = False
                 reset_count += 1
                 break
@@ -903,6 +1107,10 @@ def tick_builtin_cron() -> int:
     Ticks the zf-orchestrator profile's cron store where Zero Factory jobs reside,
     ensuring scheduled jobs fire on time even when the external gateway is inactive.
     """
+    if not is_cron_scheduler_enabled():
+        _log.debug("[builtin_cron] Cron scheduler is disabled in config; skipping tick")
+        return 0
+
     try:
         # Import lazily to avoid circular or early import issues
         hermes_agent_dir = Path(os.getenv("HERMES_AGENT_DIR", str(Path.home() / ".hermes" / "hermes-agent")))

@@ -452,6 +452,7 @@ class SettingsUpdate(BaseModel):
     idle_scan_cooldown_minutes: Optional[int] = Field(default=None, ge=1, description="Minimum cooldown in minutes between idle improvement scans per board")
     idle_scan_max_todo: Optional[int] = Field(default=None, ge=0, description="Max todo backlog tasks on board before suppressing idle scan")
     activity_retention_days: Optional[int] = Field(default=None, ge=1, description="Days to retain task_activity log rows before pruning (default 30)")
+    enable_cron_scheduler: Optional[bool] = Field(default=None, description="Enable periodic background cron scheduler execution")
 
 
 # --- Helper Functions --------------------------------------------------------
@@ -1097,6 +1098,12 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('activity_retention_days', ?, ?)",
                 (val, now)
             )
+        if req.enable_cron_scheduler is not None:
+            try:
+                from .builtin_cron import set_cron_scheduler_enabled
+            except ImportError:
+                from builtin_cron import set_cron_scheduler_enabled
+            set_cron_scheduler_enabled(bool(req.enable_cron_scheduler), conn=conn)
         conn.commit()
 
     return get_settings()
@@ -1314,26 +1321,19 @@ def create_task(req: TaskCreate):
                     (req.parent_id, task_id, now)
                 )
 
-        # Attribute the creating actor in a strict priority order:
-        #   1. An explicit caller intent (req.actor) always wins.
-        #   2. A scanner-filed task is credited to zf-orchestrator. The
-        #      scanner signals its tasks via a fingerprint (an explicit
-        #      dedup_key or one computed from --files). The ambient
-        #      HERMES_PROFILE env must NOT override this — otherwise a
-        #      worker session (e.g. zf-builder) that files a scanner task
-        #      mis-attributes it to itself.
-        #   3. Otherwise fall back to the ambient HERMES_PROFILE session.
-        #   4. Finally, a generic "user".
-        #
-        # We rely on the resolved `dedup_key` (explicit or files-derived)
-        # rather than a `cat:` tag, because create_task auto-appends a
-        # `cat:{category}` tag for every task with a category (the default
-        # is "bug-fix"), so the tag is not a reliable scanner signal.
-        if req.actor:
-            creator_actor = req.actor
-        elif dedup_key:
+        # Attribution precedence: explicit actor > scanner signature
+        # (dedup_key / category tag — created by the orchestrator's scanner)
+        # > current Hermes profile > unattributed user. The scanner-signature
+        # check must come before HERMES_PROFILE so the leaked profile env var
+        # never shadows attribution of scanner-filed tasks.
+        creator_actor = req.actor
+        if not creator_actor and (
+            req.dedup_key
+            or (req.tags and any(t.startswith("cat:") for t in req.tags))
+            or meta.get("dedup_key")
+        ):
             creator_actor = "zf-orchestrator"
-        else:
+        if not creator_actor:
             creator_actor = os.environ.get("HERMES_PROFILE") or "user"
 
         log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
@@ -2295,15 +2295,44 @@ def get_builtin_cron_jobs():
     helpers = _get_cron_helpers()
     ensure_cron = helpers[0] if len(helpers) > 0 else None
     list_cron = helpers[3] if len(helpers) > 3 else None
+    scheduler_enabled = True
+    try:
+        from .builtin_cron import is_cron_scheduler_enabled
+        scheduler_enabled = is_cron_scheduler_enabled()
+    except Exception:
+        try:
+            from builtin_cron import is_cron_scheduler_enabled
+            scheduler_enabled = is_cron_scheduler_enabled()
+        except Exception:
+            pass
+
     if not list_cron:
-        return {"ok": False, "error": "Builtin cron engine not available", "jobs": [], "count": 0}
+        return {"ok": False, "error": "Builtin cron engine not available", "jobs": [], "count": 0, "scheduler_enabled": scheduler_enabled}
     if ensure_cron:
         try:
             ensure_cron()
         except Exception:
             pass
     jobs = list_cron()
-    return {"ok": True, "jobs": jobs, "count": len(jobs)}
+    return {"ok": True, "jobs": jobs, "count": len(jobs), "scheduler_enabled": scheduler_enabled}
+
+
+@router.post("/cron/scheduler/toggle")
+@router.put("/cron/scheduler/toggle")
+def toggle_cron_scheduler(req: Optional[CronToggleRequest] = None):
+    """Toggle the periodic background cron scheduler on or off."""
+    init_db()
+    db_p = get_db_path()
+    try:
+        from .builtin_cron import is_cron_scheduler_enabled, set_cron_scheduler_enabled
+    except ImportError:
+        from builtin_cron import is_cron_scheduler_enabled, set_cron_scheduler_enabled
+    with sqlite3.connect(str(db_p), timeout=10.0) as conn:
+        current = is_cron_scheduler_enabled(conn)
+        target = req.enabled if (req and req.enabled is not None) else not current
+        res = set_cron_scheduler_enabled(target, conn=conn)
+        conn.commit()
+    return {"ok": True, "scheduler_enabled": target, "updated_targets": res.get("updated_targets", 0)}
 
 
 @router.post("/cron/sync")

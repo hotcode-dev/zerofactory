@@ -55,6 +55,9 @@ DEFAULT_IDLE_SCAN_MAX_TODO = 2
 # parser when set via the API so a stray "0" can't accidentally delete everything.
 DEFAULT_ACTIVITY_RETENTION_DAYS = 30
 
+# Enable periodic background cron scheduler execution (dispatcher ticker & scheduled runs).
+DEFAULT_ENABLE_CRON_SCHEDULER = True
+
 # Seconds view of the cooldown default — the single unit-conversion point for the
 # default path. The DB stores minutes; the dispatcher converts to seconds where needed.
 DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES * 60
@@ -68,6 +71,7 @@ SETTING_KEYS = (
     "idle_scan_cooldown_minutes",
     "idle_scan_max_todo",
     "activity_retention_days",
+    "enable_cron_scheduler",
 )
 
 # Seed values for the settings table, derived from the constants above (NOT
@@ -80,6 +84,7 @@ DEFAULT_SETTING_VALUES: Dict[str, str] = {
     "idle_scan_cooldown_minutes": str(DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES),
     "idle_scan_max_todo": str(DEFAULT_IDLE_SCAN_MAX_TODO),
     "activity_retention_days": str(DEFAULT_ACTIVITY_RETENTION_DAYS),
+    "enable_cron_scheduler": "true" if DEFAULT_ENABLE_CRON_SCHEDULER else "false",
 }
 
 
@@ -97,7 +102,7 @@ def _parse_bool(value: Any) -> bool:
 
 
 def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
-    """Load all six global settings from the ``settings`` table.
+    """Load all global settings from the ``settings`` table.
 
     Accepts a ``sqlite3`` connection or cursor. Every key falls back to its
     module default when the row is missing or its value cannot be parsed,
@@ -116,6 +121,7 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
         "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
         "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
         "activity_retention_days": DEFAULT_ACTIVITY_RETENTION_DAYS,
+        "enable_cron_scheduler": DEFAULT_ENABLE_CRON_SCHEDULER,
     }
     try:
         rows = conn_or_cursor.execute("SELECT key, value FROM settings").fetchall()
@@ -162,5 +168,7 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
             c = _clamp_int(v, 1)
             if c is not None:
                 settings["activity_retention_days"] = c
+        elif k == "enable_cron_scheduler":
+            settings["enable_cron_scheduler"] = _parse_bool(v)
 
     return settings
