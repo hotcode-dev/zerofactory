@@ -2113,10 +2113,35 @@ class TestZeroFactory(unittest.TestCase):
         """Verify that get_plugin_root() resolves main repo from inside worktrees and ensure_plugin_symlinks cleans up worktree symlinks."""
         from profile_manager import get_plugin_root, ensure_plugin_symlinks
         import shutil
+        import subprocess
         import tempfile
         from unittest.mock import patch
 
-        canonical_repo = Path(__file__).resolve().parent
+        # Resolve the canonical (main) repo root via git so the ground-truth
+        # holds both when the suite runs from the main repo AND from an
+        # isolated git worktree (where Path(__file__) lives in the worktree,
+        # not the main repo). `--git-common-dir` returns the main repo's .git
+        # directory in either case.
+        test_dir = Path(__file__).resolve().parent
+
+        def _canonical_repo() -> Path:
+            try:
+                res = subprocess.run(
+                    ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                    cwd=str(test_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if res.returncode == 0:
+                    common_git = Path(res.stdout.strip()).resolve()
+                    if (common_git.parent / "plugin.yaml").exists():
+                        return common_git.parent
+            except Exception:
+                pass
+            return test_dir
+
+        canonical_repo = _canonical_repo()
 
         # 1. Normal resolution from main repo
         self.assertEqual(get_plugin_root(), canonical_repo)
@@ -4873,6 +4898,9 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         from builtin_cron import (
             update_builtin_job, save_jobs_to_file, load_jobs_from_file,
         )
+        import builtin_cron as _bc
+        _ensure_builtin_cron_jobs = _bc.ensure_builtin_cron_jobs
+        _reset_builtin_job = _bc.reset_builtin_job
 
         job_id = "zero-factory-task-queue-check"
 
@@ -4958,12 +4986,13 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             self.assertIs(j["continuity"], True)
             self.assertTrue(j["custom_config"])
 
-            # name is applied but intentionally does not set custom_config
+            # name is applied and sets custom_config so a custom rename
+            # survives periodic ensure_builtin_cron_jobs() syncs
             save_jobs_to_file(existing_target, [dict(base)])
             res = update_builtin_job(job_id, {"name": "Renamed job"})
             j = load_jobs_from_file(existing_target)[0]
             self.assertEqual(j["name"], "Renamed job")
-            self.assertFalse(j.get("custom_config"))
+            self.assertTrue(j.get("custom_config"))
 
             # enabled toggle drives state + paused_at both directions
             res = update_builtin_job(job_id, {"enabled": False})
@@ -4976,6 +5005,43 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             self.assertTrue(j["enabled"])
             self.assertEqual(j["state"], "scheduled")
             self.assertIsNone(j["paused_at"])
+
+            # ---- Sync-survival regression: a custom rename must not be
+            # reverted by the periodic ensure_builtin_cron_jobs() sync
+            # (rename flags custom_config; sync skips customised fields).
+            with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tf:
+                sync_target = Path(tf.name)
+            orig_targets = builtin_cron.get_target_jobs_files
+            builtin_cron.get_target_jobs_files = lambda: [sync_target]
+            try:
+                # Fresh store: sync instantiates the job from builtin_def
+                _ensure_builtin_cron_jobs()
+                j = load_jobs_from_file(sync_target)[0]
+                self.assertEqual(j["name"], "Zero Factory task queue check")
+                self.assertFalse(j.get("custom_config"))
+
+                # User renames the job via the update endpoint
+                res = update_builtin_job(job_id, {"name": "My renamed queue check"})
+                j = load_jobs_from_file(sync_target)[0]
+                self.assertEqual(j["name"], "My renamed queue check")
+                self.assertTrue(j.get("custom_config"))
+
+                # Next periodic sync keeps the custom name
+                _ensure_builtin_cron_jobs()
+                j = load_jobs_from_file(sync_target)[0]
+                self.assertEqual(j["name"], "My renamed queue check")
+                self.assertTrue(j.get("custom_config"))
+
+                # Reset restores the canonical name and clears custom_config
+                res = _reset_builtin_job(job_id)
+                self.assertTrue(res["ok"])
+                j = load_jobs_from_file(sync_target)[0]
+                self.assertEqual(j["name"], "Zero Factory task queue check")
+                self.assertFalse(j.get("custom_config"))
+            finally:
+                builtin_cron.get_target_jobs_files = orig_targets
+                if sync_target.exists():
+                    sync_target.unlink()
 
             # ---- New-job branch (instantiate from builtin_def) ----------
             os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(new_job_target)

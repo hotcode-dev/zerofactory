@@ -1314,12 +1314,27 @@ def create_task(req: TaskCreate):
                     (req.parent_id, task_id, now)
                 )
 
-        creator_actor = req.actor or os.environ.get("HERMES_PROFILE")
-        if not creator_actor:
-            if req.dedup_key or (req.tags and any(t.startswith("cat:") for t in req.tags)) or meta.get("dedup_key"):
-                creator_actor = "zf-orchestrator"
-            else:
-                creator_actor = "user"
+        # Attribute the creating actor in a strict priority order:
+        #   1. An explicit caller intent (req.actor) always wins.
+        #   2. A scanner-filed task is credited to zf-orchestrator. The
+        #      scanner signals its tasks via a fingerprint (an explicit
+        #      dedup_key or one computed from --files). The ambient
+        #      HERMES_PROFILE env must NOT override this — otherwise a
+        #      worker session (e.g. zf-builder) that files a scanner task
+        #      mis-attributes it to itself.
+        #   3. Otherwise fall back to the ambient HERMES_PROFILE session.
+        #   4. Finally, a generic "user".
+        #
+        # We rely on the resolved `dedup_key` (explicit or files-derived)
+        # rather than a `cat:` tag, because create_task auto-appends a
+        # `cat:{category}` tag for every task with a category (the default
+        # is "bug-fix"), so the tag is not a reliable scanner signal.
+        if req.actor:
+            creator_actor = req.actor
+        elif dedup_key:
+            creator_actor = "zf-orchestrator"
+        else:
+            creator_actor = os.environ.get("HERMES_PROFILE") or "user"
 
         log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
         conn.commit()

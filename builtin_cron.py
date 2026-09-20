@@ -599,7 +599,7 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                     "enabled_toolsets", "origin", "model", "provider", "base_url", "workdir",
                     "script", "no_agent", "context_from", "continuity"
                 ):
-                    if is_custom and field in ("schedule", "schedule_display", "prompt", "model", "provider", "base_url", "workdir", "script", "no_agent", "context_from", "continuity"):
+                    if is_custom and field in ("name", "schedule", "schedule_display", "prompt", "model", "provider", "base_url", "workdir", "script", "no_agent", "context_from", "continuity"):
                         continue
                     if curr.get(field) != builtin_def.get(field):
                         curr[field] = builtin_def.get(field)
@@ -713,8 +713,9 @@ def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> No
     enabled/state/paused_at, minutes interval, cron_expr, schedule dict
     passthrough, model/workdir/prompt/name/script/no_agent, context_from
     normalization (str -> list, strip, drop empties, None when empty) and
-    continuity. Sets custom_config on every customised field (name is
-    intentionally excluded, matching prior behaviour).
+    continuity. Sets custom_config on every customised field, including
+    name, so a custom rename survives periodic ensure_builtin_cron_jobs()
+    syncs and is only cleared by reset_builtin_job().
     """
     # Enabled / State toggle
     if "enabled" in updates:
@@ -759,6 +760,7 @@ def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> No
         job["custom_config"] = True
     if "name" in updates and updates["name"]:
         job["name"] = str(updates["name"])
+        job["custom_config"] = True
     if "script" in updates:
         job["script"] = str(updates["script"]).strip() if updates["script"] else None
         job["custom_config"] = True
