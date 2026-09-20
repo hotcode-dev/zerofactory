@@ -518,12 +518,11 @@ def pull_and_merge_main(
     if ancestor_check.returncode == 0:
         return True, [], f"Branch is already up to date with {target_ref}"
 
-    # Attempt merge
+    # Attempt merge with explicit -m message (omit --no-edit to avoid flag conflicts across git versions).
     merge_cmd = [
         "git",
         "merge",
         target_ref,
-        "--no-edit",
         "-m", f"Merge branch '{target_ref}' into task branch"
     ]
     merge_res = subprocess.run(
