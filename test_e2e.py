@@ -221,8 +221,8 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         self.assertIn("CLI Feature Task", out_list)
 
         # 4. Move task
-        out_move = self._run_cli(["move", task_id, "ready", "--actor", "zf-orchestrator"])
-        self.assertIn(f"Moved task {task_id} to ready", out_move)
+        out_move = self._run_cli(["move", task_id, "todo", "--actor", "zf-orchestrator"])
+        self.assertIn(f"Moved task {task_id} to todo", out_move)
 
         # 5. Block task with reason
         out_block = self._run_cli(["block", task_id, "--reason", "Waiting on Database Migration", "--actor", "user"])
@@ -352,7 +352,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
             board_slug=self.board_slug,
             title="Implement User Authentication",
             description="Add JWT token generation and validation tests",
-            status="ready",
+            status="todo",
             assignee="zf-builder",
             priority="P1"
         ))
@@ -451,7 +451,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         t_res = create_task(TaskCreate(
             board_slug=self.board_slug,
             title="Refactor Cache Layer",
-            status="ready",
+            status="todo",
             assignee="zf-builder"
         ))
         task_id = t_res["id"]
@@ -491,7 +491,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
             dispatcher.run_dispatch_cycle(self.db_path)
 
         t_after_changes = get_task(task_id)["task"]
-        self.assertEqual(t_after_changes["status"], "ready")
+        self.assertEqual(t_after_changes["status"], "todo")
         self.assertEqual(t_after_changes["assignee"], "zf-builder")
 
         # Builder pushes update
@@ -549,7 +549,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
             dispatcher.run_dispatch_cycle(self.db_path)
 
         t_conf = get_task(task_id)["task"]
-        self.assertEqual(t_conf["status"], "ready")
+        self.assertEqual(t_conf["status"], "todo")
         self.assertEqual(t_conf["assignee"], "zf-builder")
         self.assertIn("[PR Conflict]", t_conf["title"])
 
@@ -585,7 +585,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         self.assertTrue(res["ok"])
         self.assertEqual(res.get("unblocked"), 1)
         # Child is unblocked and promoted/dispatched
-        self.assertIn(get_task(t_child)["task"]["status"], ("ready", "running"))
+        self.assertIn(get_task(t_child)["task"]["status"], ("todo", "running"))
         acts = get_activities(limit=20)["activities"]
         self.assertTrue(any(a["action"] == "unblock" for a in acts))
 
@@ -964,12 +964,12 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
         create_board(BoardCreate(git_url="https://github.com/example/cap.git"))
         client.patch("/api/plugins/zerofactory/boards/example-cap", json={"max_concurrent_running": 2})
 
-        # Create 4 tasks in ready
+        # Create 4 tasks in todo
         for i in range(1, 5):
             create_task(TaskCreate(
                 board_slug="example-cap",
                 title=f"Parallel Task {i}",
-                status="ready",
+                status="todo",
                 assignee="zf-builder"
             ))
 
@@ -977,11 +977,11 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
         res = dispatcher.run_dispatch_cycle(self.db_path)
         self.assertTrue(res["ok"])
 
-        # Exactly 2 should be running, 2 remain in ready
+        # Exactly 2 should be running, 2 remain in todo
         running_tasks = list_tasks(board="example-cap", status="running")["tasks"]
-        ready_tasks = list_tasks(board="example-cap", status="ready")["tasks"]
+        todo_tasks = list_tasks(board="example-cap", status="todo")["tasks"]
         self.assertEqual(len(running_tasks), 2)
-        self.assertEqual(len(ready_tasks), 2)
+        self.assertEqual(len(todo_tasks), 2)
 
     def test_03_hanging_worktree_cleanup_timeout_resilience(self):
         """Hung git worktree remove does not crash dispatcher; triggers bounded prune fallback."""

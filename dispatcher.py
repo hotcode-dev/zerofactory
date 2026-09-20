@@ -1277,6 +1277,18 @@ def stop_task_worker(task_id: str, cursor: Optional[sqlite3.Cursor] = None) -> N
     terminate_worker_process(proc, pid)
 
 
+def _mark_task_session_ended(meta: Dict[str, Any], now: int, final_status: str = "finished") -> Dict[str, Any]:
+    """Helper to finalize the ongoing session entry in task metadata."""
+    sessions = meta.get("sessions")
+    if isinstance(sessions, list):
+        for s in sessions:
+            if isinstance(s, dict) and s.get("status") == "ongoing":
+                s["status"] = final_status
+                if not s.get("ended_at"):
+                    s["ended_at"] = now
+    return meta
+
+
 def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
     """Check running tasks and reap finished, crashed, or stuck worker processes."""
     cursor.execute("SELECT id, title, metadata, updated_at, created_at FROM tasks WHERE status = 'running'")
@@ -1302,14 +1314,16 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             if retcode is not None:
                 _active_workers.pop(task_id, None)
                 if retcode == 0:
-                    cursor.execute("UPDATE tasks SET status = 'done', updated_at = ? WHERE id = ?", (now, task_id))
+                    meta = _mark_task_session_ended(meta, now, "finished")
+                    cursor.execute("UPDATE tasks SET status = 'done', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', 'Worker process completed successfully (exit 0)', ?)",
                         (task_id, now)
                     )
                     _log.info("Worker for task %s finished successfully (exit 0); moved to done", task_id)
                 else:
-                    cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, task_id))
+                    meta = _mark_task_session_ended(meta, now, "failed")
+                    cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed', ?, ?)",
                         (task_id, f"Worker process exited with code {retcode}", now)
@@ -1321,7 +1335,8 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             try:
                 os.kill(pid, 0)
             except OSError:
-                cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, task_id))
+                meta = _mark_task_session_ended(meta, now, "lost")
+                cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
                 cursor.execute(
                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_lost', ?, ?)",
                     (task_id, f"Worker process PID {pid} not found; moved to blocked", now)
@@ -1357,7 +1372,8 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
         if is_stuck:
             terminate_worker_process(proc, pid)
             _active_workers.pop(task_id, None)
-            cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, task_id))
+            meta = _mark_task_session_ended(meta, now, "timed_out")
+            cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
             cursor.execute(
                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
                 (task_id, stuck_reason, now)
@@ -2269,7 +2285,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     limit = max_active_tasks - active_count
                     cursor.execute("""
                         SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
-                        WHERE status = 'todo'
+                        WHERE status IN ('todo', 'ready')
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
                         LIMIT ?
                     """, (limit,))
@@ -2320,7 +2336,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                         # Atomic claim to prevent double-dispatch across processes
                         cursor.execute(
-                            "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND status = 'todo'",
+                            "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND status IN ('todo', 'ready')",
                             (now, task_id)
                         )
                         if cursor.rowcount == 0:
@@ -2340,6 +2356,25 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             meta = json.loads(row["metadata"] or "{}")
                         except Exception:
                             pass
+
+                        # Multi-session tracking: record every agent run (orchestrator, builder, reviewer, dispatcher)
+                        sessions_list = meta.get("sessions")
+                        if not isinstance(sessions_list, list):
+                            sessions_list = []
+                        for s in sessions_list:
+                            if isinstance(s, dict) and s.get("status") == "ongoing":
+                                s["status"] = "finished"
+                                if not s.get("ended_at"):
+                                    s["ended_at"] = now
+                        sessions_list.append({
+                            "session_id": session_id,
+                            "agent": assignee,
+                            "status": "ongoing",
+                            "started_at": now,
+                            "ended_at": None,
+                            "pid": pid,
+                        })
+                        meta["sessions"] = sessions_list
                         if pid:
                             meta["worker_pid"] = pid
                         if session_id:
