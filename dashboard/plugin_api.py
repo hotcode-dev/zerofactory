@@ -71,6 +71,14 @@ except (ImportError, ValueError):
         resolve_profile_state_db,
     )
 
+try:
+    from ..profile_manager import sync_langfuse_profiles  # type: ignore
+except (ImportError, ValueError):
+    try:
+        from profile_manager import sync_langfuse_profiles  # type: ignore
+    except (ImportError, ValueError):
+        sync_langfuse_profiles = None  # type: ignore
+
 _log = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -453,6 +461,18 @@ class SettingsUpdate(BaseModel):
     idle_scan_max_todo: Optional[int] = Field(default=None, ge=0, description="Max todo backlog tasks on board before suppressing idle scan")
     activity_retention_days: Optional[int] = Field(default=None, ge=1, description="Days to retain task_activity log rows before pruning (default 30)")
     enable_cron_scheduler: Optional[bool] = Field(default=None, description="Enable periodic background cron scheduler execution")
+    langfuse_enabled: Optional[bool] = Field(default=None, description="Enable Langfuse observability tracing across profiles")
+    langfuse_base_url: Optional[str] = Field(default=None, description="Langfuse base API URL")
+    langfuse_public_key: Optional[str] = Field(default=None, description="Langfuse public API key (pk-lf-...)")
+    langfuse_secret_key: Optional[str] = Field(default=None, description="Langfuse secret API key (sk-lf-...)")
+    langfuse_capture_mode: Optional[str] = Field(default=None, description="Capture mode: sanitized, metadata, or full")
+    langfuse_env: Optional[str] = Field(default=None, description="Langfuse environment tag")
+
+
+class LangfuseTestRequest(BaseModel):
+    base_url: Optional[str] = Field(default="https://cloud.langfuse.com", description="Langfuse host URL")
+    public_key: Optional[str] = Field(default="", description="Langfuse public key (pk-lf-...)")
+    secret_key: Optional[str] = Field(default="", description="Langfuse secret key (sk-lf-...)")
 
 
 # --- Helper Functions --------------------------------------------------------
@@ -1206,9 +1226,151 @@ def update_settings(req: SettingsUpdate):
             except ImportError:
                 from builtin_cron import set_cron_scheduler_enabled
             set_cron_scheduler_enabled(bool(req.enable_cron_scheduler), conn=conn)
+        if req.langfuse_enabled is not None:
+            val = "true" if req.langfuse_enabled else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_enabled', ?, ?)",
+                (val, now)
+            )
+        if req.langfuse_base_url is not None:
+            val = str(req.langfuse_base_url).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_base_url', ?, ?)",
+                (val, now)
+            )
+        if req.langfuse_public_key is not None:
+            val = str(req.langfuse_public_key).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_public_key', ?, ?)",
+                (val, now)
+            )
+        if req.langfuse_secret_key is not None:
+            val = str(req.langfuse_secret_key).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_secret_key', ?, ?)",
+                (val, now)
+            )
+        if req.langfuse_capture_mode is not None:
+            val = str(req.langfuse_capture_mode).strip().lower()
+            if val in ("sanitized", "metadata", "full"):
+                cursor.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_capture_mode', ?, ?)",
+                    (val, now)
+                )
+        if req.langfuse_env is not None:
+            val = str(req.langfuse_env).strip()
+            if val:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_env', ?, ?)",
+                    (val, now)
+                )
         conn.commit()
 
-    return get_settings()
+    res = get_settings()
+    current_settings = res.get("settings", {})
+    # Synchronize across all profiles if Langfuse settings were touched or enabled
+    if any(getattr(req, k) is not None for k in (
+        "langfuse_enabled", "langfuse_base_url", "langfuse_public_key",
+        "langfuse_secret_key", "langfuse_capture_mode", "langfuse_env"
+    )):
+        if callable(sync_langfuse_profiles):
+            try:
+                sync_langfuse_profiles(current_settings)
+            except Exception as e:
+                _log.warning("Could not sync Langfuse across profiles: %s", e)
+
+    return res
+
+
+@router.post("/settings/langfuse/test")
+def test_langfuse_connection(req: LangfuseTestRequest):
+    """Test connection to Langfuse server and optionally validate API keys."""
+    base_url = (req.base_url or "").strip().rstrip("/")
+    if not base_url:
+        base_url = "https://cloud.langfuse.com"
+    if not (base_url.startswith("http://") or base_url.startswith("https://")):
+        base_url = "https://" + base_url
+
+    public_key = (req.public_key or "").strip()
+    secret_key = (req.secret_key or "").strip()
+
+    import base64
+    import urllib.error
+    import urllib.request
+
+    # 1. Health check
+    health_url = f"{base_url}/api/public/health"
+    status_code = None
+    try:
+        req_obj = urllib.request.Request(
+            health_url,
+            headers={"User-Agent": "ZeroFactory/1.0", "Accept": "application/json"}
+        )
+        with urllib.request.urlopen(req_obj, timeout=6.0) as resp:
+            status_code = resp.status
+    except urllib.error.HTTPError as e:
+        status_code = e.code
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": f"Failed to connect to Langfuse host at {base_url}: {e}"
+        }
+
+    # 2. If credentials are provided, test auth
+    if public_key or secret_key:
+        if not public_key.startswith("pk-lf-") or not secret_key.startswith("sk-lf-"):
+            return {
+                "ok": False,
+                "error": "Invalid key format: public key must start with 'pk-lf-' and secret key with 'sk-lf-'"
+            }
+
+        auth_url = f"{base_url}/api/public/projects"
+        auth_header = base64.b64encode(f"{public_key}:{secret_key}".encode("utf-8")).decode("ascii")
+        try:
+            auth_req = urllib.request.Request(
+                auth_url,
+                headers={
+                    "Authorization": f"Basic {auth_header}",
+                    "User-Agent": "ZeroFactory/1.0",
+                    "Accept": "application/json"
+                }
+            )
+            with urllib.request.urlopen(auth_req, timeout=6.0) as resp:
+                if resp.status in (200, 201):
+                    return {
+                        "ok": True,
+                        "message": f"Successfully connected and authenticated with Langfuse ({base_url})!"
+                    }
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                return {
+                    "ok": False,
+                    "error": f"Authentication failed (HTTP {e.code}): Check that your public and secret keys are correct."
+                }
+            if status_code in (200, 204):
+                return {
+                    "ok": True,
+                    "message": f"Server reached at {base_url} (HTTP {e.code} on auth check)."
+                }
+            return {
+                "ok": False,
+                "error": f"Langfuse server returned HTTP {e.code}: {e.reason}"
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "error": f"Error during auth check to {base_url}: {e}"
+            }
+
+    if status_code in (200, 204):
+        return {
+            "ok": True,
+            "message": f"Langfuse server is healthy and reachable at {base_url}."
+        }
+    return {
+        "ok": False,
+        "error": f"Unexpected health status {status_code} from {base_url}."
+    }
 
 
 # --- Task Endpoints ----------------------------------------------------------

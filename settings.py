@@ -58,6 +58,14 @@ DEFAULT_ACTIVITY_RETENTION_DAYS = 30
 # Enable periodic background cron scheduler execution (dispatcher ticker & scheduled runs).
 DEFAULT_ENABLE_CRON_SCHEDULER = True
 
+# Langfuse observability settings
+DEFAULT_LANGFUSE_ENABLED = False
+DEFAULT_LANGFUSE_BASE_URL = "https://cloud.langfuse.com"
+DEFAULT_LANGFUSE_PUBLIC_KEY = ""
+DEFAULT_LANGFUSE_SECRET_KEY = ""
+DEFAULT_LANGFUSE_CAPTURE_MODE = "sanitized"
+DEFAULT_LANGFUSE_ENV = "zerofactory"
+
 # Seconds view of the cooldown default — the single unit-conversion point for the
 # default path. The DB stores minutes; the dispatcher converts to seconds where needed.
 DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES * 60
@@ -72,6 +80,12 @@ SETTING_KEYS = (
     "idle_scan_max_todo",
     "activity_retention_days",
     "enable_cron_scheduler",
+    "langfuse_enabled",
+    "langfuse_base_url",
+    "langfuse_public_key",
+    "langfuse_secret_key",
+    "langfuse_capture_mode",
+    "langfuse_env",
 )
 
 # Seed values for the settings table, derived from the constants above (NOT
@@ -85,6 +99,12 @@ DEFAULT_SETTING_VALUES: Dict[str, str] = {
     "idle_scan_max_todo": str(DEFAULT_IDLE_SCAN_MAX_TODO),
     "activity_retention_days": str(DEFAULT_ACTIVITY_RETENTION_DAYS),
     "enable_cron_scheduler": "true" if DEFAULT_ENABLE_CRON_SCHEDULER else "false",
+    "langfuse_enabled": "true" if DEFAULT_LANGFUSE_ENABLED else "false",
+    "langfuse_base_url": DEFAULT_LANGFUSE_BASE_URL,
+    "langfuse_public_key": DEFAULT_LANGFUSE_PUBLIC_KEY,
+    "langfuse_secret_key": DEFAULT_LANGFUSE_SECRET_KEY,
+    "langfuse_capture_mode": DEFAULT_LANGFUSE_CAPTURE_MODE,
+    "langfuse_env": DEFAULT_LANGFUSE_ENV,
 }
 
 
@@ -122,6 +142,12 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
         "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
         "activity_retention_days": DEFAULT_ACTIVITY_RETENTION_DAYS,
         "enable_cron_scheduler": DEFAULT_ENABLE_CRON_SCHEDULER,
+        "langfuse_enabled": DEFAULT_LANGFUSE_ENABLED,
+        "langfuse_base_url": DEFAULT_LANGFUSE_BASE_URL,
+        "langfuse_public_key": DEFAULT_LANGFUSE_PUBLIC_KEY,
+        "langfuse_secret_key": DEFAULT_LANGFUSE_SECRET_KEY,
+        "langfuse_capture_mode": DEFAULT_LANGFUSE_CAPTURE_MODE,
+        "langfuse_env": DEFAULT_LANGFUSE_ENV,
     }
     try:
         rows = conn_or_cursor.execute("SELECT key, value FROM settings").fetchall()
@@ -170,5 +196,23 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
                 settings["activity_retention_days"] = c
         elif k == "enable_cron_scheduler":
             settings["enable_cron_scheduler"] = _parse_bool(v)
+        elif k == "langfuse_enabled":
+            settings["langfuse_enabled"] = _parse_bool(v)
+        elif k == "langfuse_base_url":
+            if v is not None:
+                settings["langfuse_base_url"] = str(v).strip()
+        elif k == "langfuse_public_key":
+            if v is not None:
+                settings["langfuse_public_key"] = str(v).strip()
+        elif k == "langfuse_secret_key":
+            if v is not None:
+                settings["langfuse_secret_key"] = str(v).strip()
+        elif k == "langfuse_capture_mode":
+            mode = str(v).strip().lower() if v is not None else ""
+            if mode in ("sanitized", "metadata", "full"):
+                settings["langfuse_capture_mode"] = mode
+        elif k == "langfuse_env":
+            if v is not None and str(v).strip():
+                settings["langfuse_env"] = str(v).strip()
 
     return settings
