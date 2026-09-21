@@ -89,9 +89,18 @@
       idle_scan_active_threshold: 2,
       idle_scan_cooldown_minutes: 15,
       idle_scan_max_todo: 2,
-      enable_cron_scheduler: true
+      enable_cron_scheduler: true,
+      langfuse_enabled: false,
+      langfuse_base_url: "https://cloud.langfuse.com",
+      langfuse_public_key: "",
+      langfuse_secret_key: "",
+      langfuse_capture_mode: "sanitized",
+      langfuse_env: "zerofactory"
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [isTestingLangfuse, setIsTestingLangfuse] = useState(false);
+    const [langfuseTestResult, setLangfuseTestResult] = useState(null);
+    const [showLangfuseSecret, setShowLangfuseSecret] = useState(false);
     const [cronJobs, setCronJobs] = useState([]);
     const [cronSchedulerEnabled, setCronSchedulerEnabled] = useState(true);
     const [loadingCron, setLoadingCron] = useState(false);
@@ -173,7 +182,13 @@
             idle_scan_active_threshold: data.settings.idle_scan_active_threshold ?? 2,
             idle_scan_cooldown_minutes: data.settings.idle_scan_cooldown_minutes ?? 15,
             idle_scan_max_todo: data.settings.idle_scan_max_todo ?? 2,
-            enable_cron_scheduler: isCronEnabled
+            enable_cron_scheduler: isCronEnabled,
+            langfuse_enabled: Boolean(data.settings.langfuse_enabled),
+            langfuse_base_url: data.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
+            langfuse_public_key: data.settings.langfuse_public_key ?? "",
+            langfuse_secret_key: data.settings.langfuse_secret_key ?? "",
+            langfuse_capture_mode: data.settings.langfuse_capture_mode ?? "sanitized",
+            langfuse_env: data.settings.langfuse_env ?? "zerofactory"
           });
           setCronSchedulerEnabled(isCronEnabled);
         }
@@ -193,7 +208,13 @@
           idle_scan_active_threshold: Math.max(1, parseInt(settingsForm.idle_scan_active_threshold, 10) || 2),
           idle_scan_cooldown_minutes: Math.max(1, parseInt(settingsForm.idle_scan_cooldown_minutes, 10) || 15),
           idle_scan_max_todo: Math.max(0, parseInt(settingsForm.idle_scan_max_todo, 10) || 0),
-          enable_cron_scheduler: Boolean(settingsForm.enable_cron_scheduler !== false)
+          enable_cron_scheduler: Boolean(settingsForm.enable_cron_scheduler !== false),
+          langfuse_enabled: Boolean(settingsForm.langfuse_enabled),
+          langfuse_base_url: String(settingsForm.langfuse_base_url || "").trim(),
+          langfuse_public_key: String(settingsForm.langfuse_public_key || "").trim(),
+          langfuse_secret_key: String(settingsForm.langfuse_secret_key || "").trim(),
+          langfuse_capture_mode: String(settingsForm.langfuse_capture_mode || "sanitized").trim(),
+          langfuse_env: String(settingsForm.langfuse_env || "zerofactory").trim()
         };
         const res = await fetchJSON(API_BASE + "/settings", {
           method: "PATCH",
@@ -209,7 +230,13 @@
             idle_scan_active_threshold: res.settings.idle_scan_active_threshold ?? 2,
             idle_scan_cooldown_minutes: res.settings.idle_scan_cooldown_minutes ?? 15,
             idle_scan_max_todo: res.settings.idle_scan_max_todo ?? 2,
-            enable_cron_scheduler: isCronEnabled
+            enable_cron_scheduler: isCronEnabled,
+            langfuse_enabled: Boolean(res.settings.langfuse_enabled),
+            langfuse_base_url: res.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
+            langfuse_public_key: res.settings.langfuse_public_key ?? "",
+            langfuse_secret_key: res.settings.langfuse_secret_key ?? "",
+            langfuse_capture_mode: res.settings.langfuse_capture_mode ?? "sanitized",
+            langfuse_env: res.settings.langfuse_env ?? "zerofactory"
           });
           setCronSchedulerEnabled(isCronEnabled);
           loadCronJobs();
@@ -220,6 +247,31 @@
         showToast("Failed to save settings: " + (err.message || String(err)), "error");
       } finally {
         setIsSavingSettings(false);
+      }
+    };
+
+    const handleTestLangfuse = async () => {
+      setIsTestingLangfuse(true);
+      setLangfuseTestResult(null);
+      try {
+        const res = await fetchJSON(API_BASE + "/settings/langfuse/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base_url: settingsForm.langfuse_base_url,
+            public_key: settingsForm.langfuse_public_key,
+            secret_key: settingsForm.langfuse_secret_key
+          })
+        });
+        if (res && res.ok) {
+          setLangfuseTestResult({ ok: true, message: res.message || "Connected successfully!" });
+        } else {
+          setLangfuseTestResult({ ok: false, message: (res && res.error) || "Connection failed" });
+        }
+      } catch (err) {
+        setLangfuseTestResult({ ok: false, message: err.message || String(err) });
+      } finally {
+        setIsTestingLangfuse(false);
       }
     };
 
@@ -4698,6 +4750,159 @@
                       checked: settingsForm.enable_cron_scheduler !== false,
                       onChange: (e) => setSettingsForm({ ...settingsForm, enable_cron_scheduler: e.target.checked })
                     }
+                  )
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-between" },
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-1.5" },
+                      React.createElement("span", { className: "text-sm" }, "🔭"),
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Langfuse Observability & Tracing")
+                    ),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Trace LLM calls, tool executions, latencies, and token costs across all agent profiles.")
+                  ),
+                  React.createElement(
+                    "input",
+                    {
+                      type: "checkbox",
+                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                      checked: Boolean(settingsForm.langfuse_enabled),
+                      onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_enabled: e.target.checked })
+                    }
+                  )
+                ),
+                settingsForm.langfuse_enabled && React.createElement(
+                  "div",
+                  { className: "space-y-3 pt-1 bg-slate-950/60 p-3 rounded-lg border border-slate-800/70" },
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" },
+                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Langfuse Host / Base URL"),
+                    React.createElement("input", {
+                      type: "text",
+                      placeholder: "https://cloud.langfuse.com",
+                      className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                      value: settingsForm.langfuse_base_url ?? "https://cloud.langfuse.com",
+                      onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_base_url: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Cloud instance (https://cloud.langfuse.com) or self-hosted URL (e.g. http://localhost:3000).")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5" },
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Public Key"),
+                      React.createElement("input", {
+                        type: "text",
+                        placeholder: "pk-lf-...",
+                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                        value: settingsForm.langfuse_public_key ?? "",
+                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_public_key: e.target.value })
+                      })
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between" },
+                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Secret Key"),
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "text-[10px] text-slate-400 hover:text-slate-200 cursor-pointer",
+                            onClick: () => setShowLangfuseSecret(!showLangfuseSecret)
+                          },
+                          showLangfuseSecret ? "Hide" : "Show"
+                        )
+                      ),
+                      React.createElement("input", {
+                        type: showLangfuseSecret ? "text" : "password",
+                        placeholder: "sk-lf-...",
+                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                        value: settingsForm.langfuse_secret_key ?? "",
+                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_secret_key: e.target.value })
+                      })
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5" },
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Environment Tag"),
+                      React.createElement("input", {
+                        type: "text",
+                        placeholder: "zerofactory",
+                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 font-mono",
+                        value: settingsForm.langfuse_env ?? "zerofactory",
+                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_env: e.target.value })
+                      })
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Content Capture Mode"),
+                      React.createElement(
+                        "select",
+                        {
+                          className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer",
+                          value: settingsForm.langfuse_capture_mode ?? "sanitized",
+                          onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_capture_mode: e.target.value })
+                        },
+                        React.createElement("option", { value: "sanitized" }, "Sanitized (Redact secrets & truncate)"),
+                        React.createElement("option", { value: "metadata" }, "Metadata Only (No prompts/outputs)"),
+                        React.createElement("option", { value: "full" }, "Full Content (Raw payloads)")
+                      )
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-t border-slate-800/60" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-1.5 text-[11px]" },
+                      React.createElement("span", { className: "text-emerald-400" }, "✓"),
+                      React.createElement("span", { className: "text-slate-400" }, "Syncs to zf-orchestrator, zf-builder, zf-reviewer & root")
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-2" },
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          disabled: isTestingLangfuse,
+                          onClick: handleTestLangfuse,
+                          className: "px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
+                        },
+                        isTestingLangfuse ? "Testing..." : "Test Connection"
+                      )
+                    )
+                  ),
+                  langfuseTestResult && React.createElement(
+                    "div",
+                    {
+                      className: `text-[11px] px-2.5 py-1.5 rounded border ${
+                        langfuseTestResult.ok
+                          ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                          : "bg-rose-950/40 border-rose-800/60 text-rose-300"
+                      }`
+                    },
+                    (langfuseTestResult.ok ? "✓ " : "✕ ") + langfuseTestResult.message
                   )
                 )
               ),

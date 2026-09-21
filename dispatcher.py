@@ -1041,6 +1041,29 @@ def is_reviewer_approval_comment(comment_body: str, state: Optional[str] = None)
     return has_approval_signal and not has_changes_requested
 
 
+def _inject_langfuse_env(env: Dict[str, str], conn_or_cursor: Any = None) -> None:
+    """Inject active Langfuse credentials and configuration into worker subprocess environment."""
+    try:
+        if conn_or_cursor is None:
+            from dashboard.plugin_api import get_db_conn
+            with get_db_conn() as conn:
+                settings = load_settings(conn)
+        else:
+            settings = load_settings(conn_or_cursor)
+
+        if settings.get("langfuse_enabled"):
+            env["HERMES_LANGFUSE_PUBLIC_KEY"] = str(settings.get("langfuse_public_key") or "").strip()
+            env["HERMES_LANGFUSE_SECRET_KEY"] = str(settings.get("langfuse_secret_key") or "").strip()
+            env["HERMES_LANGFUSE_BASE_URL"] = str(settings.get("langfuse_base_url") or "https://cloud.langfuse.com").strip()
+            env["HERMES_LANGFUSE_CAPTURE"] = str(settings.get("langfuse_capture_mode") or "sanitized").strip()
+            env["HERMES_LANGFUSE_ENV"] = str(settings.get("langfuse_env") or "zerofactory").strip()
+        else:
+            for k in ("HERMES_LANGFUSE_PUBLIC_KEY", "HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE", "HERMES_LANGFUSE_ENV"):
+                env.pop(k, None)
+    except Exception as e:
+        _log.debug("Could not inject Langfuse env: %s", e)
+
+
 def spawn_agent_worker(
     task_id: str,
     title: str,
@@ -1231,6 +1254,7 @@ def spawn_agent_worker(
     if profile_home.exists():
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
+    _inject_langfuse_env(env)
 
     try:
         log_f = open(log_file_path, "ab")
@@ -1586,6 +1610,7 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
     if profile_home.exists():
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
+    _inject_langfuse_env(env)
 
     workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()
 

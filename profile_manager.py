@@ -15,7 +15,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 try:
     import yaml
@@ -248,6 +248,13 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
     script_res = ensure_script_files()
     res["scripts"] = script_res.get("copied", [])
 
+    # Automatically synchronize Langfuse observability across profiles
+    try:
+        lf_res = sync_langfuse_profiles()
+        res["langfuse_synced"] = lf_res.get("synced", [])
+    except Exception as e:
+        _log.warning("Could not sync Langfuse settings across profiles: %s", e)
+
     return res
 
 
@@ -375,4 +382,125 @@ def ensure_script_files() -> Dict[str, Any]:
                 _log.warning("Could not sync script %s to %s: %s", script_file.name, target_dir, e)
 
     return {"copied": copied}
+
+
+def update_env_file(env_path: Path, updates: Dict[str, str], remove_keys: Optional[Set[str]] = None) -> None:
+    """Update or insert key=value pairs in an environment file while preserving comments and other keys."""
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    existing_lines: List[str] = []
+    if env_path.exists():
+        try:
+            existing_lines = env_path.read_text(encoding="utf-8").splitlines()
+        except Exception as e:
+            _log.warning("Could not read %s: %s", env_path, e)
+
+    remaining_updates = dict(updates)
+    remove_set = remove_keys or set()
+    new_lines: List[str] = []
+
+    for line in existing_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip()
+            if key in remove_set:
+                continue
+            if key in remaining_updates:
+                new_val = remaining_updates.pop(key)
+                new_lines.append(f"{key}={new_val}")
+                continue
+        new_lines.append(line)
+
+    for key, val in remaining_updates.items():
+        new_lines.append(f"{key}={val}")
+
+    content = "\n".join(new_lines).strip() + "\n"
+    env_path.write_text(content, encoding="utf-8")
+    try:
+        os.chmod(str(env_path), 0o600)
+    except OSError:
+        pass
+
+
+def update_config_yaml_plugins(config_path: Path, enable_plugin: Optional[str] = None, disable_plugin: Optional[str] = None) -> None:
+    """Update plugins.enabled list in config.yaml without altering other configuration sections."""
+    if not yaml or not config_path.exists():
+        return
+    try:
+        cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        plugins_sec = cfg.setdefault("plugins", {})
+        enabled_list = plugins_sec.setdefault("enabled", [])
+        changed = False
+
+        if enable_plugin and enable_plugin not in enabled_list:
+            enabled_list.append(enable_plugin)
+            changed = True
+        if disable_plugin and disable_plugin in enabled_list:
+            enabled_list.remove(disable_plugin)
+            changed = True
+
+        if changed:
+            config_path.write_text(yaml.dump(cfg, sort_keys=False), encoding="utf-8")
+    except Exception as e:
+        _log.warning("Could not update plugins in %s: %s", config_path, e)
+
+
+def sync_langfuse_profiles(settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Synchronize Langfuse credentials and plugin enablement across all Hermes profiles.
+
+    Targets root (~/.hermes/) and all agent profile directories (~/.hermes/profiles/*).
+    """
+    if settings is None:
+        try:
+            import sqlite3
+            from settings import load_settings
+
+            db_override = os.environ.get("ZEROFACTORY_DB")
+            db_p = Path(db_override) if db_override else (get_hermes_home() / "zerofactory.db")
+            if db_p.exists():
+                with sqlite3.connect(str(db_p), timeout=2.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    settings = load_settings(conn)
+            else:
+                from settings import DEFAULT_SETTING_VALUES
+                settings = {k: DEFAULT_SETTING_VALUES.get(k) for k in DEFAULT_SETTING_VALUES}
+        except Exception as e:
+            _log.debug("Could not load settings for Langfuse sync: %s", e)
+            settings = {}
+
+    hermes_home = get_hermes_home()
+    profiles_dir = hermes_home / "profiles"
+
+    target_dirs: List[Path] = [hermes_home]
+    if profiles_dir.is_dir():
+        for child in sorted(profiles_dir.iterdir()):
+            if child.is_dir() and not child.name.startswith("."):
+                target_dirs.append(child)
+
+    # Ensure all canonical ZF profiles are included if they exist
+    for role in ZF_PROFILES:
+        r_dir = profiles_dir / role
+        if r_dir.exists() and r_dir not in target_dirs:
+            target_dirs.append(r_dir)
+
+    is_enabled = bool(settings.get("langfuse_enabled"))
+    synced_targets: List[str] = []
+
+    if is_enabled:
+        env_updates = {
+            "HERMES_LANGFUSE_PUBLIC_KEY": str(settings.get("langfuse_public_key") or "").strip(),
+            "HERMES_LANGFUSE_SECRET_KEY": str(settings.get("langfuse_secret_key") or "").strip(),
+            "HERMES_LANGFUSE_BASE_URL": str(settings.get("langfuse_base_url") or "https://cloud.langfuse.com").strip(),
+            "HERMES_LANGFUSE_CAPTURE": str(settings.get("langfuse_capture_mode") or "sanitized").strip(),
+            "HERMES_LANGFUSE_ENV": str(settings.get("langfuse_env") or "zerofactory").strip(),
+        }
+        for target in target_dirs:
+            update_env_file(target / ".env", env_updates)
+            update_config_yaml_plugins(target / "config.yaml", enable_plugin="langfuse")
+            synced_targets.append(str(target))
+    else:
+        for target in target_dirs:
+            update_config_yaml_plugins(target / "config.yaml", disable_plugin="langfuse")
+            synced_targets.append(str(target))
+
+    return {"enabled": is_enabled, "synced": synced_targets}
 

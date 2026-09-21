@@ -6394,6 +6394,113 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             self.assertIn("last_activity_at", s, "list_all_sessions session missing last_activity_at")
             self.assertEqual(s["last_activity_at"], now - 10)
 
+    def test_88_settings_langfuse_observability(self):
+        """Verify Langfuse settings lifecycle, multi-profile sync, and test connection endpoint."""
+        import tempfile
+        import yaml
+        from profile_manager import update_env_file, update_config_yaml_plugins, sync_langfuse_profiles
+        from dispatcher import _inject_langfuse_env
+
+        # 1. Verify GET /settings includes Langfuse keys
+        resp_get = client.get("/api/plugins/zerofactory/settings")
+        self.assertEqual(resp_get.status_code, 200)
+        s = resp_get.json()["settings"]
+        self.assertIn("langfuse_enabled", s)
+        self.assertIn("langfuse_base_url", s)
+        self.assertIn("langfuse_public_key", s)
+        self.assertIn("langfuse_secret_key", s)
+        self.assertIn("langfuse_capture_mode", s)
+        self.assertIn("langfuse_env", s)
+
+        # 2. Verify PATCH /settings updates Langfuse keys
+        resp_patch = client.patch("/api/plugins/zerofactory/settings", json={
+            "langfuse_enabled": True,
+            "langfuse_base_url": "https://test.langfuse.com",
+            "langfuse_public_key": "pk-lf-unit-test",
+            "langfuse_secret_key": "sk-lf-unit-test",
+            "langfuse_capture_mode": "metadata",
+            "langfuse_env": "test-env"
+        })
+        self.assertEqual(resp_patch.status_code, 200)
+        s_updated = resp_patch.json()["settings"]
+        self.assertTrue(s_updated["langfuse_enabled"])
+        self.assertEqual(s_updated["langfuse_base_url"], "https://test.langfuse.com")
+        self.assertEqual(s_updated["langfuse_public_key"], "pk-lf-unit-test")
+        self.assertEqual(s_updated["langfuse_secret_key"], "sk-lf-unit-test")
+        self.assertEqual(s_updated["langfuse_capture_mode"], "metadata")
+        self.assertEqual(s_updated["langfuse_env"], "test-env")
+
+        # 3. Test update_env_file preserves unrelated keys and comments
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_p = Path(tmp_dir) / ".env"
+            env_p.write_text("# Custom comment\nOPENROUTER_API_KEY=existing-key\nOTHER_VAR=123\n", encoding="utf-8")
+            updates = {
+                "HERMES_LANGFUSE_PUBLIC_KEY": "pk-lf-sample",
+                "HERMES_LANGFUSE_SECRET_KEY": "sk-lf-sample",
+            }
+            update_env_file(env_p, updates)
+            lines = env_p.read_text(encoding="utf-8").splitlines()
+            self.assertIn("# Custom comment", lines)
+            self.assertIn("OPENROUTER_API_KEY=existing-key", lines)
+            self.assertIn("OTHER_VAR=123", lines)
+            self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-sample", lines)
+            self.assertIn("HERMES_LANGFUSE_SECRET_KEY=sk-lf-sample", lines)
+
+            # Update in-place
+            update_env_file(env_p, {"HERMES_LANGFUSE_PUBLIC_KEY": "pk-lf-modified"})
+            lines2 = env_p.read_text(encoding="utf-8").splitlines()
+            self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-modified", lines2)
+            self.assertNotIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-sample", lines2)
+            self.assertIn("OPENROUTER_API_KEY=existing-key", lines2)
+
+        # 4. Test update_config_yaml_plugins adds and removes langfuse cleanly
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cfg_p = Path(tmp_dir) / "config.yaml"
+            cfg_p.write_text(yaml.dump({"plugins": {"enabled": ["zerofactory"]}, "model": {"default": "test"}}, sort_keys=False), encoding="utf-8")
+            
+            # Enable langfuse
+            update_config_yaml_plugins(cfg_p, enable_plugin="langfuse")
+            loaded = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
+            self.assertIn("langfuse", loaded["plugins"]["enabled"])
+            self.assertIn("zerofactory", loaded["plugins"]["enabled"])
+
+            # Disable langfuse
+            update_config_yaml_plugins(cfg_p, disable_plugin="langfuse")
+            loaded_after = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
+            self.assertNotIn("langfuse", loaded_after["plugins"]["enabled"])
+            self.assertIn("zerofactory", loaded_after["plugins"]["enabled"])
+
+        # 5. Test _inject_langfuse_env
+        test_env = {}
+        _inject_langfuse_env(test_env)
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_PUBLIC_KEY"), "pk-lf-unit-test")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_BASE_URL"), "https://test.langfuse.com")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_CAPTURE"), "metadata")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_ENV"), "test-env")
+
+        # Disable in settings and test removal from env
+        client.patch("/api/plugins/zerofactory/settings", json={"langfuse_enabled": False})
+        _inject_langfuse_env(test_env)
+        self.assertNotIn("HERMES_LANGFUSE_PUBLIC_KEY", test_env)
+
+        # 6. Test POST /settings/langfuse/test endpoint validation
+        bad_key_res = client.post("/api/plugins/zerofactory/settings/langfuse/test", json={
+            "base_url": "https://cloud.langfuse.com",
+            "public_key": "wrong-prefix",
+            "secret_key": "sk-lf-valid"
+        })
+        self.assertEqual(bad_key_res.status_code, 200)
+        self.assertFalse(bad_key_res.json()["ok"])
+        self.assertIn("Invalid key format", bad_key_res.json()["error"])
+
+        unreachable_res = client.post("/api/plugins/zerofactory/settings/langfuse/test", json={
+            "base_url": "http://127.0.0.1:59998",
+            "public_key": "",
+            "secret_key": ""
+        })
+        self.assertEqual(unreachable_res.status_code, 200)
+        self.assertFalse(unreachable_res.json()["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()
