@@ -765,6 +765,8 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
 
                     # Determine if ongoing
                     is_active_session = False
+                    started = r["started_at"]
+                    ended = r["ended_at"]
                     task_started_at = meta.get("started_at")
                     is_stale_start = bool(task_started_at and started and started < (task_started_at - 60))
                     if is_alive and not is_stale_start and (sid == active_sess_id or r["ended_at"] is None) and task_status in ("running", "todo"):
@@ -773,8 +775,6 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                         is_active_session = True
 
                     sess_status = "ongoing" if is_active_session else "finished"
-                    started = r["started_at"]
-                    ended = r["ended_at"]
                     duration = None
                     if started and ended:
                         duration = max(0, int(ended - started))
@@ -795,6 +795,7 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                         "model": r["model"],
                         "started_at": started,
                         "ended_at": ended,
+                        "last_activity_at": r["last_activity_at"],
                         "duration_seconds": duration,
                         "message_count": r["message_count"] or 0,
                         "turn_count": turn_count or r["tool_call_count"] or 0,
@@ -829,6 +830,7 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                     "model": s.get("model"),
                     "started_at": s.get("started_at"),
                     "ended_at": s.get("ended_at"),
+                    "last_activity_at": s.get("last_activity_at") or s.get("started_at"),
                     "duration_seconds": None,
                     "message_count": s.get("message_count", 0),
                     "turn_count": s.get("turn_count", 0),
@@ -901,10 +903,11 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             except Exception:
                 pass
 
+        last_active_ts = active_session.get("last_activity_at") or active_session.get("started_at")
         r_sec, i_sec, stuck, reason = _compute_stuck_status(
             task, is_alive, worker_pid,
             active_session.get("started_at"),
-            active_session.get("started_at"),
+            last_active_ts,
             log_path
         )
 
@@ -916,7 +919,11 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             "is_alive": is_alive,
             "model": active_session.get("model"),
             "started_at": active_session.get("started_at"),
-            "last_active": active_session.get("ended_at") or active_session.get("started_at"),
+            "last_active": (
+                active_session.get("last_activity_at")
+                or active_session.get("ended_at")
+                or active_session.get("started_at")
+            ),
             "message_count": active_session.get("message_count", 0),
             "turn_count": active_session.get("turn_count", 0),
             "tool_calls_count": active_session.get("tool_calls_count", 0),
@@ -1597,6 +1604,7 @@ def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, 
                         "model": r["model"],
                         "started_at": started,
                         "ended_at": ended,
+                        "last_activity_at": r["last_activity_at"],
                         "duration_seconds": duration,
                         "message_count": r["message_count"] or 0,
                         "tool_calls_count": r["tool_call_count"] or 0,
