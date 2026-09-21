@@ -765,9 +765,11 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
 
                     # Determine if ongoing
                     is_active_session = False
-                    if is_alive and (sid == active_sess_id or r["ended_at"] is None) and task_status in ("running", "todo"):
+                    task_started_at = meta.get("started_at")
+                    is_stale_start = bool(task_started_at and started and started < (task_started_at - 60))
+                    if is_alive and not is_stale_start and (sid == active_sess_id or r["ended_at"] is None) and task_status in ("running", "todo"):
                         is_active_session = True
-                    elif r["ended_at"] is None and task_status == "running" and (time.time() - (r["last_activity_at"] or r["started_at"] or 0)) < 300:
+                    elif r["ended_at"] is None and not is_stale_start and task_status == "running" and (time.time() - (r["last_activity_at"] or r["started_at"] or 0)) < 300:
                         is_active_session = True
 
                     sess_status = "ongoing" if is_active_session else "finished"
@@ -879,9 +881,13 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
     sessions = resolve_task_all_sessions(task, backfill=backfill)
 
     # Find the ongoing or latest session
-    active_session = next((s for s in sessions if s.get("status") == "ongoing"), None)
-    if not active_session and sessions:
+    ongoing_sessions = [s for s in sessions if s.get("status") == "ongoing"]
+    if ongoing_sessions:
+        active_session = ongoing_sessions[-1]
+    elif sessions:
         active_session = sessions[-1]
+    else:
+        active_session = None
 
     if active_session:
         s_id = active_session.get("session_id")
@@ -1692,16 +1698,40 @@ def move_task(task_id: str, req: TaskMove):
     now = int(time.time())
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        cursor.execute("SELECT status, metadata FROM tasks WHERE id = ?", (task_id,))
         curr = cursor.fetchone()
         if not curr:
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
         prev_status = curr["status"]
-        if prev_status != req.status:
-            cursor.execute("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?", (req.status, now, task_id))
-            move_actor = req.actor or "user"
-            log_activity(conn, task_id, move_actor, "move", f"Moved from {prev_status} to {req.status}")
+        meta_raw = curr["metadata"] if "metadata" in curr.keys() else "{}"
+        meta = {}
+        try:
+            meta = json.loads(meta_raw or "{}")
+        except Exception:
+            pass
+
+        meta_updated = False
+        if req.status in ("todo", "ready", "running", "done") or (req.status == "blocked" and req.reason == "review-required"):
+            if "last_worker_failure" in meta:
+                meta.pop("last_worker_failure", None)
+                meta_updated = True
+            if req.status in ("todo", "ready", "running", "done"):
+                if "permanently_blocked" in meta:
+                    meta.pop("permanently_blocked", None)
+                    meta_updated = True
+                if "worker_failure_retries" in meta:
+                    meta.pop("worker_failure_retries", None)
+                    meta_updated = True
+                if "blocked_reason" in meta:
+                    meta.pop("blocked_reason", None)
+                    meta_updated = True
+
+        if prev_status != req.status or meta_updated:
+            cursor.execute("UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?", (req.status, json.dumps(meta), now, task_id))
+            if prev_status != req.status:
+                move_actor = req.actor or "user"
+                log_activity(conn, task_id, move_actor, "move", f"Moved from {prev_status} to {req.status}")
 
         # When moving to 'blocked' with a reason, record it as a comment so
         # the handoff reason is auditable. This is the single source of truth:
