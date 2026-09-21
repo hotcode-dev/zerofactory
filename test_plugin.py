@@ -6020,6 +6020,141 @@ class TestSharedProfilePathResolution(unittest.TestCase):
                 if p.exists():
                     p.unlink()
 
+    # ---- Dashboard stylesheet: portability & CSS/JS class agreement --------
+
+    @staticmethod
+    def _zf_css_selectors(tokens):
+        """Render the escaped class-selector strings a build would emit.
+
+        Mirrors the escaping Tailwind v4 applies when turning a class into a
+        selector (e.g. hover:bg-slate-800 -> .hover\\:bg-slate-800).
+        """
+        out = []
+        for tok in tokens:
+            esc = "."
+            for ch in tok:
+                if ch in ":/.[]":
+                    esc += "\\" + ch
+                else:
+                    esc += ch
+            out.append(esc)
+        return out
+
+    @staticmethod
+    def _zf_js_class_tokens(source):
+        """Extract the utility class tokens referenced in dashboard JS source."""
+        import re
+        token_charset = re.compile(r"[A-Za-z0-9_:\[\]/%#!.-]+")
+        tokens = set()
+        for m in re.finditer(r'"([^"]*)"|\'([^\']*)\'|`([^`]*)`', source):
+            s = next(g for g in m.groups() if g is not None)
+            for tok in s.split():
+                if len(tok) >= 2 and re.fullmatch(token_charset, tok) and re.search(
+                    r"[a-z]", tok
+                ) and not tok.startswith("//"):
+                    tokens.add(tok)
+        return tokens
+
+    def test_86_dashboard_css_is_portable_and_in_sync_with_js(self):
+        """The committed dashboard stylesheet must (a) contain no
+        machine-specific absolute paths, (b) carry selectors for every
+        variant-prefixed class the UI JS references, and (c) reproduce
+        byte-identically under `node dashboard/build_css.mjs` when node +
+        tailwindcss are available.
+
+        Regression for the stale-stylesheet bug: hover/focus-within/active/
+        disabled variant classes were used by dist/index.js but silently
+        absent from the committed dist/style.css.
+        """
+        import re
+        import shutil
+        import subprocess
+
+        dash = Path(__file__).resolve().parent / "dashboard"
+        input_css = (dash / "input.css").read_text()
+        style_css = (dash / "dist" / "style.css").read_text()
+        js_src = (dash / "dist" / "index.js").read_text()
+
+        # (a) No machine-specific absolute paths anywhere in the sources.
+        for label, text in (("input.css", input_css), ("style.css", style_css)):
+            self.assertNotRegex(
+                text, r"/home/|/Users/|C:\\",
+                f"{label} must not hard-code absolute machine-specific paths",
+            )
+
+        # (b) Every variant-prefixed class token used by the UI JS has a
+        #     selector in the committed stylesheet.
+        variant_stack = re.compile(
+            r"^(?:hover|focus|focus-within|active|disabled|group-hover|md|lg|sm|xl|2xl):"
+        )
+        tokens = self._zf_js_class_tokens(js_src)
+        variant_tokens = [t for t in tokens if variant_stack.match(t)]
+        self.assertGreaterEqual(
+            len(variant_tokens), 10,
+            "expected the UI to reference many variant classes; extraction "
+            "looks broken",
+        )
+        missing = [t for t in sorted(variant_tokens)
+                   if self._zf_css_selectors((t,))[0] not in style_css]
+        self.assertEqual(
+            missing, [],
+            "dist/style.css is missing selectors for UI-referenced variant "
+            "classes (run `node dashboard/build_css.mjs` to rebuild): "
+            f"{missing[:10]}",
+        )
+        # Smoke: each interaction state family must be present at least once.
+        for family in (r"\.hover\\:", r"\.focus-within\\:", r"\.active\\:",
+                       r"\.disabled\\:"):
+            self.assertRegex(
+                style_css, family,
+                f"committed stylesheet has no {family} selector",
+            )
+
+        # (c) Reproducibility: a fresh build must reproduce the committed file.
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not on PATH; cannot verify CSS build "
+                          "reproducibility")
+        import importlib.util
+        build_mjs = dash / "build_css.mjs"
+        spec = importlib.util.find_spec("dashboard")  # repo root on sys.path?
+        repo_root = Path(__file__).resolve().parent
+        env = dict(os.environ)
+        env["ZEROFACTORY_SKIP_DISPATCHER"] = "1"
+        try:
+            r = subprocess.run(
+                [node, str(build_mjs)],
+                cwd=str(repo_root), env=env,
+                capture_output=True, text=True, timeout=180,
+            )
+        except (OSError, subprocess.SubprocessError) as e:
+            self.skipTest(f"cannot run node build ({e}); skipping")
+        if r.returncode != 0:
+            # Build failed — if tailwindcss is simply not installed this is a
+            # fresh-clone-without-npm state, which the build script reports
+            # clearly. Treat a 'Cannot locate the tailwindcss package' failure
+            # as an environment skip; any other failure is a real regression.
+            if "Cannot locate the tailwindcss package" in (r.stderr or ""):
+                self.skipTest("tailwindcss not installed; run `npm install` "
+                              "to verify build reproducibility")
+            self.fail(f"dashboard/build_css.mjs failed:\n{r.stdout}\n{r.stderr}")
+        rebuilt = (dash / "dist" / "style.css").read_text()
+        # The rebuild wrote over the committed file; compare against a pristine
+        # re-read is not possible, so instead assert the rebuilt file still
+        # passes (b) and that the committed content (read earlier) matches the
+        # rebuild, proving the committed file IS the build output.
+        self.assertEqual(
+            rebuilt,
+            style_css,
+            "committed dist/style.css does not match the output of "
+            "`node dashboard/build_css.mjs` (run the build and commit the "
+            "result)",
+        )
+        # Final agreement check against the rebuilt file as well.
+        missing2 = [t for t in sorted(variant_tokens)
+                    if self._zf_css_selectors((t,))[0] not in rebuilt]
+        self.assertEqual(missing2, [])
+
 
 if __name__ == "__main__":
     unittest.main()

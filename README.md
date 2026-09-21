@@ -183,9 +183,11 @@ zerofactory/
 ├── dashboard/                   # Embedded web dashboard UI (/zerofactory)
 │   ├── manifest.json            # Gateway route declaration
 │   ├── plugin_api.py            # FastAPI REST backend
+│   ├── build_css.mjs            # Regenerates dist/style.css (Tailwind v4, portable)
+│   ├── input.css                # Tailwind entry source (bare package imports)
 │   └── dist/
 │       ├── index.js             # React Kanban UI
-│       └── style.css            # Dark glassmorphic theme
+│       └── style.css            # Dark glassmorphic theme (committed build output)
 ├── skills/
 │   └── zerofactory-orchestration/  # Multi-agent coordination skill
 └── templates/                   # Version-controlled profile templates
@@ -200,12 +202,26 @@ zerofactory/
 
 Run the automated test suites against your local Hermes environment:
 ```bash
-# 1. Run unit & integration test suite (88 tests)
+# 1. Run unit & integration test suite
 python3 test_plugin.py
 
 # 2. Run hermetic end-to-end (E2E) test suite (19 tests)
 python3 test_e2e.py
 ```
+
+### Rebuilding the dashboard stylesheet
+
+The committed `dashboard/dist/style.css` is generated from `dashboard/input.css`
+by `dashboard/build_css.mjs` (Tailwind CSS v4). It is portable — no machine-
+specific paths — resolving `tailwindcss` from the project's `node_modules` or
+the `ZEROFACTORY_TAILWIND_DIR` env override. To regenerate after editing the UI:
+```bash
+npm install            # if node_modules is not present (fresh clone)
+node dashboard/build_css.mjs
+```
+`test_plugin.py::test_86_dashboard_css_is_portable_and_in_sync_with_js` guards
+reproducibility and asserts the stylesheet carries selectors for every
+variant-prefixed class the UI references (hover/focus/active/disabled).
 
 ---
 
