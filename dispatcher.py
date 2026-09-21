@@ -2372,14 +2372,26 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     running_per_board[str(rc_row["board_slug"] or "")] = rc_row["cnt"]
 
                 if active_count < max_active_tasks:
-                    limit = max_active_tasks - active_count
+                    # Fetch the FULL candidate set across all boards. A
+                    # `LIMIT ?` (global WIP budget) here would truncate the
+                    # rows before the per-board cap check below could run:
+                    # a backlog-heavy board would burn every remaining WIP
+                    # slot on tasks the per-board cap then rejects, starving
+                    # other boards. The global budget is enforced in the
+                    # loop instead — each successful dispatch increments
+                    # active_count, and we stop claiming once the budget is
+                    # exhausted. Board-saturated tasks simply get re-checked
+                    # next cycle.
                     cursor.execute("""
                         SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
                         WHERE status IN ('todo', 'ready')
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
-                        LIMIT ?
-                    """, (limit,))
+                    """)
                     for row in cursor.fetchall():
+                        # Global WIP budget exhausted: stop claiming more
+                        # tasks this cycle.
+                        if active_count >= max_active_tasks:
+                            break
                         task_id = str(row["id"])
                         assignee = normalize_assignee(row["assignee"] or "zf-builder")
                         title = row["title"] or ""
