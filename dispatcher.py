@@ -2357,7 +2357,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         except Exception:
                             pass
 
-                        # Multi-session tracking: record every agent run (orchestrator, builder, reviewer, dispatcher)
+                        # Multi-session tracking: record every agent run (orchestrator, builder, reviewer)
                         sessions_list = meta.get("sessions")
                         if not isinstance(sessions_list, list):
                             sessions_list = []

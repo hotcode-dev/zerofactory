@@ -651,7 +651,6 @@ AGENT_LABELS = {
     "zf-orchestrator": "Orchestrator",
     "zf-builder": "Builder",
     "zf-reviewer": "Reviewer",
-    "dispatcher": "Dispatcher",
     "unassigned": "Agent",
 }
 
@@ -659,7 +658,6 @@ AGENT_ICONS = {
     "zf-orchestrator": "🧭",
     "zf-builder": "🔨",
     "zf-reviewer": "🔍",
-    "dispatcher": "⚡",
     "unassigned": "🤖",
 }
 
@@ -702,7 +700,7 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
     seen_ids = set()
 
     # Profiles to inspect for sessions
-    profile_roles = ["zf-builder", "zf-reviewer", "zf-orchestrator", "dispatcher"]
+    profile_roles = ["zf-builder", "zf-reviewer", "zf-orchestrator"]
 
     for prof in profile_roles:
         state_db_path = resolve_profile_state_db(prof)
@@ -921,7 +919,7 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
         except Exception:
             pass
 
-    # Resolve all sessions across all agents (orchestrator, builder, reviewer, dispatcher)
+    # Resolve all sessions across all agents (orchestrator, builder, reviewer)
     sessions = resolve_task_all_sessions(task, backfill=backfill)
 
     # Find the ongoing or latest session
@@ -1592,8 +1590,8 @@ def get_task_sessions(task_id: str):
 
 @router.get("/sessions")
 def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, limit: int = 50):
-    """List recent and active AI agent sessions across Orchestrator, Builder, Reviewer, and Dispatcher."""
-    profiles = ["zf-builder", "zf-reviewer", "zf-orchestrator", "dispatcher"]
+    """List recent and active AI agent sessions across Orchestrator, Builder, and Reviewer."""
+    profiles = ["zf-builder", "zf-reviewer", "zf-orchestrator"]
     if role and role in profiles:
         profiles = [role]
 
