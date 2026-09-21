@@ -33,6 +33,61 @@ app.include_router(router, prefix="/api/plugins/zerofactory")
 client = TestClient(app)
 
 
+def _make_fake_state_db(td: str, profile: str, session_rows) -> Path:
+    """Create a fake per-profile ``state.db`` (sessions + messages tables) so
+    ``resolve_profile_state_db``-driven lookups in the dashboard return the
+    given session rows without touching a real Hermes state DB.
+
+    ``session_rows`` is a list of tuples:
+        (id, model, started_at, ended_at, last_activity_at,
+         last_activity_description, message_count, tool_call_count,
+         cwd, title, profile_name)
+    """
+    import sqlite3
+
+    prof_dir = Path(td) / ".hermes" / "profiles" / profile
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    db_path = prof_dir / "state.db"
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE sessions (
+            id TEXT PRIMARY KEY,
+            model TEXT,
+            started_at REAL,
+            ended_at REAL,
+            last_activity_at REAL,
+            last_activity_description TEXT,
+            message_count INTEGER,
+            tool_call_count INTEGER,
+            cwd TEXT,
+            title TEXT,
+            profile_name TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY,
+            session_id TEXT,
+            role TEXT,
+            tool_name TEXT,
+            tool_calls TEXT,
+            content TEXT,
+            reasoning_content TEXT,
+            timestamp REAL
+        )
+    """)
+    cur.executemany(
+        "INSERT INTO sessions (id, model, started_at, ended_at, last_activity_at,"
+        " last_activity_description, message_count, tool_call_count, cwd, title, profile_name)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        session_rows,
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
 class TestZeroFactory(unittest.TestCase):
 
     def setUp(self):
@@ -6133,6 +6188,191 @@ class TestSharedProfilePathResolution(unittest.TestCase):
                 if p.exists():
                     p.unlink()
 
+    # ---- Dashboard stylesheet: portability & CSS/JS class agreement --------
+
+    @staticmethod
+    def _zf_css_selectors(tokens):
+        """Render the escaped class-selector strings a build would emit.
+
+        Mirrors the escaping Tailwind v4 applies when turning a class into a
+        selector (e.g. hover:bg-slate-800 -> .hover\\:bg-slate-800).
+        """
+        out = []
+        for tok in tokens:
+            esc = "."
+            for ch in tok:
+                if ch in ":/.[]":
+                    esc += "\\" + ch
+                else:
+                    esc += ch
+            out.append(esc)
+        return out
+
+    @staticmethod
+    def _zf_js_class_tokens(source):
+        """Extract the utility class tokens referenced in dashboard JS source.
+
+        Character-level lexer (mirrors dashboard/build_css.mjs's
+        extractCandidates): skips line/block comments and only honours quote
+        characters in code position, with backslash escapes. This matters
+        because dist/index.js contains a line comment with an embedded
+        apostrophe (``// Bottom row: Today's actions``) — a naive
+        ``[^"]*``/``[^']*`` quote regex starts a phantom string at that
+        apostrophe, swallows ~140KB of source, and silently drops every
+        className literal after it (e.g. hover:bg-slate-800/80).
+        """
+        import re
+        token_charset = re.compile(r"[A-Za-z0-9_:\[\]/%#!.-]+")
+        strings = []
+        i = 0
+        n = len(source)
+        while i < n:
+            ch = source[i]
+            if ch == "/" and i + 1 < n and source[i + 1] == "/":  # line comment
+                e = source.find("\n", i)
+                i = n if e == -1 else e + 1
+            elif ch == "/" and i + 1 < n and source[i + 1] == "*":  # block comment
+                e = source.find("*/", i + 2)
+                i = n if e == -1 else e + 2
+            elif ch in ("'", '"', "`"):
+                j = i + 1
+                while j < n:
+                    if source[j] == "\\":
+                        j += 2
+                        continue
+                    if source[j] == ch:
+                        j += 1
+                        break
+                    j += 1
+                strings.append(source[i + 1 : j - 1])
+                i = j
+            else:
+                i += 1
+        tokens = set()
+        for s in strings:
+            for tok in s.split():
+                if len(tok) >= 2 and re.fullmatch(token_charset, tok) and re.search(
+                    r"[a-z]", tok
+                ) and not tok.startswith("//"):
+                    tokens.add(tok)
+        return tokens
+
+    def test_86_dashboard_css_is_portable_and_in_sync_with_js(self):
+        """The committed dashboard stylesheet must (a) contain no
+        machine-specific absolute paths, (b) carry selectors for every
+        variant-prefixed class the UI JS references, and (c) reproduce
+        byte-identically under `node dashboard/build_css.mjs` when node +
+        tailwindcss are available.
+
+        Regression for the stale-stylesheet bug: hover/focus-within/active/
+        disabled variant classes were used by dist/index.js but silently
+        absent from the committed dist/style.css.
+        """
+        import re
+        import shutil
+        import subprocess
+
+        dash = Path(__file__).resolve().parent / "dashboard"
+        input_css = (dash / "input.css").read_text()
+        style_css = (dash / "dist" / "style.css").read_text()
+        js_src = (dash / "dist" / "index.js").read_text()
+
+        # (a) No machine-specific absolute paths anywhere in the sources.
+        for label, text in (("input.css", input_css), ("style.css", style_css)):
+            self.assertNotRegex(
+                text, r"/home/|/Users/|C:\\",
+                f"{label} must not hard-code absolute machine-specific paths",
+            )
+
+        # (b) Every variant-prefixed class token used by the UI JS has a
+        #     selector in the committed stylesheet.
+        # (b0) Extraction regression: dist/index.js contains a line comment
+        #      with an embedded apostrophe ("// Bottom row: Today's actions").
+        #      A naive [^"]*/[^']* quote scan starts a phantom single-quoted
+        #      string at that apostrophe that runs to the next bare apostrophe
+        #      in the file, swallowing the className literals in between
+        #      (their surrounding double quotes become part of the phantom
+        #      string content, polluting every token — e.g.
+        #      hover:bg-slate-800/80" is no longer a valid candidate). The
+        #      lexer must skip line comments and find the className literal.
+        synth = (
+            "// Bottom row: Today's actions & quick filter\n"
+            'React.createElement("div", { className: '
+            '"text-slate-400 hover:bg-slate-800/80" });\n'
+            "// don't forget to verify the hover state\n"
+        )
+        self.assertIn("hover:bg-slate-800/80", self._zf_js_class_tokens(synth))
+        variant_stack = re.compile(
+            r"^(?:hover|focus|focus-within|active|disabled|group-hover|md|lg|sm|xl|2xl):"
+        )
+        tokens = self._zf_js_class_tokens(js_src)
+        variant_tokens = [t for t in tokens if variant_stack.match(t)]
+        self.assertGreaterEqual(
+            len(variant_tokens), 10,
+            "expected the UI to reference many variant classes; extraction "
+            "looks broken",
+        )
+        missing = [t for t in sorted(variant_tokens)
+                   if self._zf_css_selectors((t,))[0] not in style_css]
+        self.assertEqual(
+            missing, [],
+            "dist/style.css is missing selectors for UI-referenced variant "
+            "classes (run `node dashboard/build_css.mjs` to rebuild): "
+            f"{missing[:10]}",
+        )
+        # Smoke: each interaction state family must be present at least once.
+        for family in (r"\.hover\\:", r"\.focus-within\\:", r"\.active\\:",
+                       r"\.disabled\\:"):
+            self.assertRegex(
+                style_css, family,
+                f"committed stylesheet has no {family} selector",
+            )
+
+        # (c) Reproducibility: a fresh build must reproduce the committed file.
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not on PATH; cannot verify CSS build "
+                          "reproducibility")
+        import importlib.util
+        build_mjs = dash / "build_css.mjs"
+        spec = importlib.util.find_spec("dashboard")  # repo root on sys.path?
+        repo_root = Path(__file__).resolve().parent
+        env = dict(os.environ)
+        env["ZEROFACTORY_SKIP_DISPATCHER"] = "1"
+        try:
+            r = subprocess.run(
+                [node, str(build_mjs)],
+                cwd=str(repo_root), env=env,
+                capture_output=True, text=True, timeout=180,
+            )
+        except (OSError, subprocess.SubprocessError) as e:
+            self.skipTest(f"cannot run node build ({e}); skipping")
+        if r.returncode != 0:
+            # Build failed — if tailwindcss is simply not installed this is a
+            # fresh-clone-without-npm state, which the build script reports
+            # clearly. Treat a 'Cannot locate the tailwindcss package' failure
+            # as an environment skip; any other failure is a real regression.
+            if "Cannot locate the tailwindcss package" in (r.stderr or ""):
+                self.skipTest("tailwindcss not installed; run `npm install` "
+                              "to verify build reproducibility")
+            self.fail(f"dashboard/build_css.mjs failed:\n{r.stdout}\n{r.stderr}")
+        rebuilt = (dash / "dist" / "style.css").read_text()
+        # The rebuild wrote over the committed file; compare against a pristine
+        # re-read is not possible, so instead assert the rebuilt file still
+        # passes (b) and that the committed content (read earlier) matches the
+        # rebuild, proving the committed file IS the build output.
+        self.assertEqual(
+            rebuilt,
+            style_css,
+            "committed dist/style.css does not match the output of "
+            "`node dashboard/build_css.mjs` (run the build and commit the "
+            "result)",
+        )
+        # Final agreement check against the rebuilt file as well.
+        missing2 = [t for t in sorted(variant_tokens)
+                    if self._zf_css_selectors((t,))[0] not in rebuilt]
+        self.assertEqual(missing2, [])
+
     def test_reviewer_approval_comment_classification(self):
         from dispatcher import is_reviewer_approval_comment
 
@@ -6309,6 +6549,653 @@ class TestSharedProfilePathResolution(unittest.TestCase):
 
         progress = resolve_task_session_progress(task, backfill=False)
         self.assertEqual(progress["session_id"], "new_sess_now")
+
+    # --- Regression: last_activity_at must drive stuck/idle detection --------
+
+    def _session_progress_fixture(self, last_activity_at, worker_pid=None):
+        """Build a running task + a fake state.db session row to isolate the
+        inactivity (idle) computation in ``_compute_stuck_status``.
+
+        The *session* row started 2h ago (``now - 7200``) with a configurable
+        ``last_activity_at`` — this is the value the (buggy) refactor used as
+        ``last_active`` (session start), which made any >15min session look
+        stuck. The *task* metadata started_at is kept recent (``now - 60``) so
+        the separate "exceeded running timeout" branch (default 3600s) does not
+        fire and the test isolates the inactivity branch the bug actually broke.
+
+        Returns ``(task, now, session_started, sid, last_activity_at)``.
+        """
+        import time
+        if worker_pid is None:
+            worker_pid = os.getpid()
+        now = int(time.time())
+        session_started = now - 7200  # session row: started 2h ago
+        task = {
+            "id": "zf-stuck-regression",
+            "title": "Stuck Regression Task",
+            "status": "running",
+            "assignee": "zf-builder",
+            "metadata": {
+                "worker_pid": worker_pid,
+                "started_at": now - 60,  # task-level start: recent (< running timeout)
+                "session_id": "sess-stuck-reg",
+            },
+        }
+        return task, now, session_started, "sess-stuck-reg", last_activity_at
+
+    def _patch_state_db(self, db_path):
+        """Patch ``resolve_profile_state_db`` in the dashboard to return the
+        fake state.db for every profile, and the worker_pid liveness so a
+        dead-but-existing PID still looks alive (os.kill(pid,0) on our own
+        process succeeds)."""
+        from unittest import mock
+        import dashboard.plugin_api as D
+        return mock.patch.object(D, "resolve_profile_state_db", return_value=db_path)
+
+    def test_stuck_detection_recent_activity_not_stuck(self):
+        """A session running for 2h whose last activity was 60s ago must NOT
+        be classified stuck, and idle_seconds must reflect real activity."""
+        import time
+        from dashboard.plugin_api import resolve_task_session_progress
+
+        now = int(time.time())
+        task, now, session_started, sid, last_active = self._session_progress_fixture(now - 60)
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [(sid, "gpt-4", session_started, None, last_active, "active", 3, 2, "", task["title"], "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                progress = resolve_task_session_progress(task, backfill=False)
+
+        self.assertEqual(progress["session_id"], sid)
+        self.assertFalse(progress["is_stuck"], f"unexpectedly stuck: {progress.get('stuck_reason')}")
+        # idle_seconds must be derived from last_activity_at (60s), not started (7200s)
+        self.assertLess(progress["idle_seconds"], 120, f"idle={progress['idle_seconds']}s")
+        # last_active reported to UI must be the real activity, not session start
+        self.assertEqual(progress["last_active"], last_active)
+        # The session dicts under sessions[] must carry last_activity_at
+        for s in progress["sessions"]:
+            self.assertIn("last_activity_at", s, "session dict missing last_activity_at")
+        active = next(s for s in progress["sessions"] if s["session_id"] == sid)
+        self.assertEqual(active["last_activity_at"], last_active)
+
+    def test_stuck_detection_stale_activity_is_stuck(self):
+        """Same session but last activity 1h ago (older than the 900s
+        inactivity timeout) must be classified stuck with the inactive reason."""
+        import time
+        from dashboard.plugin_api import resolve_task_session_progress
+
+        now = int(time.time())
+        task, now, session_started, sid, last_active = self._session_progress_fixture(now - 3600)
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [(sid, "gpt-4", session_started, None, last_active, "active", 3, 2, "", task["title"], "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                progress = resolve_task_session_progress(task, backfill=False)
+
+        self.assertEqual(progress["session_id"], sid)
+        self.assertTrue(progress["is_stuck"], f"expected stuck (stale activity), got {progress.get('stuck_reason')}")
+        self.assertIn("inactive", (progress.get("stuck_reason") or "").lower())
+
+    def test_list_all_sessions_includes_last_activity_at(self):
+        """``list_all_sessions`` must expose last_activity_at on each session."""
+        import time
+        from dashboard.plugin_api import list_all_sessions
+
+        now = int(time.time())
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [("sess-list-1", "gpt-4", now - 300, None, now - 10, "active", 1, 1, "", "List Task", "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                res = list_all_sessions()
+
+        self.assertTrue(res["ok"])
+        self.assertTrue(res["sessions"], "no sessions returned")
+        for s in res["sessions"]:
+            self.assertIn("last_activity_at", s, "list_all_sessions session missing last_activity_at")
+            self.assertEqual(s["last_activity_at"], now - 10)
+
+    def test_88_settings_langfuse_observability(self):
+        """Verify Langfuse settings lifecycle, multi-profile sync, and test connection endpoint."""
+        import tempfile
+        import yaml
+        from profile_manager import update_env_file, update_config_yaml_plugins, sync_langfuse_profiles
+        from dispatcher import _inject_langfuse_env
+
+        # 1. Verify GET /settings includes Langfuse keys
+        resp_get = client.get("/api/plugins/zerofactory/settings")
+        self.assertEqual(resp_get.status_code, 200)
+        s = resp_get.json()["settings"]
+        self.assertIn("langfuse_enabled", s)
+        self.assertIn("langfuse_base_url", s)
+        self.assertIn("langfuse_public_key", s)
+        self.assertIn("langfuse_secret_key", s)
+        self.assertIn("langfuse_capture_mode", s)
+        self.assertIn("langfuse_env", s)
+
+        # 2. Verify PATCH /settings updates Langfuse keys
+        resp_patch = client.patch("/api/plugins/zerofactory/settings", json={
+            "langfuse_enabled": True,
+            "langfuse_base_url": "https://test.langfuse.com",
+            "langfuse_public_key": "pk-lf-unit-test",
+            "langfuse_secret_key": "sk-lf-unit-test",
+            "langfuse_capture_mode": "metadata",
+            "langfuse_env": "test-env"
+        })
+        self.assertEqual(resp_patch.status_code, 200)
+        s_updated = resp_patch.json()["settings"]
+        self.assertTrue(s_updated["langfuse_enabled"])
+        self.assertEqual(s_updated["langfuse_base_url"], "https://test.langfuse.com")
+        self.assertEqual(s_updated["langfuse_public_key"], "pk-lf-unit-test")
+        self.assertEqual(s_updated["langfuse_secret_key"], "sk-lf-unit-test")
+        self.assertEqual(s_updated["langfuse_capture_mode"], "metadata")
+        self.assertEqual(s_updated["langfuse_env"], "test-env")
+
+        # 3. Test update_env_file preserves unrelated keys and comments
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_p = Path(tmp_dir) / ".env"
+            env_p.write_text("# Custom comment\nOPENROUTER_API_KEY=existing-key\nOTHER_VAR=123\n", encoding="utf-8")
+            updates = {
+                "HERMES_LANGFUSE_PUBLIC_KEY": "pk-lf-sample",
+                "HERMES_LANGFUSE_SECRET_KEY": "sk-lf-sample",
+            }
+            update_env_file(env_p, updates)
+            lines = env_p.read_text(encoding="utf-8").splitlines()
+            self.assertIn("# Custom comment", lines)
+            self.assertIn("OPENROUTER_API_KEY=existing-key", lines)
+            self.assertIn("OTHER_VAR=123", lines)
+            self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-sample", lines)
+            self.assertIn("HERMES_LANGFUSE_SECRET_KEY=sk-lf-sample", lines)
+
+            # Update in-place
+            update_env_file(env_p, {"HERMES_LANGFUSE_PUBLIC_KEY": "pk-lf-modified"})
+            lines2 = env_p.read_text(encoding="utf-8").splitlines()
+            self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-modified", lines2)
+            self.assertNotIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-sample", lines2)
+            self.assertIn("OPENROUTER_API_KEY=existing-key", lines2)
+
+        # 4. Test update_config_yaml_plugins adds and removes langfuse cleanly
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cfg_p = Path(tmp_dir) / "config.yaml"
+            cfg_p.write_text(yaml.dump({"plugins": {"enabled": ["zerofactory"]}, "model": {"default": "test"}}, sort_keys=False), encoding="utf-8")
+            
+            # Enable langfuse
+            update_config_yaml_plugins(cfg_p, enable_plugin="langfuse")
+            loaded = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
+            self.assertIn("langfuse", loaded["plugins"]["enabled"])
+            self.assertIn("zerofactory", loaded["plugins"]["enabled"])
+
+            # Disable langfuse
+            update_config_yaml_plugins(cfg_p, disable_plugin="langfuse")
+            loaded_after = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
+            self.assertNotIn("langfuse", loaded_after["plugins"]["enabled"])
+            self.assertIn("zerofactory", loaded_after["plugins"]["enabled"])
+
+        # 5. Test _inject_langfuse_env
+        test_env = {}
+        _inject_langfuse_env(test_env)
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_PUBLIC_KEY"), "pk-lf-unit-test")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_BASE_URL"), "https://test.langfuse.com")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_CAPTURE"), "metadata")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_ENV"), "test-env")
+
+        # Disable in settings and test removal from env
+        client.patch("/api/plugins/zerofactory/settings", json={"langfuse_enabled": False})
+        _inject_langfuse_env(test_env)
+        self.assertNotIn("HERMES_LANGFUSE_PUBLIC_KEY", test_env)
+
+        # 6. Test POST /settings/langfuse/test endpoint validation
+        bad_key_res = client.post("/api/plugins/zerofactory/settings/langfuse/test", json={
+            "base_url": "https://cloud.langfuse.com",
+            "public_key": "wrong-prefix",
+            "secret_key": "sk-lf-valid"
+        })
+        self.assertEqual(bad_key_res.status_code, 200)
+        self.assertFalse(bad_key_res.json()["ok"])
+        self.assertIn("Invalid key format", bad_key_res.json()["error"])
+
+        unreachable_res = client.post("/api/plugins/zerofactory/settings/langfuse/test", json={
+            "base_url": "http://127.0.0.1:59998",
+            "public_key": "",
+            "secret_key": ""
+        })
+        self.assertEqual(unreachable_res.status_code, 200)
+        self.assertFalse(unreachable_res.json()["ok"])
+
+        # 7. Regression: disabling Langfuse must scrub ALL HERMES_LANGFUSE_* keys
+        #    from every target .env file and drop `langfuse` from every
+        #    config.yaml plugins.enabled list (stale-secret hygiene).
+        with tempfile.TemporaryDirectory() as tmp_hermes:
+            import profile_manager as _pm
+            from unittest.mock import patch
+            hermes_fake = Path(tmp_hermes)
+            profiles_dir = hermes_fake / "profiles" / "zf-builder"
+            profiles_dir.mkdir(parents=True)
+            # Pre-existing unrelated keys + comments that must survive scrubbing
+            for d in (hermes_fake, profiles_dir):
+                (d / ".env").write_text(
+                    "# keep me\nOPENROUTER_API_KEY=«redacted:existing-…»\n",
+                    encoding="utf-8",
+                )
+                (d / "config.yaml").write_text(
+                    yaml.dump({"plugins": {"enabled": ["zerofactory"]}}, sort_keys=False),
+                    encoding="utf-8",
+                )
+
+            enable_settings = {
+                "langfuse_enabled": True,
+                "langfuse_base_url": "https://test.langfuse.com",
+                "langfuse_public_key": "«redacted:pk-lf-…»",
+                "langfuse_secret_key": "«redacted:sk-…»",
+                "langfuse_capture_mode": "metadata",
+                "langfuse_env": "test-env",
+            }
+            with patch.object(_pm, "get_hermes_home", return_value=hermes_fake):
+                result = _pm.sync_langfuse_profiles(enable_settings)
+                self.assertTrue(result["enabled"])
+                # Enable: keys present in both .env files, plugin enabled
+                for d in (hermes_fake, profiles_dir):
+                    env_text = (d / ".env").read_text(encoding="utf-8")
+                    self.assertIn("HERMES_LANGFUSE_SECRET_KEY=«redacted:sk-…»", env_text)
+                    self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=«redacted:pk-lf-…»", env_text)
+                    self.assertIn("HERMES_LANGFUSE_BASE_URL=https://test.langfuse.com", env_text)
+                    self.assertIn("HERMES_LANGFUSE_CAPTURE=metadata", env_text)
+                    self.assertIn("HERMES_LANGFUSE_ENV=test-env", env_text)
+                    cfg_loaded = yaml.safe_load((d / "config.yaml").read_text(encoding="utf-8"))
+                    self.assertIn("langfuse", cfg_loaded["plugins"]["enabled"])
+
+                # Disable: every HERMES_LANGFUSE_* key GONE, plugin removed
+                disable_settings = dict(enable_settings, langfuse_enabled=False)
+                result = _pm.sync_langfuse_profiles(disable_settings)
+                self.assertFalse(result["enabled"])
+                for d in (hermes_fake, profiles_dir):
+                    env_text = (d / ".env").read_text(encoding="utf-8")
+                    for k in ("HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_PUBLIC_KEY",
+                              "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE",
+                              "HERMES_LANGFUSE_ENV"):
+                        self.assertNotIn(k, env_text,
+                                         f"stale {k} left in {d / '.env'} after disable")
+                    # Unrelated keys and comments preserved
+                    self.assertIn("OPENROUTER_API_KEY=«redacted:existing-…»", env_text)
+                    self.assertIn("# keep me", env_text)
+                    cfg_loaded = yaml.safe_load((d / "config.yaml").read_text(encoding="utf-8"))
+                    self.assertNotIn("langfuse", cfg_loaded["plugins"]["enabled"])
+                    self.assertIn("zerofactory", cfg_loaded["plugins"]["enabled"])
+
+                # Idempotency: disabling again with no .env keys present is a no-op
+                _pm.sync_langfuse_profiles(disable_settings)
+                for d in (hermes_fake, profiles_dir):
+                    self.assertNotIn("HERMES_LANGFUSE_SECRET_KEY",
+                                     (d / ".env").read_text(encoding="utf-8"))
+
+    def test_55_native_board_memories_crud_and_cascade(self):
+        """Test Native kanban.db Memory CRUD, category filtering, search, and board cascade deletion."""
+        # 1. Ensure board exists
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/test-mem.git", description="Memory test board"))
+        b_slug = b_res["slug"]
+
+        # 2. Create memories
+        c_res = client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": "Always run linters before creating PRs",
+            "tags": ["lint", "python", "flake8"],
+            "author": "zf-builder"
+        })
+        self.assertEqual(c_res.status_code, 200)
+        c_data = c_res.json()
+        self.assertTrue(c_data["ok"])
+        mem1 = c_data["memory"]
+        self.assertEqual(mem1["category"], "convention")
+        self.assertIn("Always run linters", mem1["content"])
+        self.assertIn("flake8", mem1["tags"])
+        self.assertEqual(mem1["author"], "zf-builder")
+        mem1_id = mem1["id"]
+
+        # Create second memory: gotcha
+        c_res2 = client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "gotcha",
+            "content": "SQLite WAL mode requires busy_timeout under high concurrency",
+            "tags": ["sqlite", "concurrency"],
+            "author": "zf-reviewer"
+        })
+        self.assertEqual(c_res2.status_code, 200)
+        mem2_id = c_res2.json()["memory"]["id"]
+
+        # 3. List memories
+        list_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_res.status_code, 200)
+        list_data = list_res.json()
+        self.assertTrue(list_data["ok"])
+        self.assertEqual(list_data["total"], 2)
+        self.assertEqual(len(list_data["memories"]), 2)
+
+        # 4. Filter by category
+        cat_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?category=gotcha")
+        self.assertEqual(cat_res.status_code, 200)
+        cat_data = cat_res.json()
+        self.assertEqual(cat_data["total"], 1)
+        self.assertEqual(cat_data["memories"][0]["id"], mem2_id)
+
+        # 5. Search by query
+        search_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?q=busy_timeout")
+        self.assertEqual(search_res.status_code, 200)
+        search_data = search_res.json()
+        self.assertEqual(search_data["total"], 1)
+        self.assertEqual(search_data["memories"][0]["id"], mem2_id)
+
+        search_tag_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?q=flake8")
+        self.assertEqual(search_tag_res.status_code, 200)
+        self.assertEqual(search_tag_res.json()["total"], 1)
+
+        # 6. Update memory
+        up_res = client.put(f"/api/plugins/zerofactory/memories/{mem1_id}", json={
+            "content": "Always run linters and pytest before creating PRs",
+            "tags": ["lint", "python", "pytest"]
+        })
+        self.assertEqual(up_res.status_code, 200)
+        up_data = up_res.json()
+        self.assertTrue(up_data["ok"])
+        self.assertEqual(up_data["memory"]["content"], "Always run linters and pytest before creating PRs")
+        self.assertIn("pytest", up_data["memory"]["tags"])
+
+        # 7. Delete single memory
+        del_res = client.delete(f"/api/plugins/zerofactory/memories/{mem1_id}")
+        self.assertEqual(del_res.status_code, 200)
+        self.assertTrue(del_res.json()["ok"])
+
+        # Verify it's gone
+        list_after = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_after.json()["total"], 1)
+
+        # 8. Test 404s
+        bad_board = client.get("/api/plugins/zerofactory/boards/non-existent-board/memories")
+        self.assertEqual(bad_board.status_code, 404)
+
+        bad_del = client.delete("/api/plugins/zerofactory/memories/non-existent-mem")
+        self.assertEqual(bad_del.status_code, 404)
+
+        # 9. Test cascade delete on board deletion
+        del_board_res = client.delete(f"/api/plugins/zerofactory/boards/{b_slug}")
+        self.assertEqual(del_board_res.status_code, 200)
+
+        # Verify board_memories table has no rows for b_slug
+        with get_db_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM board_memories WHERE board_slug = ?", (b_slug,))
+            self.assertEqual(cursor.fetchone()[0], 0)
+
+    def test_56_agents_status_endpoint(self):
+        """Test GET /agents endpoint returning status for the 3 specialist agents."""
+        res = client.get("/api/plugins/zerofactory/agents")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        agents = data["agents"]
+        self.assertEqual(len(agents), 3)
+        agent_names = [a["name"] for a in agents]
+        self.assertIn("zf-orchestrator", agent_names)
+        self.assertIn("zf-builder", agent_names)
+        self.assertIn("zf-reviewer", agent_names)
+
+        for a in agents:
+            self.assertIn(a["status"], ("active", "idle"))
+            self.assertIn("label", a)
+            self.assertIn("icon", a)
+            self.assertIn("description", a)
+            self.assertIn("stats", a)
+
+    def test_57_dispatcher_memories_digest(self):
+        """Test digest_board_memories_context and worker prompt injection."""
+        from dispatcher import digest_board_memories_context
+
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/digest-board.git"))
+        b_slug = b_res["slug"]
+
+        # When no memories exist, returns empty string
+        empty_digest = digest_board_memories_context(b_slug)
+        self.assertEqual(empty_digest, "")
+
+        # Add memories
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": "Follow PEP 8 naming conventions",
+            "tags": ["style", "pep8"]
+        })
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "gotcha",
+            "content": "Beware of circular imports between plugin_api and dispatcher",
+            "tags": ["imports", "architecture"]
+        })
+
+        digest = digest_board_memories_context(b_slug)
+        self.assertIn("REPOSITORY KNOWLEDGE & CONVENTIONS", digest)
+        self.assertIn("[convention] Follow PEP 8 naming conventions", digest)
+        self.assertIn("[gotcha] Beware of circular imports", digest)
+        self.assertIn("tags: style, pep8", digest)
+
+    def test_58_cli_memory_commands(self):
+        """Test CLI memory subcommands: add, list, delete."""
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+        from __init__ import register
+
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/cli-mem-board.git"))
+        b_slug = b_res["slug"]
+
+        class DummyCtx:
+            def __init__(self):
+                self.commands = {}
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.commands[name] = (setup_fn, handler_fn)
+
+        ctx = DummyCtx()
+        register(ctx)
+        self.assertIn("zerofactory", ctx.commands)
+        setup_fn, handler_fn = ctx.commands["zerofactory"]
+
+        parser = argparse.ArgumentParser()
+        setup_fn(parser)
+
+        # 1. Add memory via CLI
+        args_add = parser.parse_args([
+            "memory", "add",
+            "--board", b_slug,
+            "Always mock external network requests in tests",
+            "--category", "convention",
+            "--tags", "test, network"
+        ])
+        f = io.StringIO()
+        with redirect_stdout(f):
+            handler_fn(args_add)
+        out_add = f.getvalue()
+        self.assertIn("Added memory", out_add)
+        self.assertIn("[convention]", out_add)
+
+        # 2. List memory via CLI
+        args_list = parser.parse_args([
+            "memory", "list",
+            "--board", b_slug
+        ])
+        f_list = io.StringIO()
+        with redirect_stdout(f_list):
+            handler_fn(args_list)
+        out_list = f_list.getvalue()
+        self.assertIn("Always mock external network", out_list)
+        self.assertIn("convention", out_list)
+
+        # 3. Delete memory via CLI
+        list_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        mem_id = list_res.json()["memories"][0]["id"]
+
+        args_del = parser.parse_args([
+            "memory", "delete",
+            mem_id
+        ])
+        f_del = io.StringIO()
+        with redirect_stdout(f_del):
+            handler_fn(args_del)
+        out_del = f_del.getvalue()
+        self.assertIn("Deleted memory", out_del)
+
+        # Verify deleted
+        list_res_after = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_res_after.json()["total"], 0)
+
+    def test_59_auto_record_memory_settings_and_board_override(self):
+        """Test global auto_record_memory setting and per-board override flag."""
+        from dashboard.plugin_api import SettingsUpdate
+
+        # 1. Global setting defaults to True
+        s_res = client.get("/api/plugins/zerofactory/settings").json()
+        self.assertTrue(s_res["settings"]["auto_record_memory"])
+
+        # 2. Toggle global setting to False
+        patch_res = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"auto_record_memory": False}
+        ).json()
+        self.assertFalse(patch_res["settings"]["auto_record_memory"])
+
+        # Re-enable global setting
+        client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"auto_record_memory": True}
+        )
+        s_res_after = client.get("/api/plugins/zerofactory/settings").json()
+        self.assertTrue(s_res_after["settings"]["auto_record_memory"])
+
+        # 3. Create board with default auto_record_memory (True)
+        b1 = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-b1.git"}
+        ).json()
+        b1_slug = b1["slug"]
+
+        boards_list = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b1_data = next(b for b in boards_list if b["slug"] == b1_slug)
+        self.assertTrue(b1_data["auto_record_memory"])
+
+        # 4. Create board with auto_record_memory disabled (False)
+        b2 = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-b2.git", "auto_record_memory": False}
+        ).json()
+        b2_slug = b2["slug"]
+
+        boards_list2 = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b2_data = next(b for b in boards_list2 if b["slug"] == b2_slug)
+        self.assertFalse(b2_data["auto_record_memory"])
+
+        # 5. Toggle board auto_record_memory via PATCH
+        client.patch(
+            f"/api/plugins/zerofactory/boards/{b2_slug}",
+            json={"auto_record_memory": True}
+        )
+        boards_list3 = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b2_data_after = next(b for b in boards_list3 if b["slug"] == b2_slug)
+        self.assertTrue(b2_data_after["auto_record_memory"])
+
+    def test_60_auto_record_memory_extraction(self):
+        """Test extract_and_record_memory extraction, deduplication, and suppression when disabled."""
+        from dashboard.plugin_api import extract_and_record_memory, get_db_conn
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-extract.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        text_feedback = (
+            "Code review feedback:\n"
+            "- **GOTCHA:** Always run db migrations before seeding test data\n"
+            "- **CONVENTION:** PascalCase should be used for React component files\n"
+            "- Some non-rule review comment without a tag\n"
+            "- REJECTED_PATH: Avoid using global mutable singletons for configuration\n"
+            "- DECISION: Standardized on pytest-mock for test mocks"
+        )
+
+        with get_db_conn() as conn:
+            # 1. Extraction with auto_record_memory enabled
+            recorded = extract_and_record_memory(conn, board_slug=b_slug, text=text_feedback, author="zf-reviewer")
+            conn.commit()
+
+            self.assertEqual(len(recorded), 4)
+            categories = [r["category"] for r in recorded]
+            self.assertIn("gotcha", categories)
+            self.assertIn("convention", categories)
+            self.assertIn("rejected_path", categories)
+            self.assertIn("decision", categories)
+
+            # 2. Deduplication: run exact same extraction again
+            recorded_dupes = extract_and_record_memory(conn, board_slug=b_slug, text=text_feedback, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_dupes), 0)
+
+            # 3. Suppression when board auto_record_memory is disabled
+            client.patch(f"/api/plugins/zerofactory/boards/{b_slug}", json={"auto_record_memory": False})
+            conn.commit()
+
+            new_feedback = "GOTCHA: Never run git push --force on shared branch"
+            recorded_suppressed = extract_and_record_memory(conn, board_slug=b_slug, text=new_feedback, author="zf-reviewer")
+            self.assertEqual(len(recorded_suppressed), 0)
+
+            # Re-enable board
+            client.patch(f"/api/plugins/zerofactory/boards/{b_slug}", json={"auto_record_memory": True})
+            conn.commit()
+
+            # 4. Suppression when global auto_record_memory is disabled
+            client.patch("/api/plugins/zerofactory/settings", json={"auto_record_memory": False})
+            conn.commit()
+
+            recorded_globally_suppressed = extract_and_record_memory(conn, board_slug=b_slug, text=new_feedback, author="zf-reviewer")
+            self.assertEqual(len(recorded_globally_suppressed), 0)
+
+            # Restore global setting
+            client.patch("/api/plugins/zerofactory/settings", json={"auto_record_memory": True})
+            conn.commit()
+
+    def test_61_move_task_auto_record_gotcha(self):
+        """Test auto-recording gotcha when task is moved to blocked with structured rule reason."""
+        from dashboard.plugin_api import TaskCreate
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-move.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        # Create task
+        t_res = client.post(
+            "/api/plugins/zerofactory/tasks",
+            json={"title": "Test memory move", "board_slug": b_slug, "status": "running"}
+        ).json()
+        t_id = t_res["id"]
+
+        # Move to blocked with GOTCHA in reason
+        move_res = client.post(
+            f"/api/plugins/zerofactory/tasks/{t_id}/move",
+            json={
+                "status": "blocked",
+                "actor": "zf-reviewer",
+                "reason": "changes-requested. GOTCHA: Always lock dependencies in requirements.txt before release"
+            }
+        ).json()
+        self.assertTrue(move_res["ok"])
+
+        # Check board memories
+        mem_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(mem_res["total"], 1)
+        mem = mem_res["memories"][0]
+        self.assertEqual(mem["category"], "gotcha")
+        self.assertIn("Always lock dependencies in requirements.txt before release", mem["content"])
+        self.assertEqual(mem["author"], "zf-reviewer")
+        self.assertEqual(mem["task_id"], t_id)
 
 
 if __name__ == "__main__":

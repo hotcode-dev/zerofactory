@@ -295,26 +295,17 @@
 .block {
   display: block;
 }
-.contents {
-  display: contents;
-}
 .flex {
   display: flex;
 }
 .grid {
   display: grid;
 }
-.inline {
-  display: inline;
-}
 .inline-block {
   display: inline-block;
 }
 .inline-flex {
   display: inline-flex;
-}
-.table {
-  display: table;
 }
 .h-1\.5 {
   height: calc(var(--spacing) * 1.5);
@@ -2220,10 +2211,6 @@
 }
 .shadow-2xl {
   --tw-shadow: 0 25px 50px -12px var(--tw-shadow-color, rgb(0 0 0 / 0.25));
-  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-}
-.shadow-\[0_0_12px_rgba\(16\,185\,129\,0\.25\)\] {
-  --tw-shadow: 0 0 12px var(--tw-shadow-color, rgba(16,185,129,0.25));
   box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
 }
 .shadow-inner {

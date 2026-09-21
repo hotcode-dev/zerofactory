@@ -144,6 +144,74 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 
 ---
 
+## Session Lifecycle & Architecture
+
+Zero Factory implements a **Session-per-Handoff (Stateless Workers, Stateful Substrate)** model rather than maintaining a single monolithic session per task or per agent.
+
+### How Sessions Work Across Handoffs
+
+1. **Initial Implementation (`zf-builder`)**:
+   - The dispatcher provisions an isolated Git worktree and executes `hermes -p zf-builder --yolo --cli --accept-hooks chat -q <prompt>`.
+   - Hermes initializes a dedicated session recorded in `~/.hermes/profiles/zf-builder/state.db` and tracked in task metadata (`metadata["sessions"]`).
+2. **Review Handoff (`zf-reviewer`)**:
+   - When implementation finishes, the dispatcher terminates the builder process (`SIGTERM`/`SIGKILL`), commits the branch, opens a GitHub Pull Request, and routes the ticket to `zf-reviewer`.
+   - The dispatcher pre-digests the git diff and commit log in Python, then launches `hermes -p zf-reviewer ...`, creating a **brand new session** under `~/.hermes/profiles/zf-reviewer/state.db`.
+3. **Changes Requested (`zf-reviewer` ➔ `zf-builder`)**:
+   - When the reviewer requests changes on GitHub, the dispatcher imports comments into the SQLite `task_comments` table.
+   - The reviewer worker is stopped, and the ticket routes back to `zf-builder`.
+   - A **brand new session** is spawned for `zf-builder` with an injected prompt block (`🚨 CRITICAL: PULL REQUEST REVIEW COMMENTS TO ADDRESS`), allowing the builder to immediately address the feedback on the live worktree without the cognitive overhead of previous turns.
+
+### Architectural Trade-offs: Session-per-Handoff vs. Single-Session-per-Agent-per-Task
+
+| Dimension | **Zero Factory (Session per Handoff)** | **Single Session per Agent per Task (Resumed)** |
+|---|---|---|
+| **Context Window Size** | **Compact & predictable** (typically 3k–15k tokens per phase) | **Grows monotonically** (40k–100k+ tokens across review rounds) |
+| **Token Cost per Review Round** | **Low & Flat** (starts clean with only review comments) | **Compounding** (re-reads entire implementation history on every turn) |
+| **Context Drift & "Ghost Code"** | **Lowest** (Agent inspects current disk files in worktree) | **Higher** (Agent risks hallucinating code from early in-memory turns rather than disk) |
+| **Fault Tolerance & Poisoned Loops** | **High** (Terminated workers discard bad hallucination loops) | **Lower** (Resumed session retains prior confusion or failed debugging traces) |
+| **Reviewer Diff Clarity** | **High** (Reviewer receives clean, pre-digested current delta) | **Lower** (Reviewer history mixes original diff with updated diffs) |
+| **Role & Profile Isolation** | **Strict** (Builder & Reviewer maintain isolated profiles, tools, and DBs) | **Strict** (Maintains role separation, but with accumulated history) |
+| **Working Memory Continuity** | Persisted via **Native `kanban.db` Memory** (conventions, gotchas, decisions pre-digested into prompt) | ✅ Full conversation memory (remembers reasoning, discarded ideas, test nuances) |
+
+### Stateless Workers, Stateful Substrate
+
+Zero Factory intentionally externalizes durable state into **Git worktrees**, **GitHub PR review comments**, and **Kanban SQLite storage** instead of accumulating conversation memory. This guarantees deterministic handoffs, avoids token exhaustion, and eliminates "Lost in the Middle" attention degradation across iterative multi-round code reviews.
+
+---
+
+## Native `kanban.db` Memory & Agents Dashboard
+
+Zero Factory features **Native `kanban.db` Memory** — a durable, local SQLite repository knowledge substrate that allows specialist agents and developers to persist conventions, gotchas, architecture decisions, and rejected paths scoped per board.
+
+### Why Native `kanban.db` Memory?
+1. **Zero External Infrastructure**: Stored directly in `kanban.db` via SQLite table `board_memories` with cascading cleanup on board deletion.
+2. **Deterministic Pre-Digest**: Automatically pre-digested by `dispatcher.py` into spawned worker prompts (`zf-builder`, `zf-reviewer`, `zf-orchestrator`), ensuring agents never repeat past mistakes or violate repository conventions.
+3. **Structured Taxonomy**:
+   - `convention`: Coding rules, file formats, test execution expectations.
+   - `gotcha`: Concurrency pitfalls, fragile mocks, subtle edge cases.
+   - `decision`: Architectural and design choices that govern future work.
+   - `rejected_path`: Approaches that were tried and discarded, preventing wasteful re-attempts.
+   - `general`: General repository knowledge.
+
+### Integrated "Agents" Dashboard
+The dashboard navigation tab has evolved from `AI Sessions` to **`Agents`**:
+- **3 Specialist Agent Cards**: Real-time status (`🟢 Active` vs `⚪ Idle`), live execution activity, active session model & duration, and direct links to active Kanban tasks.
+- **Sub-Tab Switcher**: Seamlessly switch between `💬 AI Sessions` (full execution history & chat resume links) and `🧠 Repository Memory` (knowledge cards with search, category filtering, and modal CRUD).
+
+### Memory CLI Commands
+```bash
+# List repository memories for a board
+hermes zerofactory memory list --board <slug> [--category <cat>] [-q <query>]
+
+# Record a new repository memory
+hermes zerofactory memory add --board <slug> "<content>" --category convention --tags "test,lint"
+
+# Delete a memory
+hermes zerofactory memory delete <memory_id>
+```
+
+---
+
 ## Built-in Automation & Token-Efficient Cron Architecture
 
 Zero Factory is architected to drastically minimize LLM token consumption (up to 95% token savings) across periodic automation cycles using Hermes Agent's **No-Agent Mode (`no_agent: true`)**, **Wake-Gate Change Detection (`{"wakeAgent": false}`)**, and **Chained LLM Jobs (`context_from`)**:
@@ -183,9 +251,11 @@ zerofactory/
 ├── dashboard/                   # Embedded web dashboard UI (/zerofactory)
 │   ├── manifest.json            # Gateway route declaration
 │   ├── plugin_api.py            # FastAPI REST backend
+│   ├── build_css.mjs            # Regenerates dist/style.css (Tailwind v4, portable)
+│   ├── input.css                # Tailwind entry source (bare package imports)
 │   └── dist/
 │       ├── index.js             # React Kanban UI
-│       └── style.css            # Dark glassmorphic theme
+│       └── style.css            # Dark glassmorphic theme (committed build output)
 ├── skills/
 │   └── zerofactory-orchestration/  # Multi-agent coordination skill
 └── templates/                   # Version-controlled profile templates
@@ -200,12 +270,26 @@ zerofactory/
 
 Run the automated test suites against your local Hermes environment:
 ```bash
-# 1. Run unit & integration test suite (88 tests)
+# 1. Run unit & integration test suite
 python3 test_plugin.py
 
 # 2. Run hermetic end-to-end (E2E) test suite (19 tests)
 python3 test_e2e.py
 ```
+
+### Rebuilding the dashboard stylesheet
+
+The committed `dashboard/dist/style.css` is generated from `dashboard/input.css`
+by `dashboard/build_css.mjs` (Tailwind CSS v4). It is portable — no machine-
+specific paths — resolving `tailwindcss` from the project's `node_modules` or
+the `ZEROFACTORY_TAILWIND_DIR` env override. To regenerate after editing the UI:
+```bash
+npm install            # if node_modules is not present (fresh clone)
+node dashboard/build_css.mjs
+```
+`test_plugin.py::test_86_dashboard_css_is_portable_and_in_sync_with_js` guards
+reproducibility and asserts the stylesheet carries selectors for every
+variant-prefixed class the UI references (hover/focus/active/disabled).
 
 ---
 

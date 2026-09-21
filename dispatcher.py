@@ -740,6 +740,63 @@ def digest_reviewer_git_context(
         sections.append(f"#### Uncommitted Modifications:\n```\n{status_summary}\n```")
 
     return "\n\n".join(sections)
+ 
+ 
+def digest_board_memories_context(
+    board_slug: Optional[str],
+    db_path: Optional[str] = None,
+    limit: int = 8
+) -> str:
+    """Extract pre-digested repository memories, conventions, and gotchas for agent worker prompt.
+
+    Pre-injects relevant repository knowledge learned from prior tasks directly into the agent
+    prompt to prevent repeat mistakes and align code style with repository conventions.
+    """
+    if not board_slug:
+        return ""
+
+    target_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
+    if not target_db.exists():
+        return ""
+
+    try:
+        with sqlite3.connect(str(target_db), timeout=2.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            rows = cur.execute(
+                """
+                SELECT category, content, tags, author
+                FROM board_memories
+                WHERE board_slug = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (board_slug, limit)
+            ).fetchall()
+
+            if not rows:
+                return ""
+
+            lines = ["🧠 REPOSITORY KNOWLEDGE & CONVENTIONS (Learned from prior tasks):"]
+            for r in rows:
+                cat = r["category"] or "general"
+                content = (r["content"] or "").strip().replace("\n", " ")
+                if len(content) > 200:
+                    content = content[:197] + "..."
+                tag_str = ""
+                try:
+                    tags = json.loads(r["tags"] or "[]")
+                    if tags and isinstance(tags, list):
+                        tag_str = f" [tags: {', '.join(tags)}]"
+                except Exception:
+                    pass
+                lines.append(f"- [{cat}] {content}{tag_str}")
+
+            lines.append("Please adhere to these conventions and avoid known gotchas during execution.")
+            return "\n".join(lines)
+    except Exception as e:
+        _log.debug("Could not digest board memories for %s: %s", board_slug, e)
+        return ""
 
 
 def extract_gh_repo_info(pr_url: str) -> Optional[tuple[str, str, int]]:
@@ -1041,6 +1098,29 @@ def is_reviewer_approval_comment(comment_body: str, state: Optional[str] = None)
     return has_approval_signal and not has_changes_requested
 
 
+def _inject_langfuse_env(env: Dict[str, str], conn_or_cursor: Any = None) -> None:
+    """Inject active Langfuse credentials and configuration into worker subprocess environment."""
+    try:
+        if conn_or_cursor is None:
+            from dashboard.plugin_api import get_db_conn
+            with get_db_conn() as conn:
+                settings = load_settings(conn)
+        else:
+            settings = load_settings(conn_or_cursor)
+
+        if settings.get("langfuse_enabled"):
+            env["HERMES_LANGFUSE_PUBLIC_KEY"] = str(settings.get("langfuse_public_key") or "").strip()
+            env["HERMES_LANGFUSE_SECRET_KEY"] = str(settings.get("langfuse_secret_key") or "").strip()
+            env["HERMES_LANGFUSE_BASE_URL"] = str(settings.get("langfuse_base_url") or "https://cloud.langfuse.com").strip()
+            env["HERMES_LANGFUSE_CAPTURE"] = str(settings.get("langfuse_capture_mode") or "sanitized").strip()
+            env["HERMES_LANGFUSE_ENV"] = str(settings.get("langfuse_env") or "zerofactory").strip()
+        else:
+            for k in ("HERMES_LANGFUSE_PUBLIC_KEY", "HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE", "HERMES_LANGFUSE_ENV"):
+                env.pop(k, None)
+    except Exception as e:
+        _log.debug("Could not inject Langfuse env: %s", e)
+
+
 def spawn_agent_worker(
     task_id: str,
     title: str,
@@ -1048,7 +1128,8 @@ def spawn_agent_worker(
     priority: str,
     assignee: str,
     workspace_path: Optional[str],
-    branch_name: Optional[str]
+    branch_name: Optional[str],
+    board_slug: Optional[str] = None
 ) -> tuple[Optional[int], Optional[str]]:
     """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"):
@@ -1064,6 +1145,8 @@ def spawn_agent_worker(
     )
 
     workdir = workspace_path if (workspace_path and Path(workspace_path).exists()) else os.getcwd()
+    memories_digest = digest_board_memories_context(board_slug)
+    memories_block = f"{memories_digest}\n\n" if memories_digest else ""
 
     if assignee == "zf-reviewer":
         pre_digested_git = digest_reviewer_git_context(Path(workdir), branch_name)
@@ -1075,16 +1158,21 @@ def spawn_agent_worker(
             f"Assigned Role: {assignee}\n\n"
             f"Description:\n{description or 'No description provided.'}\n\n"
             f"Workspace: {workdir}\n"
-            f"Git Branch: {branch_name or 'main'}\n"
+            f"Git Branch: {branch_name or 'main'}\n\n"
+            f"{memories_block}"
             f"{pre_digested_block}"
             f"Your goal as Reviewer:\n"
             f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
             f"2. Run automated test suites and linters in your workspace ({workdir}).\n"
             f"3. Submit your review decision on GitHub (`gh pr review --approve` or `gh pr review --request-changes`).\n"
-            f"4. When finished:\n"
+            f"4. Continuous Learning & Repository Knowledge:\n"
+            f"   - If you catch a recurring mistake, testing gotcha, or project convention that future tasks should follow, record it!\n"
+            f"   - In your review comment or summary, include a line: `GOTCHA: <rule>` or `CONVENTION: <rule>` (the system will auto-record it).\n"
+            f"   - Or run: `hermes zerofactory memory add --board {board_slug or 'default'} \"<rule>\" --category <gotcha|convention>`.\n"
+            f"5. When finished:\n"
             f"   - If approved: run `hermes zerofactory block {task_id} --reason 'Human Review & Merge'` (the dispatcher will automatically move the task to 'done' once the PR is merged on GitHub; DO NOT mark done yourself).\n"
             f"   - If changes are requested: run `hermes zerofactory block {task_id} --reason 'changes-requested'` (the dispatcher will route it back to the builder).\n"
-            f"5. Provide a clear review summary.\n"
+            f"6. Provide a clear review summary.\n"
         )
     else:
         # Fail-closed: if the worktree cannot be verified clean, treat it as a
@@ -1124,6 +1212,7 @@ def spawn_agent_worker(
                 f"Description:\n{description or 'No description provided.'}\n\n"
                 f"Workspace: {workdir}\n"
                 f"Git Branch: {branch_name or 'main'}\n\n"
+                f"{memories_block}"
                 f"🚨 CRITICAL: MERGE CONFLICT DETECTED WITH MAIN BRANCH\n"
                 f"The latest changes from the main branch conflict with this task branch.\n"
                 f"Conflicted files:\n{file_list_str}\n\n"
@@ -1203,6 +1292,7 @@ def spawn_agent_worker(
                 f"Description:\n{description or 'No description provided.'}\n\n"
                 f"Workspace: {workdir}\n"
                 f"Git Branch: {branch_name or 'main'}\n\n"
+                f"{memories_block}"
                 f"{review_comments_prompt}"
                 f"{goal_instructions}"
             )
@@ -1231,6 +1321,7 @@ def spawn_agent_worker(
     if profile_home.exists():
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
+    _inject_langfuse_env(env)
 
     try:
         log_f = open(log_file_path, "ab")
@@ -1586,6 +1677,7 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
     if profile_home.exists():
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
+    _inject_langfuse_env(env)
 
     workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()
 
@@ -2446,7 +2538,9 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         conn.commit()
 
                         try:
-                            pid, session_id = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
+                            pid, session_id = spawn_agent_worker(
+                                task_id, title, description, priority, assignee, workspace_path, branch_name, board_slug=row["board_slug"]
+                            )
                         except Exception as e:
                             _log.error("Failed to spawn agent worker for %s: %s", task_id, e)
                             cursor.execute("UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?", (now, task_id))
@@ -2794,6 +2888,14 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                                     (task_id, c["author"], f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}", now)
                                                 )
                                                 processed_cmt_ids.add(c["comment_id"])
+
+                                                # Auto-record gotchas/conventions from reviewer feedback
+                                                if board_slug and c.get("body"):
+                                                    try:
+                                                        from dashboard.plugin_api import extract_and_record_memory
+                                                        extract_and_record_memory(conn, board_slug=board_slug, text=c["body"], task_id=task_id, author=c.get("author") or "zf-reviewer")
+                                                    except Exception as _mem_e:
+                                                        _log.debug("Auto-record memory from review comment failed: %s", _mem_e)
 
                                             task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
 
