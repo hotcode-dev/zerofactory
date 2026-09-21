@@ -101,8 +101,16 @@
     const [cronEditForms, setCronEditForms] = useState({});
     const [cronSearchQuery, setCronSearchQuery] = useState("");
     const [newCommentText, setNewCommentText] = useState("");
-    const [activeView, setActiveView] = useState("board"); // "board" | "activities" | "instructions"
+    const [activeView, setActiveView] = useState("board"); // "board" | "activities" | "sessions" | "instructions"
     const [instructionTab, setInstructionTab] = useState("overview");
+    const [selectedSessionIdx, setSelectedSessionIdx] = useState(0);
+
+    // AI Sessions View State
+    const [sessionsList, setSessionsList] = useState([]);
+    const [sessionsLoading, setSessionsLoading] = useState(false);
+    const [sessionsAgentFilter, setSessionsAgentFilter] = useState("all");
+    const [sessionsStatusFilter, setSessionsStatusFilter] = useState("all");
+    const [sessionsSearchQuery, setSessionsSearchQuery] = useState("");
 
     // Activities View State
     const [activities, setActivities] = useState([]);
@@ -468,6 +476,21 @@
       }
     }, [fetchJSON, activityLimit, activityPage, activityActorFilter, activityActionFilter, activityBoardFilter, activitySearchQuery]);
 
+    // Load AI Agent Sessions
+    const loadSessions = useCallback(async () => {
+      try {
+        setSessionsLoading(true);
+        const res = await fetchJSON(API_BASE + "/sessions?limit=100");
+        if (res && res.ok && res.sessions) {
+          setSessionsList(res.sessions);
+        }
+      } catch (err) {
+        console.error("Failed to load AI sessions:", err);
+      } finally {
+        setSessionsLoading(false);
+      }
+    }, [fetchJSON]);
+
     // Initial load
     useEffect(() => {
       loadBoards();
@@ -475,14 +498,19 @@
       loadCronJobs();
       loadSettings();
       loadActivities();
-    }, [loadBoards, loadTasksAndStats, selectedBoard, loadCronJobs, loadSettings, loadActivities]);
+      loadSessions();
+    }, [loadBoards, loadTasksAndStats, selectedBoard, loadCronJobs, loadSettings, loadActivities, loadSessions]);
 
     // Fetch activities on view switch or filter changes
     useEffect(() => {
       if (activeView === "activities") {
         loadActivities();
+      } else if (activeView === "sessions") {
+        loadSessions();
+        const sTimer = setInterval(loadSessions, 3500);
+        return () => clearInterval(sTimer);
       }
-    }, [activeView, activityActorFilter, activityActionFilter, activityBoardFilter, activityPage, loadActivities]);
+    }, [activeView, activityActorFilter, activityActionFilter, activityBoardFilter, activityPage, loadActivities, loadSessions]);
 
     // Auto-refresh interval
     useEffect(() => {
@@ -490,12 +518,14 @@
       const timer = setInterval(() => {
         if (activeView === "activities") {
           loadActivities();
+        } else if (activeView === "sessions") {
+          loadSessions();
         } else {
           loadTasksAndStats(selectedBoard);
         }
       }, 8000);
       return () => clearInterval(timer);
-    }, [autoRefresh, activeView, selectedBoard, loadTasksAndStats, loadActivities]);
+    }, [autoRefresh, activeView, selectedBoard, loadTasksAndStats, loadActivities, loadSessions]);
 
     const liveAgents = useMemo(() => {
       const baseAgents = activitiesAgents.length > 0 ? activitiesAgents : [
@@ -735,6 +765,7 @@
       try {
         const res = await fetchJSON(API_BASE + "/tasks/" + taskId);
         if (res && res.task) {
+          setSelectedSessionIdx(0);
           setSelectedTask(res.task);
         }
       } catch (err) {
@@ -2422,6 +2453,340 @@
       );
     };
 
+    // Render AI Agent Sessions Page
+    const renderSessions = () => {
+      // Filter sessions
+      const effectiveSessions = sessionsList.filter((s) => {
+        if (sessionsAgentFilter !== "all" && s.agent !== sessionsAgentFilter) return false;
+        if (sessionsStatusFilter !== "all" && s.status !== sessionsStatusFilter) return false;
+        if (sessionsSearchQuery.trim()) {
+          const q = sessionsSearchQuery.toLowerCase();
+          const matchTitle = (s.title || "").toLowerCase().includes(q);
+          const matchId = (s.session_id || "").toLowerCase().includes(q);
+          const matchModel = (s.model || "").toLowerCase().includes(q);
+          const matchAgent = (s.agent || "").toLowerCase().includes(q);
+          const matchCwd = (s.cwd || "").toLowerCase().includes(q);
+          if (!matchTitle && !matchId && !matchModel && !matchAgent && !matchCwd) return false;
+        }
+        return true;
+      });
+
+      const totalCount = sessionsList.length;
+      const ongoingCount = sessionsList.filter(s => s.status === "ongoing" || s.is_active).length;
+      const finishedCount = sessionsList.filter(s => s.status === "finished" && !s.is_active).length;
+      const totalTurns = sessionsList.reduce((acc, s) => acc + (s.turn_count || 0), 0);
+
+      const agentTabs = [
+        { id: "all", label: "All Agents", count: totalCount },
+        { id: "zf-orchestrator", label: "🧭 Orchestrator", count: sessionsList.filter(s => s.agent === "zf-orchestrator").length },
+        { id: "zf-builder", label: "🔨 Builder", count: sessionsList.filter(s => s.agent === "zf-builder").length },
+        { id: "zf-reviewer", label: "🔍 Reviewer", count: sessionsList.filter(s => s.agent === "zf-reviewer").length },
+        { id: "dispatcher", label: "⚡ Dispatcher", count: sessionsList.filter(s => s.agent === "dispatcher").length },
+      ];
+
+      return React.createElement(
+        "div",
+        { className: "space-y-6 animate-fade-in" },
+        // Top Header
+        React.createElement(
+          "div",
+          { className: "flex flex-wrap items-center justify-between gap-4 bg-slate-900/60 backdrop-blur-md border border-slate-800/80 p-5 rounded-2xl shadow-sm" },
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-3" },
+            React.createElement("div", { className: "w-11 h-11 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-2xl shadow-xs" }, "🤖"),
+            React.createElement(
+              "div",
+              null,
+              React.createElement("h2", { className: "text-base font-bold text-white tracking-tight flex items-center gap-2" },
+                "AI Agent Sessions",
+                ongoingCount > 0 &&
+                  React.createElement("span", { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" },
+                    React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-emerald-400 zfk-pulse-active" }),
+                    ongoingCount + " Active"
+                  )
+              ),
+              React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "Real-time telemetry and session histories across Orchestrator, Builder, Reviewer, and Dispatcher.")
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-2" },
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 shadow-sm transition-all cursor-pointer",
+                onClick: loadSessions,
+                disabled: sessionsLoading
+              },
+              sessionsLoading ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "🔄",
+              " Refresh"
+            )
+          )
+        ),
+
+        // Summary Metric Cards
+        React.createElement(
+          "div",
+          { className: "grid grid-cols-2 sm:grid-cols-4 gap-3.5" },
+          React.createElement(
+            "div",
+            { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+            React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-indigo-500/15 text-indigo-400 border border-indigo-500/25" }, "🤖"),
+            React.createElement(
+              "div",
+              { className: "min-w-0" },
+              React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, totalCount),
+              React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total AI Sessions")
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+            React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25" }, "⚡"),
+            React.createElement(
+              "div",
+              { className: "min-w-0" },
+              React.createElement("span", { className: "text-xl font-bold text-emerald-400 tracking-tight leading-none block" }, ongoingCount),
+              React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Ongoing / Active")
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+            React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-slate-800/60 text-slate-300 border border-slate-700/50" }, "✅"),
+            React.createElement(
+              "div",
+              { className: "min-w-0" },
+              React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, finishedCount),
+              React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Completed Sessions")
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+            React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-amber-500/15 text-amber-400 border border-amber-500/25" }, "🔄"),
+            React.createElement(
+              "div",
+              { className: "min-w-0" },
+              React.createElement("span", { className: "text-xl font-bold text-amber-300 tracking-tight leading-none block" }, totalTurns),
+              React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total Agent Turns")
+            )
+          )
+        ),
+
+        // Controls Bar: Agent Pills, Status Filter, Search
+        React.createElement(
+          "div",
+          { className: "flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800/80" },
+          // Agent Pills
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 zfk-scrollbar" },
+            agentTabs.map(tab =>
+              React.createElement(
+                "button",
+                {
+                  key: tab.id,
+                  type: "button",
+                  className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 " +
+                    (sessionsAgentFilter === tab.id
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60"),
+                  onClick: () => setSessionsAgentFilter(tab.id)
+                },
+                tab.label,
+                React.createElement("span", { className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " + (sessionsAgentFilter === tab.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400") }, tab.count)
+              )
+            )
+          ),
+          // Right Controls: Status & Search
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-2" },
+            React.createElement(
+              "select",
+              {
+                className: "bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
+                value: sessionsStatusFilter,
+                onChange: (e) => setSessionsStatusFilter(e.target.value)
+              },
+              React.createElement("option", { value: "all" }, "All Statuses"),
+              React.createElement("option", { value: "ongoing" }, "🟢 Ongoing"),
+              React.createElement("option", { value: "finished" }, "⚪ Finished")
+            ),
+            React.createElement(
+              "input",
+              {
+                type: "text",
+                placeholder: "Search sessions, models, tasks...",
+                className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-48 md:w-56",
+                value: sessionsSearchQuery,
+                onChange: (e) => setSessionsSearchQuery(e.target.value)
+              }
+            )
+          )
+        ),
+
+        // Session Cards Grid
+        effectiveSessions.length === 0
+          ? React.createElement(
+              "div",
+              { className: "bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center" },
+              React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-2xl mx-auto mb-3 text-slate-500" }, "🤖"),
+              React.createElement("h3", { className: "text-sm font-semibold text-slate-300" }, "No AI Sessions Found"),
+              React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-sm mx-auto" },
+                sessionsSearchQuery || sessionsAgentFilter !== "all" || sessionsStatusFilter !== "all"
+                  ? "No sessions match your filter criteria. Try resetting the filters."
+                  : "AI agent sessions will appear here as Orchestrator, Builder, Reviewer, and Dispatcher execute tasks."
+              )
+            )
+          : React.createElement(
+              "div",
+              { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" },
+              effectiveSessions.map((s) => {
+                const isOngoing = s.status === "ongoing" || s.is_active;
+                const agentRole = s.agent || "zf-builder";
+                const agentBadge = agentRole === "zf-reviewer"
+                  ? { icon: "🔍", label: "Reviewer", border: "border-cyan-500/30", bg: "bg-cyan-500/10 text-cyan-300" }
+                  : agentRole === "zf-orchestrator"
+                  ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
+                  : agentRole === "dispatcher"
+                  ? { icon: "⚡", label: "Dispatcher", border: "border-emerald-500/30", bg: "bg-emerald-500/10 text-emerald-300" }
+                  : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
+
+                // Extract task ID if present in cwd or title
+                let matchedTaskId = null;
+                const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
+                const taskMatch = cwdOrTitle.match(/zf-[a-f0-9]{8}/i) || cwdOrTitle.match(/task-[a-z0-9_-]+/i);
+                if (taskMatch) {
+                  matchedTaskId = taskMatch[0];
+                }
+
+                const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
+                  ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
+                  : "";
+                const chatUrl = basePath + "/chat?resume=" + encodeURIComponent(s.session_id) + (s.agent ? "&profile=" + encodeURIComponent(s.agent) : "");
+
+                return React.createElement(
+                  "div",
+                  {
+                    key: s.session_id,
+                    className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-xl p-4 transition-all duration-150 shadow-sm space-y-3 flex flex-col justify-between"
+                  },
+                  React.createElement(
+                    "div",
+                    { className: "space-y-2.5" },
+                    // Card Top Row
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between gap-2" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2" },
+                        React.createElement(
+                          "span",
+                          { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + agentBadge.bg + " " + agentBadge.border },
+                          agentBadge.icon + " " + (s.agent_label || agentBadge.label)
+                        ),
+                        React.createElement(
+                          "span",
+                          { className: "inline-flex items-center gap-1 text-[11px] font-medium " + (isOngoing ? "text-emerald-400" : "text-slate-400") },
+                          React.createElement("span", { className: "w-2 h-2 rounded-full " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500") }),
+                          isOngoing ? "Ongoing" : "Finished"
+                        )
+                      ),
+                      React.createElement(
+                        "span",
+                        { className: "text-[11px] text-slate-400 font-mono" },
+                        s.duration_seconds ? `${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s` : timeAgo(s.ended_at || s.started_at)
+                      )
+                    ),
+
+                    // Title & Associated Task
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement(
+                        "div",
+                        { className: "text-xs font-semibold text-white line-clamp-1", title: s.title },
+                        s.title || "Autonomous Agent Execution"
+                      ),
+                      matchedTaskId &&
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
+                            onClick: () => {
+                              setActiveView("board");
+                              loadTaskDetails(matchedTaskId);
+                            }
+                          },
+                          "📋 Task " + matchedTaskId + " ↗"
+                        )
+                    ),
+
+                    // Telemetry Grid
+                    React.createElement(
+                      "div",
+                      { className: "grid grid-cols-3 gap-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 text-center" },
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Turns"),
+                        React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.turn_count || 0)
+                      ),
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Tool Calls"),
+                        React.createElement("span", { className: "text-xs font-bold text-indigo-300" }, s.tool_calls_count || 0)
+                      ),
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Messages"),
+                        React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.message_count || 0)
+                      )
+                    ),
+
+                    // Last Action / Snippet
+                    s.last_action &&
+                      React.createElement(
+                        "div",
+                        { className: "text-[11px] text-slate-400 bg-slate-950/40 px-2.5 py-1.5 rounded-lg border border-slate-800/60 font-mono truncate", title: s.last_action },
+                        "⚡ " + s.last_action
+                      )
+                  ),
+
+                  // Bottom Action: Session ID & Open Chat
+                  React.createElement(
+                    "div",
+                    { className: "pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" },
+                    React.createElement(
+                      "code",
+                      { className: "text-[10px] text-slate-500 font-mono truncate max-w-[140px]", title: s.session_id },
+                      s.session_id
+                    ),
+                    React.createElement(
+                      "a",
+                      {
+                        href: chatUrl,
+                        target: "_blank",
+                        rel: "noreferrer",
+                        className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600/90 hover:bg-indigo-600 text-white transition-colors cursor-pointer shadow-xs"
+                      },
+                      "Open Chat ↗"
+                    )
+                  )
+                );
+              })
+            )
+      );
+    };
+
     // Render Instructions Page
     const renderInstructions = () => {
       const tabs = [
@@ -2569,6 +2934,25 @@
                 "button",
                 {
                   type: "button",
+                  className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer relative " +
+                    (activeView === "sessions"
+                      ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
+                  onClick: () => {
+                    setActiveView("sessions");
+                    loadSessions();
+                  }
+                },
+                "🤖 AI Sessions",
+                (hasActiveAgents || sessionsList.some(s => s.status === "ongoing" || s.is_active)) &&
+                  React.createElement("span", {
+                    className: "w-2 h-2 rounded-full bg-emerald-400 zfk-pulse-active shrink-0 ml-0.5"
+                  })
+              ),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
                   className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
                     (activeView === "instructions"
                       ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
@@ -2582,7 +2966,7 @@
           React.createElement(
             "div",
             { className: "flex flex-wrap items-center gap-2.5" },
-            (activeView === "instructions" || activeView === "activities") &&
+            (activeView === "instructions" || activeView === "activities" || activeView === "sessions") &&
               React.createElement(
                 "button",
                 {
@@ -2722,11 +3106,13 @@
           )
         ),
 
-      // Main Body: Activities View OR Instructions View OR Empty Boards State OR Kanban Grid
+      // Main Body: Activities View OR Instructions View OR Sessions View OR Empty Boards State OR Kanban Grid
       activeView === "activities"
         ? renderActivities()
         : activeView === "instructions"
         ? renderInstructions()
+        : activeView === "sessions"
+        ? renderSessions()
         : boards.length === 0
         ? renderEmptyBoardState()
         : React.createElement(
@@ -2807,8 +3193,7 @@
                 React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Pull Requests")
               )
             )
-          )
-      ),
+          ),
 
       // Toolbar (Search & Filter)
       React.createElement(
@@ -2915,11 +3300,17 @@
         )
       ),
 
-      // Main Kanban Board Grid
+      // Main Kanban Board Grid (Single Row locked across all screens)
       React.createElement(
         "div",
-        { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 items-start" },
-        COLUMNS.map((col) => {
+        { className: "overflow-x-auto pb-4 -mx-1 px-1 zfk-scrollbar" },
+        React.createElement(
+          "div",
+          {
+            className: "grid grid-cols-5 gap-3.5 items-start min-w-[1100px] w-full",
+            style: { display: "grid", gridTemplateColumns: "repeat(5, minmax(220px, 1fr))" }
+          },
+          COLUMNS.map((col) => {
           const colTasks = tasksByColumn[col.id] || [];
           const isOver = dragOverCol === col.id;
 
@@ -3028,21 +3419,58 @@
                             "⏳ " + t.blocking_parent_count + " blocker"
                           )
                       ),
-                      (t.status === "running" || (t.session_progress && t.session_progress.has_session)) &&
-                        React.createElement(
-                          "div",
-                          { className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (t.assignee === "zf-reviewer" ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-300" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300") },
-                          React.createElement("span", {
-                            className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? (t.assignee === "zf-reviewer" ? "bg-cyan-400 zfk-pulse-active" : "bg-emerald-400 zfk-pulse-active") : "bg-slate-500")
-                          }),
-                          React.createElement(
-                            "span",
-                            { className: "text-[0.6875rem] truncate font-medium" },
-                            (t.assignee === "zf-reviewer" ? "🔍 Reviewing PR" : "🔨 Implementing") +
-                            (t.session_progress && t.session_progress.turn_count ? " • " + t.session_progress.turn_count + " turns" : "") +
-                            (t.session_progress && t.session_progress.last_action ? " • " + t.session_progress.last_action : "")
-                          )
-                        ),
+                      (t.status === "running" || (t.session_progress && (t.session_progress.has_session || (t.session_progress.sessions && t.session_progress.sessions.length > 0)))) &&
+                        (() => {
+                          const tSessions = (t.session_progress && t.session_progress.sessions) || [];
+                          const ongoingSess = tSessions.find(s => s.status === "ongoing" || s.is_active) || (t.status === "running" ? t.session_progress : null);
+                          const isRunning = t.status === "running" || Boolean(ongoingSess && (ongoingSess.status === "ongoing" || ongoingSess.is_active));
+                          const activeAgent = (ongoingSess && ongoingSess.agent) || t.assignee;
+                          const agentIcon = activeAgent === "zf-reviewer" ? "🔍" : activeAgent === "zf-orchestrator" ? "🧭" : activeAgent === "dispatcher" ? "⚡" : "🔨";
+                          const agentLabel = activeAgent === "zf-reviewer" ? "Reviewing PR" : activeAgent === "zf-orchestrator" ? "Orchestrating" : activeAgent === "dispatcher" ? "Dispatching" : "Implementing";
+
+                          if (isRunning) {
+                            return React.createElement(
+                              "div",
+                              { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border text-xs " + (activeAgent === "zf-reviewer" ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-300" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300") },
+                              React.createElement(
+                                "div",
+                                { className: "flex items-center gap-1.5 min-w-0" },
+                                React.createElement("span", {
+                                  className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? (activeAgent === "zf-reviewer" ? "bg-cyan-400 zfk-pulse-active" : "bg-emerald-400 zfk-pulse-active") : "bg-slate-500")
+                                }),
+                                React.createElement(
+                                  "span",
+                                  { className: "text-[0.6875rem] truncate font-medium" },
+                                  agentIcon + " " + agentLabel +
+                                  (t.session_progress && t.session_progress.turn_count ? " • " + t.session_progress.turn_count + " turns" : "") +
+                                  (t.session_progress && t.session_progress.last_action ? " • " + t.session_progress.last_action : "")
+                                )
+                              ),
+                              tSessions.length > 1 &&
+                                React.createElement("span", { className: "text-[0.625rem] font-mono px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-300 shrink-0 border border-slate-700/60" }, tSessions.length + " sess")
+                            );
+                          }
+
+                          // Completed sessions on non-running task
+                          if (tSessions.length > 0) {
+                            const uniqueAgents = Array.from(new Set(tSessions.map(s => s.agent || t.assignee)));
+                            const iconMap = { "zf-reviewer": "🔍", "zf-orchestrator": "🧭", "dispatcher": "⚡", "zf-builder": "🔨" };
+                            const iconsStr = uniqueAgents.map(a => iconMap[a] || "🤖").join(" ");
+                            return React.createElement(
+                              "div",
+                              { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border border-slate-800/80 bg-slate-900/50 text-slate-400 text-xs" },
+                              React.createElement(
+                                "span",
+                                { className: "text-[0.6875rem] truncate font-medium flex items-center gap-1 text-slate-300" },
+                                React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" }),
+                                tSessions.length + " AI session" + (tSessions.length > 1 ? "s" : "") + ": " + iconsStr
+                              ),
+                              t.session_progress && t.session_progress.turn_count ?
+                                React.createElement("span", { className: "text-[0.625rem] text-slate-500 font-mono shrink-0" }, t.session_progress.turn_count + "t") : null
+                            );
+                          }
+                          return null;
+                        })(),
                       t.status === "blocked" &&
                         React.createElement(
                           "div",
@@ -3115,6 +3543,7 @@
           );
         })
       )
+    )
     ),
 
       // Task Details Modal / Drawer
@@ -3390,53 +3819,106 @@
                   )
                 ),
 
-              // Agent Session Progress Panel
-              (selectedTask.status === "running" || (selectedTask.session_progress && selectedTask.session_progress.has_session)) &&
-                React.createElement(
+              // Multi-Agent Execution Sessions Panel
+              (() => {
+                const prog = selectedTask.session_progress;
+                const taskSessions = (prog && prog.sessions && prog.sessions.length > 0)
+                  ? prog.sessions
+                  : (prog && prog.has_session ? [prog] : []);
+
+                if (taskSessions.length === 0 && selectedTask.status !== "running") return null;
+
+                const activeIdx = (selectedSessionIdx >= 0 && selectedSessionIdx < taskSessions.length)
+                  ? selectedSessionIdx
+                  : Math.max(0, taskSessions.findIndex(s => s.status === "ongoing" || s.is_active));
+                const currentSession = taskSessions[activeIdx] || prog || {};
+                const isOngoing = currentSession.status === "ongoing" || currentSession.is_active || (prog && prog.is_alive && activeIdx === taskSessions.length - 1);
+                const agentRole = currentSession.agent || selectedTask.assignee || "zf-builder";
+                const agentIcon = currentSession.agent_icon || (agentRole === "zf-reviewer" ? "🔍" : agentRole === "zf-orchestrator" ? "🧭" : agentRole === "dispatcher" ? "⚡" : "🔨");
+                const agentLabel = currentSession.agent_label || (agentRole === "zf-reviewer" ? "Reviewer" : agentRole === "zf-orchestrator" ? "Orchestrator" : agentRole === "dispatcher" ? "Dispatcher" : "Builder");
+
+                const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
+                  ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
+                  : "";
+                const curSid = currentSession.session_id || (prog && prog.session_id);
+                const chatUrl = curSid ? (basePath + "/chat?resume=" + encodeURIComponent(curSid) + (agentRole ? "&profile=" + encodeURIComponent(agentRole) : "")) : null;
+
+                return React.createElement(
                   "div",
                   { className: "bg-slate-950/80 border border-indigo-500/30 rounded-xl p-4 space-y-3.5 shadow-sm" },
+                  // Multi-Session Pill Tabs
+                  taskSessions.length > 1 &&
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1.5 pb-3 border-b border-slate-800/80" },
+                      React.createElement("div", { className: "text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between" },
+                        React.createElement("span", null, "AI Sessions (" + taskSessions.length + ")"),
+                        React.createElement("span", { className: "text-slate-500 font-normal lowercase" }, "click session to inspect")
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-1.5 overflow-x-auto pb-1 zfk-scrollbar" },
+                        taskSessions.map((s, sIdx) => {
+                          const sIsOngoing = s.status === "ongoing" || s.is_active;
+                          const sIcon = s.agent_icon || (s.agent === "zf-reviewer" ? "🔍" : s.agent === "zf-orchestrator" ? "🧭" : s.agent === "dispatcher" ? "⚡" : "🔨");
+                          const sLabel = s.agent_label || (s.agent === "zf-reviewer" ? "Reviewer" : s.agent === "zf-orchestrator" ? "Orchestrator" : s.agent === "dispatcher" ? "Dispatcher" : "Builder");
+                          return React.createElement(
+                            "button",
+                            {
+                              key: s.session_id || sIdx,
+                              type: "button",
+                              className: "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer shrink-0 " +
+                                (sIdx === activeIdx
+                                  ? "bg-indigo-600/30 border-indigo-400 text-white font-semibold shadow-xs"
+                                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80"),
+                              onClick: () => setSelectedSessionIdx(sIdx)
+                            },
+                            React.createElement("span", null, sIcon),
+                            React.createElement("span", null, sLabel + " #" + (sIdx + 1)),
+                            React.createElement("span", {
+                              className: "w-2 h-2 rounded-full " + (sIsOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-600")
+                            }),
+                            s.turn_count ? React.createElement("span", { className: "text-[10px] text-slate-400 font-mono" }, s.turn_count + "t") : null
+                          );
+                        })
+                      )
+                    ),
+
+                  // Session Header
                   React.createElement(
                     "div",
-                    { className: "flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800/80" },
+                    { className: "flex flex-wrap items-center justify-between gap-2 pb-2" },
                     React.createElement(
                       "div",
                       { className: "flex items-center gap-2 flex-wrap" },
                       React.createElement("span", {
-                        className: "w-2.5 h-2.5 rounded-full shrink-0 " + (selectedTask.session_progress && selectedTask.session_progress.is_alive ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
+                        className: "w-2.5 h-2.5 rounded-full shrink-0 " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
                       }),
                       React.createElement(
                         "span",
-                        { className: "font-semibold text-xs text-white" },
-                        selectedTask.session_progress && selectedTask.session_progress.is_alive
-                          ? "⚡ Active Agent Execution"
-                          : "⏹ Agent Session"
+                        { className: "font-semibold text-xs text-white flex items-center gap-1.5" },
+                        agentIcon,
+                        agentLabel,
+                        React.createElement("span", { className: "font-normal text-slate-400" }, isOngoing ? "• Ongoing Execution" : "• Finished Session")
                       ),
-                      selectedTask.session_progress && selectedTask.session_progress.worker_pid &&
-                        React.createElement("span", { className: "text-[0.625rem] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60" }, "PID: " + selectedTask.session_progress.worker_pid)
+                      prog && prog.worker_pid && isOngoing &&
+                        React.createElement("span", { className: "text-[0.625rem] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60" }, "PID: " + prog.worker_pid)
                     ),
                     React.createElement(
                       "div",
                       { className: "flex items-center gap-2" },
-                      selectedTask.session_progress && selectedTask.session_progress.session_id &&
-                        (() => {
-                          const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
-                            ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
-                            : "";
-                          const sId = selectedTask.session_progress.session_id;
-                          const prof = selectedTask.session_progress.assignee || selectedTask.assignee || "";
-                          const chatUrl = basePath + "/chat?resume=" + encodeURIComponent(sId) + (prof ? "&profile=" + encodeURIComponent(prof) : "");
-                          return React.createElement(
-                            "a",
-                            {
-                              href: chatUrl,
-                              className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer shadow-xs",
-                              target: "_blank",
-                              rel: "noreferrer",
-                              title: "Open session in Hermes Chat"
-                            },
-                            "Open Chat ↗"
-                          );
-                        })(),
+                      chatUrl &&
+                        React.createElement(
+                          "a",
+                          {
+                            href: chatUrl,
+                            className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer shadow-xs",
+                            target: "_blank",
+                            rel: "noreferrer",
+                            title: "Open session in Hermes Chat"
+                          },
+                          "Open Chat ↗"
+                        ),
                       React.createElement(
                         "button",
                         {
@@ -3451,42 +3933,47 @@
                   ),
 
                   // Session Stats Summary Grid
-                  selectedTask.session_progress &&
+                  React.createElement(
+                    "div",
+                    { className: "grid grid-cols-2 sm:grid-cols-4 gap-2.5" },
                     React.createElement(
                       "div",
-                      { className: "grid grid-cols-2 sm:grid-cols-4 gap-2.5" },
+                      { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                      React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Session ID"),
+                      React.createElement("code", { className: "text-xs font-medium text-indigo-300 font-mono truncate", title: curSid }, curSid || "Detecting...")
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                      React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Model"),
+                      React.createElement("span", { className: "text-xs font-medium text-slate-200 truncate" }, currentSession.model || (prog && prog.model) || "Default")
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                      React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Turns / Msgs"),
                       React.createElement(
-                        "div",
-                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Session ID"),
-                        React.createElement("code", { className: "text-xs font-medium text-indigo-300 font-mono truncate" }, selectedTask.session_progress.session_id || "Detecting...")
-                      ),
-                      React.createElement(
-                        "div",
-                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Model"),
-                        React.createElement("span", { className: "text-xs font-medium text-slate-200 truncate" }, selectedTask.session_progress.model || "Default")
-                      ),
-                      React.createElement(
-                        "div",
-                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Turns / Msgs"),
-                        React.createElement(
-                          "span",
-                          { className: "text-xs font-semibold text-emerald-400 truncate" },
-                          (selectedTask.session_progress.turn_count || 0) + " turns (" + (selectedTask.session_progress.message_count || 0) + " msgs)"
-                        )
-                      ),
-                      React.createElement(
-                        "div",
-                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Last Activity"),
-                        React.createElement("span", { className: "text-xs font-medium text-slate-200 truncate" }, timeAgo(selectedTask.session_progress.last_active) || "Just now")
+                        "span",
+                        { className: "text-xs font-semibold text-emerald-400 truncate" },
+                        (currentSession.turn_count || 0) + " turns (" + (currentSession.message_count || 0) + " msgs)"
                       )
                     ),
+                    React.createElement(
+                      "div",
+                      { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                      React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Duration / Time"),
+                      React.createElement(
+                        "span",
+                        { className: "text-xs font-medium text-slate-200 truncate" },
+                        currentSession.duration_seconds
+                          ? `${Math.floor(currentSession.duration_seconds / 60)}m ${currentSession.duration_seconds % 60}s`
+                          : timeAgo(currentSession.ended_at || currentSession.started_at || (prog && prog.last_active)) || "Just now"
+                      )
+                    )
+                  ),
 
                   // Recent Agent Execution Steps
-                  selectedTask.session_progress && selectedTask.session_progress.recent_steps && selectedTask.session_progress.recent_steps.length > 0 &&
+                  currentSession.recent_steps && currentSession.recent_steps.length > 0 &&
                     React.createElement(
                       "div",
                       { className: "mt-3 space-y-2" },
@@ -3498,7 +3985,7 @@
                       React.createElement(
                         "div",
                         { className: "space-y-1.5 max-h-48 overflow-y-auto zfk-scrollbar pr-1" },
-                        selectedTask.session_progress.recent_steps.map((st) =>
+                        currentSession.recent_steps.map((st) =>
                           React.createElement(
                             "div",
                             { key: st.id, className: "bg-slate-900/60 border border-slate-800/70 rounded-md p-2 text-xs space-y-1" },
@@ -3523,7 +4010,7 @@
                     ),
 
                   // Worker Log Tail (Collapsible)
-                  selectedTask.session_progress && selectedTask.session_progress.log_tail &&
+                  prog && prog.log_tail && isOngoing &&
                     React.createElement(
                       "details",
                       { className: "mt-3 text-xs" },
@@ -3535,10 +4022,11 @@
                       React.createElement(
                         "pre",
                         { className: "mt-2 p-3 bg-black/60 border border-slate-800 rounded-lg text-[0.6875rem] font-mono text-emerald-400/90 whitespace-pre-wrap max-h-56 overflow-y-auto zfk-scrollbar" },
-                        selectedTask.session_progress.log_tail
+                        prog.log_tail
                       )
                     )
-                ),
+                );
+              })(),
 
               // Dependencies List
               selectedTask.parents &&
@@ -4749,6 +5237,7 @@
           },
           toast.message
         )
+      )
     );
   }
 

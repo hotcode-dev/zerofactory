@@ -168,16 +168,16 @@ class TestZeroFactory(unittest.TestCase):
 
         # Move task via HTTP
         resp = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/move", json={
-            "status": "todo"
+            "status": "running"
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "todo")
+        self.assertEqual(resp.json()["status"], "running")
 
         # Get stats
         resp = client.get("/api/plugins/zerofactory/stats")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("columns", resp.json())
-        self.assertIn("todo", resp.json()["columns"])
+        self.assertIn("running", resp.json()["columns"])
 
     def test_07_builtin_cron(self):
         # 1. Test GET /cron
@@ -3806,6 +3806,7 @@ class TestZeroFactory(unittest.TestCase):
         from dispatcher import run_dispatch_cycle
 
         orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        import time
         orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
         os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
         os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
@@ -3825,22 +3826,21 @@ class TestZeroFactory(unittest.TestCase):
             conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 10, 1, 1)")
             # Set max_active_tasks limit to 2
             conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '2', 1)")
+            now = int(time.time())
             # Create 5 tasks in 'todo'
             for i in range(1, 6):
                 conn.execute(
-                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'unassigned', 'P2', ?, 1000, 1000)",
-                    (f"task-{i}", f"Task {i}", str(ws)),
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'unassigned', 'P2', ?, ?, ?)",
+                    (f"task-{i}", f"Task {i}", str(ws), now, now),
                 )
             conn.commit()
             conn.close()
 
-            # Cycle 1: with max_active_tasks = 2, only 2 tasks should be dispatched from todo to running
+            # Cycle 1: with max_active_tasks = 2, only 2 tasks should be promoted from todo to running
             res = run_dispatch_cycle(db_file)
             self.assertTrue(res["ok"])
             conn = sqlite3.connect(str(db_file))
             todo_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
-            # Since board max_concurrent_running is 10 and worker spawn is skipped,
-            # the 2 dispatched tasks move directly to running
             active_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
             conn.close()
             self.assertEqual(active_count, 2, f"expected exactly 2 active tasks promoted, got {active_count}")

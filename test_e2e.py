@@ -221,8 +221,8 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         self.assertIn("CLI Feature Task", out_list)
 
         # 4. Move task
-        out_move = self._run_cli(["move", task_id, "running", "--actor", "zf-orchestrator"])
-        self.assertIn(f"Moved task {task_id} to running", out_move)
+        out_move = self._run_cli(["move", task_id, "todo", "--actor", "zf-orchestrator"])
+        self.assertIn(f"Moved task {task_id} to todo", out_move)
 
         # 5. Block task with reason
         out_block = self._run_cli(["block", task_id, "--reason", "Waiting on Database Migration", "--actor", "user"])
