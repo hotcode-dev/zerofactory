@@ -33,6 +33,61 @@ app.include_router(router, prefix="/api/plugins/zerofactory")
 client = TestClient(app)
 
 
+def _make_fake_state_db(td: str, profile: str, session_rows) -> Path:
+    """Create a fake per-profile ``state.db`` (sessions + messages tables) so
+    ``resolve_profile_state_db``-driven lookups in the dashboard return the
+    given session rows without touching a real Hermes state DB.
+
+    ``session_rows`` is a list of tuples:
+        (id, model, started_at, ended_at, last_activity_at,
+         last_activity_description, message_count, tool_call_count,
+         cwd, title, profile_name)
+    """
+    import sqlite3
+
+    prof_dir = Path(td) / ".hermes" / "profiles" / profile
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    db_path = prof_dir / "state.db"
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE sessions (
+            id TEXT PRIMARY KEY,
+            model TEXT,
+            started_at REAL,
+            ended_at REAL,
+            last_activity_at REAL,
+            last_activity_description TEXT,
+            message_count INTEGER,
+            tool_call_count INTEGER,
+            cwd TEXT,
+            title TEXT,
+            profile_name TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY,
+            session_id TEXT,
+            role TEXT,
+            tool_name TEXT,
+            tool_calls TEXT,
+            content TEXT,
+            reasoning_content TEXT,
+            timestamp REAL
+        )
+    """)
+    cur.executemany(
+        "INSERT INTO sessions (id, model, started_at, ended_at, last_activity_at,"
+        " last_activity_description, message_count, tool_call_count, cwd, title, profile_name)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        session_rows,
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
 class TestZeroFactory(unittest.TestCase):
 
     def setUp(self):
@@ -6228,6 +6283,116 @@ class TestSharedProfilePathResolution(unittest.TestCase):
 
         progress = resolve_task_session_progress(task, backfill=False)
         self.assertEqual(progress["session_id"], "new_sess_now")
+
+    # --- Regression: last_activity_at must drive stuck/idle detection --------
+
+    def _session_progress_fixture(self, last_activity_at, worker_pid=None):
+        """Build a running task + a fake state.db session row to isolate the
+        inactivity (idle) computation in ``_compute_stuck_status``.
+
+        The *session* row started 2h ago (``now - 7200``) with a configurable
+        ``last_activity_at`` — this is the value the (buggy) refactor used as
+        ``last_active`` (session start), which made any >15min session look
+        stuck. The *task* metadata started_at is kept recent (``now - 60``) so
+        the separate "exceeded running timeout" branch (default 3600s) does not
+        fire and the test isolates the inactivity branch the bug actually broke.
+
+        Returns ``(task, now, session_started, sid, last_activity_at)``.
+        """
+        import time
+        if worker_pid is None:
+            worker_pid = os.getpid()
+        now = int(time.time())
+        session_started = now - 7200  # session row: started 2h ago
+        task = {
+            "id": "zf-stuck-regression",
+            "title": "Stuck Regression Task",
+            "status": "running",
+            "assignee": "zf-builder",
+            "metadata": {
+                "worker_pid": worker_pid,
+                "started_at": now - 60,  # task-level start: recent (< running timeout)
+                "session_id": "sess-stuck-reg",
+            },
+        }
+        return task, now, session_started, "sess-stuck-reg", last_activity_at
+
+    def _patch_state_db(self, db_path):
+        """Patch ``resolve_profile_state_db`` in the dashboard to return the
+        fake state.db for every profile, and the worker_pid liveness so a
+        dead-but-existing PID still looks alive (os.kill(pid,0) on our own
+        process succeeds)."""
+        from unittest import mock
+        import dashboard.plugin_api as D
+        return mock.patch.object(D, "resolve_profile_state_db", return_value=db_path)
+
+    def test_stuck_detection_recent_activity_not_stuck(self):
+        """A session running for 2h whose last activity was 60s ago must NOT
+        be classified stuck, and idle_seconds must reflect real activity."""
+        import time
+        from dashboard.plugin_api import resolve_task_session_progress
+
+        now = int(time.time())
+        task, now, session_started, sid, last_active = self._session_progress_fixture(now - 60)
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [(sid, "gpt-4", session_started, None, last_active, "active", 3, 2, "", task["title"], "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                progress = resolve_task_session_progress(task, backfill=False)
+
+        self.assertEqual(progress["session_id"], sid)
+        self.assertFalse(progress["is_stuck"], f"unexpectedly stuck: {progress.get('stuck_reason')}")
+        # idle_seconds must be derived from last_activity_at (60s), not started (7200s)
+        self.assertLess(progress["idle_seconds"], 120, f"idle={progress['idle_seconds']}s")
+        # last_active reported to UI must be the real activity, not session start
+        self.assertEqual(progress["last_active"], last_active)
+        # The session dicts under sessions[] must carry last_activity_at
+        for s in progress["sessions"]:
+            self.assertIn("last_activity_at", s, "session dict missing last_activity_at")
+        active = next(s for s in progress["sessions"] if s["session_id"] == sid)
+        self.assertEqual(active["last_activity_at"], last_active)
+
+    def test_stuck_detection_stale_activity_is_stuck(self):
+        """Same session but last activity 1h ago (older than the 900s
+        inactivity timeout) must be classified stuck with the inactive reason."""
+        import time
+        from dashboard.plugin_api import resolve_task_session_progress
+
+        now = int(time.time())
+        task, now, session_started, sid, last_active = self._session_progress_fixture(now - 3600)
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [(sid, "gpt-4", session_started, None, last_active, "active", 3, 2, "", task["title"], "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                progress = resolve_task_session_progress(task, backfill=False)
+
+        self.assertEqual(progress["session_id"], sid)
+        self.assertTrue(progress["is_stuck"], f"expected stuck (stale activity), got {progress.get('stuck_reason')}")
+        self.assertIn("inactive", (progress.get("stuck_reason") or "").lower())
+
+    def test_list_all_sessions_includes_last_activity_at(self):
+        """``list_all_sessions`` must expose last_activity_at on each session."""
+        import time
+        from dashboard.plugin_api import list_all_sessions
+
+        now = int(time.time())
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [("sess-list-1", "gpt-4", now - 300, None, now - 10, "active", 1, 1, "", "List Task", "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                res = list_all_sessions()
+
+        self.assertTrue(res["ok"])
+        self.assertTrue(res["sessions"], "no sessions returned")
+        for s in res["sessions"]:
+            self.assertIn("last_activity_at", s, "list_all_sessions session missing last_activity_at")
+            self.assertEqual(s["last_activity_at"], now - 10)
 
     def test_88_settings_langfuse_observability(self):
         """Verify Langfuse settings lifecycle, multi-profile sync, and test connection endpoint."""
