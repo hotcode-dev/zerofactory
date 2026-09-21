@@ -6336,6 +6336,72 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         self.assertEqual(unreachable_res.status_code, 200)
         self.assertFalse(unreachable_res.json()["ok"])
 
+        # 7. Regression: disabling Langfuse must scrub ALL HERMES_LANGFUSE_* keys
+        #    from every target .env file and drop `langfuse` from every
+        #    config.yaml plugins.enabled list (stale-secret hygiene).
+        with tempfile.TemporaryDirectory() as tmp_hermes:
+            import profile_manager as _pm
+            from unittest.mock import patch
+            hermes_fake = Path(tmp_hermes)
+            profiles_dir = hermes_fake / "profiles" / "zf-builder"
+            profiles_dir.mkdir(parents=True)
+            # Pre-existing unrelated keys + comments that must survive scrubbing
+            for d in (hermes_fake, profiles_dir):
+                (d / ".env").write_text(
+                    "# keep me\nOPENROUTER_API_KEY=«redacted:existing-…»\n",
+                    encoding="utf-8",
+                )
+                (d / "config.yaml").write_text(
+                    yaml.dump({"plugins": {"enabled": ["zerofactory"]}}, sort_keys=False),
+                    encoding="utf-8",
+                )
+
+            enable_settings = {
+                "langfuse_enabled": True,
+                "langfuse_base_url": "https://test.langfuse.com",
+                "langfuse_public_key": "«redacted:pk-lf-…»",
+                "langfuse_secret_key": "«redacted:sk-…»",
+                "langfuse_capture_mode": "metadata",
+                "langfuse_env": "test-env",
+            }
+            with patch.object(_pm, "get_hermes_home", return_value=hermes_fake):
+                result = _pm.sync_langfuse_profiles(enable_settings)
+                self.assertTrue(result["enabled"])
+                # Enable: keys present in both .env files, plugin enabled
+                for d in (hermes_fake, profiles_dir):
+                    env_text = (d / ".env").read_text(encoding="utf-8")
+                    self.assertIn("HERMES_LANGFUSE_SECRET_KEY=«redacted:sk-…»", env_text)
+                    self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=«redacted:pk-lf-…»", env_text)
+                    self.assertIn("HERMES_LANGFUSE_BASE_URL=https://test.langfuse.com", env_text)
+                    self.assertIn("HERMES_LANGFUSE_CAPTURE=metadata", env_text)
+                    self.assertIn("HERMES_LANGFUSE_ENV=test-env", env_text)
+                    cfg_loaded = yaml.safe_load((d / "config.yaml").read_text(encoding="utf-8"))
+                    self.assertIn("langfuse", cfg_loaded["plugins"]["enabled"])
+
+                # Disable: every HERMES_LANGFUSE_* key GONE, plugin removed
+                disable_settings = dict(enable_settings, langfuse_enabled=False)
+                result = _pm.sync_langfuse_profiles(disable_settings)
+                self.assertFalse(result["enabled"])
+                for d in (hermes_fake, profiles_dir):
+                    env_text = (d / ".env").read_text(encoding="utf-8")
+                    for k in ("HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_PUBLIC_KEY",
+                              "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE",
+                              "HERMES_LANGFUSE_ENV"):
+                        self.assertNotIn(k, env_text,
+                                         f"stale {k} left in {d / '.env'} after disable")
+                    # Unrelated keys and comments preserved
+                    self.assertIn("OPENROUTER_API_KEY=«redacted:existing-…»", env_text)
+                    self.assertIn("# keep me", env_text)
+                    cfg_loaded = yaml.safe_load((d / "config.yaml").read_text(encoding="utf-8"))
+                    self.assertNotIn("langfuse", cfg_loaded["plugins"]["enabled"])
+                    self.assertIn("zerofactory", cfg_loaded["plugins"]["enabled"])
+
+                # Idempotency: disabling again with no .env keys present is a no-op
+                _pm.sync_langfuse_profiles(disable_settings)
+                for d in (hermes_fake, profiles_dir):
+                    self.assertNotIn("HERMES_LANGFUSE_SECRET_KEY",
+                                     (d / ".env").read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

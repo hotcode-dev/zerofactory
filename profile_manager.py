@@ -26,6 +26,16 @@ _log = logging.getLogger("zerofactory.profiles")
 
 ZF_PROFILES = ("zf-orchestrator", "zf-builder", "zf-reviewer")
 
+# All HERMES_LANGFUSE_* keys written to .env files by sync_langfuse_profiles().
+# Used to scrub stale credentials from every profile .env when Langfuse is disabled.
+LANGFUSE_ENV_KEYS: Set[str] = {
+    "HERMES_LANGFUSE_PUBLIC_KEY",
+    "HERMES_LANGFUSE_SECRET_KEY",
+    "HERMES_LANGFUSE_BASE_URL",
+    "HERMES_LANGFUSE_CAPTURE",
+    "HERMES_LANGFUSE_ENV",
+}
+
 
 def get_hermes_root() -> Path:
     """Return the base ~/.hermes directory, stripping any active profile path."""
@@ -448,6 +458,12 @@ def sync_langfuse_profiles(settings: Optional[Dict[str, Any]] = None) -> Dict[st
     """Synchronize Langfuse credentials and plugin enablement across all Hermes profiles.
 
     Targets root (~/.hermes/) and all agent profile directories (~/.hermes/profiles/*).
+
+    When disabled, every HERMES_LANGFUSE_* key is removed from each target .env file
+    (stale secrets are scrubbed) and ``langfuse`` is removed from each config.yaml
+    ``plugins.enabled`` list. Note: explicitly clearing an individual key while the
+    feature stays enabled (e.g. ``langfuse_secret_key: ""``) writes an empty value —
+    keys are only removed on full disable.
     """
     if settings is None:
         try:
@@ -499,6 +515,9 @@ def sync_langfuse_profiles(settings: Optional[Dict[str, Any]] = None) -> Dict[st
             synced_targets.append(str(target))
     else:
         for target in target_dirs:
+            # Scrub stale Langfuse credentials (incl. secret key) from every .env
+            # so disabling the feature leaves no plaintext secrets behind.
+            update_env_file(target / ".env", {}, remove_keys=LANGFUSE_ENV_KEYS)
             update_config_yaml_plugins(target / "config.yaml", disable_plugin="langfuse")
             synced_targets.append(str(target))
 

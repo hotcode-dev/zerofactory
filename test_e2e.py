@@ -1035,6 +1035,34 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
         self.assertFalse(test_res.json()["ok"])
         self.assertIn("Invalid key format", test_res.json()["error"])
 
+        # 3. Regression (hermetic, temp home): disabling must scrub every
+        #    HERMES_LANGFUSE_* key from .env files — no stale secrets left.
+        with tempfile.TemporaryDirectory() as tmp_hermes:
+            hermes_fake = Path(tmp_hermes)
+            profiles_dir = hermes_fake / "profiles" / "zf-builder"
+            profiles_dir.mkdir(parents=True)
+            enable_settings = {
+                "langfuse_enabled": True,
+                "langfuse_base_url": "https://cloud.langfuse.com",
+                "langfuse_public_key": "«redacted:pk-lf-…»",
+                "langfuse_secret_key": "«redacted:sk-…»",
+                "langfuse_capture_mode": "metadata",
+                "langfuse_env": "e2e-test",
+            }
+            with patch.object(profile_manager, "get_hermes_home", return_value=hermes_fake):
+                profile_manager.sync_langfuse_profiles(enable_settings)
+                self.assertIn(
+                    "HERMES_LANGFUSE_SECRET_KEY=«redacted:sk-…»",
+                    (hermes_fake / ".env").read_text(encoding="utf-8"),
+                )
+                profile_manager.sync_langfuse_profiles(dict(enable_settings, langfuse_enabled=False))
+                for d in (hermes_fake, profiles_dir):
+                    env_text = (d / ".env").read_text(encoding="utf-8")
+                    for k in ("HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_PUBLIC_KEY",
+                              "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE",
+                              "HERMES_LANGFUSE_ENV"):
+                        self.assertNotIn(k, env_text, f"stale {k} left in {d / '.env'}")
+
 
 if __name__ == "__main__":
     unittest.main()
