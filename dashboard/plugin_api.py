@@ -564,7 +564,7 @@ def log_activity(conn: sqlite3.Connection, task_id: str, actor: str, action: str
     )
 
 AUTO_MEMORY_PREFIX_REGEX = re.compile(
-    r"(?:^|\n)(?:[\s\-\*#>]*)(?:\*\*)?(GOTCHA|RULE|CONVENTION|GUIDELINE|DECISION|ARCH|REJECTED_PATH|REJECTED PATH|REJECTED)(?:\*\*)?:\s*([^\n]+)",
+    r"(?:^|\n|[\s\.\;\,\:\-\(\)\[\]])(?:\*{1,2})?(GOTCHA|RULE|CONVENTION|GUIDELINE|DECISION|ARCH|REJECTED_PATH|REJECTED PATH|REJECTED|LESSON|LEARNING|TIP)(?:\*{1,2})?:\s*(?:\*{1,2})?([^\n\r]+)",
     re.IGNORECASE
 )
 
@@ -598,6 +598,9 @@ def extract_and_record_memory(
     category_map = {
         "gotcha": "gotcha",
         "rule": "gotcha",
+        "lesson": "gotcha",
+        "learning": "gotcha",
+        "tip": "convention",
         "convention": "convention",
         "guideline": "convention",
         "decision": "decision",
@@ -2117,8 +2120,9 @@ def add_comment(task_id: str, req: CommentCreate):
     now = int(time.time())
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM tasks WHERE id = ?", (task_id,))
-        if not cursor.fetchone():
+        cursor.execute("SELECT id, board_slug FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
         body_str = req.body.strip()
@@ -2139,6 +2143,14 @@ def add_comment(task_id: str, req: CommentCreate):
         first_line = body_str.split("\n")[0][:60]
         details_str = f"Added comment #{comment_id}: {first_line}" if first_line else f"Added comment #{comment_id}"
         log_activity(conn, task_id, author_val, "comment", details_str)
+
+        b_slug = task_row["board_slug"] if "board_slug" in task_row.keys() else ""
+        if b_slug:
+            try:
+                extract_and_record_memory(conn, board_slug=b_slug, text=body_str, task_id=task_id, author=author_val)
+            except Exception as _mem_err:
+                _log.debug("Auto-record memory from comment failed: %s", _mem_err)
+
         conn.commit()
 
     return {"ok": True, "id": comment_id}

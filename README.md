@@ -210,6 +210,16 @@ hermes zerofactory memory add --board <slug> "<content>" --category convention -
 hermes zerofactory memory delete <memory_id>
 ```
 
+### Automated Memory Recording & Disable Controls
+Zero Factory automatically captures repository insights during developer and agent workflows:
+- **Automated Extraction**: When `zf-reviewer` leaves PR comments, a task is moved to `blocked` with a review reason, or comments are posted to a task, lines prefixed with:
+  `GOTCHA:`, `CONVENTION:`, `RULE:`, `DECISION:`, `ARCH:`, `REJECTED_PATH:`, `LESSON:`, `LEARNING:`, or `TIP:`
+  are automatically extracted, tagged (`auto-recorded`, `from-<actor>`), deduplicated, and persisted to `board_memories`.
+- **Noise Protection**: Arbitrary comments and routine approvals are deliberately excluded to prevent prompt pollution and keep repository context high-signal.
+- **Multi-Level Controls to Disable**:
+  1. **Global Setting**: Settings Modal toggle (`Auto-record repository memory`) or `PATCH /api/plugins/zerofactory/settings`.
+  2. **Per-Board Override**: Board Edit modal checkbox, or the 1-click `⚡ Auto-Record: ON/OFF` button in the `Agents` -> `Repository Memory` sub-tab header, or `PATCH /api/plugins/zerofactory/boards/<slug>`.
+
 ---
 
 ## Built-in Automation & Token-Efficient Cron Architecture

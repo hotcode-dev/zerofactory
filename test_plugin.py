@@ -7116,6 +7116,39 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         self.assertEqual(mem["author"], "zf-reviewer")
         self.assertEqual(mem["task_id"], t_id)
 
+    def test_62_comment_auto_record_memory(self):
+        """Test auto-recording memory when adding comment to a task."""
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-comment.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        t_res = client.post(
+            "/api/plugins/zerofactory/tasks",
+            json={"title": "Test comment memory", "board_slug": b_slug, "status": "running"}
+        ).json()
+        t_id = t_res["id"]
+
+        # Add comment with CONVENTION
+        cmt_res = client.post(
+            f"/api/plugins/zerofactory/tasks/{t_id}/comments",
+            json={
+                "body": "PR review summary:\n- TIP: Prefer pytest fixtures over setUp methods for cleaner tests",
+                "author": "zf-reviewer"
+            }
+        ).json()
+        self.assertTrue(cmt_res["ok"])
+
+        # Verify memory created
+        mem_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(mem_res["total"], 1)
+        mem = mem_res["memories"][0]
+        self.assertEqual(mem["category"], "convention")
+        self.assertIn("Prefer pytest fixtures over setUp methods for cleaner tests", mem["content"])
+        self.assertEqual(mem["author"], "zf-reviewer")
+        self.assertEqual(mem["task_id"], t_id)
+
 
 if __name__ == "__main__":
     unittest.main()
