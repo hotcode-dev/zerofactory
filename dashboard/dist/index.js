@@ -3188,7 +3188,7 @@
                         type: "button",
                         className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer shrink-0 " +
                           (isAutoRecordOn
-                            ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 shadow-xs"
+                            ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:text-white hover:bg-slate-800/80 shadow-xs"
                             : "bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800"),
                         title: "Click to toggle automatic memory recording from reviewer feedback for " + currentBoard.slug,
                         onClick: async () => {
@@ -3216,7 +3216,7 @@
                       {
                         type: "text",
                         placeholder: "Search memories, tags, author...",
-                        className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-44 md:w-52",
+                        className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-44 md:w-56",
                         value: memorySearchQuery,
                         onChange: (e) => setMemorySearchQuery(e.target.value)
                       }
@@ -3300,7 +3300,7 @@
                                 {
                                   type: "button",
                                   title: "Delete Memory",
-                                  className: "text-slate-500 hover:text-rose-400 p-1 rounded-md hover:bg-rose-500/10 transition-colors text-xs cursor-pointer",
+                                  className: "text-slate-500 hover:text-rose-300 p-1 rounded-md hover:bg-rose-500/20 transition-colors text-xs cursor-pointer",
                                   onClick: () => handleDeleteMemory(m.id)
                                 },
                                 "🗑️"
@@ -4978,7 +4978,7 @@
                   {
                     type: "submit",
                     disabled: submittingMemory,
-                    className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-60"
+                    className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
                   },
                   submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"),
                   "Save Memory"
