@@ -171,11 +171,44 @@ Zero Factory implements a **Session-per-Handoff (Stateless Workers, Stateful Sub
 | **Fault Tolerance & Poisoned Loops** | **High** (Terminated workers discard bad hallucination loops) | **Lower** (Resumed session retains prior confusion or failed debugging traces) |
 | **Reviewer Diff Clarity** | **High** (Reviewer receives clean, pre-digested current delta) | **Lower** (Reviewer history mixes original diff with updated diffs) |
 | **Role & Profile Isolation** | **Strict** (Builder & Reviewer maintain isolated profiles, tools, and DBs) | **Strict** (Maintains role separation, but with accumulated history) |
-| **Working Memory Continuity** | ❌ None (re-reads code and review comments from Git/DB) | ✅ Full (remembers reasoning, discarded ideas, test nuances) |
+| **Working Memory Continuity** | Persisted via **Native `kanban.db` Memory** (conventions, gotchas, decisions pre-digested into prompt) | ✅ Full conversation memory (remembers reasoning, discarded ideas, test nuances) |
 
 ### Stateless Workers, Stateful Substrate
 
 Zero Factory intentionally externalizes durable state into **Git worktrees**, **GitHub PR review comments**, and **Kanban SQLite storage** instead of accumulating conversation memory. This guarantees deterministic handoffs, avoids token exhaustion, and eliminates "Lost in the Middle" attention degradation across iterative multi-round code reviews.
+
+---
+
+## Native `kanban.db` Memory & Agents Dashboard
+
+Zero Factory features **Native `kanban.db` Memory** — a durable, local SQLite repository knowledge substrate that allows specialist agents and developers to persist conventions, gotchas, architecture decisions, and rejected paths scoped per board.
+
+### Why Native `kanban.db` Memory?
+1. **Zero External Infrastructure**: Stored directly in `kanban.db` via SQLite table `board_memories` with cascading cleanup on board deletion.
+2. **Deterministic Pre-Digest**: Automatically pre-digested by `dispatcher.py` into spawned worker prompts (`zf-builder`, `zf-reviewer`, `zf-orchestrator`), ensuring agents never repeat past mistakes or violate repository conventions.
+3. **Structured Taxonomy**:
+   - `convention`: Coding rules, file formats, test execution expectations.
+   - `gotcha`: Concurrency pitfalls, fragile mocks, subtle edge cases.
+   - `decision`: Architectural and design choices that govern future work.
+   - `rejected_path`: Approaches that were tried and discarded, preventing wasteful re-attempts.
+   - `general`: General repository knowledge.
+
+### Integrated "Agents" Dashboard
+The dashboard navigation tab has evolved from `AI Sessions` to **`Agents`**:
+- **3 Specialist Agent Cards**: Real-time status (`🟢 Active` vs `⚪ Idle`), live execution activity, active session model & duration, and direct links to active Kanban tasks.
+- **Sub-Tab Switcher**: Seamlessly switch between `💬 AI Sessions` (full execution history & chat resume links) and `🧠 Repository Memory` (knowledge cards with search, category filtering, and modal CRUD).
+
+### Memory CLI Commands
+```bash
+# List repository memories for a board
+hermes zerofactory memory list --board <slug> [--category <cat>] [-q <query>]
+
+# Record a new repository memory
+hermes zerofactory memory add --board <slug> "<content>" --category convention --tags "test,lint"
+
+# Delete a memory
+hermes zerofactory memory delete <memory_id>
+```
 
 ---
 

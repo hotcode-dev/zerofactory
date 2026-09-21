@@ -6567,6 +6567,370 @@ class TestSharedProfilePathResolution(unittest.TestCase):
                     self.assertNotIn("HERMES_LANGFUSE_SECRET_KEY",
                                      (d / ".env").read_text(encoding="utf-8"))
 
+    def test_55_native_board_memories_crud_and_cascade(self):
+        """Test Native kanban.db Memory CRUD, category filtering, search, and board cascade deletion."""
+        # 1. Ensure board exists
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/test-mem.git", description="Memory test board"))
+        b_slug = b_res["slug"]
+
+        # 2. Create memories
+        c_res = client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": "Always run linters before creating PRs",
+            "tags": ["lint", "python", "flake8"],
+            "author": "zf-builder"
+        })
+        self.assertEqual(c_res.status_code, 200)
+        c_data = c_res.json()
+        self.assertTrue(c_data["ok"])
+        mem1 = c_data["memory"]
+        self.assertEqual(mem1["category"], "convention")
+        self.assertIn("Always run linters", mem1["content"])
+        self.assertIn("flake8", mem1["tags"])
+        self.assertEqual(mem1["author"], "zf-builder")
+        mem1_id = mem1["id"]
+
+        # Create second memory: gotcha
+        c_res2 = client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "gotcha",
+            "content": "SQLite WAL mode requires busy_timeout under high concurrency",
+            "tags": ["sqlite", "concurrency"],
+            "author": "zf-reviewer"
+        })
+        self.assertEqual(c_res2.status_code, 200)
+        mem2_id = c_res2.json()["memory"]["id"]
+
+        # 3. List memories
+        list_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_res.status_code, 200)
+        list_data = list_res.json()
+        self.assertTrue(list_data["ok"])
+        self.assertEqual(list_data["total"], 2)
+        self.assertEqual(len(list_data["memories"]), 2)
+
+        # 4. Filter by category
+        cat_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?category=gotcha")
+        self.assertEqual(cat_res.status_code, 200)
+        cat_data = cat_res.json()
+        self.assertEqual(cat_data["total"], 1)
+        self.assertEqual(cat_data["memories"][0]["id"], mem2_id)
+
+        # 5. Search by query
+        search_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?q=busy_timeout")
+        self.assertEqual(search_res.status_code, 200)
+        search_data = search_res.json()
+        self.assertEqual(search_data["total"], 1)
+        self.assertEqual(search_data["memories"][0]["id"], mem2_id)
+
+        search_tag_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?q=flake8")
+        self.assertEqual(search_tag_res.status_code, 200)
+        self.assertEqual(search_tag_res.json()["total"], 1)
+
+        # 6. Update memory
+        up_res = client.put(f"/api/plugins/zerofactory/memories/{mem1_id}", json={
+            "content": "Always run linters and pytest before creating PRs",
+            "tags": ["lint", "python", "pytest"]
+        })
+        self.assertEqual(up_res.status_code, 200)
+        up_data = up_res.json()
+        self.assertTrue(up_data["ok"])
+        self.assertEqual(up_data["memory"]["content"], "Always run linters and pytest before creating PRs")
+        self.assertIn("pytest", up_data["memory"]["tags"])
+
+        # 7. Delete single memory
+        del_res = client.delete(f"/api/plugins/zerofactory/memories/{mem1_id}")
+        self.assertEqual(del_res.status_code, 200)
+        self.assertTrue(del_res.json()["ok"])
+
+        # Verify it's gone
+        list_after = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_after.json()["total"], 1)
+
+        # 8. Test 404s
+        bad_board = client.get("/api/plugins/zerofactory/boards/non-existent-board/memories")
+        self.assertEqual(bad_board.status_code, 404)
+
+        bad_del = client.delete("/api/plugins/zerofactory/memories/non-existent-mem")
+        self.assertEqual(bad_del.status_code, 404)
+
+        # 9. Test cascade delete on board deletion
+        del_board_res = client.delete(f"/api/plugins/zerofactory/boards/{b_slug}")
+        self.assertEqual(del_board_res.status_code, 200)
+
+        # Verify board_memories table has no rows for b_slug
+        with get_db_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM board_memories WHERE board_slug = ?", (b_slug,))
+            self.assertEqual(cursor.fetchone()[0], 0)
+
+    def test_56_agents_status_endpoint(self):
+        """Test GET /agents endpoint returning status for the 3 specialist agents."""
+        res = client.get("/api/plugins/zerofactory/agents")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        agents = data["agents"]
+        self.assertEqual(len(agents), 3)
+        agent_names = [a["name"] for a in agents]
+        self.assertIn("zf-orchestrator", agent_names)
+        self.assertIn("zf-builder", agent_names)
+        self.assertIn("zf-reviewer", agent_names)
+
+        for a in agents:
+            self.assertIn(a["status"], ("active", "idle"))
+            self.assertIn("label", a)
+            self.assertIn("icon", a)
+            self.assertIn("description", a)
+            self.assertIn("stats", a)
+
+    def test_57_dispatcher_memories_digest(self):
+        """Test digest_board_memories_context and worker prompt injection."""
+        from dispatcher import digest_board_memories_context
+
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/digest-board.git"))
+        b_slug = b_res["slug"]
+
+        # When no memories exist, returns empty string
+        empty_digest = digest_board_memories_context(b_slug)
+        self.assertEqual(empty_digest, "")
+
+        # Add memories
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": "Follow PEP 8 naming conventions",
+            "tags": ["style", "pep8"]
+        })
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "gotcha",
+            "content": "Beware of circular imports between plugin_api and dispatcher",
+            "tags": ["imports", "architecture"]
+        })
+
+        digest = digest_board_memories_context(b_slug)
+        self.assertIn("REPOSITORY KNOWLEDGE & CONVENTIONS", digest)
+        self.assertIn("[convention] Follow PEP 8 naming conventions", digest)
+        self.assertIn("[gotcha] Beware of circular imports", digest)
+        self.assertIn("tags: style, pep8", digest)
+
+    def test_58_cli_memory_commands(self):
+        """Test CLI memory subcommands: add, list, delete."""
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+        from __init__ import register
+
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/cli-mem-board.git"))
+        b_slug = b_res["slug"]
+
+        class DummyCtx:
+            def __init__(self):
+                self.commands = {}
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.commands[name] = (setup_fn, handler_fn)
+
+        ctx = DummyCtx()
+        register(ctx)
+        self.assertIn("zerofactory", ctx.commands)
+        setup_fn, handler_fn = ctx.commands["zerofactory"]
+
+        parser = argparse.ArgumentParser()
+        setup_fn(parser)
+
+        # 1. Add memory via CLI
+        args_add = parser.parse_args([
+            "memory", "add",
+            "--board", b_slug,
+            "Always mock external network requests in tests",
+            "--category", "convention",
+            "--tags", "test, network"
+        ])
+        f = io.StringIO()
+        with redirect_stdout(f):
+            handler_fn(args_add)
+        out_add = f.getvalue()
+        self.assertIn("Added memory", out_add)
+        self.assertIn("[convention]", out_add)
+
+        # 2. List memory via CLI
+        args_list = parser.parse_args([
+            "memory", "list",
+            "--board", b_slug
+        ])
+        f_list = io.StringIO()
+        with redirect_stdout(f_list):
+            handler_fn(args_list)
+        out_list = f_list.getvalue()
+        self.assertIn("Always mock external network", out_list)
+        self.assertIn("convention", out_list)
+
+        # 3. Delete memory via CLI
+        list_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        mem_id = list_res.json()["memories"][0]["id"]
+
+        args_del = parser.parse_args([
+            "memory", "delete",
+            mem_id
+        ])
+        f_del = io.StringIO()
+        with redirect_stdout(f_del):
+            handler_fn(args_del)
+        out_del = f_del.getvalue()
+        self.assertIn("Deleted memory", out_del)
+
+        # Verify deleted
+        list_res_after = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_res_after.json()["total"], 0)
+
+    def test_59_auto_record_memory_settings_and_board_override(self):
+        """Test global auto_record_memory setting and per-board override flag."""
+        from dashboard.plugin_api import SettingsUpdate
+
+        # 1. Global setting defaults to True
+        s_res = client.get("/api/plugins/zerofactory/settings").json()
+        self.assertTrue(s_res["settings"]["auto_record_memory"])
+
+        # 2. Toggle global setting to False
+        patch_res = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"auto_record_memory": False}
+        ).json()
+        self.assertFalse(patch_res["settings"]["auto_record_memory"])
+
+        # Re-enable global setting
+        client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"auto_record_memory": True}
+        )
+        s_res_after = client.get("/api/plugins/zerofactory/settings").json()
+        self.assertTrue(s_res_after["settings"]["auto_record_memory"])
+
+        # 3. Create board with default auto_record_memory (True)
+        b1 = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-b1.git"}
+        ).json()
+        b1_slug = b1["slug"]
+
+        boards_list = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b1_data = next(b for b in boards_list if b["slug"] == b1_slug)
+        self.assertTrue(b1_data["auto_record_memory"])
+
+        # 4. Create board with auto_record_memory disabled (False)
+        b2 = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-b2.git", "auto_record_memory": False}
+        ).json()
+        b2_slug = b2["slug"]
+
+        boards_list2 = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b2_data = next(b for b in boards_list2 if b["slug"] == b2_slug)
+        self.assertFalse(b2_data["auto_record_memory"])
+
+        # 5. Toggle board auto_record_memory via PATCH
+        client.patch(
+            f"/api/plugins/zerofactory/boards/{b2_slug}",
+            json={"auto_record_memory": True}
+        )
+        boards_list3 = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b2_data_after = next(b for b in boards_list3 if b["slug"] == b2_slug)
+        self.assertTrue(b2_data_after["auto_record_memory"])
+
+    def test_60_auto_record_memory_extraction(self):
+        """Test extract_and_record_memory extraction, deduplication, and suppression when disabled."""
+        from dashboard.plugin_api import extract_and_record_memory, get_db_conn
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-extract.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        text_feedback = (
+            "Code review feedback:\n"
+            "- **GOTCHA:** Always run db migrations before seeding test data\n"
+            "- **CONVENTION:** PascalCase should be used for React component files\n"
+            "- Some non-rule review comment without a tag\n"
+            "- REJECTED_PATH: Avoid using global mutable singletons for configuration\n"
+            "- DECISION: Standardized on pytest-mock for test mocks"
+        )
+
+        with get_db_conn() as conn:
+            # 1. Extraction with auto_record_memory enabled
+            recorded = extract_and_record_memory(conn, board_slug=b_slug, text=text_feedback, author="zf-reviewer")
+            conn.commit()
+
+            self.assertEqual(len(recorded), 4)
+            categories = [r["category"] for r in recorded]
+            self.assertIn("gotcha", categories)
+            self.assertIn("convention", categories)
+            self.assertIn("rejected_path", categories)
+            self.assertIn("decision", categories)
+
+            # 2. Deduplication: run exact same extraction again
+            recorded_dupes = extract_and_record_memory(conn, board_slug=b_slug, text=text_feedback, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_dupes), 0)
+
+            # 3. Suppression when board auto_record_memory is disabled
+            client.patch(f"/api/plugins/zerofactory/boards/{b_slug}", json={"auto_record_memory": False})
+            conn.commit()
+
+            new_feedback = "GOTCHA: Never run git push --force on shared branch"
+            recorded_suppressed = extract_and_record_memory(conn, board_slug=b_slug, text=new_feedback, author="zf-reviewer")
+            self.assertEqual(len(recorded_suppressed), 0)
+
+            # Re-enable board
+            client.patch(f"/api/plugins/zerofactory/boards/{b_slug}", json={"auto_record_memory": True})
+            conn.commit()
+
+            # 4. Suppression when global auto_record_memory is disabled
+            client.patch("/api/plugins/zerofactory/settings", json={"auto_record_memory": False})
+            conn.commit()
+
+            recorded_globally_suppressed = extract_and_record_memory(conn, board_slug=b_slug, text=new_feedback, author="zf-reviewer")
+            self.assertEqual(len(recorded_globally_suppressed), 0)
+
+            # Restore global setting
+            client.patch("/api/plugins/zerofactory/settings", json={"auto_record_memory": True})
+            conn.commit()
+
+    def test_61_move_task_auto_record_gotcha(self):
+        """Test auto-recording gotcha when task is moved to blocked with structured rule reason."""
+        from dashboard.plugin_api import TaskCreate
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-move.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        # Create task
+        t_res = client.post(
+            "/api/plugins/zerofactory/tasks",
+            json={"title": "Test memory move", "board_slug": b_slug, "status": "running"}
+        ).json()
+        t_id = t_res["id"]
+
+        # Move to blocked with GOTCHA in reason
+        move_res = client.post(
+            f"/api/plugins/zerofactory/tasks/{t_id}/move",
+            json={
+                "status": "blocked",
+                "actor": "zf-reviewer",
+                "reason": "changes-requested. GOTCHA: Always lock dependencies in requirements.txt before release"
+            }
+        ).json()
+        self.assertTrue(move_res["ok"])
+
+        # Check board memories
+        mem_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(mem_res["total"], 1)
+        mem = mem_res["memories"][0]
+        self.assertEqual(mem["category"], "gotcha")
+        self.assertIn("Always lock dependencies in requirements.txt before release", mem["content"])
+        self.assertEqual(mem["author"], "zf-reviewer")
+        self.assertEqual(mem["task_id"], t_id)
+
 
 if __name__ == "__main__":
     unittest.main()

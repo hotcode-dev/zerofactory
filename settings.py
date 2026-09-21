@@ -66,6 +66,11 @@ DEFAULT_LANGFUSE_SECRET_KEY = ""
 DEFAULT_LANGFUSE_CAPTURE_MODE = "sanitized"
 DEFAULT_LANGFUSE_ENV = "zerofactory"
 
+# Continuous Learning & Memory settings
+# When enabled, reviewer feedback and rejections with gotchas/conventions are automatically
+# persisted to board_memories for that repository.
+DEFAULT_AUTO_RECORD_MEMORY = True
+
 # Seconds view of the cooldown default — the single unit-conversion point for the
 # default path. The DB stores minutes; the dispatcher converts to seconds where needed.
 DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES * 60
@@ -86,6 +91,7 @@ SETTING_KEYS = (
     "langfuse_secret_key",
     "langfuse_capture_mode",
     "langfuse_env",
+    "auto_record_memory",
 )
 
 # Seed values for the settings table, derived from the constants above (NOT
@@ -105,6 +111,7 @@ DEFAULT_SETTING_VALUES: Dict[str, str] = {
     "langfuse_secret_key": DEFAULT_LANGFUSE_SECRET_KEY,
     "langfuse_capture_mode": DEFAULT_LANGFUSE_CAPTURE_MODE,
     "langfuse_env": DEFAULT_LANGFUSE_ENV,
+    "auto_record_memory": "true" if DEFAULT_AUTO_RECORD_MEMORY else "false",
 }
 
 
@@ -148,6 +155,7 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
         "langfuse_secret_key": DEFAULT_LANGFUSE_SECRET_KEY,
         "langfuse_capture_mode": DEFAULT_LANGFUSE_CAPTURE_MODE,
         "langfuse_env": DEFAULT_LANGFUSE_ENV,
+        "auto_record_memory": DEFAULT_AUTO_RECORD_MEMORY,
     }
     try:
         rows = conn_or_cursor.execute("SELECT key, value FROM settings").fetchall()
@@ -214,5 +222,7 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
         elif k == "langfuse_env":
             if v is not None and str(v).strip():
                 settings["langfuse_env"] = str(v).strip()
+        elif k == "auto_record_memory":
+            settings["auto_record_memory"] = _parse_bool(v)
 
     return settings
