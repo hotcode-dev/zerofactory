@@ -2481,7 +2481,6 @@
         { id: "zf-orchestrator", label: "🧭 Orchestrator", count: sessionsList.filter(s => s.agent === "zf-orchestrator").length },
         { id: "zf-builder", label: "🔨 Builder", count: sessionsList.filter(s => s.agent === "zf-builder").length },
         { id: "zf-reviewer", label: "🔍 Reviewer", count: sessionsList.filter(s => s.agent === "zf-reviewer").length },
-        { id: "dispatcher", label: "⚡ Dispatcher", count: sessionsList.filter(s => s.agent === "dispatcher").length },
       ];
 
       return React.createElement(
@@ -2506,7 +2505,7 @@
                     ongoingCount + " Active"
                   )
               ),
-              React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "Real-time telemetry and session histories across Orchestrator, Builder, Reviewer, and Dispatcher.")
+              React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "Real-time telemetry and session histories across Orchestrator, Builder, and Reviewer.")
             )
           ),
           React.createElement(
@@ -2639,7 +2638,7 @@
               React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-sm mx-auto" },
                 sessionsSearchQuery || sessionsAgentFilter !== "all" || sessionsStatusFilter !== "all"
                   ? "No sessions match your filter criteria. Try resetting the filters."
-                  : "AI agent sessions will appear here as Orchestrator, Builder, Reviewer, and Dispatcher execute tasks."
+                  : "AI agent sessions will appear here as Orchestrator, Builder, and Reviewer execute tasks."
               )
             )
           : React.createElement(
@@ -2652,8 +2651,6 @@
                   ? { icon: "🔍", label: "Reviewer", border: "border-cyan-500/30", bg: "bg-cyan-500/10 text-cyan-300" }
                   : agentRole === "zf-orchestrator"
                   ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
-                  : agentRole === "dispatcher"
-                  ? { icon: "⚡", label: "Dispatcher", border: "border-emerald-500/30", bg: "bg-emerald-500/10 text-emerald-300" }
                   : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
 
                 // Extract task ID if present in cwd or title
@@ -3425,8 +3422,8 @@
                           const ongoingSess = tSessions.find(s => s.status === "ongoing" || s.is_active) || (t.status === "running" ? t.session_progress : null);
                           const isRunning = t.status === "running" || Boolean(ongoingSess && (ongoingSess.status === "ongoing" || ongoingSess.is_active));
                           const activeAgent = (ongoingSess && ongoingSess.agent) || t.assignee;
-                          const agentIcon = activeAgent === "zf-reviewer" ? "🔍" : activeAgent === "zf-orchestrator" ? "🧭" : activeAgent === "dispatcher" ? "⚡" : "🔨";
-                          const agentLabel = activeAgent === "zf-reviewer" ? "Reviewing PR" : activeAgent === "zf-orchestrator" ? "Orchestrating" : activeAgent === "dispatcher" ? "Dispatching" : "Implementing";
+                          const agentIcon = activeAgent === "zf-reviewer" ? "🔍" : activeAgent === "zf-orchestrator" ? "🧭" : "🔨";
+                          const agentLabel = activeAgent === "zf-reviewer" ? "Reviewing PR" : activeAgent === "zf-orchestrator" ? "Orchestrating" : "Implementing";
 
                           if (isRunning) {
                             return React.createElement(
@@ -3454,7 +3451,7 @@
                           // Completed sessions on non-running task
                           if (tSessions.length > 0) {
                             const uniqueAgents = Array.from(new Set(tSessions.map(s => s.agent || t.assignee)));
-                            const iconMap = { "zf-reviewer": "🔍", "zf-orchestrator": "🧭", "dispatcher": "⚡", "zf-builder": "🔨" };
+                            const iconMap = { "zf-reviewer": "🔍", "zf-orchestrator": "🧭", "zf-builder": "🔨" };
                             const iconsStr = uniqueAgents.map(a => iconMap[a] || "🤖").join(" ");
                             return React.createElement(
                               "div",
@@ -3834,8 +3831,8 @@
                 const currentSession = taskSessions[activeIdx] || prog || {};
                 const isOngoing = currentSession.status === "ongoing" || currentSession.is_active || (prog && prog.is_alive && activeIdx === taskSessions.length - 1);
                 const agentRole = currentSession.agent || selectedTask.assignee || "zf-builder";
-                const agentIcon = currentSession.agent_icon || (agentRole === "zf-reviewer" ? "🔍" : agentRole === "zf-orchestrator" ? "🧭" : agentRole === "dispatcher" ? "⚡" : "🔨");
-                const agentLabel = currentSession.agent_label || (agentRole === "zf-reviewer" ? "Reviewer" : agentRole === "zf-orchestrator" ? "Orchestrator" : agentRole === "dispatcher" ? "Dispatcher" : "Builder");
+                const agentIcon = currentSession.agent_icon || (agentRole === "zf-reviewer" ? "🔍" : agentRole === "zf-orchestrator" ? "🧭" : "🔨");
+                const agentLabel = currentSession.agent_label || (agentRole === "zf-reviewer" ? "Reviewer" : agentRole === "zf-orchestrator" ? "Orchestrator" : "Builder");
 
                 const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
                   ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
@@ -3860,8 +3857,8 @@
                         { className: "flex items-center gap-1.5 overflow-x-auto pb-1 zfk-scrollbar" },
                         taskSessions.map((s, sIdx) => {
                           const sIsOngoing = s.status === "ongoing" || s.is_active;
-                          const sIcon = s.agent_icon || (s.agent === "zf-reviewer" ? "🔍" : s.agent === "zf-orchestrator" ? "🧭" : s.agent === "dispatcher" ? "⚡" : "🔨");
-                          const sLabel = s.agent_label || (s.agent === "zf-reviewer" ? "Reviewer" : s.agent === "zf-orchestrator" ? "Orchestrator" : s.agent === "dispatcher" ? "Dispatcher" : "Builder");
+                          const sIcon = s.agent_icon || (s.agent === "zf-reviewer" ? "🔍" : s.agent === "zf-orchestrator" ? "🧭" : "🔨");
+                          const sLabel = s.agent_label || (s.agent === "zf-reviewer" ? "Reviewer" : s.agent === "zf-orchestrator" ? "Orchestrator" : "Builder");
                           return React.createElement(
                             "button",
                             {

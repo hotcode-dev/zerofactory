@@ -324,6 +324,38 @@ class TestZeroFactory(unittest.TestCase):
         self.assertIsNotNone(target)
         self.assertIn("session_progress", target)
 
+    def test_09b_ai_sessions_exclude_dispatcher(self):
+        from dashboard.plugin_api import resolve_task_all_sessions, list_all_sessions, AGENT_LABELS, AGENT_ICONS
+
+        # 1. Verify AGENT_LABELS and AGENT_ICONS do not include dispatcher
+        self.assertNotIn("dispatcher", AGENT_LABELS)
+        self.assertNotIn("dispatcher", AGENT_ICONS)
+
+        # 2. Verify /sessions API endpoint does not include dispatcher in profile inspection
+        res = client.get("/api/plugins/zerofactory/sessions")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        sessions = data["sessions"]
+        for s in sessions:
+            self.assertNotEqual(s.get("agent"), "dispatcher")
+
+        # 3. Test resolve_task_all_sessions does not inspect dispatcher
+        task = {
+            "id": "zf-mock-session-test",
+            "title": "Mock Session Test",
+            "status": "running",
+            "assignee": "zf-builder",
+            "metadata": {
+                "session_id": "sess-test-123",
+                "sessions": [
+                    {"session_id": "sess-test-123", "agent": "zf-builder", "status": "ongoing"}
+                ]
+            }
+        }
+        resolved = resolve_task_all_sessions(task, backfill=False)
+        self.assertTrue(all(s.get("agent") != "dispatcher" for s in resolved))
+
     def test_10_multi_file_fingerprint_deduplication(self):
         # 1. Create task with multiple files in random order
         t1 = create_task(TaskCreate(
