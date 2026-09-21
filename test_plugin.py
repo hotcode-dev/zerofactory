@@ -4656,6 +4656,95 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             shutil.rmtree(td, ignore_errors=True)
 
+    def test_58b_pr_closed_archives_task(self):
+        """When a GitHub PR is closed without merging, Zero Factory must automatically
+        archive/complete the task (status='done'), prune the worktree, and record a
+        'closed' activity entry ('PR closed on GitHub, task archived'). This must
+        work for tasks assigned to zf-reviewer as well as tasks assigned to zf-builder
+        with conflict/failure metadata (e.g. zf-f5f3b8d0)."""
+        import json
+        import shutil
+        import sqlite3
+
+        # Case 1: Reviewer task with closed PR
+        td1 = tempfile.mkdtemp()
+        try:
+            repo_path1, reviewer_ws1 = self._make_reviewer_test_repo(td1)
+            db_file1 = Path(td1) / "closed_rev.db"
+            self._create_conflict_test_db(db_file1)
+            with sqlite3.connect(str(db_file1)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('wt-closed-rev', 'Closed PR task', 'blocked', 'zf-reviewer', ?, 'task/wt-closed-rev',
+                            'https://github.com/hotcode-dev/zerofactory/pull/905', 1000, 1000)
+                """, (str(reviewer_ws1),))
+                conn.commit()
+
+            res, captured_gh, mock_remove, fetch1, _ = self._run_reviewer_pr_cycle(
+                db_file1, {"state": "CLOSED", "reviewDecision": None,
+                           "url": "https://github.com/hotcode-dev/zerofactory/pull/905",
+                           "mergeable": "MERGEABLE"}, task_id="wt-closed-rev"
+            )
+            self.assertTrue(res.get("ok"), f"closed PR cycle should succeed: {res}")
+            self.assertTrue(captured_gh, "gh pr view should have been called")
+            mock_remove.assert_called()
+            t_row = fetch1("SELECT status, assignee, pr_url FROM tasks WHERE id = 'wt-closed-rev'")[0]
+            self.assertEqual(t_row["status"], "done")
+            acts = fetch1("SELECT action, details FROM task_activity WHERE task_id = 'wt-closed-rev' AND action = 'closed'")
+            self.assertEqual(len(acts), 1, "closed activity row missing")
+            self.assertEqual(acts[0][0], "closed")
+            self.assertIn("archived", acts[0][1].lower())
+
+            # Subsequent dispatch cycle must not re-process the done task or flood task_activity
+            res2, captured_gh2, _, fetch2, _ = self._run_reviewer_pr_cycle(
+                db_file1, {"state": "CLOSED", "reviewDecision": None,
+                           "url": "https://github.com/hotcode-dev/zerofactory/pull/905",
+                           "mergeable": "MERGEABLE"}, task_id="wt-closed-rev"
+            )
+            self.assertTrue(res2.get("ok"))
+            self.assertEqual(len(captured_gh2), 0, "Subsequent cycle should not query GitHub for completed task")
+            acts2 = fetch2("SELECT action FROM task_activity WHERE task_id = 'wt-closed-rev' AND action = 'closed'")
+            self.assertEqual(len(acts2), 1, "closed activity must not be duplicated on subsequent cycles")
+        finally:
+            shutil.rmtree(td1, ignore_errors=True)
+
+        # Case 2: Builder task with worker failure / conflict metadata and closed PR (matching zf-f5f3b8d0)
+        td2 = tempfile.mkdtemp()
+        try:
+            repo_path2, builder_ws2 = self._make_reviewer_test_repo(td2)
+            db_file2 = Path(td2) / "closed_builder.db"
+            self._create_conflict_test_db(db_file2)
+            meta_json = json.dumps({
+                "last_worker_failure": {"retcode": -1, "reason": "PID not found"},
+                "conflict_retries": 2,
+                "blocked_reason": "Worker process PID not found"
+            })
+            with sqlite3.connect(str(db_file2)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, metadata, created_at, updated_at)
+                    VALUES ('zf-test-closed', 'Bug: memory leak [PR Conflict]', 'blocked', 'zf-builder', ?, 'task/zf-test-closed',
+                            'https://github.com/hotcode-dev/zerofactory/pull/906', ?, 1000, 1000)
+                """, (str(builder_ws2), meta_json))
+                conn.commit()
+
+            res3, captured_gh3, mock_remove3, fetch3, _ = self._run_reviewer_pr_cycle(
+                db_file2, {"state": "CLOSED", "reviewDecision": "",
+                           "url": "https://github.com/hotcode-dev/zerofactory/pull/906",
+                           "mergeable": "CONFLICTING"}, task_id="zf-test-closed"
+            )
+            self.assertTrue(res3.get("ok"), f"closed PR builder cycle should succeed: {res3}")
+            self.assertTrue(captured_gh3, "gh pr view should have been called")
+            mock_remove3.assert_called()
+            t_row3 = fetch3("SELECT status, assignee, pr_url, workspace_path FROM tasks WHERE id = 'zf-test-closed'")[0]
+            self.assertEqual(t_row3["status"], "done")
+            self.assertIsNone(t_row3["workspace_path"])
+            acts3 = fetch3("SELECT action, details FROM task_activity WHERE task_id = 'zf-test-closed' AND action = 'closed'")
+            self.assertEqual(len(acts3), 1, "closed activity row missing for builder task")
+            self.assertEqual(acts3[0][0], "closed")
+            self.assertIn("archived", acts3[0][1].lower())
+        finally:
+            shutil.rmtree(td2, ignore_errors=True)
+
     def test_59_init_db_path_keyed_flag(self):
         """init_db() must re-initialize when ZEROFACTORY_DB changes to a new
         path within the same process (regression: a bare global boolean flag
