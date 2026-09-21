@@ -146,10 +146,10 @@ class TestZeroFactory(unittest.TestCase):
         # Mark parent 'done'
         move_task(parent, TaskMove(status="done"))
 
-        # Dispatch again -> child should unblock to 'ready'
+        # Dispatch again -> child should unblock to 'todo'
         d_res2 = trigger_dispatch()
         self.assertTrue(d_res2["ok"])
-        self.assertEqual(get_task(child)["task"]["status"], "ready")
+        self.assertEqual(get_task(child)["task"]["status"], "todo")
 
     def test_06_fastapi_endpoints(self):
         # Test HTTP endpoints via TestClient
@@ -168,16 +168,16 @@ class TestZeroFactory(unittest.TestCase):
 
         # Move task via HTTP
         resp = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/move", json={
-            "status": "ready"
+            "status": "running"
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "ready")
+        self.assertEqual(resp.json()["status"], "running")
 
         # Get stats
         resp = client.get("/api/plugins/zerofactory/stats")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("columns", resp.json())
-        self.assertIn("ready", resp.json()["columns"])
+        self.assertIn("running", resp.json()["columns"])
 
     def test_07_builtin_cron(self):
         # 1. Test GET /cron
@@ -231,10 +231,10 @@ class TestZeroFactory(unittest.TestCase):
             conn.execute("UPDATE tasks SET status = 'done' WHERE status = 'running'")
             conn.commit()
 
-        # 1. Create a task in 'ready'
+        # 1. Create a task in 'todo'
         t_id = create_task(TaskCreate(
             title="Implement Builder Task",
-            status="ready",
+            status="todo",
             priority="P0",
             assignee="zf-builder"
         ))["id"]
@@ -1964,7 +1964,7 @@ class TestZeroFactory(unittest.TestCase):
                 cur = conn.cursor()
                 cur.execute("SELECT * FROM tasks WHERE id = 'task-1'")
                 t_row = cur.fetchone()
-                self.assertEqual(t_row["status"], "ready")
+                self.assertEqual(t_row["status"], "todo")
                 self.assertEqual(t_row["assignee"], "zf-builder")
                 self.assertIn("[PR Conflict]", t_row["title"])
                 # Worktree should NOT be deleted
@@ -2017,7 +2017,7 @@ class TestZeroFactory(unittest.TestCase):
                 cur = conn.cursor()
                 cur.execute("SELECT * FROM tasks WHERE id = 'task-1'")
                 t_row = cur.fetchone()
-                self.assertEqual(t_row["status"], "ready")
+                self.assertEqual(t_row["status"], "todo")
                 self.assertEqual(t_row["assignee"], "zf-builder")
                 self.assertIn("[PR Conflict]", t_row["title"])
         finally:
@@ -2442,7 +2442,7 @@ class TestZeroFactory(unittest.TestCase):
                 row = cur.execute("SELECT title, assignee, status FROM tasks WHERE id = 'task-lc'").fetchone()
                 self.assertEqual(row["title"], "Fix bug [PR Conflict]")
                 self.assertEqual(row["assignee"], "zf-builder")
-                self.assertEqual(row["status"], "ready")
+                self.assertEqual(row["status"], "todo")
 
                 act = cur.execute("SELECT actor, action, details FROM task_activity WHERE task_id = 'task-lc' AND action = 'pr_conflict'").fetchone()
                 self.assertIsNotNone(act)
@@ -2463,7 +2463,7 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertEqual(row2["title"], "Fix bug [PR Conflict]")
                 self.assertNotIn("[PR Conflict] [PR Conflict]", row2["title"])
                 self.assertEqual(row2["assignee"], "zf-builder")
-                self.assertEqual(row2["status"], "ready")
+                self.assertEqual(row2["status"], "todo")
                 # Two activity rows, two comment rows (idempotency covers the title only)
                 self.assertEqual(cur.execute("SELECT COUNT(*) FROM task_activity WHERE task_id = 'task-lc' AND action = 'pr_conflict'").fetchone()[0], 2)
                 self.assertEqual(cur.execute("SELECT COUNT(*) FROM task_comments WHERE task_id = 'task-lc'").fetchone()[0], 2)
@@ -2581,7 +2581,7 @@ class TestZeroFactory(unittest.TestCase):
                     _handle_local_merge_conflict(cur, "task-retry", "Feature X", str(ws_dir), ["conflict.txt"], now, "conflict")
                     conn.commit()
                     row = cur.execute("SELECT status, metadata FROM tasks WHERE id = 'task-retry'").fetchone()
-                    self.assertEqual(row["status"], "ready")
+                    self.assertEqual(row["status"], "todo")
                     meta = json.loads(row["metadata"] or "{}")
                     self.assertEqual(meta.get("conflict_retries"), i)
 
@@ -2696,7 +2696,7 @@ class TestZeroFactory(unittest.TestCase):
                 cur = conn.cursor()
 
                 row = cur.execute("SELECT title, assignee, status FROM tasks WHERE id = 'task-gh'").fetchone()
-                self.assertEqual(row["status"], "ready")
+                self.assertEqual(row["status"], "todo")
                 self.assertEqual(row["assignee"], "zf-builder")
                 self.assertIn("[PR Conflict]", row["title"])
                 self.assertEqual(row["title"].count("[PR Conflict]"), 1)
@@ -2851,7 +2851,7 @@ class TestZeroFactory(unittest.TestCase):
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 row = cur.execute("SELECT status, assignee FROM tasks WHERE id = 'task-author-handoff'").fetchone()
-                self.assertEqual(row["status"], "ready")
+                self.assertEqual(row["status"], "todo")
                 self.assertEqual(row["assignee"], "zf-reviewer")
         finally:
             shutil.rmtree(td, ignore_errors=True)
@@ -2927,7 +2927,7 @@ class TestZeroFactory(unittest.TestCase):
                 conn.row_factory = sqlite3.Row
                 row_c = conn.execute("SELECT title, status, assignee FROM tasks WHERE id = 'task-pre-conflict'").fetchone()
                 self.assertIn("[PR Conflict]", row_c["title"])
-                self.assertEqual(row_c["status"], "ready")
+                self.assertEqual(row_c["status"], "todo")
                 self.assertEqual(row_c["assignee"], "zf-builder")
 
                 act = conn.execute("SELECT action, details FROM task_activity WHERE task_id = 'task-pre-conflict'").fetchone()
@@ -3222,12 +3222,12 @@ class TestZeroFactory(unittest.TestCase):
         # 3. The TaskMove schema now accepts a `reason` field via the HTTP endpoint
         #    (the model no longer rejects it), and a non-blocked move still works.
         resp = client.post(f"/api/plugins/zerofactory/tasks/{t_id}/move", json={
-            "status": "ready",
+            "status": "todo",
             "reason": "unblocked",
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "ready")
-        self.assertEqual(get_task(t_id)["task"]["status"], "ready")
+        self.assertEqual(resp.json()["status"], "todo")
+        self.assertEqual(get_task(t_id)["task"]["status"], "todo")
 
         # 4. A `move ... blocked` WITHOUT a reason must NOT record a comment
         #    (reason is optional; only a provided reason is recorded).
@@ -3752,6 +3752,7 @@ class TestZeroFactory(unittest.TestCase):
         from dispatcher import run_dispatch_cycle
 
         orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        import time
         orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
         os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
         os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
@@ -3771,23 +3772,22 @@ class TestZeroFactory(unittest.TestCase):
             conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 10, 1, 1)")
             # Set max_active_tasks limit to 2
             conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '2', 1)")
+            now = int(time.time())
             # Create 5 tasks in 'todo'
             for i in range(1, 6):
                 conn.execute(
-                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'unassigned', 'P2', ?, 1000, 1000)",
-                    (f"task-{i}", f"Task {i}", str(ws)),
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'unassigned', 'P2', ?, ?, ?)",
+                    (f"task-{i}", f"Task {i}", str(ws), now, now),
                 )
             conn.commit()
             conn.close()
 
-            # Cycle 1: with max_active_tasks = 2, only 2 tasks should be promoted from todo to ready
+            # Cycle 1: with max_active_tasks = 2, only 2 tasks should be promoted from todo to running
             res = run_dispatch_cycle(db_file)
             self.assertTrue(res["ok"])
             conn = sqlite3.connect(str(db_file))
             todo_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
-            # Since board max_concurrent_running is 10 and worker spawn is skipped,
-            # the 2 promoted tasks will move to ready and then running
-            active_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')").fetchone()[0]
+            active_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
             conn.close()
             self.assertEqual(active_count, 2, f"expected exactly 2 active tasks promoted, got {active_count}")
             self.assertEqual(todo_count, 3, f"expected 3 tasks to remain in todo, got {todo_count}")
@@ -3802,7 +3802,7 @@ class TestZeroFactory(unittest.TestCase):
             res2 = run_dispatch_cycle(db_file)
             self.assertTrue(res2["ok"])
             conn = sqlite3.connect(str(db_file))
-            active_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status IN ('ready', 'running')").fetchone()[0]
+            active_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
             todo_count2 = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
             conn.close()
             self.assertEqual(active_count2, 4, f"expected 4 active tasks under limit 4, got {active_count2}")
@@ -4519,7 +4519,7 @@ class TestZeroFactory(unittest.TestCase):
                 self.assertTrue(res.get("ok"), f"changes-requested cycle should succeed: {res}")
                 mock_remove.assert_called()
                 t_row = fetch3("SELECT status, assignee FROM tasks WHERE id = 'wt-changes'")[0]
-                self.assertEqual(t_row["status"], "ready")
+                self.assertEqual(t_row["status"], "todo")
                 self.assertEqual(t_row["assignee"], "zf-builder")
                 acts = fetch3("SELECT action FROM task_activity WHERE task_id = 'wt-changes' AND action = 'changes_requested'")
                 self.assertEqual(len(acts), 1, "changes_requested activity row missing")
@@ -4560,7 +4560,7 @@ class TestZeroFactory(unittest.TestCase):
             self.assertTrue(captured_gh)
             mock_remove.assert_called()
             t_row = fetch("SELECT title, status, assignee FROM tasks WHERE id = 'wt-conflict'")[0]
-            self.assertEqual(t_row["status"], "ready")
+            self.assertEqual(t_row["status"], "todo")
             self.assertEqual(t_row["assignee"], "zf-builder")
             self.assertIn("[PR Conflict]", t_row["title"])
             acts = fetch("SELECT details FROM task_activity WHERE task_id = 'wt-conflict' AND action = 'pr_conflict'")
@@ -4870,7 +4870,7 @@ class TestZeroFactory(unittest.TestCase):
                     conn.row_factory = sqlite3.Row
                     cur = conn.cursor()
                     t_row = cur.execute("SELECT status, assignee, metadata FROM tasks WHERE id = 'zf-rev-test'").fetchone()
-                    self.assertEqual(t_row["status"], "ready")
+                    self.assertEqual(t_row["status"], "todo")
                     self.assertEqual(t_row["assignee"], "zf-builder")
 
                     meta = json.loads(t_row["metadata"] or "{}")
@@ -6042,12 +6042,46 @@ class TestSharedProfilePathResolution(unittest.TestCase):
 
     @staticmethod
     def _zf_js_class_tokens(source):
-        """Extract the utility class tokens referenced in dashboard JS source."""
+        """Extract the utility class tokens referenced in dashboard JS source.
+
+        Character-level lexer (mirrors dashboard/build_css.mjs's
+        extractCandidates): skips line/block comments and only honours quote
+        characters in code position, with backslash escapes. This matters
+        because dist/index.js contains a line comment with an embedded
+        apostrophe (``// Bottom row: Today's actions``) — a naive
+        ``[^"]*``/``[^']*`` quote regex starts a phantom string at that
+        apostrophe, swallows ~140KB of source, and silently drops every
+        className literal after it (e.g. hover:bg-slate-800/80).
+        """
         import re
         token_charset = re.compile(r"[A-Za-z0-9_:\[\]/%#!.-]+")
+        strings = []
+        i = 0
+        n = len(source)
+        while i < n:
+            ch = source[i]
+            if ch == "/" and i + 1 < n and source[i + 1] == "/":  # line comment
+                e = source.find("\n", i)
+                i = n if e == -1 else e + 1
+            elif ch == "/" and i + 1 < n and source[i + 1] == "*":  # block comment
+                e = source.find("*/", i + 2)
+                i = n if e == -1 else e + 2
+            elif ch in ("'", '"', "`"):
+                j = i + 1
+                while j < n:
+                    if source[j] == "\\":
+                        j += 2
+                        continue
+                    if source[j] == ch:
+                        j += 1
+                        break
+                    j += 1
+                strings.append(source[i + 1 : j - 1])
+                i = j
+            else:
+                i += 1
         tokens = set()
-        for m in re.finditer(r'"([^"]*)"|\'([^\']*)\'|`([^`]*)`', source):
-            s = next(g for g in m.groups() if g is not None)
+        for s in strings:
             for tok in s.split():
                 if len(tok) >= 2 and re.fullmatch(token_charset, tok) and re.search(
                     r"[a-z]", tok
@@ -6084,6 +6118,22 @@ class TestSharedProfilePathResolution(unittest.TestCase):
 
         # (b) Every variant-prefixed class token used by the UI JS has a
         #     selector in the committed stylesheet.
+        # (b0) Extraction regression: dist/index.js contains a line comment
+        #      with an embedded apostrophe ("// Bottom row: Today's actions").
+        #      A naive [^"]*/[^']* quote scan starts a phantom single-quoted
+        #      string at that apostrophe that runs to the next bare apostrophe
+        #      in the file, swallowing the className literals in between
+        #      (their surrounding double quotes become part of the phantom
+        #      string content, polluting every token — e.g.
+        #      hover:bg-slate-800/80" is no longer a valid candidate). The
+        #      lexer must skip line comments and find the className literal.
+        synth = (
+            "// Bottom row: Today's actions & quick filter\n"
+            'React.createElement("div", { className: '
+            '"text-slate-400 hover:bg-slate-800/80" });\n'
+            "// don't forget to verify the hover state\n"
+        )
+        self.assertIn("hover:bg-slate-800/80", self._zf_js_class_tokens(synth))
         variant_stack = re.compile(
             r"^(?:hover|focus|focus-within|active|disabled|group-hover|md|lg|sm|xl|2xl):"
         )

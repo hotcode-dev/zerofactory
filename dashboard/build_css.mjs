@@ -79,17 +79,51 @@ function resolveTailwindRoot() {
 
 /**
  * Extract the utility/variant class tokens that dist/index.js actually uses.
- * Scans every double-, single-, and backtick-quoted string for whitespace
- * separated tokens that look like Tailwind candidates (letters/digits and the
- * chars Tailwind allows in a class: _ : . / % # ! [ ]). This is what feeds the
- * v4 compiler so it only emits rules the UI references (and — crucially — the
- * variant-prefixed rules such as hover:bg-slate-800 and disabled:opacity-40).
+ * Scans every string literal for whitespace separated tokens that look like
+ * Tailwind candidates (letters/digits and the chars Tailwind allows in a
+ * class: _ : . / % # ! [ ]). This is what feeds the v4 compiler so it only
+ * emits rules the UI references (and — crucially — the variant-prefixed rules
+ * such as hover:bg-slate-800 and disabled:opacity-40).
+ *
+ * QUOTE & COMMENT CORRECTNESS: the scan is a small character-level lexer
+ * (not a `[^"]*` / `[^']*` regex) because dist/index.js contains a line
+ * comment with an embedded apostrophe (`// Bottom row: Today's actions`). A
+ * naive quote regex starts a phantom single-quoted string at that apostrophe
+ * that swallows ~140KB of source — every className literal after it (including
+ * `hover:bg-slate-800/80` and `hover:bg-slate-800/60`) is silently dropped
+ * from the candidate list. The lexer skips line/block comments first and only
+ * recognises quotes in code position, honouring backslash escapes.
  */
 function extractCandidates(source) {
+  const strings = [];
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '/' && source[i + 1] === '/') { // line comment
+      const e = source.indexOf('\n', i);
+      i = e === -1 ? source.length : e + 1;
+    } else if (ch === '/' && source[i + 1] === '*') { // block comment
+      const e = source.indexOf('*/', i + 2);
+      i = e === -1 ? source.length : e + 2;
+    } else if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      const endRe = quote === '"' ? /"/ : quote === "'" ? /'/ : /`/;
+      let j = i + 1;
+      while (j < source.length) {
+        if (source[j] === '\\') { j += 2; continue; }
+        if (endRe.test(source[j])) { j += 1; break; }
+        j += 1;
+      }
+      strings.push(source.slice(i + 1, j - 1));
+      i = j;
+    } else {
+      i += 1;
+    }
+  }
+
   const candidates = new Set();
   const tokenRe = /^[A-Za-z0-9_:\[\]/%#!. -]+$/; // conservative charset
-  for (const m of source.matchAll(/"([^"]*)"|'([^']*)'|`([^`]*)`/g)) {
-    const s = m[1] ?? m[2] ?? m[3] ?? '';
+  for (const s of strings) {
     for (const raw of s.split(/\s+/)) {
       const tok = raw.trim();
       if (!tok || tok.length < 2) continue;
