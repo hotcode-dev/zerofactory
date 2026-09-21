@@ -6187,6 +6187,183 @@ class TestSharedProfilePathResolution(unittest.TestCase):
                 if p.exists():
                     p.unlink()
 
+    def test_reviewer_approval_comment_classification(self):
+        from dispatcher import is_reviewer_approval_comment
+
+        # Case 1: Approval verdict from Round 1 / 2 review summaries
+        r1 = (
+            "[Reviewer Feedback] Round 1 (Correctness & Tests): APPROVED for human review.\n\n"
+            "**Verdict: approve.** The PR systematically removes all ready-status references..."
+        )
+        self.assertTrue(is_reviewer_approval_comment(r1, state="COMMENTED"))
+
+        r2 = (
+            "[Reviewer Feedback] Round 2 (Performance & Edge Cases): APPROVED — no changes requested.\n\n"
+            "Verdict: approve. No performance or edge-case issues found in Round 2."
+        )
+        self.assertTrue(is_reviewer_approval_comment(r2, state="COMMENTED"))
+
+        # Case 2: Explicit GitHub review state APPROVED
+        self.assertTrue(is_reviewer_approval_comment("Looks good", state="APPROVED"))
+
+        # Case 3: Reviewer requesting changes
+        r3 = (
+            "[Reviewer Feedback] Round 1: CHANGES REQUESTED.\n\n"
+            "Please fix the null pointer exception on line 45."
+        )
+        self.assertFalse(is_reviewer_approval_comment(r3, state="COMMENTED"))
+
+        # Case 4: Normal human review comment
+        r4 = "Could you add more comments to clarify this algorithm?"
+        self.assertFalse(is_reviewer_approval_comment(r4, state="COMMENTED"))
+
+    def test_worker_failure_retry_limit_permanently_blocks(self):
+        import json, time
+        from dispatcher import reap_active_workers, _active_workers
+        from unittest.mock import MagicMock
+
+        now = int(time.time())
+        created = create_task(TaskCreate(title="Test Worker Failure Retries", assignee="zf-builder"))
+        task_id = created["id"]
+
+        with get_db_conn() as conn:
+            conn.execute(
+                "UPDATE tasks SET status = 'running', metadata = ? WHERE id = ?",
+                (json.dumps({"worker_pid": 999999, "started_at": now - 10}), task_id)
+            )
+            conn.commit()
+
+        # Mock a failing worker process with exit code 1
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 1
+        mock_proc.pid = 999999
+        _active_workers[task_id] = mock_proc
+
+        with get_db_conn() as conn:
+            cur = conn.cursor()
+            # Attempt 1: should move to blocked with fail_retries = 1
+            reaped = reap_active_workers(cur, now)
+            conn.commit()
+            self.assertEqual(reaped, 1)
+
+            row = conn.execute("SELECT status, metadata FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            self.assertEqual(row["status"], "blocked")
+            meta = json.loads(row["metadata"])
+            self.assertEqual(meta.get("worker_failure_retries"), 1)
+            self.assertFalse(meta.get("permanently_blocked", False))
+            self.assertIn("last_worker_failure", meta)
+
+            # Verify task comment was added
+            cmts = conn.execute("SELECT body FROM task_comments WHERE task_id = ?", (task_id,)).fetchall()
+            self.assertTrue(any("Blocked:" in c["body"] for c in cmts))
+
+            # Attempt 2: simulate another failure
+            meta["worker_pid"] = 999998
+            conn.execute("UPDATE tasks SET status = 'running', metadata = ? WHERE id = ?", (json.dumps(meta), task_id))
+            conn.commit()
+
+        mock_proc2 = MagicMock()
+        mock_proc2.poll.return_value = 1
+        _active_workers[task_id] = mock_proc2
+
+        with get_db_conn() as conn:
+            cur = conn.cursor()
+            reaped = reap_active_workers(cur, now + 1)
+            conn.commit()
+            meta = json.loads(conn.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,)).fetchone()["metadata"])
+            self.assertEqual(meta.get("worker_failure_retries"), 2)
+            self.assertFalse(meta.get("permanently_blocked", False))
+
+            # Attempt 3: reached max retries (3) -> permanently blocked!
+            meta["worker_pid"] = 999997
+            conn.execute("UPDATE tasks SET status = 'running', metadata = ? WHERE id = ?", (json.dumps(meta), task_id))
+            conn.commit()
+
+        mock_proc3 = MagicMock()
+        mock_proc3.poll.return_value = 1
+        _active_workers[task_id] = mock_proc3
+
+        with get_db_conn() as conn:
+            cur = conn.cursor()
+            reaped = reap_active_workers(cur, now + 2)
+            conn.commit()
+            row = conn.execute("SELECT status, metadata FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            self.assertEqual(row["status"], "blocked")
+            meta = json.loads(row["metadata"])
+            self.assertEqual(meta.get("worker_failure_retries"), 3)
+            self.assertTrue(meta.get("permanently_blocked"))
+
+            # Verify activity row for permanent block
+            act = conn.execute("SELECT action FROM task_activity WHERE task_id = ? AND action = 'worker_failed_permanently'", (task_id,)).fetchone()
+            self.assertIsNotNone(act)
+
+    def test_move_task_clears_failure_metadata(self):
+        import json, time
+        now = int(time.time())
+        created = create_task(TaskCreate(title="Test Move Clears Failure", assignee="zf-builder"))
+        task_id = created["id"]
+
+        meta = {
+            "worker_failure_retries": 3,
+            "permanently_blocked": True,
+            "blocked_reason": "Worker failed 3 times",
+            "last_worker_failure": {"retcode": 1, "failed_at": now}
+        }
+        with get_db_conn() as conn:
+            conn.execute(
+                "UPDATE tasks SET status = 'blocked', metadata = ? WHERE id = ?",
+                (json.dumps(meta), task_id)
+            )
+            conn.commit()
+
+        # Move to todo
+        res = move_task(task_id, TaskMove(status="todo", actor="user"))
+        self.assertTrue(res["ok"])
+
+        with get_db_conn() as conn:
+            row = conn.execute("SELECT status, metadata FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            self.assertEqual(row["status"], "todo")
+            new_meta = json.loads(row["metadata"])
+            self.assertNotIn("last_worker_failure", new_meta)
+            self.assertNotIn("permanently_blocked", new_meta)
+            self.assertNotIn("worker_failure_retries", new_meta)
+            self.assertNotIn("blocked_reason", new_meta)
+
+    def test_resolve_task_session_progress_picks_latest_ongoing(self):
+        import time
+        from dashboard.plugin_api import resolve_task_session_progress
+
+        now = int(time.time())
+        task = {
+            "id": "test-latest-session",
+            "title": "Test Latest Session",
+            "status": "running",
+            "assignee": "zf-builder",
+            "metadata": {
+                "worker_pid": None,
+                "started_at": now - 60,
+                "sessions": [
+                    {
+                        "session_id": "old_sess_12h_ago",
+                        "agent": "zf-builder",
+                        "status": "ongoing",
+                        "started_at": now - 43200,
+                        "ended_at": None,
+                    },
+                    {
+                        "session_id": "new_sess_now",
+                        "agent": "zf-builder",
+                        "status": "ongoing",
+                        "started_at": now - 60,
+                        "ended_at": None,
+                    }
+                ]
+            }
+        }
+
+        progress = resolve_task_session_progress(task, backfill=False)
+        self.assertEqual(progress["session_id"], "new_sess_now")
+
 
 if __name__ == "__main__":
     unittest.main()
