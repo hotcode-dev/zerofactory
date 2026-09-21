@@ -212,6 +212,10 @@ def init_db(force: bool = False):
             CREATE INDEX IF NOT EXISTS idx_activity_task ON task_activity(task_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_memories_board ON board_memories(board_slug, created_at);
             CREATE INDEX IF NOT EXISTS idx_memories_category ON board_memories(category);
+            -- Backs the per-board content dedup check in extract_and_record_memory
+            -- (WHERE board_slug = ? AND content = ?); idx_memories_board only
+            -- covers (board_slug, created_at) and cannot prune content equality.
+            CREATE INDEX IF NOT EXISTS idx_memories_board_content ON board_memories(board_slug, content);
             -- task_activity is an append-only log read by the /activities endpoint.
             -- idx_activity_created backs the "ORDER BY created_at DESC, id DESC"
             -- paginated list and the "created_at >= ?" today-counts; idx_activity_actor
@@ -502,9 +506,16 @@ class LangfuseTestRequest(BaseModel):
 VALID_MEMORY_CATEGORIES = {"decision", "gotcha", "convention", "rejected_path", "general"}
 
 
+# Hard bound for manually written memory content (API + CLI). The auto-record
+# path caps at 1000 chars; manual writes get a tighter 500-char cap so a single
+# oversized blob can never bloat storage or the pre-injected worker prompt.
+MEMORY_CONTENT_MAX_LENGTH = 500
+
+
 class MemoryCreate(BaseModel):
     category: Optional[str] = Field(default="general", description="Category: decision, gotcha, convention, rejected_path, general")
-    content: str = Field(..., min_length=1, description="Memory content / rule / finding")
+    # max_length enforced: content > 500 chars is rejected with a 422.
+    content: str = Field(..., min_length=1, max_length=MEMORY_CONTENT_MAX_LENGTH, description=f"Memory content / rule / finding (max {MEMORY_CONTENT_MAX_LENGTH} chars)")
     tags: Optional[List[str]] = Field(default_factory=list, description="Tags for categorization")
     author: Optional[str] = Field(default="user", description="Author: agent name or user")
     task_id: Optional[str] = Field(default=None, description="Related task ID if applicable")
@@ -512,7 +523,7 @@ class MemoryCreate(BaseModel):
 
 class MemoryUpdate(BaseModel):
     category: Optional[str] = None
-    content: Optional[str] = None
+    content: Optional[str] = Field(default=None, min_length=1, max_length=MEMORY_CONTENT_MAX_LENGTH, description=f"Replacement memory content (max {MEMORY_CONTENT_MAX_LENGTH} chars); omitted to keep current content")
     tags: Optional[List[str]] = None
     author: Optional[str] = None
     task_id: Optional[str] = None
@@ -563,10 +574,29 @@ def log_activity(conn: sqlite3.Connection, task_id: str, actor: str, action: str
         (task_id, actor, action, details, now)
     )
 
+# Anchors the rule prefix at a line start OR right after whitespace, so rules
+# embedded mid-sentence in reviewer/block reasons (e.g. "changes-requested.
+# GOTCHA: Always lock dependencies...") are captured too, not just bullet
+# lines. The optional leading bullet/markdown chars and ``**`` keep the
+# existing "- **GOTCHA:** ..." phrasings matching.
 AUTO_MEMORY_PREFIX_REGEX = re.compile(
-    r"(?:^|\n)(?:[\s\-\*#>]*)(?:\*\*)?(GOTCHA|RULE|CONVENTION|GUIDELINE|DECISION|ARCH|REJECTED_PATH|REJECTED PATH|REJECTED)(?:\*\*)?:\s*([^\n]+)",
+    r"(?:^|[\r\n]|(?<=\s))(?:[\s\-\*#>]*)(?:\*\*)?(GOTCHA|RULE|CONVENTION|GUIDELINE|DECISION|ARCH|REJECTED_PATH|REJECTED PATH|REJECTED)(?:\*\*)?:\s*([^\n]+)",
     re.IGNORECASE
 )
+
+def normalize_memory_content(content: str) -> str:
+    """Normalize memory content for deduplication comparisons.
+
+    Strips surrounding whitespace and markdown quoting, collapses internal
+    whitespace runs (spaces/tabs/newlines) to a single space, and casefolds.
+    Near-identical rules ("GOTCHA: run tests before committing" vs
+    "GOTCHA:   Run Tests  Before Committing") map to the same key so the
+    auto-record path does not accumulate near-duplicate rows.
+    """
+    text = str(content).strip().strip("`*\"'")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.casefold()
+
 
 def extract_and_record_memory(
     conn: sqlite3.Connection,
@@ -621,12 +651,23 @@ def extract_and_record_memory(
 
         cat = category_map.get(raw_prefix, "gotcha")
 
-        # Deduplication check: check if identical content already exists on this board
-        existing = conn.execute(
+        # Deduplication check: first a fast exact-content lookup (regression
+        # guard for identical re-runs), then a normalized lookup (casefold +
+        # collapsed whitespace) so near-identical phrasings ("Gotcha: run
+        # tests" vs "GOTCHA:  Run   Tests") do not accumulate as separate rows.
+        dedup_key = normalize_memory_content(clean_content)
+        exact_row = conn.execute(
             "SELECT id FROM board_memories WHERE board_slug = ? AND content = ?",
             (board_slug, clean_content)
         ).fetchone()
-        if existing:
+        if exact_row:
+            continue
+        # Fuzzy-near-miss fallback: compare normalized forms of existing rows.
+        rows = conn.execute(
+            "SELECT content FROM board_memories WHERE board_slug = ?",
+            (board_slug,)
+        ).fetchall()
+        if any(normalize_memory_content(r["content"]) == dedup_key for r in rows):
             continue
 
         mem_id = f"mem-{secrets.token_hex(4)}"
@@ -3020,11 +3061,20 @@ def list_board_memories(
 
 @router.post("/boards/{slug}/memories")
 def create_board_memory(slug: str, req: MemoryCreate):
-    """Record a new memory, decision, convention, or gotcha for a board."""
+    """Record a new memory, decision, convention, or gotcha for a board.
+
+    ``req.content`` is hard-capped at 500 characters (``MemoryCreate.content``
+    enforces ``max_length``) — oversized content is rejected with a 422.
+    Whitespace-only content is rejected with a 400.
+    """
     init_db()
     cat = (req.category or "general").strip().lower()
     if cat not in VALID_MEMORY_CATEGORIES:
         cat = "general"
+
+    stripped_content = req.content.strip()
+    if not stripped_content:
+        raise HTTPException(status_code=400, detail="Memory content must not be blank")
 
     now = int(time.time())
     mem_id = f"mem-{secrets.token_hex(4)}"
@@ -3064,7 +3114,13 @@ def create_board_memory(slug: str, req: MemoryCreate):
 
 @router.put("/memories/{memory_id}")
 def update_board_memory(memory_id: str, req: MemoryUpdate):
-    """Update an existing board memory."""
+    """Update an existing board memory.
+
+    When ``req.content`` is provided it must be non-empty and at most 500
+    characters (``MemoryUpdate.content`` enforces ``min_length``/
+    ``max_length``) — violations are rejected with a 422. Whitespace-only
+    content is rejected with a 400.
+    """
     init_db()
     now = int(time.time())
     with get_db_conn() as conn:
@@ -3082,8 +3138,11 @@ def update_board_memory(memory_id: str, req: MemoryUpdate):
                 updates.append("category = ?")
                 params.append(cat)
         if req.content is not None:
+            stripped_content = req.content.strip()
+            if not stripped_content:
+                raise HTTPException(status_code=400, detail="Memory content must not be blank")
             updates.append("content = ?")
-            params.append(req.content.strip())
+            params.append(stripped_content)
         if req.tags is not None:
             updates.append("tags = ?")
             params.append(json.dumps(req.tags))

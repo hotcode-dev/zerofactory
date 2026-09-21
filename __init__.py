@@ -18,7 +18,7 @@ try:
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
         list_memories as _list_memories, create_memory as _create_memory, delete_memory as _delete_memory,
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate, MemoryCreate,
-        ACTIVITY_ACTORS
+        ACTIVITY_ACTORS, MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH
     )
 except ImportError:
     current_dir = Path(__file__).parent
@@ -31,7 +31,7 @@ except ImportError:
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
         list_memories as _list_memories, create_memory as _create_memory, delete_memory as _delete_memory,
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate, MemoryCreate,
-        ACTIVITY_ACTORS
+        ACTIVITY_ACTORS, MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH
     )
 
 try:
@@ -161,9 +161,9 @@ def register(ctx: Any):
         p_mlist.add_argument("--category", default=None, help="Category filter (decision, gotcha, convention, rejected_path, general)")
         p_mlist.add_argument("--query", "-q", default=None, help="Keyword search query")
 
-        p_madd = mem_subs.add_parser("add", help="Add a new repository memory")
+        p_madd = mem_subs.add_parser("add", help=f"Add a new repository memory (max {_MEMORY_CONTENT_MAX_LENGTH} chars)")
         p_madd.add_argument("--board", required=True, help="Board slug")
-        p_madd.add_argument("content", help="Memory content / finding / convention")
+        p_madd.add_argument("content", help=f"Memory content / finding / convention (max {_MEMORY_CONTENT_MAX_LENGTH} chars)")
         p_madd.add_argument("--category", default="general", choices=["decision", "gotcha", "convention", "rejected_path", "general"], help="Category")
         p_madd.add_argument("--tags", default=None, help="Comma-separated tags")
         p_madd.add_argument("--author", default=None, help="Author name (defaults to HERMES_PROFILE or 'user')")
@@ -411,13 +411,27 @@ def register(ctx: Any):
             elif m_act == "add":
                 tag_list = [t.strip() for t in args.tags.split(",") if t.strip()] if getattr(args, "tags", None) else []
                 author = getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user"
-                req = MemoryCreate(
-                    category=args.category,
-                    content=args.content,
-                    tags=tag_list,
-                    author=author,
-                    task_id=getattr(args, "task", None)
-                )
+                content = (args.content or "").strip()
+                if len(content) > _MEMORY_CONTENT_MAX_LENGTH:
+                    print(
+                        f"✗ Memory content is {len(content)} chars; "
+                        f"the maximum allowed is {_MEMORY_CONTENT_MAX_LENGTH} (API rejects it with 422)."
+                    )
+                    return
+                if not content:
+                    print("✗ Memory content must not be empty.")
+                    return
+                try:
+                    req = MemoryCreate(
+                        category=args.category,
+                        content=args.content,
+                        tags=tag_list,
+                        author=author,
+                        task_id=getattr(args, "task", None)
+                    )
+                except Exception as e:
+                    print(f"✗ Invalid memory payload: {e}")
+                    return
                 res = _create_memory(args.board, req)
                 mem = res.get("memory", {})
                 print(f"✓ Added memory {mem.get('id')} to board '{args.board}' [{mem.get('category')}].")

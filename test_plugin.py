@@ -7116,6 +7116,240 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         self.assertEqual(mem["author"], "zf-reviewer")
         self.assertEqual(mem["task_id"], t_id)
 
+    def test_62_memory_auto_record_near_duplicate_dedup(self):
+        """Test that near-identical rules (case/whitespace variants) dedup to a single row."""
+        from dashboard.plugin_api import extract_and_record_memory, get_db_conn
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-near-dup.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        base_rule = "GOTCHA: Always run db migrations before seeding test data"
+
+        with get_db_conn() as conn:
+            # 1. Record the base rule
+            recorded = extract_and_record_memory(conn, board_slug=b_slug, text=base_rule, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded), 1)
+
+            # 2. Case + extra whitespace variant of the same rule → deduplicated
+            variant = "gotcha:   always   run DB migrations before seeding test data"
+            recorded_variant = extract_and_record_memory(conn, board_slug=b_slug, text=variant, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_variant), 0)
+
+            # 3. Case variant with a markdown-bullet prefix → still deduplicated
+            variant_md = "- **Gotcha:** ALWAYS RUN DB MIGRATIONS before seeding  test data"
+            recorded_md = extract_and_record_memory(conn, board_slug=b_slug, text=variant_md, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_md), 0)
+
+            # 4. Exact-match regression guard: identical re-run is also deduplicated
+            recorded_exact = extract_and_record_memory(conn, board_slug=b_slug, text=base_rule, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_exact), 0)
+
+            # 5. Mid-sentence rule (block/reviewer reason style, e.g.
+            # "changes-requested. GOTCHA: ...") is still captured
+            mid_sentence = "changes-requested. GOTCHA: Always lock dependencies in requirements.txt before release"
+            recorded_mid = extract_and_record_memory(conn, board_slug=b_slug, text=mid_sentence, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_mid), 1)
+            self.assertEqual(recorded_mid[0]["category"], "gotcha")
+
+            # 6. A genuinely different rule is still recorded (no over-suppression)
+            other = "CONVENTION: Use snake_case for all module-level constants"
+            recorded_other = extract_and_record_memory(conn, board_slug=b_slug, text=other, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_other), 1)
+
+            # 7. Board state: exactly 3 rows (base rule + mid-sentence rule +
+            # genuinely different rule)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM board_memories WHERE board_slug = ?", (b_slug,))
+            self.assertEqual(cursor.fetchone()[0], 3)
+
+            # The gotcha rows are exactly the base rule + the mid-sentence
+            # rule (stored in their original phrasing); variants were not
+            # recorded as separate rows.
+            cursor.execute(
+                "SELECT content FROM board_memories WHERE board_slug = ? AND category = 'gotcha'",
+                (b_slug,)
+            )
+            contents = sorted(r[0] for r in cursor.fetchall())
+            self.assertEqual(
+                contents,
+                sorted([
+                    "Always run db migrations before seeding test data",
+                    "Always lock dependencies in requirements.txt before release",
+                ])
+            )
+
+    def test_63_memory_manual_content_length_cap(self):
+        """Test that manually created/updated memory content is bounded at 500 chars."""
+        from dashboard.plugin_api import MEMORY_CONTENT_MAX_LENGTH
+
+        self.assertGreater(MEMORY_CONTENT_MAX_LENGTH, 0)
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-cap.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        # 1. Create: over-cap content is rejected with 422
+        too_long = "GOTCHA: " + ("x" * (MEMORY_CONTENT_MAX_LENGTH - 5))
+        res = client.post(
+            f"/api/plugins/zerofactory/boards/{b_slug}/memories",
+            json={"content": too_long}
+        )
+        self.assertEqual(res.status_code, 422)
+
+        # 2. Create: exactly-at-cap content is accepted
+        at_cap = "GOTCHA: " + ("x" * (MEMORY_CONTENT_MAX_LENGTH - 8))
+        self.assertEqual(len(at_cap), MEMORY_CONTENT_MAX_LENGTH)
+        ok = client.post(
+            f"/api/plugins/zerofactory/boards/{b_slug}/memories",
+            json={"content": at_cap, "category": "gotcha"}
+        )
+        self.assertEqual(ok.status_code, 200)
+        mem = ok.json()["memory"]
+        self.assertEqual(len(mem["content"]), MEMORY_CONTENT_MAX_LENGTH)
+
+        # 3. Update: over-cap replacement is rejected with 422, content unchanged
+        res = client.put(
+            f"/api/plugins/zerofactory/memories/{mem['id']}",
+            json={"content": too_long}
+        )
+        self.assertEqual(res.status_code, 422)
+        after = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(after["memories"][0]["content"], at_cap)
+
+        # 4. Update: whitespace-only replacement is rejected with 400
+        # (min_length counts raw chars, so "   " passes pydantic — the
+        # endpoint rejects blank content explicitly)
+        res = client.put(
+            f"/api/plugins/zerofactory/memories/{mem['id']}",
+            json={"content": "   "}
+        )
+        self.assertEqual(res.status_code, 400)
+
+        # 5. Update: valid shorter replacement is accepted
+        short = "GOTCHA: keep memory content short"
+        res = client.put(
+            f"/api/plugins/zerofactory/memories/{mem['id']}",
+            json={"content": short}
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["memory"]["content"], short)
+
+        # 6. CLI `memory add` documents the cap and refuses over-cap content
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+        from __init__ import register
+
+        class DummyCtx:
+            def __init__(self):
+                self.commands = {}
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.commands[name] = (setup_fn, handler_fn)
+
+        ctx = DummyCtx()
+        register(ctx)
+        setup_fn, handler_fn = ctx.commands["zerofactory"]
+
+        parser = argparse.ArgumentParser()
+        setup_fn(parser)
+
+        # Cap is documented in the CLI help text
+        parser.parse_args(["memory", "add", "--board", b_slug, "rule"])
+        subparsers_actions = [
+            action for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        ]
+        memory_action = next(a for a in subparsers_actions if a.dest == "action")
+        memory_parser = memory_action.choices["memory"]
+        # Walk sub-subparsers: memory -> add
+        mem_add_help = None
+        for sub_action in memory_parser._actions:
+            if isinstance(sub_action, argparse._SubParsersAction):
+                add_parser = sub_action.choices["add"]
+                mem_add_help = add_parser.format_help()
+                break
+        self.assertIsNotNone(mem_add_help)
+        self.assertIn(str(MEMORY_CONTENT_MAX_LENGTH), mem_add_help)
+
+        # Over-cap content is refused with a clear message and no row created
+        f = io.StringIO()
+        args_long = parser.parse_args([
+            "memory", "add",
+            "--board", b_slug,
+            "GOTCHA: " + ("y" * 600),
+        ])
+        with redirect_stdout(f):
+            handler_fn(args_long)
+        out = f.getvalue()
+        self.assertIn("maximum allowed", out)
+        after_cli = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(after_cli["total"], 1)
+
+        # Valid CLI add still works
+        f = io.StringIO()
+        args_ok = parser.parse_args([
+            "memory", "add",
+            "--board", b_slug,
+            "CLI rule within the cap",
+        ])
+        with redirect_stdout(f):
+            handler_fn(args_ok)
+        self.assertIn("Added memory", f.getvalue())
+
+    def test_64_digest_board_memories_unchanged_for_legit_rows(self):
+        """Test that digest_board_memories_context output format is unchanged for legitimate rows."""
+        from dispatcher import digest_board_memories_context
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/digest-regression.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": "Follow PEP 8 naming conventions",
+            "tags": ["style", "pep8"],
+            "author": "zf-builder"
+        })
+
+        digest = digest_board_memories_context(b_slug)
+        self.assertEqual(
+            digest,
+            (
+                "\U0001F9E0 REPOSITORY KNOWLEDGE & CONVENTIONS (Learned from prior tasks):\n"
+                "- [convention] Follow PEP 8 naming conventions [tags: style, pep8]\n"
+                "Please adhere to these conventions and avoid known gotchas during execution."
+            )
+        )
+
+        # Long legitimate content is still truncated to 200 chars in the digest
+        long_content = "CONVENTION-CONTENT: " + ("z" * 400)
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": long_content
+        })
+        digest2 = digest_board_memories_context(b_slug)
+        self.assertIn(long_content[:197] + "...", digest2)
+        self.assertNotIn(long_content, digest2)
+
+        # Signature is unchanged: (board_slug, db_path=None, limit=8)
+        import inspect
+        sig = inspect.signature(digest_board_memories_context)
+        self.assertEqual(list(sig.parameters), ["board_slug", "db_path", "limit"])
+        self.assertEqual(sig.parameters["limit"].default, 8)
+
 
 if __name__ == "__main__":
     unittest.main()
