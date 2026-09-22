@@ -433,10 +433,11 @@
           method: "POST"
         });
         if (res && res.ok) {
-          showToast(`Job triggered successfully (PID: ${res.pid || "running"})`, "success");
+          const detail = (res.message && res.returncode !== undefined) ? res.message : (res.pid ? `PID: ${res.pid}` : "running");
+          showToast(`Job completed successfully (${detail})`, "success");
           setTimeout(() => loadCronJobs(), 1500);
         } else {
-          showToast("Failed to run cron job: " + (res.error || "Unknown error"), "error");
+          showToast("Failed to run cron job: " + (res.error || (res && res.message) || "Unknown error"), "error");
         }
       } catch (err) {
         showToast("Error running cron job: " + err.message, "error");

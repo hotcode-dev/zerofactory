@@ -2089,13 +2089,29 @@ class TestZeroFactory(unittest.TestCase):
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = mock_popen.return_value
             mock_proc.pid = 99999
+            mock_proc.returncode = 0
             res = trigger_builtin_job(job_id)
             self.assertTrue(res.get("ok"))
             self.assertEqual(res.get("pid"), 99999)
+            # Real completion feedback: the synchronous wait reports the exit
+            # status to the caller (acceptance criteria: success/failure signal).
+            self.assertEqual(res.get("returncode"), 0)
+            self.assertTrue(res.get("message"))
             call_args = mock_popen.call_args[0][0]
             self.assertIn("-p", call_args)
             self.assertIn("zf-orchestrator", call_args)
             self.assertIn(job_id, call_args)
+            # The spawn must not use an un-drained PIPE: stdout is a log file
+            # (a real file object) or DEVNULL, and stderr is redirected to it.
+            kwargs = mock_popen.call_args[1]
+            self.assertNotEqual(kwargs.get("stdout"), subprocess.PIPE,
+                                "stdout must not be an un-drained PIPE")
+            self.assertNotEqual(kwargs.get("stderr"), subprocess.PIPE,
+                                "stderr must not be an un-drained PIPE")
+            self.assertIn(kwargs.get("stderr"), (subprocess.STDOUT, subprocess.DEVNULL))
+            self.assertIn(kwargs.get("stdin"), (subprocess.DEVNULL, None))
+            # The handle must be waited on so the child is reaped (no zombie).
+            self.assertTrue(mock_proc.wait.called)
 
         # 2. --description-file support in CLI parser and handler
         from __init__ import register
@@ -2123,6 +2139,133 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             if os.path.exists(tf_path):
                 os.unlink(tf_path)
+
+    def test_29b_trigger_builtin_job_large_output_no_deadlock(self):
+        """Regression: a `hermes cron run` child that writes far more than the
+        OS pipe buffer (~64KB) to stdout AND stderr must NOT deadlock the parent
+        (the original bug) and the caller must receive a real exit-status signal.
+
+        Runs against a real child process (a fake `hermes` executable that
+        writes >64KB to each stream) — so it would genuinely hang/pipe-block
+        under the old un-drained-PIPE implementation.
+        """
+        import os as _os
+        import shutil
+        import subprocess as _subprocess
+        import tempfile
+        import time
+
+        import builtin_cron
+        from builtin_cron import trigger_builtin_job
+
+        job_id = "zero-factory-task-queue-check"
+        fake_dir = tempfile.mkdtemp(prefix="fake_hermes_")
+        fake_hermes = str(Path(fake_dir) / "hermes")
+        path_was_prepended = False
+        try:
+            with open(fake_hermes, "w") as f:
+                f.write(
+                    "#!/bin/sh\n"
+                    "# Fake `hermes cron run` child that writes >64KB to stdout\n"
+                    "# AND >64KB to stderr — enough to overflow an un-drained pipe.\n"
+                    "head -c 204800 /dev/zero | tr '\\0' 'A'\n"
+                    "head -c 204800 /dev/zero | tr '\\0' 'B' 1>&2\n"
+                    "echo 'BOOM-SENTINEL'\n"
+                    "exit 3\n"
+                )
+            _os.chmod(fake_hermes, 0o755)
+
+            # Ensure our fake `hermes` resolves before any real one on PATH.
+            real = shutil.which("hermes")
+            if real is None or Path(real).parent.resolve() != Path(fake_dir).resolve():
+                _os.environ["PATH"] = fake_dir + _os.pathsep + _os.environ.get("PATH", "")
+                path_was_prepended = True
+
+            # Sanity: the fake child really does emit >64KB on each stream.
+            env = dict(_os.environ)
+            big = _subprocess.run(
+                ["hermes", "-p", "zf-orchestrator", "cron", "run", "probe"],
+                capture_output=True, text=True, env=env,
+            )
+            self.assertGreaterEqual(len(big.stdout), 100 * 1024)
+            self.assertGreaterEqual(len(big.stderr), 100 * 1024)
+
+            start = time.monotonic()
+            res = trigger_builtin_job(job_id)
+            elapsed = time.monotonic() - start
+
+            # Must return promptly — no pipe deadlock (old code would hang).
+            self.assertLess(elapsed, 120, "trigger_builtin_job appears to have deadlocked")
+            # The child has exited and been reaped — not left registered.
+            self.assertNotIn(job_id, builtin_cron._active_cron_runs)
+            # Real completion feedback: non-zero child exit is reported.
+            self.assertFalse(res.get("ok"))
+            self.assertEqual(res.get("returncode"), 3)
+            self.assertIn("exited with code 3", res.get("message", ""))
+            # The large output reached the log (proving it was drained via a
+            # file, not an un-drained pipe) and surfaced to the caller.
+            self.assertIn("BOOM-SENTINEL", res.get("output_tail", ""))
+        finally:
+            shutil.rmtree(fake_dir, ignore_errors=True)
+            if path_was_prepended:
+                # Restore PATH: drop the leading fake dir.
+                parts = _os.environ["PATH"].split(_os.pathsep)
+                if parts and Path(parts[0]).resolve() == Path(fake_dir).resolve():
+                    parts.pop(0)
+                _os.environ["PATH"] = _os.pathsep.join(parts)
+
+    def test_29c_trigger_builtin_job_source_has_no_undrained_pipe(self):
+        """Source-level guard: trigger_builtin_job must never spawn with an
+        un-drained PIPE, must register the Popen handle, and must wait on it.
+        (Catches regressions even if the mock-based test above were weakened.)
+        """
+        import inspect
+
+        import builtin_cron
+        src = inspect.getsource(builtin_cron.trigger_builtin_job)
+
+        # No PIPE is used anywhere in the spawn.
+        self.assertNotIn("subprocess.PIPE", src,
+                         "trigger_builtin_job must not use subprocess.PIPE")
+        # The child is drained via a log file / DEVNULL and stderr is merged.
+        self.assertIn("stderr=subprocess.STDOUT", src)
+        self.assertIn("stdin=subprocess.DEVNULL", src)
+        # The handle is registered (reapable) and awaited (reaped, not orphaned).
+        self.assertIn("_active_cron_runs[", src)
+        self.assertIn("proc.wait(", src)
+
+    def test_29d_reap_active_cron_runs_reaps_finished_children(self):
+        """reap_active_cron_runs reaps exited children and returns the count,
+        leaving only the still-running ones registered (no zombie accumulation).
+        """
+        from unittest import mock
+
+        import builtin_cron
+        from builtin_cron import reap_active_cron_runs
+
+        def make_proc(retcode):
+            p = mock.Mock()
+            p.returncode = retcode
+            p.poll.return_value = retcode
+            return p
+
+        done_a = make_proc(0)
+        done_b = make_proc(1)
+        still_running = make_proc(None)
+        # Point the module registry at a local dict for the duration of the call
+        # so the assertions observe the exact post-reap state (no env restore
+        # surprises).
+        reg = {"job-a": done_a, "job-b": done_b, "job-c": still_running}
+        with mock.patch.object(builtin_cron, "_active_cron_runs", reg):
+            reaped = reap_active_cron_runs()
+        self.assertEqual(reaped, 2)
+        self.assertNotIn("job-a", reg)
+        self.assertNotIn("job-b", reg)
+        self.assertIn("job-c", reg)
+        # Finished children were polled (reaped); the running one was left alone.
+        done_a.poll.assert_called()
+        done_b.poll.assert_called()
+        still_running.poll.assert_called()
 
     def test_30_reap_stuck_tasks_contract(self):
         """Validate that reap_stuck_tasks provides both reaped_tasks and reaped for watchdog compatibility."""
