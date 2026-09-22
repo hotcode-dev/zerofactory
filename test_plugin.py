@@ -3906,6 +3906,87 @@ class TestZeroFactory(unittest.TestCase):
             else:
                 os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
 
+    def test_48b_wip_budget_does_not_starve_other_boards(self):
+        """The global WIP budget must not truncate the todo candidate set
+        before the per-board cap check runs (regression from the ready-removal
+        refactor). With max_active_tasks=2, two empty boards of cap 1, and 4
+        todo tasks on b1 (older) + 2 on b2 (newer): the old `LIMIT 2` SELECT
+        returned only b1's rows, so one b1 task dispatched, the second was
+        rejected by b1's per-board cap, and b2 never entered the candidate
+        set — a WIP slot left unused while b2 starves. The fixed dispatch
+        fetches the full candidate set and enforces the global budget in the
+        loop, so both boards get a worker and the budget (2) is still capped."""
+        import tempfile
+        import shutil
+        import sqlite3
+        import time
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        td = tempfile.mkdtemp(prefix="zf-wip-starve-")
+        ws = Path(td) / "ws"
+        ws.mkdir()
+        db_file = Path(td) / "wip_starve.db"
+        try:
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, metadata TEXT DEFAULT '{}', tenant TEXT DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, actor TEXT, action TEXT, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '2', 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('scan_on_idle', 'false', 1)")
+            # Both boards at the default per-board cap of 1.
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 1, 1, 1)")
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b2', 1, 1, 1)")
+            now = int(time.time())
+            # b1 holds the OLDER backlog (4 tasks) and would exhaust the
+            # WIP-sized LIMIT first; b2's tasks are newer.
+            for i in range(1, 5):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'zf-builder', 'P2', ?, ?, ?)",
+                    (f"b1-{i}", f"B1 task {i}", str(ws), now + i, now + i),
+                )
+            for i in range(1, 3):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b2', ?, 'todo', 'zf-builder', 'P2', ?, ?, ?)",
+                    (f"b2-{i}", f"B2 task {i}", str(ws), now + 10 + i, now + 10 + i),
+                )
+            conn.commit()
+            conn.close()
+
+            res = run_dispatch_cycle(db_file)
+            self.assertTrue(res["ok"], f"dispatch cycle should succeed: {res}")
+            self.assertEqual(res["dispatched"], 2, f"global WIP budget 2 must be used fully: {res}")
+
+            conn = sqlite3.connect(str(db_file))
+            conn.row_factory = sqlite3.Row
+            by_board = {r["board_slug"]: r["cnt"] for r in conn.execute(
+                "SELECT board_slug, COUNT(*) AS cnt FROM tasks WHERE status = 'running' GROUP BY board_slug"
+            ).fetchall()}
+            todo_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
+            total_running = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
+            conn.close()
+
+            self.assertEqual(by_board.get("b1", 0), 1, "b1 should run exactly one task under its cap 1")
+            self.assertEqual(by_board.get("b2", 0), 1, "b2 must NOT be starved: a free WIP slot must flow to it")
+            self.assertEqual(total_running, 2, "global WIP budget (max_active_tasks=2) must still be enforced")
+            self.assertEqual(todo_count, 4, "the remaining 4 tasks stay in todo for the next cycle")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is None:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
     def test_49_idle_improvement_scan_dispatch(self):
         """Dispatcher triggers improvement scan on idle and respects threshold, cooldown, and limits."""
         import time
