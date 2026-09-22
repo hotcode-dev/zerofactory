@@ -1463,6 +1463,25 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
         proc = _active_workers.get(task_id)
         pid = meta.get("worker_pid") or (proc.pid if proc else None)
 
+        # A task can be reassigned after its previous worker was stopped (for
+        # example builder -> reviewer).  A persisted PID does not belong to the
+        # newly assigned agent and must not turn that new run into a false
+        # worker-loss failure before it has been dispatched.
+        sessions = meta.get("sessions")
+        has_ongoing_session = isinstance(sessions, list) and any(
+            isinstance(session, dict) and session.get("status") == "ongoing"
+            for session in sessions
+        )
+        if proc is None and pid and not has_ongoing_session:
+            meta.pop("worker_pid", None)
+            meta.pop("session_id", None)
+            meta.pop("started_at", None)
+            pid = None
+            cursor.execute(
+                "UPDATE tasks SET metadata = ? WHERE id = ?",
+                (json.dumps(meta), task_id),
+            )
+
         if proc is not None:
             retcode = proc.poll()
             if retcode is not None:
@@ -2943,6 +2962,16 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         meta.pop("conflict_retries", None)
                                 except Exception:
                                     pass
+
+                                # The builder process has just been stopped.  Do not
+                                # carry its PID into the reviewer phase: on the next
+                                # dispatch cycle ``reap_active_workers`` would see the
+                                # dead PID, mark the new reviewer task as failed, and
+                                # block it before it can be dispatched.
+                                for key in ("worker_pid", "session_id", "started_at",
+                                            "last_worker_failure", "worker_failure_retries",
+                                            "blocked_reason", "permanently_blocked"):
+                                    meta.pop(key, None)
 
                                 cursor.execute(
                                     "UPDATE tasks SET title = ?, assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'todo', updated_at = ? WHERE id = ?",
