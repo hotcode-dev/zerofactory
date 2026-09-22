@@ -33,6 +33,61 @@ app.include_router(router, prefix="/api/plugins/zerofactory")
 client = TestClient(app)
 
 
+def _make_fake_state_db(td: str, profile: str, session_rows) -> Path:
+    """Create a fake per-profile ``state.db`` (sessions + messages tables) so
+    ``resolve_profile_state_db``-driven lookups in the dashboard return the
+    given session rows without touching a real Hermes state DB.
+
+    ``session_rows`` is a list of tuples:
+        (id, model, started_at, ended_at, last_activity_at,
+         last_activity_description, message_count, tool_call_count,
+         cwd, title, profile_name)
+    """
+    import sqlite3
+
+    prof_dir = Path(td) / ".hermes" / "profiles" / profile
+    prof_dir.mkdir(parents=True, exist_ok=True)
+    db_path = prof_dir / "state.db"
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE sessions (
+            id TEXT PRIMARY KEY,
+            model TEXT,
+            started_at REAL,
+            ended_at REAL,
+            last_activity_at REAL,
+            last_activity_description TEXT,
+            message_count INTEGER,
+            tool_call_count INTEGER,
+            cwd TEXT,
+            title TEXT,
+            profile_name TEXT
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY,
+            session_id TEXT,
+            role TEXT,
+            tool_name TEXT,
+            tool_calls TEXT,
+            content TEXT,
+            reasoning_content TEXT,
+            timestamp REAL
+        )
+    """)
+    cur.executemany(
+        "INSERT INTO sessions (id, model, started_at, ended_at, last_activity_at,"
+        " last_activity_description, message_count, tool_call_count, cwd, title, profile_name)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        session_rows,
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
 class TestZeroFactory(unittest.TestCase):
 
     def setUp(self):
@@ -936,6 +991,121 @@ class TestZeroFactory(unittest.TestCase):
         self.assertIn("Pre-Calculated ZeroFactory Daily Metrics", proc_stats.stdout)
         self.assertIn("Column Distribution", proc_stats.stdout)
 
+    def test_24a_daily_stats_inflight_duration_uses_started_at(self):
+        """Regression (zf-40aec377): the daily report's "Currently In-Flight"
+        duration must be derived from ``metadata.started_at`` (the authoritative
+        dispatch time the dispatcher records at spawn), NOT from
+        ``tasks.updated_at`` — which is written exactly once at claim/spawn and
+        never refreshed while a worker runs, so ``now - updated_at`` permanently
+        reports ~0-1m for the whole lifetime of a build.
+
+        Behavior contract:
+          * A task that has been running N minutes (``metadata.started_at =
+            now - N*60``) but whose ``updated_at`` is seconds old must report
+            ~N minutes, never ~0m.
+          * If clock skew puts ``started_at`` slightly ahead of ``now``, the
+            elapsed is clamped with ``max(0, ...)`` — the report never shows a
+            negative duration.
+        """
+        import importlib.util
+        import json
+        import io
+        import contextlib
+        import sqlite3
+        import time as _time
+        import re
+
+        scripts_dir = Path(__file__).resolve().parent / "scripts"
+        spec = importlib.util.spec_from_file_location(
+            "zf_daily_stats_under_test", scripts_dir / "zf_daily_stats.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        # --- Helper-level contract: started_at wins, then updated_at, then created_at.
+        now = 2_000_000_000
+        # started_at (recent) must beat a stale updated_at.
+        rt_a = {
+            "id": "t", "updated_at": now - 10, "created_at": now - 999,
+            "metadata": json.dumps({"started_at": now - 47 * 60}),
+        }
+        self.assertEqual(mod._resolve_running_since(rt_a, now), now - 47 * 60)
+        # No started_at -> fall back to updated_at.
+        rt_b = {
+            "id": "t", "updated_at": now - 120, "created_at": now - 999, "metadata": "{}",
+        }
+        self.assertEqual(mod._resolve_running_since(rt_b, now), now - 120)
+        # No started_at and no updated_at (0/unset) -> fall back to created_at.
+        rt_c = {
+            "id": "t", "updated_at": 0, "created_at": now - 999, "metadata": "not-json",
+        }
+        self.assertEqual(mod._resolve_running_since(rt_c, now), now - 999)
+
+        # --- End-to-end: run the report against a temp DB and assert the printed
+        # in-flight line reflects started_at (not the stale updated_at) and is clamped.
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "stats.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.executescript(
+                "CREATE TABLE boards ("
+                " slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+                "CREATE TABLE tasks ("
+                " id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL,"
+                " description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned',"
+                " priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, workspace_kind TEXT DEFAULT 'worktree', branch_name TEXT,"
+                " pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+            )
+            real_now = int(_time.time())
+            conn.execute("INSERT INTO boards (slug, created_at, updated_at) VALUES (?,1,1)", ("stats-board",))
+            # Task A: running ~47 min per metadata.started_at, but updated_at is seconds old
+            # (the stale-0m bug: old code would have printed ~0m).
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, metadata, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                ("zf-run-a", "stats-board", "Long build", "running", "zf-builder",
+                 json.dumps({"started_at": real_now - 47 * 60, "worker_pid": 1234}),
+                 real_now - 47 * 60, real_now - 5),
+            )
+            # Task B: clock skew — started_at in the future; must clamp to 0m (never negative).
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, metadata, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                ("zf-run-b", "stats-board", "Skewed task", "running", "zf-builder",
+                 json.dumps({"started_at": real_now + 600}), real_now - 5, real_now - 5),
+            )
+            conn.commit()
+            conn.close()
+
+            old_db = os.environ.get("ZEROFACTORY_DB")
+            os.environ["ZEROFACTORY_DB"] = str(db_path)
+            buf = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(buf):
+                    rc = mod.run_daily_stats()
+            finally:
+                if old_db is None:
+                    os.environ.pop("ZEROFACTORY_DB", None)
+                else:
+                    os.environ["ZEROFACTORY_DB"] = old_db
+            out = buf.getvalue()
+            self.assertEqual(rc, 0)
+
+            # Task A: active for ~47m (derived from started_at, NOT the stale updated_at).
+            m = re.search(r"`zf-run-a`.*active for (-?\d+)m", out)
+            self.assertIsNotNone(m, f"missing in-flight line for zf-run-a in:\n{out}")
+            mins_a = int(m.group(1))
+            self.assertGreaterEqual(mins_a, 45,
+                "in-flight duration must reflect metadata.started_at (~47m), not the stale updated_at (~0m)")
+            self.assertLess(mins_a, 60, f"expected ~47m, got {mins_a}m")
+
+            # Task B: clamped to 0m, never negative (clock skew).
+            m2 = re.search(r"`zf-run-b`.*active for (-?\d+)m", out)
+            self.assertIsNotNone(m2, f"missing in-flight line for zf-run-b in:\n{out}")
+            self.assertGreaterEqual(int(m2.group(1)), 0, "in-flight duration must never be negative (clock-skew clamp)")
+            self.assertNotIn("active for -", out, "report must never show a negative elapsed duration")
+
     def test_25_hermes_script_sandbox_compliance(self):
         """Verify compliance with Hermes _script_health_issue path sandbox."""
         from profile_manager import get_hermes_home
@@ -1703,13 +1873,29 @@ class TestZeroFactory(unittest.TestCase):
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = mock_popen.return_value
             mock_proc.pid = 99999
+            mock_proc.returncode = 0
             res = trigger_builtin_job(job_id)
             self.assertTrue(res.get("ok"))
             self.assertEqual(res.get("pid"), 99999)
+            # Real completion feedback: the synchronous wait reports the exit
+            # status to the caller (acceptance criteria: success/failure signal).
+            self.assertEqual(res.get("returncode"), 0)
+            self.assertTrue(res.get("message"))
             call_args = mock_popen.call_args[0][0]
             self.assertIn("-p", call_args)
             self.assertIn("zf-orchestrator", call_args)
             self.assertIn(job_id, call_args)
+            # The spawn must not use an un-drained PIPE: stdout is a log file
+            # (a real file object) or DEVNULL, and stderr is redirected to it.
+            kwargs = mock_popen.call_args[1]
+            self.assertNotEqual(kwargs.get("stdout"), subprocess.PIPE,
+                                "stdout must not be an un-drained PIPE")
+            self.assertNotEqual(kwargs.get("stderr"), subprocess.PIPE,
+                                "stderr must not be an un-drained PIPE")
+            self.assertIn(kwargs.get("stderr"), (subprocess.STDOUT, subprocess.DEVNULL))
+            self.assertIn(kwargs.get("stdin"), (subprocess.DEVNULL, None))
+            # The handle must be waited on so the child is reaped (no zombie).
+            self.assertTrue(mock_proc.wait.called)
 
         # 2. --description-file support in CLI parser and handler
         from __init__ import register
@@ -1737,6 +1923,133 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             if os.path.exists(tf_path):
                 os.unlink(tf_path)
+
+    def test_29b_trigger_builtin_job_large_output_no_deadlock(self):
+        """Regression: a `hermes cron run` child that writes far more than the
+        OS pipe buffer (~64KB) to stdout AND stderr must NOT deadlock the parent
+        (the original bug) and the caller must receive a real exit-status signal.
+
+        Runs against a real child process (a fake `hermes` executable that
+        writes >64KB to each stream) — so it would genuinely hang/pipe-block
+        under the old un-drained-PIPE implementation.
+        """
+        import os as _os
+        import shutil
+        import subprocess as _subprocess
+        import tempfile
+        import time
+
+        import builtin_cron
+        from builtin_cron import trigger_builtin_job
+
+        job_id = "zero-factory-task-queue-check"
+        fake_dir = tempfile.mkdtemp(prefix="fake_hermes_")
+        fake_hermes = str(Path(fake_dir) / "hermes")
+        path_was_prepended = False
+        try:
+            with open(fake_hermes, "w") as f:
+                f.write(
+                    "#!/bin/sh\n"
+                    "# Fake `hermes cron run` child that writes >64KB to stdout\n"
+                    "# AND >64KB to stderr — enough to overflow an un-drained pipe.\n"
+                    "head -c 204800 /dev/zero | tr '\\0' 'A'\n"
+                    "head -c 204800 /dev/zero | tr '\\0' 'B' 1>&2\n"
+                    "echo 'BOOM-SENTINEL'\n"
+                    "exit 3\n"
+                )
+            _os.chmod(fake_hermes, 0o755)
+
+            # Ensure our fake `hermes` resolves before any real one on PATH.
+            real = shutil.which("hermes")
+            if real is None or Path(real).parent.resolve() != Path(fake_dir).resolve():
+                _os.environ["PATH"] = fake_dir + _os.pathsep + _os.environ.get("PATH", "")
+                path_was_prepended = True
+
+            # Sanity: the fake child really does emit >64KB on each stream.
+            env = dict(_os.environ)
+            big = _subprocess.run(
+                ["hermes", "-p", "zf-orchestrator", "cron", "run", "probe"],
+                capture_output=True, text=True, env=env,
+            )
+            self.assertGreaterEqual(len(big.stdout), 100 * 1024)
+            self.assertGreaterEqual(len(big.stderr), 100 * 1024)
+
+            start = time.monotonic()
+            res = trigger_builtin_job(job_id)
+            elapsed = time.monotonic() - start
+
+            # Must return promptly — no pipe deadlock (old code would hang).
+            self.assertLess(elapsed, 120, "trigger_builtin_job appears to have deadlocked")
+            # The child has exited and been reaped — not left registered.
+            self.assertNotIn(job_id, builtin_cron._active_cron_runs)
+            # Real completion feedback: non-zero child exit is reported.
+            self.assertFalse(res.get("ok"))
+            self.assertEqual(res.get("returncode"), 3)
+            self.assertIn("exited with code 3", res.get("message", ""))
+            # The large output reached the log (proving it was drained via a
+            # file, not an un-drained pipe) and surfaced to the caller.
+            self.assertIn("BOOM-SENTINEL", res.get("output_tail", ""))
+        finally:
+            shutil.rmtree(fake_dir, ignore_errors=True)
+            if path_was_prepended:
+                # Restore PATH: drop the leading fake dir.
+                parts = _os.environ["PATH"].split(_os.pathsep)
+                if parts and Path(parts[0]).resolve() == Path(fake_dir).resolve():
+                    parts.pop(0)
+                _os.environ["PATH"] = _os.pathsep.join(parts)
+
+    def test_29c_trigger_builtin_job_source_has_no_undrained_pipe(self):
+        """Source-level guard: trigger_builtin_job must never spawn with an
+        un-drained PIPE, must register the Popen handle, and must wait on it.
+        (Catches regressions even if the mock-based test above were weakened.)
+        """
+        import inspect
+
+        import builtin_cron
+        src = inspect.getsource(builtin_cron.trigger_builtin_job)
+
+        # No PIPE is used anywhere in the spawn.
+        self.assertNotIn("subprocess.PIPE", src,
+                         "trigger_builtin_job must not use subprocess.PIPE")
+        # The child is drained via a log file / DEVNULL and stderr is merged.
+        self.assertIn("stderr=subprocess.STDOUT", src)
+        self.assertIn("stdin=subprocess.DEVNULL", src)
+        # The handle is registered (reapable) and awaited (reaped, not orphaned).
+        self.assertIn("_active_cron_runs[", src)
+        self.assertIn("proc.wait(", src)
+
+    def test_29d_reap_active_cron_runs_reaps_finished_children(self):
+        """reap_active_cron_runs reaps exited children and returns the count,
+        leaving only the still-running ones registered (no zombie accumulation).
+        """
+        from unittest import mock
+
+        import builtin_cron
+        from builtin_cron import reap_active_cron_runs
+
+        def make_proc(retcode):
+            p = mock.Mock()
+            p.returncode = retcode
+            p.poll.return_value = retcode
+            return p
+
+        done_a = make_proc(0)
+        done_b = make_proc(1)
+        still_running = make_proc(None)
+        # Point the module registry at a local dict for the duration of the call
+        # so the assertions observe the exact post-reap state (no env restore
+        # surprises).
+        reg = {"job-a": done_a, "job-b": done_b, "job-c": still_running}
+        with mock.patch.object(builtin_cron, "_active_cron_runs", reg):
+            reaped = reap_active_cron_runs()
+        self.assertEqual(reaped, 2)
+        self.assertNotIn("job-a", reg)
+        self.assertNotIn("job-b", reg)
+        self.assertIn("job-c", reg)
+        # Finished children were polled (reaped); the running one was left alone.
+        done_a.poll.assert_called()
+        done_b.poll.assert_called()
+        still_running.poll.assert_called()
 
     def test_30_reap_stuck_tasks_contract(self):
         """Validate that reap_stuck_tasks provides both reaped_tasks and reaped for watchdog compatibility."""
@@ -3986,6 +4299,87 @@ class TestZeroFactory(unittest.TestCase):
             else:
                 os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
 
+    def test_48b_wip_budget_does_not_starve_other_boards(self):
+        """The global WIP budget must not truncate the todo candidate set
+        before the per-board cap check runs (regression from the ready-removal
+        refactor). With max_active_tasks=2, two empty boards of cap 1, and 4
+        todo tasks on b1 (older) + 2 on b2 (newer): the old `LIMIT 2` SELECT
+        returned only b1's rows, so one b1 task dispatched, the second was
+        rejected by b1's per-board cap, and b2 never entered the candidate
+        set — a WIP slot left unused while b2 starves. The fixed dispatch
+        fetches the full candidate set and enforces the global budget in the
+        loop, so both boards get a worker and the budget (2) is still capped."""
+        import tempfile
+        import shutil
+        import sqlite3
+        import time
+        from dispatcher import run_dispatch_cycle
+
+        orig_skip_git = os.environ.get("ZEROFACTORY_SKIP_GIT")
+        orig_skip_spawn = os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN")
+        os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
+        td = tempfile.mkdtemp(prefix="zf-wip-starve-")
+        ws = Path(td) / "ws"
+        ws.mkdir()
+        db_file = Path(td) / "wip_starve.db"
+        try:
+            conn = sqlite3.connect(str(db_file))
+            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, metadata TEXT DEFAULT '{}', tenant TEXT DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, actor TEXT, action TEXT, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, author TEXT, body TEXT, created_at INTEGER NOT NULL)")
+            conn.execute("CREATE TABLE task_links (id INTEGER PRIMARY KEY, parent_id TEXT, child_id TEXT, link_type TEXT)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('max_active_tasks', '2', 1)")
+            conn.execute("INSERT INTO settings (key, value, updated_at) VALUES ('scan_on_idle', 'false', 1)")
+            # Both boards at the default per-board cap of 1.
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b1', 1, 1, 1)")
+            conn.execute("INSERT INTO boards (slug, max_concurrent_running, created_at, updated_at) VALUES ('b2', 1, 1, 1)")
+            now = int(time.time())
+            # b1 holds the OLDER backlog (4 tasks) and would exhaust the
+            # WIP-sized LIMIT first; b2's tasks are newer.
+            for i in range(1, 5):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b1', ?, 'todo', 'zf-builder', 'P2', ?, ?, ?)",
+                    (f"b1-{i}", f"B1 task {i}", str(ws), now + i, now + i),
+                )
+            for i in range(1, 3):
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, workspace_path, created_at, updated_at) VALUES (?, 'b2', ?, 'todo', 'zf-builder', 'P2', ?, ?, ?)",
+                    (f"b2-{i}", f"B2 task {i}", str(ws), now + 10 + i, now + 10 + i),
+                )
+            conn.commit()
+            conn.close()
+
+            res = run_dispatch_cycle(db_file)
+            self.assertTrue(res["ok"], f"dispatch cycle should succeed: {res}")
+            self.assertEqual(res["dispatched"], 2, f"global WIP budget 2 must be used fully: {res}")
+
+            conn = sqlite3.connect(str(db_file))
+            conn.row_factory = sqlite3.Row
+            by_board = {r["board_slug"]: r["cnt"] for r in conn.execute(
+                "SELECT board_slug, COUNT(*) AS cnt FROM tasks WHERE status = 'running' GROUP BY board_slug"
+            ).fetchall()}
+            todo_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'todo'").fetchone()[0]
+            total_running = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
+            conn.close()
+
+            self.assertEqual(by_board.get("b1", 0), 1, "b1 should run exactly one task under its cap 1")
+            self.assertEqual(by_board.get("b2", 0), 1, "b2 must NOT be starved: a free WIP slot must flow to it")
+            self.assertEqual(total_running, 2, "global WIP budget (max_active_tasks=2) must still be enforced")
+            self.assertEqual(todo_count, 4, "the remaining 4 tasks stay in todo for the next cycle")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is None:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            if orig_skip_spawn is None:
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            else:
+                os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
     def test_49_idle_improvement_scan_dispatch(self):
         """Dispatcher triggers improvement scan on idle and respects threshold, cooldown, and limits."""
         import time
@@ -4735,6 +5129,95 @@ class TestZeroFactory(unittest.TestCase):
             self.assertIn("conflicting", acts[0][0].lower())
         finally:
             shutil.rmtree(td, ignore_errors=True)
+
+    def test_58b_pr_closed_archives_task(self):
+        """When a GitHub PR is closed without merging, Zero Factory must automatically
+        archive/complete the task (status='done'), prune the worktree, and record a
+        'closed' activity entry ('PR closed on GitHub, task archived'). This must
+        work for tasks assigned to zf-reviewer as well as tasks assigned to zf-builder
+        with conflict/failure metadata (e.g. zf-f5f3b8d0)."""
+        import json
+        import shutil
+        import sqlite3
+
+        # Case 1: Reviewer task with closed PR
+        td1 = tempfile.mkdtemp()
+        try:
+            repo_path1, reviewer_ws1 = self._make_reviewer_test_repo(td1)
+            db_file1 = Path(td1) / "closed_rev.db"
+            self._create_conflict_test_db(db_file1)
+            with sqlite3.connect(str(db_file1)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('wt-closed-rev', 'Closed PR task', 'blocked', 'zf-reviewer', ?, 'task/wt-closed-rev',
+                            'https://github.com/hotcode-dev/zerofactory/pull/905', 1000, 1000)
+                """, (str(reviewer_ws1),))
+                conn.commit()
+
+            res, captured_gh, mock_remove, fetch1, _ = self._run_reviewer_pr_cycle(
+                db_file1, {"state": "CLOSED", "reviewDecision": None,
+                           "url": "https://github.com/hotcode-dev/zerofactory/pull/905",
+                           "mergeable": "MERGEABLE"}, task_id="wt-closed-rev"
+            )
+            self.assertTrue(res.get("ok"), f"closed PR cycle should succeed: {res}")
+            self.assertTrue(captured_gh, "gh pr view should have been called")
+            mock_remove.assert_called()
+            t_row = fetch1("SELECT status, assignee, pr_url FROM tasks WHERE id = 'wt-closed-rev'")[0]
+            self.assertEqual(t_row["status"], "done")
+            acts = fetch1("SELECT action, details FROM task_activity WHERE task_id = 'wt-closed-rev' AND action = 'closed'")
+            self.assertEqual(len(acts), 1, "closed activity row missing")
+            self.assertEqual(acts[0][0], "closed")
+            self.assertIn("archived", acts[0][1].lower())
+
+            # Subsequent dispatch cycle must not re-process the done task or flood task_activity
+            res2, captured_gh2, _, fetch2, _ = self._run_reviewer_pr_cycle(
+                db_file1, {"state": "CLOSED", "reviewDecision": None,
+                           "url": "https://github.com/hotcode-dev/zerofactory/pull/905",
+                           "mergeable": "MERGEABLE"}, task_id="wt-closed-rev"
+            )
+            self.assertTrue(res2.get("ok"))
+            self.assertEqual(len(captured_gh2), 0, "Subsequent cycle should not query GitHub for completed task")
+            acts2 = fetch2("SELECT action FROM task_activity WHERE task_id = 'wt-closed-rev' AND action = 'closed'")
+            self.assertEqual(len(acts2), 1, "closed activity must not be duplicated on subsequent cycles")
+        finally:
+            shutil.rmtree(td1, ignore_errors=True)
+
+        # Case 2: Builder task with worker failure / conflict metadata and closed PR (matching zf-f5f3b8d0)
+        td2 = tempfile.mkdtemp()
+        try:
+            repo_path2, builder_ws2 = self._make_reviewer_test_repo(td2)
+            db_file2 = Path(td2) / "closed_builder.db"
+            self._create_conflict_test_db(db_file2)
+            meta_json = json.dumps({
+                "last_worker_failure": {"retcode": -1, "reason": "PID not found"},
+                "conflict_retries": 2,
+                "blocked_reason": "Worker process PID not found"
+            })
+            with sqlite3.connect(str(db_file2)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, metadata, created_at, updated_at)
+                    VALUES ('zf-test-closed', 'Bug: memory leak [PR Conflict]', 'blocked', 'zf-builder', ?, 'task/zf-test-closed',
+                            'https://github.com/hotcode-dev/zerofactory/pull/906', ?, 1000, 1000)
+                """, (str(builder_ws2), meta_json))
+                conn.commit()
+
+            res3, captured_gh3, mock_remove3, fetch3, _ = self._run_reviewer_pr_cycle(
+                db_file2, {"state": "CLOSED", "reviewDecision": "",
+                           "url": "https://github.com/hotcode-dev/zerofactory/pull/906",
+                           "mergeable": "CONFLICTING"}, task_id="zf-test-closed"
+            )
+            self.assertTrue(res3.get("ok"), f"closed PR builder cycle should succeed: {res3}")
+            self.assertTrue(captured_gh3, "gh pr view should have been called")
+            mock_remove3.assert_called()
+            t_row3 = fetch3("SELECT status, assignee, pr_url, workspace_path FROM tasks WHERE id = 'zf-test-closed'")[0]
+            self.assertEqual(t_row3["status"], "done")
+            self.assertIsNone(t_row3["workspace_path"])
+            acts3 = fetch3("SELECT action, details FROM task_activity WHERE task_id = 'zf-test-closed' AND action = 'closed'")
+            self.assertEqual(len(acts3), 1, "closed activity row missing for builder task")
+            self.assertEqual(acts3[0][0], "closed")
+            self.assertIn("archived", acts3[0][1].lower())
+        finally:
+            shutil.rmtree(td2, ignore_errors=True)
 
     def test_59_init_db_path_keyed_flag(self):
         """init_db() must re-initialize when ZEROFACTORY_DB changes to a new
@@ -6187,6 +6670,191 @@ class TestSharedProfilePathResolution(unittest.TestCase):
                 if p.exists():
                     p.unlink()
 
+    # ---- Dashboard stylesheet: portability & CSS/JS class agreement --------
+
+    @staticmethod
+    def _zf_css_selectors(tokens):
+        """Render the escaped class-selector strings a build would emit.
+
+        Mirrors the escaping Tailwind v4 applies when turning a class into a
+        selector (e.g. hover:bg-slate-800 -> .hover\\:bg-slate-800).
+        """
+        out = []
+        for tok in tokens:
+            esc = "."
+            for ch in tok:
+                if ch in ":/.[]":
+                    esc += "\\" + ch
+                else:
+                    esc += ch
+            out.append(esc)
+        return out
+
+    @staticmethod
+    def _zf_js_class_tokens(source):
+        """Extract the utility class tokens referenced in dashboard JS source.
+
+        Character-level lexer (mirrors dashboard/build_css.mjs's
+        extractCandidates): skips line/block comments and only honours quote
+        characters in code position, with backslash escapes. This matters
+        because dist/index.js contains a line comment with an embedded
+        apostrophe (``// Bottom row: Today's actions``) — a naive
+        ``[^"]*``/``[^']*`` quote regex starts a phantom string at that
+        apostrophe, swallows ~140KB of source, and silently drops every
+        className literal after it (e.g. hover:bg-slate-800/80).
+        """
+        import re
+        token_charset = re.compile(r"[A-Za-z0-9_:\[\]/%#!.-]+")
+        strings = []
+        i = 0
+        n = len(source)
+        while i < n:
+            ch = source[i]
+            if ch == "/" and i + 1 < n and source[i + 1] == "/":  # line comment
+                e = source.find("\n", i)
+                i = n if e == -1 else e + 1
+            elif ch == "/" and i + 1 < n and source[i + 1] == "*":  # block comment
+                e = source.find("*/", i + 2)
+                i = n if e == -1 else e + 2
+            elif ch in ("'", '"', "`"):
+                j = i + 1
+                while j < n:
+                    if source[j] == "\\":
+                        j += 2
+                        continue
+                    if source[j] == ch:
+                        j += 1
+                        break
+                    j += 1
+                strings.append(source[i + 1 : j - 1])
+                i = j
+            else:
+                i += 1
+        tokens = set()
+        for s in strings:
+            for tok in s.split():
+                if len(tok) >= 2 and re.fullmatch(token_charset, tok) and re.search(
+                    r"[a-z]", tok
+                ) and not tok.startswith("//"):
+                    tokens.add(tok)
+        return tokens
+
+    def test_86_dashboard_css_is_portable_and_in_sync_with_js(self):
+        """The committed dashboard stylesheet must (a) contain no
+        machine-specific absolute paths, (b) carry selectors for every
+        variant-prefixed class the UI JS references, and (c) reproduce
+        byte-identically under `node dashboard/build_css.mjs` when node +
+        tailwindcss are available.
+
+        Regression for the stale-stylesheet bug: hover/focus-within/active/
+        disabled variant classes were used by dist/index.js but silently
+        absent from the committed dist/style.css.
+        """
+        import re
+        import shutil
+        import subprocess
+
+        dash = Path(__file__).resolve().parent / "dashboard"
+        input_css = (dash / "input.css").read_text()
+        style_css = (dash / "dist" / "style.css").read_text()
+        js_src = (dash / "dist" / "index.js").read_text()
+
+        # (a) No machine-specific absolute paths anywhere in the sources.
+        for label, text in (("input.css", input_css), ("style.css", style_css)):
+            self.assertNotRegex(
+                text, r"/home/|/Users/|C:\\",
+                f"{label} must not hard-code absolute machine-specific paths",
+            )
+
+        # (b) Every variant-prefixed class token used by the UI JS has a
+        #     selector in the committed stylesheet.
+        # (b0) Extraction regression: dist/index.js contains a line comment
+        #      with an embedded apostrophe ("// Bottom row: Today's actions").
+        #      A naive [^"]*/[^']* quote scan starts a phantom single-quoted
+        #      string at that apostrophe that runs to the next bare apostrophe
+        #      in the file, swallowing the className literals in between
+        #      (their surrounding double quotes become part of the phantom
+        #      string content, polluting every token — e.g.
+        #      hover:bg-slate-800/80" is no longer a valid candidate). The
+        #      lexer must skip line comments and find the className literal.
+        synth = (
+            "// Bottom row: Today's actions & quick filter\n"
+            'React.createElement("div", { className: '
+            '"text-slate-400 hover:bg-slate-800/80" });\n'
+            "// don't forget to verify the hover state\n"
+        )
+        self.assertIn("hover:bg-slate-800/80", self._zf_js_class_tokens(synth))
+        variant_stack = re.compile(
+            r"^(?:hover|focus|focus-within|active|disabled|group-hover|md|lg|sm|xl|2xl):"
+        )
+        tokens = self._zf_js_class_tokens(js_src)
+        variant_tokens = [t for t in tokens if variant_stack.match(t)]
+        self.assertGreaterEqual(
+            len(variant_tokens), 10,
+            "expected the UI to reference many variant classes; extraction "
+            "looks broken",
+        )
+        missing = [t for t in sorted(variant_tokens)
+                   if self._zf_css_selectors((t,))[0] not in style_css]
+        self.assertEqual(
+            missing, [],
+            "dist/style.css is missing selectors for UI-referenced variant "
+            "classes (run `node dashboard/build_css.mjs` to rebuild): "
+            f"{missing[:10]}",
+        )
+        # Smoke: each interaction state family must be present at least once.
+        for family in (r"\.hover\\:", r"\.focus-within\\:", r"\.active\\:",
+                       r"\.disabled\\:"):
+            self.assertRegex(
+                style_css, family,
+                f"committed stylesheet has no {family} selector",
+            )
+
+        # (c) Reproducibility: a fresh build must reproduce the committed file.
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node not on PATH; cannot verify CSS build "
+                          "reproducibility")
+        import importlib.util
+        build_mjs = dash / "build_css.mjs"
+        spec = importlib.util.find_spec("dashboard")  # repo root on sys.path?
+        repo_root = Path(__file__).resolve().parent
+        env = dict(os.environ)
+        env["ZEROFACTORY_SKIP_DISPATCHER"] = "1"
+        try:
+            r = subprocess.run(
+                [node, str(build_mjs)],
+                cwd=str(repo_root), env=env,
+                capture_output=True, text=True, timeout=180,
+            )
+        except (OSError, subprocess.SubprocessError) as e:
+            self.skipTest(f"cannot run node build ({e}); skipping")
+        if r.returncode != 0:
+            # Build failed — if tailwindcss is simply not installed this is a
+            # fresh-clone-without-npm state, which the build script reports
+            # clearly. Treat a 'Cannot locate the tailwindcss package' failure
+            # as an environment skip; any other failure is a real regression.
+            if "Cannot locate the tailwindcss package" in (r.stderr or ""):
+                self.skipTest("tailwindcss not installed; run `npm install` "
+                              "to verify build reproducibility")
+            self.fail(f"dashboard/build_css.mjs failed:\n{r.stdout}\n{r.stderr}")
+        rebuilt = (dash / "dist" / "style.css").read_text()
+        # The rebuild wrote over the committed file; compare against a pristine
+        # re-read is not possible, so instead assert the rebuilt file still
+        # passes (b) and that the committed content (read earlier) matches the
+        # rebuild, proving the committed file IS the build output.
+        self.assertEqual(
+            rebuilt,
+            style_css,
+            "committed dist/style.css does not match the output of "
+            "`node dashboard/build_css.mjs` (run the build and commit the "
+            "result)",
+        )
+        # Final agreement check against the rebuilt file as well.
+        missing2 = [t for t in sorted(variant_tokens)
+                    if self._zf_css_selectors((t,))[0] not in rebuilt]
+        self.assertEqual(missing2, [])
+
     def test_reviewer_approval_comment_classification(self):
         from dispatcher import is_reviewer_approval_comment
 
@@ -6297,6 +6965,64 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             act = conn.execute("SELECT action FROM task_activity WHERE task_id = ? AND action = 'worker_failed_permanently'", (task_id,)).fetchone()
             self.assertIsNotNone(act)
 
+    def test_reaper_ignores_stale_builder_pid_before_reviewer_dispatch(self):
+        """A builder -> reviewer handoff must not be blocked by the stopped
+        builder PID persisted in legacy task metadata."""
+        import json
+        import time
+        from unittest.mock import patch
+        from dispatcher import reap_active_workers, _active_workers
+
+        now = int(time.time())
+        board_slug = "reviewer-handoff-regression"
+        with get_db_conn() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO boards (slug, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (board_slug, "Regression test board", "https://example.test/reviewer-handoff.git", now, now),
+            )
+            conn.commit()
+        task_id = create_task(TaskCreate(
+            title="Review stale worker handoff",
+            assignee="zf-reviewer",
+            board_slug=board_slug,
+        ))["id"]
+        stale_pid = 987654321
+        metadata = {
+            "worker_pid": stale_pid,
+            "session_id": "builder-session",
+            "started_at": now - 60,
+            "sessions": [{
+                "agent": "zf-builder",
+                "status": "finished",
+                "started_at": now - 120,
+                "ended_at": now - 60,
+                "pid": stale_pid,
+            }],
+        }
+
+        with get_db_conn() as conn:
+            conn.execute(
+                "UPDATE tasks SET status = 'running', metadata = ? WHERE id = ?",
+                (json.dumps(metadata), task_id),
+            )
+            conn.commit()
+
+            _active_workers.pop(task_id, None)
+            with patch("dispatcher.os.kill") as mock_kill:
+                self.assertEqual(reap_active_workers(conn.cursor(), now), 0)
+                mock_kill.assert_not_called()
+            conn.commit()
+
+            row = conn.execute(
+                "SELECT status, metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+
+        self.assertEqual(row["status"], "running")
+        metadata = json.loads(row["metadata"])
+        self.assertNotIn("worker_pid", metadata)
+        self.assertNotIn("session_id", metadata)
+        self.assertNotIn("started_at", metadata)
+
     def test_move_task_clears_failure_metadata(self):
         import json, time
         now = int(time.time())
@@ -6363,6 +7089,801 @@ class TestSharedProfilePathResolution(unittest.TestCase):
 
         progress = resolve_task_session_progress(task, backfill=False)
         self.assertEqual(progress["session_id"], "new_sess_now")
+
+    # --- Regression: last_activity_at must drive stuck/idle detection --------
+
+    def _session_progress_fixture(self, last_activity_at, worker_pid=None):
+        """Build a running task + a fake state.db session row to isolate the
+        inactivity (idle) computation in ``_compute_stuck_status``.
+
+        The *session* row started 2h ago (``now - 7200``) with a configurable
+        ``last_activity_at`` — this is the value the (buggy) refactor used as
+        ``last_active`` (session start), which made any >15min session look
+        stuck. The *task* metadata started_at is kept recent (``now - 60``) so
+        the separate "exceeded running timeout" branch (default 3600s) does not
+        fire and the test isolates the inactivity branch the bug actually broke.
+
+        Returns ``(task, now, session_started, sid, last_activity_at)``.
+        """
+        import time
+        if worker_pid is None:
+            worker_pid = os.getpid()
+        now = int(time.time())
+        session_started = now - 7200  # session row: started 2h ago
+        task = {
+            "id": "zf-stuck-regression",
+            "title": "Stuck Regression Task",
+            "status": "running",
+            "assignee": "zf-builder",
+            "metadata": {
+                "worker_pid": worker_pid,
+                "started_at": now - 60,  # task-level start: recent (< running timeout)
+                "session_id": "sess-stuck-reg",
+            },
+        }
+        return task, now, session_started, "sess-stuck-reg", last_activity_at
+
+    def _patch_state_db(self, db_path):
+        """Patch ``resolve_profile_state_db`` in the dashboard to return the
+        fake state.db for every profile, and the worker_pid liveness so a
+        dead-but-existing PID still looks alive (os.kill(pid,0) on our own
+        process succeeds)."""
+        from unittest import mock
+        import dashboard.plugin_api as D
+        return mock.patch.object(D, "resolve_profile_state_db", return_value=db_path)
+
+    def test_stuck_detection_recent_activity_not_stuck(self):
+        """A session running for 2h whose last activity was 60s ago must NOT
+        be classified stuck, and idle_seconds must reflect real activity."""
+        import time
+        from dashboard.plugin_api import resolve_task_session_progress
+
+        now = int(time.time())
+        task, now, session_started, sid, last_active = self._session_progress_fixture(now - 60)
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [(sid, "gpt-4", session_started, None, last_active, "active", 3, 2, "", task["title"], "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                progress = resolve_task_session_progress(task, backfill=False)
+
+        self.assertEqual(progress["session_id"], sid)
+        self.assertFalse(progress["is_stuck"], f"unexpectedly stuck: {progress.get('stuck_reason')}")
+        # idle_seconds must be derived from last_activity_at (60s), not started (7200s)
+        self.assertLess(progress["idle_seconds"], 120, f"idle={progress['idle_seconds']}s")
+        # last_active reported to UI must be the real activity, not session start
+        self.assertEqual(progress["last_active"], last_active)
+        # The session dicts under sessions[] must carry last_activity_at
+        for s in progress["sessions"]:
+            self.assertIn("last_activity_at", s, "session dict missing last_activity_at")
+        active = next(s for s in progress["sessions"] if s["session_id"] == sid)
+        self.assertEqual(active["last_activity_at"], last_active)
+
+    def test_stuck_detection_stale_activity_is_stuck(self):
+        """Same session but last activity 1h ago (older than the 900s
+        inactivity timeout) must be classified stuck with the inactive reason."""
+        import time
+        from dashboard.plugin_api import resolve_task_session_progress
+
+        now = int(time.time())
+        task, now, session_started, sid, last_active = self._session_progress_fixture(now - 3600)
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [(sid, "gpt-4", session_started, None, last_active, "active", 3, 2, "", task["title"], "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                progress = resolve_task_session_progress(task, backfill=False)
+
+        self.assertEqual(progress["session_id"], sid)
+        self.assertTrue(progress["is_stuck"], f"expected stuck (stale activity), got {progress.get('stuck_reason')}")
+        self.assertIn("inactive", (progress.get("stuck_reason") or "").lower())
+
+    def test_list_all_sessions_includes_last_activity_at(self):
+        """``list_all_sessions`` must expose last_activity_at on each session."""
+        import time
+        from dashboard.plugin_api import list_all_sessions
+
+        now = int(time.time())
+        with tempfile.TemporaryDirectory() as td:
+            db = _make_fake_state_db(
+                td, "zf-builder",
+                [("sess-list-1", "gpt-4", now - 300, None, now - 10, "active", 1, 1, "", "List Task", "zf-builder")],
+            )
+            with self._patch_state_db(db):
+                res = list_all_sessions()
+
+        self.assertTrue(res["ok"])
+        self.assertTrue(res["sessions"], "no sessions returned")
+        for s in res["sessions"]:
+            self.assertIn("last_activity_at", s, "list_all_sessions session missing last_activity_at")
+            self.assertEqual(s["last_activity_at"], now - 10)
+
+    def test_88_settings_langfuse_observability(self):
+        """Verify Langfuse settings lifecycle, multi-profile sync, and test connection endpoint."""
+        import tempfile
+        import yaml
+        from profile_manager import update_env_file, update_config_yaml_plugins, sync_langfuse_profiles
+        from dispatcher import _inject_langfuse_env
+
+        # 1. Verify GET /settings includes Langfuse keys
+        resp_get = client.get("/api/plugins/zerofactory/settings")
+        self.assertEqual(resp_get.status_code, 200)
+        s = resp_get.json()["settings"]
+        self.assertIn("langfuse_enabled", s)
+        self.assertIn("langfuse_base_url", s)
+        self.assertIn("langfuse_public_key", s)
+        self.assertIn("langfuse_secret_key", s)
+        self.assertIn("langfuse_capture_mode", s)
+        self.assertIn("langfuse_env", s)
+
+        # 2. Verify PATCH /settings updates Langfuse keys
+        resp_patch = client.patch("/api/plugins/zerofactory/settings", json={
+            "langfuse_enabled": True,
+            "langfuse_base_url": "https://test.langfuse.com",
+            "langfuse_public_key": "pk-lf-unit-test",
+            "langfuse_secret_key": "sk-lf-unit-test",
+            "langfuse_capture_mode": "metadata",
+            "langfuse_env": "test-env"
+        })
+        self.assertEqual(resp_patch.status_code, 200)
+        s_updated = resp_patch.json()["settings"]
+        self.assertTrue(s_updated["langfuse_enabled"])
+        self.assertEqual(s_updated["langfuse_base_url"], "https://test.langfuse.com")
+        self.assertEqual(s_updated["langfuse_public_key"], "pk-lf-unit-test")
+        self.assertEqual(s_updated["langfuse_secret_key"], "sk-lf-unit-test")
+        self.assertEqual(s_updated["langfuse_capture_mode"], "metadata")
+        self.assertEqual(s_updated["langfuse_env"], "test-env")
+
+        # 3. Test update_env_file preserves unrelated keys and comments
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_p = Path(tmp_dir) / ".env"
+            env_p.write_text("# Custom comment\nOPENROUTER_API_KEY=existing-key\nOTHER_VAR=123\n", encoding="utf-8")
+            updates = {
+                "HERMES_LANGFUSE_PUBLIC_KEY": "pk-lf-sample",
+                "HERMES_LANGFUSE_SECRET_KEY": "sk-lf-sample",
+            }
+            update_env_file(env_p, updates)
+            lines = env_p.read_text(encoding="utf-8").splitlines()
+            self.assertIn("# Custom comment", lines)
+            self.assertIn("OPENROUTER_API_KEY=existing-key", lines)
+            self.assertIn("OTHER_VAR=123", lines)
+            self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-sample", lines)
+            self.assertIn("HERMES_LANGFUSE_SECRET_KEY=sk-lf-sample", lines)
+
+            # Update in-place
+            update_env_file(env_p, {"HERMES_LANGFUSE_PUBLIC_KEY": "pk-lf-modified"})
+            lines2 = env_p.read_text(encoding="utf-8").splitlines()
+            self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-modified", lines2)
+            self.assertNotIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-sample", lines2)
+            self.assertIn("OPENROUTER_API_KEY=existing-key", lines2)
+
+        # 4. Test update_config_yaml_plugins adds and removes langfuse cleanly
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cfg_p = Path(tmp_dir) / "config.yaml"
+            cfg_p.write_text(yaml.dump({"plugins": {"enabled": ["zerofactory"]}, "model": {"default": "test"}}, sort_keys=False), encoding="utf-8")
+            
+            # Enable langfuse
+            update_config_yaml_plugins(cfg_p, enable_plugin="langfuse")
+            loaded = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
+            self.assertIn("langfuse", loaded["plugins"]["enabled"])
+            self.assertIn("zerofactory", loaded["plugins"]["enabled"])
+
+            # Disable langfuse
+            update_config_yaml_plugins(cfg_p, disable_plugin="langfuse")
+            loaded_after = yaml.safe_load(cfg_p.read_text(encoding="utf-8"))
+            self.assertNotIn("langfuse", loaded_after["plugins"]["enabled"])
+            self.assertIn("zerofactory", loaded_after["plugins"]["enabled"])
+
+        # 5. Test _inject_langfuse_env
+        test_env = {}
+        _inject_langfuse_env(test_env)
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_PUBLIC_KEY"), "pk-lf-unit-test")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_BASE_URL"), "https://test.langfuse.com")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_CAPTURE"), "metadata")
+        self.assertEqual(test_env.get("HERMES_LANGFUSE_ENV"), "test-env")
+
+        # Disable in settings and test removal from env
+        client.patch("/api/plugins/zerofactory/settings", json={"langfuse_enabled": False})
+        _inject_langfuse_env(test_env)
+        self.assertNotIn("HERMES_LANGFUSE_PUBLIC_KEY", test_env)
+
+        # 6. Test POST /settings/langfuse/test endpoint validation
+        bad_key_res = client.post("/api/plugins/zerofactory/settings/langfuse/test", json={
+            "base_url": "https://cloud.langfuse.com",
+            "public_key": "wrong-prefix",
+            "secret_key": "sk-lf-valid"
+        })
+        self.assertEqual(bad_key_res.status_code, 200)
+        self.assertFalse(bad_key_res.json()["ok"])
+        self.assertIn("Invalid key format", bad_key_res.json()["error"])
+
+        unreachable_res = client.post("/api/plugins/zerofactory/settings/langfuse/test", json={
+            "base_url": "http://127.0.0.1:59998",
+            "public_key": "",
+            "secret_key": ""
+        })
+        self.assertEqual(unreachable_res.status_code, 200)
+        self.assertFalse(unreachable_res.json()["ok"])
+
+        # 7. Regression: disabling Langfuse must scrub ALL HERMES_LANGFUSE_* keys
+        #    from every target .env file and drop `langfuse` from every
+        #    config.yaml plugins.enabled list (stale-secret hygiene).
+        with tempfile.TemporaryDirectory() as tmp_hermes:
+            import profile_manager as _pm
+            from unittest.mock import patch
+            hermes_fake = Path(tmp_hermes)
+            profiles_dir = hermes_fake / "profiles" / "zf-builder"
+            profiles_dir.mkdir(parents=True)
+            # Pre-existing unrelated keys + comments that must survive scrubbing
+            for d in (hermes_fake, profiles_dir):
+                (d / ".env").write_text(
+                    "# keep me\nOPENROUTER_API_KEY=«redacted:existing-…»\n",
+                    encoding="utf-8",
+                )
+                (d / "config.yaml").write_text(
+                    yaml.dump({"plugins": {"enabled": ["zerofactory"]}}, sort_keys=False),
+                    encoding="utf-8",
+                )
+
+            enable_settings = {
+                "langfuse_enabled": True,
+                "langfuse_base_url": "https://test.langfuse.com",
+                "langfuse_public_key": "«redacted:pk-lf-…»",
+                "langfuse_secret_key": "«redacted:sk-…»",
+                "langfuse_capture_mode": "metadata",
+                "langfuse_env": "test-env",
+            }
+            with patch.object(_pm, "get_hermes_home", return_value=hermes_fake):
+                result = _pm.sync_langfuse_profiles(enable_settings)
+                self.assertTrue(result["enabled"])
+                # Enable: keys present in both .env files, plugin enabled
+                for d in (hermes_fake, profiles_dir):
+                    env_text = (d / ".env").read_text(encoding="utf-8")
+                    self.assertIn("HERMES_LANGFUSE_SECRET_KEY=«redacted:sk-…»", env_text)
+                    self.assertIn("HERMES_LANGFUSE_PUBLIC_KEY=«redacted:pk-lf-…»", env_text)
+                    self.assertIn("HERMES_LANGFUSE_BASE_URL=https://test.langfuse.com", env_text)
+                    self.assertIn("HERMES_LANGFUSE_CAPTURE=metadata", env_text)
+                    self.assertIn("HERMES_LANGFUSE_ENV=test-env", env_text)
+                    cfg_loaded = yaml.safe_load((d / "config.yaml").read_text(encoding="utf-8"))
+                    self.assertIn("langfuse", cfg_loaded["plugins"]["enabled"])
+
+                # Disable: every HERMES_LANGFUSE_* key GONE, plugin removed
+                disable_settings = dict(enable_settings, langfuse_enabled=False)
+                result = _pm.sync_langfuse_profiles(disable_settings)
+                self.assertFalse(result["enabled"])
+                for d in (hermes_fake, profiles_dir):
+                    env_text = (d / ".env").read_text(encoding="utf-8")
+                    for k in ("HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_PUBLIC_KEY",
+                              "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE",
+                              "HERMES_LANGFUSE_ENV"):
+                        self.assertNotIn(k, env_text,
+                                         f"stale {k} left in {d / '.env'} after disable")
+                    # Unrelated keys and comments preserved
+                    self.assertIn("OPENROUTER_API_KEY=«redacted:existing-…»", env_text)
+                    self.assertIn("# keep me", env_text)
+                    cfg_loaded = yaml.safe_load((d / "config.yaml").read_text(encoding="utf-8"))
+                    self.assertNotIn("langfuse", cfg_loaded["plugins"]["enabled"])
+                    self.assertIn("zerofactory", cfg_loaded["plugins"]["enabled"])
+
+                # Idempotency: disabling again with no .env keys present is a no-op
+                _pm.sync_langfuse_profiles(disable_settings)
+                for d in (hermes_fake, profiles_dir):
+                    self.assertNotIn("HERMES_LANGFUSE_SECRET_KEY",
+                                     (d / ".env").read_text(encoding="utf-8"))
+
+    def test_55_native_board_memories_crud_and_cascade(self):
+        """Test Native kanban.db Memory CRUD, category filtering, search, and board cascade deletion."""
+        # 1. Ensure board exists
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/test-mem.git", description="Memory test board"))
+        b_slug = b_res["slug"]
+
+        # 2. Create memories
+        c_res = client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": "Always run linters before creating PRs",
+            "tags": ["lint", "python", "flake8"],
+            "author": "zf-builder"
+        })
+        self.assertEqual(c_res.status_code, 200)
+        c_data = c_res.json()
+        self.assertTrue(c_data["ok"])
+        mem1 = c_data["memory"]
+        self.assertEqual(mem1["category"], "convention")
+        self.assertIn("Always run linters", mem1["content"])
+        self.assertIn("flake8", mem1["tags"])
+        self.assertEqual(mem1["author"], "zf-builder")
+        mem1_id = mem1["id"]
+
+        # Create second memory: gotcha
+        c_res2 = client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "gotcha",
+            "content": "SQLite WAL mode requires busy_timeout under high concurrency",
+            "tags": ["sqlite", "concurrency"],
+            "author": "zf-reviewer"
+        })
+        self.assertEqual(c_res2.status_code, 200)
+        mem2_id = c_res2.json()["memory"]["id"]
+
+        # 3. List memories
+        list_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_res.status_code, 200)
+        list_data = list_res.json()
+        self.assertTrue(list_data["ok"])
+        self.assertEqual(list_data["total"], 2)
+        self.assertEqual(len(list_data["memories"]), 2)
+
+        # 4. Filter by category
+        cat_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?category=gotcha")
+        self.assertEqual(cat_res.status_code, 200)
+        cat_data = cat_res.json()
+        self.assertEqual(cat_data["total"], 1)
+        self.assertEqual(cat_data["memories"][0]["id"], mem2_id)
+
+        # 5. Search by query
+        search_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?q=busy_timeout")
+        self.assertEqual(search_res.status_code, 200)
+        search_data = search_res.json()
+        self.assertEqual(search_data["total"], 1)
+        self.assertEqual(search_data["memories"][0]["id"], mem2_id)
+
+        search_tag_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories?q=flake8")
+        self.assertEqual(search_tag_res.status_code, 200)
+        self.assertEqual(search_tag_res.json()["total"], 1)
+
+        # 6. Update memory
+        up_res = client.put(f"/api/plugins/zerofactory/memories/{mem1_id}", json={
+            "content": "Always run linters and pytest before creating PRs",
+            "tags": ["lint", "python", "pytest"]
+        })
+        self.assertEqual(up_res.status_code, 200)
+        up_data = up_res.json()
+        self.assertTrue(up_data["ok"])
+        self.assertEqual(up_data["memory"]["content"], "Always run linters and pytest before creating PRs")
+        self.assertIn("pytest", up_data["memory"]["tags"])
+
+        # 7. Delete single memory
+        del_res = client.delete(f"/api/plugins/zerofactory/memories/{mem1_id}")
+        self.assertEqual(del_res.status_code, 200)
+        self.assertTrue(del_res.json()["ok"])
+
+        # Verify it's gone
+        list_after = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_after.json()["total"], 1)
+
+        # 8. Test 404s
+        bad_board = client.get("/api/plugins/zerofactory/boards/non-existent-board/memories")
+        self.assertEqual(bad_board.status_code, 404)
+
+        bad_del = client.delete("/api/plugins/zerofactory/memories/non-existent-mem")
+        self.assertEqual(bad_del.status_code, 404)
+
+        # 9. Test cascade delete on board deletion
+        del_board_res = client.delete(f"/api/plugins/zerofactory/boards/{b_slug}")
+        self.assertEqual(del_board_res.status_code, 200)
+
+        # Verify board_memories table has no rows for b_slug
+        with get_db_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM board_memories WHERE board_slug = ?", (b_slug,))
+            self.assertEqual(cursor.fetchone()[0], 0)
+
+    def test_56_agents_status_endpoint(self):
+        """Test GET /agents endpoint returning status for the 3 specialist agents."""
+        res = client.get("/api/plugins/zerofactory/agents")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["ok"])
+        agents = data["agents"]
+        self.assertEqual(len(agents), 3)
+        agent_names = [a["name"] for a in agents]
+        self.assertIn("zf-orchestrator", agent_names)
+        self.assertIn("zf-builder", agent_names)
+        self.assertIn("zf-reviewer", agent_names)
+
+        for a in agents:
+            self.assertIn(a["status"], ("active", "idle"))
+            self.assertIn("label", a)
+            self.assertIn("icon", a)
+            self.assertIn("description", a)
+            self.assertIn("stats", a)
+
+    def test_57_dispatcher_memories_digest(self):
+        """Test digest_board_memories_context and worker prompt injection."""
+        from dispatcher import digest_board_memories_context
+
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/digest-board.git"))
+        b_slug = b_res["slug"]
+
+        # When no memories exist, returns empty string
+        empty_digest = digest_board_memories_context(b_slug)
+        self.assertEqual(empty_digest, "")
+
+        # Add memories
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": "Follow PEP 8 naming conventions",
+            "tags": ["style", "pep8"]
+        })
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "gotcha",
+            "content": "Beware of circular imports between plugin_api and dispatcher",
+            "tags": ["imports", "architecture"]
+        })
+
+        digest = digest_board_memories_context(b_slug)
+        self.assertIn("REPOSITORY KNOWLEDGE & CONVENTIONS", digest)
+        self.assertIn("[convention] Follow PEP 8 naming conventions", digest)
+        self.assertIn("[gotcha] Beware of circular imports", digest)
+        self.assertIn("tags: style, pep8", digest)
+
+    def test_58_cli_memory_commands(self):
+        """Test CLI memory subcommands: add, list, delete."""
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+        from __init__ import register
+
+        b_res = create_board(BoardCreate(git_url="https://github.com/example/cli-mem-board.git"))
+        b_slug = b_res["slug"]
+
+        class DummyCtx:
+            def __init__(self):
+                self.commands = {}
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.commands[name] = (setup_fn, handler_fn)
+
+        ctx = DummyCtx()
+        register(ctx)
+        self.assertIn("zerofactory", ctx.commands)
+        setup_fn, handler_fn = ctx.commands["zerofactory"]
+
+        parser = argparse.ArgumentParser()
+        setup_fn(parser)
+
+        # 1. Add memory via CLI
+        args_add = parser.parse_args([
+            "memory", "add",
+            "--board", b_slug,
+            "Always mock external network requests in tests",
+            "--category", "convention",
+            "--tags", "test, network"
+        ])
+        f = io.StringIO()
+        with redirect_stdout(f):
+            handler_fn(args_add)
+        out_add = f.getvalue()
+        self.assertIn("Added memory", out_add)
+        self.assertIn("[convention]", out_add)
+
+        # 2. List memory via CLI
+        args_list = parser.parse_args([
+            "memory", "list",
+            "--board", b_slug
+        ])
+        f_list = io.StringIO()
+        with redirect_stdout(f_list):
+            handler_fn(args_list)
+        out_list = f_list.getvalue()
+        self.assertIn("Always mock external network", out_list)
+        self.assertIn("convention", out_list)
+
+        # 3. Delete memory via CLI
+        list_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        mem_id = list_res.json()["memories"][0]["id"]
+
+        args_del = parser.parse_args([
+            "memory", "delete",
+            mem_id
+        ])
+        f_del = io.StringIO()
+        with redirect_stdout(f_del):
+            handler_fn(args_del)
+        out_del = f_del.getvalue()
+        self.assertIn("Deleted memory", out_del)
+
+        # Verify deleted
+        list_res_after = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories")
+        self.assertEqual(list_res_after.json()["total"], 0)
+
+    def test_59_auto_record_memory_settings_and_board_override(self):
+        """Test global auto_record_memory setting and per-board override flag."""
+        from dashboard.plugin_api import SettingsUpdate
+
+        # 1. Global setting defaults to True
+        s_res = client.get("/api/plugins/zerofactory/settings").json()
+        self.assertTrue(s_res["settings"]["auto_record_memory"])
+
+        # 2. Toggle global setting to False
+        patch_res = client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"auto_record_memory": False}
+        ).json()
+        self.assertFalse(patch_res["settings"]["auto_record_memory"])
+
+        # Re-enable global setting
+        client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"auto_record_memory": True}
+        )
+        s_res_after = client.get("/api/plugins/zerofactory/settings").json()
+        self.assertTrue(s_res_after["settings"]["auto_record_memory"])
+
+        # 3. Create board with default auto_record_memory (True)
+        b1 = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-b1.git"}
+        ).json()
+        b1_slug = b1["slug"]
+
+        boards_list = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b1_data = next(b for b in boards_list if b["slug"] == b1_slug)
+        self.assertTrue(b1_data["auto_record_memory"])
+
+        # 4. Create board with auto_record_memory disabled (False)
+        b2 = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-b2.git", "auto_record_memory": False}
+        ).json()
+        b2_slug = b2["slug"]
+
+        boards_list2 = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b2_data = next(b for b in boards_list2 if b["slug"] == b2_slug)
+        self.assertFalse(b2_data["auto_record_memory"])
+
+        # 5. Toggle board auto_record_memory via PATCH
+        client.patch(
+            f"/api/plugins/zerofactory/boards/{b2_slug}",
+            json={"auto_record_memory": True}
+        )
+        boards_list3 = client.get("/api/plugins/zerofactory/boards").json()["boards"]
+        b2_data_after = next(b for b in boards_list3 if b["slug"] == b2_slug)
+        self.assertTrue(b2_data_after["auto_record_memory"])
+
+    def test_60_auto_record_memory_extraction(self):
+        """Test extract_and_record_memory extraction, deduplication, and suppression when disabled."""
+        from dashboard.plugin_api import extract_and_record_memory, get_db_conn
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-extract.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        text_feedback = (
+            "Code review feedback:\n"
+            "- **GOTCHA:** Always run db migrations before seeding test data\n"
+            "- **CONVENTION:** PascalCase should be used for React component files\n"
+            "- Some non-rule review comment without a tag\n"
+            "- REJECTED_PATH: Avoid using global mutable singletons for configuration\n"
+            "- DECISION: Standardized on pytest-mock for test mocks"
+        )
+
+        with get_db_conn() as conn:
+            # 1. Extraction with auto_record_memory enabled
+            recorded = extract_and_record_memory(conn, board_slug=b_slug, text=text_feedback, author="zf-reviewer")
+            conn.commit()
+
+            self.assertEqual(len(recorded), 4)
+            categories = [r["category"] for r in recorded]
+            self.assertIn("gotcha", categories)
+            self.assertIn("convention", categories)
+            self.assertIn("rejected_path", categories)
+            self.assertIn("decision", categories)
+
+            # 2. Deduplication: run exact same extraction again
+            recorded_dupes = extract_and_record_memory(conn, board_slug=b_slug, text=text_feedback, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_dupes), 0)
+
+            # 3. Suppression when board auto_record_memory is disabled
+            client.patch(f"/api/plugins/zerofactory/boards/{b_slug}", json={"auto_record_memory": False})
+            conn.commit()
+
+            new_feedback = "GOTCHA: Never run git push --force on shared branch"
+            recorded_suppressed = extract_and_record_memory(conn, board_slug=b_slug, text=new_feedback, author="zf-reviewer")
+            self.assertEqual(len(recorded_suppressed), 0)
+
+            # Re-enable board
+            client.patch(f"/api/plugins/zerofactory/boards/{b_slug}", json={"auto_record_memory": True})
+            conn.commit()
+
+            # 4. Suppression when global auto_record_memory is disabled
+            client.patch("/api/plugins/zerofactory/settings", json={"auto_record_memory": False})
+            conn.commit()
+
+            recorded_globally_suppressed = extract_and_record_memory(conn, board_slug=b_slug, text=new_feedback, author="zf-reviewer")
+            self.assertEqual(len(recorded_globally_suppressed), 0)
+
+            # Restore global setting
+            client.patch("/api/plugins/zerofactory/settings", json={"auto_record_memory": True})
+            conn.commit()
+
+    def test_61_move_task_auto_record_gotcha(self):
+        """Test auto-recording gotcha when task is moved to blocked with structured rule reason."""
+        from dashboard.plugin_api import TaskCreate
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-move.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        # Create task
+        t_res = client.post(
+            "/api/plugins/zerofactory/tasks",
+            json={"title": "Test memory move", "board_slug": b_slug, "status": "running"}
+        ).json()
+        t_id = t_res["id"]
+
+        # Move to blocked with GOTCHA in reason
+        move_res = client.post(
+            f"/api/plugins/zerofactory/tasks/{t_id}/move",
+            json={
+                "status": "blocked",
+                "actor": "zf-reviewer",
+                "reason": "changes-requested. GOTCHA: Always lock dependencies in requirements.txt before release"
+            }
+        ).json()
+        self.assertTrue(move_res["ok"])
+
+        # Check board memories
+        mem_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(mem_res["total"], 1)
+        mem = mem_res["memories"][0]
+        self.assertEqual(mem["category"], "gotcha")
+        self.assertIn("Always lock dependencies in requirements.txt before release", mem["content"])
+        self.assertEqual(mem["author"], "zf-reviewer")
+        self.assertEqual(mem["task_id"], t_id)
+
+    def test_62_comment_auto_record_memory(self):
+        """Test auto-recording memory when adding comment to a task."""
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-comment.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        t_res = client.post(
+            "/api/plugins/zerofactory/tasks",
+            json={"title": "Test comment memory", "board_slug": b_slug, "status": "running"}
+        ).json()
+        t_id = t_res["id"]
+
+        # Add comment with CONVENTION
+        cmt_res = client.post(
+            f"/api/plugins/zerofactory/tasks/{t_id}/comments",
+            json={
+                "body": "PR review summary:\n- TIP: Prefer pytest fixtures over setUp methods for cleaner tests",
+                "author": "zf-reviewer"
+            }
+        ).json()
+        self.assertTrue(cmt_res["ok"])
+
+        # Verify memory created
+        mem_res = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(mem_res["total"], 1)
+        mem = mem_res["memories"][0]
+        self.assertEqual(mem["category"], "convention")
+        self.assertIn("Prefer pytest fixtures over setUp methods for cleaner tests", mem["content"])
+        self.assertEqual(mem["author"], "zf-reviewer")
+        self.assertEqual(mem["task_id"], t_id)
+
+
+class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
+    """AST guards against unreachable duplicate exception handlers in dispatcher.py.
+
+    Regression: PR #42 (commit 6866a84) moved the author commit/PR try-block in
+    ``run_dispatch_cycle()`` section 3 into its own ``if`` block but left the
+    original reviewer PR-check tail (``except Exception: ... "Reviewer PR check
+    skipped"``) orphaned *inside* the new try-block. A second ``except Exception``
+    is unreachable — the first one shadows it — and would misattribute
+    commit/PR failures as reviewer-PR-check failures. This guard walks every
+    ``try`` in dispatcher.py and fails on any repeated exception-handler type.
+    """
+
+    @classmethod
+    def _dispatcher_tree(cls):
+        import ast
+        src_path = Path(__file__).resolve().parent / "dispatcher.py"
+        return ast.parse(src_path.read_text(), filename=str(src_path))
+
+    @staticmethod
+    def _handler_type_name(handler):
+        import ast
+        t = handler.type
+        if isinstance(t, ast.Name):
+            return t.id
+        if isinstance(t, (ast.Tuple, ast.List)):
+            return ",".join(
+                e.id if isinstance(e, ast.Name) else repr(e) for e in t.elts
+            )
+        return repr(t)
+
+    def test_no_duplicate_exception_handler_types_in_any_try_block(self):
+        """No try-block in dispatcher.py may repeat an exception-handler type."""
+        import ast
+        tree = self._dispatcher_tree()
+        duplicates = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            seen = set()
+            for handler in node.handlers:
+                tname = self._handler_type_name(handler)
+                if tname in seen:
+                    duplicates.append(
+                        f"dispatcher.py:{node.lineno} try-block has duplicate "
+                        f"'except {tname}' handler (line {handler.lineno})"
+                    )
+                seen.add(tname)
+        self.assertEqual(duplicates, [], "\n".join(duplicates))
+
+    def test_no_orphaned_reviewer_pr_check_skip_in_commit_pr_block(self):
+        """The commit/PR try-block must not log 'Reviewer PR check skipped'.
+
+        Asserts the exact regression pattern is gone: the author commit/PR
+        block (the one whose generic handler logs 'commit/PR failed') must
+        not contain a 'Reviewer PR check skipped' log line. The reviewer's
+        own PR-check block (guarded by ``if row["pr_url"] and assignee ==
+        "zf-reviewer"``) legitimately keeps that message; this asserts the
+        commit/PR block no longer carries the orphaned copy.
+        """
+        src = (Path(__file__).resolve().parent / "dispatcher.py").read_text()
+        lines = src.splitlines()
+
+        # Locate the author commit/PR block: the try whose generic handler
+        # logs 'commit/PR failed'. Its handler lines give us the block range.
+        commit_pr_generic_line = None
+        for i, ln in enumerate(lines):
+            if "_log.warning(\"Task %s commit/PR failed:" in ln:
+                # the 'except Exception as e:' is one line above
+                commit_pr_generic_line = i
+                break
+        self.assertIsNotNone(
+            commit_pr_generic_line,
+            "could not locate the author commit/PR generic handler",
+        )
+
+        # Walk backwards from that handler to the enclosing 'try:' line.
+        # The try-block body spans from the try line to the last handler's
+        # end; the orphaned handler would sit *after* the commit/PR handler.
+        try_line = None
+        for i in range(commit_pr_generic_line, -1, -1):
+            stripped = lines[i].strip()
+            if stripped == "try:":
+                try_line = i
+                break
+        self.assertIsNotNone(try_line, "could not locate commit/PR try: line")
+
+        # Collect the handler tail: everything from the first 'except' at
+        # this block's indent (the commit/PR generic handler) to the line
+        # where the block ends (indent drops back to the try's parent).
+        except_indent = len(lines[commit_pr_generic_line]) - len(
+            lines[commit_pr_generic_line].lstrip()
+        )
+        block_end = commit_pr_generic_line
+        for i in range(commit_pr_generic_line + 1, len(lines)):
+            ln = lines[i]
+            if ln.strip() == "":
+                continue
+            indent = len(ln) - len(ln.lstrip())
+            if indent <= except_indent and ln.lstrip().startswith(("except ",)):
+                block_end = i
+            elif indent < except_indent:
+                # dedented out of the handler tail -> block over
+                break
+            else:
+                block_end = i
+
+        tail = "\n".join(lines[commit_pr_generic_line:block_end + 1])
+        self.assertNotIn(
+            "Reviewer PR check skipped",
+            tail,
+            "orphaned 'Reviewer PR check skipped' handler left in the commit/PR "
+            "try-block (regression from PR #42 code move)",
+        )
 
 
 if __name__ == "__main__":

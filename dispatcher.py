@@ -740,6 +740,63 @@ def digest_reviewer_git_context(
         sections.append(f"#### Uncommitted Modifications:\n```\n{status_summary}\n```")
 
     return "\n\n".join(sections)
+ 
+ 
+def digest_board_memories_context(
+    board_slug: Optional[str],
+    db_path: Optional[str] = None,
+    limit: int = 8
+) -> str:
+    """Extract pre-digested repository memories, conventions, and gotchas for agent worker prompt.
+
+    Pre-injects relevant repository knowledge learned from prior tasks directly into the agent
+    prompt to prevent repeat mistakes and align code style with repository conventions.
+    """
+    if not board_slug:
+        return ""
+
+    target_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
+    if not target_db.exists():
+        return ""
+
+    try:
+        with sqlite3.connect(str(target_db), timeout=2.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            rows = cur.execute(
+                """
+                SELECT category, content, tags, author
+                FROM board_memories
+                WHERE board_slug = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (board_slug, limit)
+            ).fetchall()
+
+            if not rows:
+                return ""
+
+            lines = ["🧠 REPOSITORY KNOWLEDGE & CONVENTIONS (Learned from prior tasks):"]
+            for r in rows:
+                cat = r["category"] or "general"
+                content = (r["content"] or "").strip().replace("\n", " ")
+                if len(content) > 200:
+                    content = content[:197] + "..."
+                tag_str = ""
+                try:
+                    tags = json.loads(r["tags"] or "[]")
+                    if tags and isinstance(tags, list):
+                        tag_str = f" [tags: {', '.join(tags)}]"
+                except Exception:
+                    pass
+                lines.append(f"- [{cat}] {content}{tag_str}")
+
+            lines.append("Please adhere to these conventions and avoid known gotchas during execution.")
+            return "\n".join(lines)
+    except Exception as e:
+        _log.debug("Could not digest board memories for %s: %s", board_slug, e)
+        return ""
 
 
 def extract_gh_repo_info(pr_url: str) -> Optional[tuple[str, str, int]]:
@@ -1041,6 +1098,29 @@ def is_reviewer_approval_comment(comment_body: str, state: Optional[str] = None)
     return has_approval_signal and not has_changes_requested
 
 
+def _inject_langfuse_env(env: Dict[str, str], conn_or_cursor: Any = None) -> None:
+    """Inject active Langfuse credentials and configuration into worker subprocess environment."""
+    try:
+        if conn_or_cursor is None:
+            from dashboard.plugin_api import get_db_conn
+            with get_db_conn() as conn:
+                settings = load_settings(conn)
+        else:
+            settings = load_settings(conn_or_cursor)
+
+        if settings.get("langfuse_enabled"):
+            env["HERMES_LANGFUSE_PUBLIC_KEY"] = str(settings.get("langfuse_public_key") or "").strip()
+            env["HERMES_LANGFUSE_SECRET_KEY"] = str(settings.get("langfuse_secret_key") or "").strip()
+            env["HERMES_LANGFUSE_BASE_URL"] = str(settings.get("langfuse_base_url") or "https://cloud.langfuse.com").strip()
+            env["HERMES_LANGFUSE_CAPTURE"] = str(settings.get("langfuse_capture_mode") or "sanitized").strip()
+            env["HERMES_LANGFUSE_ENV"] = str(settings.get("langfuse_env") or "zerofactory").strip()
+        else:
+            for k in ("HERMES_LANGFUSE_PUBLIC_KEY", "HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE", "HERMES_LANGFUSE_ENV"):
+                env.pop(k, None)
+    except Exception as e:
+        _log.debug("Could not inject Langfuse env: %s", e)
+
+
 def spawn_agent_worker(
     task_id: str,
     title: str,
@@ -1048,7 +1128,8 @@ def spawn_agent_worker(
     priority: str,
     assignee: str,
     workspace_path: Optional[str],
-    branch_name: Optional[str]
+    branch_name: Optional[str],
+    board_slug: Optional[str] = None
 ) -> tuple[Optional[int], Optional[str]]:
     """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"):
@@ -1064,6 +1145,8 @@ def spawn_agent_worker(
     )
 
     workdir = workspace_path if (workspace_path and Path(workspace_path).exists()) else os.getcwd()
+    memories_digest = digest_board_memories_context(board_slug)
+    memories_block = f"{memories_digest}\n\n" if memories_digest else ""
 
     if assignee == "zf-reviewer":
         pre_digested_git = digest_reviewer_git_context(Path(workdir), branch_name)
@@ -1075,16 +1158,21 @@ def spawn_agent_worker(
             f"Assigned Role: {assignee}\n\n"
             f"Description:\n{description or 'No description provided.'}\n\n"
             f"Workspace: {workdir}\n"
-            f"Git Branch: {branch_name or 'main'}\n"
+            f"Git Branch: {branch_name or 'main'}\n\n"
+            f"{memories_block}"
             f"{pre_digested_block}"
             f"Your goal as Reviewer:\n"
             f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
             f"2. Run automated test suites and linters in your workspace ({workdir}).\n"
             f"3. Submit your review decision on GitHub (`gh pr review --approve` or `gh pr review --request-changes`).\n"
-            f"4. When finished:\n"
+            f"4. Continuous Learning & Repository Knowledge:\n"
+            f"   - If you catch a recurring mistake, testing gotcha, or project convention that future tasks should follow, record it!\n"
+            f"   - In your review comment or summary, include a line: `GOTCHA: <rule>` or `CONVENTION: <rule>` (the system will auto-record it).\n"
+            f"   - Or run: `hermes zerofactory memory add --board {board_slug or 'default'} \"<rule>\" --category <gotcha|convention>`.\n"
+            f"5. When finished:\n"
             f"   - If approved: run `hermes zerofactory block {task_id} --reason 'Human Review & Merge'` (the dispatcher will automatically move the task to 'done' once the PR is merged on GitHub; DO NOT mark done yourself).\n"
             f"   - If changes are requested: run `hermes zerofactory block {task_id} --reason 'changes-requested'` (the dispatcher will route it back to the builder).\n"
-            f"5. Provide a clear review summary.\n"
+            f"6. Provide a clear review summary.\n"
         )
     else:
         # Fail-closed: if the worktree cannot be verified clean, treat it as a
@@ -1124,6 +1212,7 @@ def spawn_agent_worker(
                 f"Description:\n{description or 'No description provided.'}\n\n"
                 f"Workspace: {workdir}\n"
                 f"Git Branch: {branch_name or 'main'}\n\n"
+                f"{memories_block}"
                 f"🚨 CRITICAL: MERGE CONFLICT DETECTED WITH MAIN BRANCH\n"
                 f"The latest changes from the main branch conflict with this task branch.\n"
                 f"Conflicted files:\n{file_list_str}\n\n"
@@ -1203,6 +1292,7 @@ def spawn_agent_worker(
                 f"Description:\n{description or 'No description provided.'}\n\n"
                 f"Workspace: {workdir}\n"
                 f"Git Branch: {branch_name or 'main'}\n\n"
+                f"{memories_block}"
                 f"{review_comments_prompt}"
                 f"{goal_instructions}"
             )
@@ -1231,6 +1321,7 @@ def spawn_agent_worker(
     if profile_home.exists():
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
+    _inject_langfuse_env(env)
 
     try:
         log_f = open(log_file_path, "ab")
@@ -1371,6 +1462,25 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
 
         proc = _active_workers.get(task_id)
         pid = meta.get("worker_pid") or (proc.pid if proc else None)
+
+        # A task can be reassigned after its previous worker was stopped (for
+        # example builder -> reviewer).  A persisted PID does not belong to the
+        # newly assigned agent and must not turn that new run into a false
+        # worker-loss failure before it has been dispatched.
+        sessions = meta.get("sessions")
+        has_ongoing_session = isinstance(sessions, list) and any(
+            isinstance(session, dict) and session.get("status") == "ongoing"
+            for session in sessions
+        )
+        if proc is None and pid and not has_ongoing_session:
+            meta.pop("worker_pid", None)
+            meta.pop("session_id", None)
+            meta.pop("started_at", None)
+            pid = None
+            cursor.execute(
+                "UPDATE tasks SET metadata = ? WHERE id = ?",
+                (json.dumps(meta), task_id),
+            )
 
         if proc is not None:
             retcode = proc.poll()
@@ -1586,6 +1696,7 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
     if profile_home.exists():
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
+    _inject_langfuse_env(env)
 
     workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()
 
@@ -1745,7 +1856,24 @@ def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = No
                     terminate_worker_process(proc, pid)
 
                     reason = item["stuck_reason"] or f"Manually reaped after running {item['running_seconds']}s"
-                    cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, t_id))
+                    # Persist the reason into task metadata so downstream consumers
+                    # (e.g. the daily report's "Active Blockers") can recover it.
+                    # The reap previously only set a task_activity row, so the report
+                    # fell back to the task description for these blocked tasks.
+                    _meta = {}
+                    _row = cursor.execute(
+                        "SELECT metadata FROM tasks WHERE id = ?", (t_id,)
+                    ).fetchone()
+                    if _row is not None:
+                        try:
+                            _meta = json.loads(_row["metadata"] or "{}")
+                        except Exception:
+                            _meta = {}
+                    _meta["blocked_reason"] = reason
+                    cursor.execute(
+                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(_meta), now, t_id)
+                    )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
                         (t_id, reason, now)
@@ -2414,14 +2542,19 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     running_per_board[str(rc_row["board_slug"] or "")] = rc_row["cnt"]
 
                 if active_count < max_active_tasks:
-                    limit = max_active_tasks - active_count
+                    # Fetch the full candidate set across all boards; a LIMIT
+                    # here would starve other boards, so the global WIP budget
+                    # is enforced in the loop below.
                     cursor.execute("""
                         SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
                         WHERE status IN ('todo', 'ready')
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
-                        LIMIT ?
-                    """, (limit,))
+                    """)
                     for row in cursor.fetchall():
+                        # Global WIP budget exhausted: stop claiming more
+                        # tasks this cycle.
+                        if active_count >= max_active_tasks:
+                            break
                         task_id = str(row["id"])
                         assignee = normalize_assignee(row["assignee"] or "zf-builder")
                         title = row["title"] or ""
@@ -2476,7 +2609,9 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         conn.commit()
 
                         try:
-                            pid, session_id = spawn_agent_worker(task_id, title, description, priority, assignee, workspace_path, branch_name)
+                            pid, session_id = spawn_agent_worker(
+                                task_id, title, description, priority, assignee, workspace_path, branch_name, board_slug=row["board_slug"]
+                            )
                         except Exception as e:
                             _log.error("Failed to spawn agent worker for %s: %s", task_id, e)
                             cursor.execute("UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?", (now, task_id))
@@ -2531,9 +2666,9 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 if not os.environ.get("ZEROFACTORY_SKIP_GIT"):
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata FROM tasks
-                        WHERE (status = 'blocked' AND assignee != 'zf-reviewer')
+                        WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
+                           OR (status = 'blocked' AND assignee != 'zf-reviewer')
                            OR (status = 'done' AND assignee != 'zf-reviewer' AND workspace_path IS NOT NULL)
-                           OR (status != 'done' AND pr_url IS NOT NULL AND pr_url != '' AND (assignee = 'zf-reviewer' OR status = 'blocked'))
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -2577,7 +2712,183 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         if not repo_path or not repo_path.exists():
                             continue
 
-                        if assignee != "zf-reviewer" and (not row["pr_url"] or (workspace_path and Path(workspace_path).exists())):
+                        # If task has an associated PR, check GitHub PR state first
+                        if row["pr_url"]:
+                            if row["status"] == "done":
+                                continue
+
+                            try:
+                                res = subprocess.run(
+                                    ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url,mergeable"],
+                                    capture_output=True, text=True, cwd=str(repo_path), timeout=10
+                                )
+                                if res.returncode != 0 and row["pr_url"]:
+                                    res = subprocess.run(
+                                        ["gh", "pr", "view", row["pr_url"], "--json", "reviewDecision,state,url,mergeable"],
+                                        capture_output=True, text=True, cwd=str(repo_path), timeout=10
+                                    )
+                                if res.returncode == 0:
+                                    pr_data = json.loads(res.stdout)
+                                    pr_state = pr_data.get("state")
+                                    decision = pr_data.get("reviewDecision")
+                                    mergeable = pr_data.get("mergeable")
+                                    current_pr_url = pr_data.get("url") or row["pr_url"] or ""
+
+                                    if pr_state == "MERGED":
+                                        stop_task_worker(task_id, cursor)
+                                        _remove_worktree(workspace_path, repo_path)
+                                        cursor.execute(
+                                            "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                            (now, task_id)
+                                        )
+                                        cursor.execute(
+                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
+                                            (task_id, now)
+                                        )
+                                        continue
+                                    elif pr_state == "CLOSED":
+                                        stop_task_worker(task_id, cursor)
+                                        _remove_worktree(workspace_path, repo_path)
+                                        cursor.execute(
+                                            "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                            (now, task_id)
+                                        )
+                                        cursor.execute(
+                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'closed', 'PR closed on GitHub, task archived', ?)",
+                                            (task_id, now)
+                                        )
+                                        continue
+
+                                    # If permanently blocked or worker is actively running, skip routing
+                                    if meta.get("permanently_blocked") or row["status"] == "running":
+                                        continue
+
+                                    if assignee != "zf-reviewer" and row["status"] == "done":
+                                        # Author finished re-implementing/fixing review feedback -> commit and update PR below
+                                        pass
+                                    elif mergeable == "CONFLICTING":
+                                        task_meta = {}
+                                        try:
+                                            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                                            m_res = cursor.fetchone()
+                                            if m_res and m_res[0]:
+                                                task_meta = json.loads(m_res[0])
+                                        except Exception:
+                                            pass
+                                        max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
+                                        if row["status"] == "blocked" and int(task_meta.get("conflict_retries", 0)) > max_conflict_retries:
+                                            _log.debug("Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling", task_id, int(task_meta.get("conflict_retries", 0)), max_conflict_retries)
+                                        else:
+                                            _handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
+                                        continue
+                                    else:
+                                        # Check for review feedback (inline diff comments, reviews, PR conversation comments)
+                                        task_meta = {}
+                                        try:
+                                            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                                            m_res = cursor.fetchone()
+                                            if m_res and m_res[0]:
+                                                task_meta = json.loads(m_res[0])
+                                        except Exception:
+                                            pass
+
+                                        processed_cmt_ids = set(task_meta.get("processed_review_comment_ids", []))
+                                        all_pr_comments = fetch_pr_review_comments(
+                                            repo_path=repo_path,
+                                            pr_url=current_pr_url,
+                                            task_id=task_id,
+                                            pr_data=pr_data
+                                        )
+                                        new_pr_comments = [c for c in all_pr_comments if c["comment_id"] not in processed_cmt_ids]
+
+                                        actionable_comments = [
+                                            c for c in new_pr_comments
+                                            if not is_reviewer_approval_comment(c.get("body", ""), c.get("state"))
+                                        ]
+                                        approval_comments = [
+                                            c for c in new_pr_comments
+                                            if is_reviewer_approval_comment(c.get("body", ""), c.get("state"))
+                                        ]
+
+                                        has_actionable_feedback = bool(actionable_comments) or (decision == "CHANGES_REQUESTED")
+                                        is_approved = (decision == "APPROVED") or (bool(approval_comments) and not has_actionable_feedback)
+
+                                        if has_actionable_feedback and row["status"] in ("blocked", "todo"):
+                                            for c in new_pr_comments:
+                                                cmt_body = format_task_comment_body(c)
+                                                cursor.execute(
+                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                                                    (task_id, c["author"], cmt_body, now)
+                                                )
+                                                cursor.execute(
+                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
+                                                    (task_id, c["author"], f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}", now)
+                                                )
+                                                processed_cmt_ids.add(c["comment_id"])
+
+                                                # Auto-record gotchas/conventions from reviewer feedback
+                                                if board_slug and c.get("body"):
+                                                    try:
+                                                        from dashboard.plugin_api import extract_and_record_memory
+                                                        extract_and_record_memory(conn, board_slug=board_slug, text=c["body"], task_id=task_id, author=c.get("author") or "zf-reviewer")
+                                                    except Exception as _mem_e:
+                                                        _log.debug("Auto-record memory from review comment failed: %s", _mem_e)
+
+                                            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
+
+                                            stop_task_worker(task_id, cursor)
+                                            _remove_worktree(workspace_path, repo_path)
+                                            match = re.search(r"\[PR Opened by (.*?)\]", title)
+                                            author = match.group(1) if match else "zf-builder"
+                                            author = normalize_assignee(author)
+                                            clean_title = title.replace(" [Human Review]", "").replace("[Human Review]", "").strip()
+
+                                            cursor.execute(
+                                                "UPDATE tasks SET title = ?, assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
+                                                (clean_title, author, json.dumps(task_meta), now, task_id)
+                                            )
+                                            setup_worktree(cursor, task_id, clean_title, author, tenant, db_path, board_slug=board_slug)
+                                            reason_text = (
+                                                f"Review feedback received ({len(actionable_comments)} actionable comment(s)), routed back to {author}"
+                                                if actionable_comments else "Changes requested by reviewer, routed back to author"
+                                            )
+                                            cursor.execute(
+                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', ?, ?)",
+                                                (task_id, reason_text, now)
+                                            )
+                                            continue
+                                        elif is_approved and row["status"] in ("blocked", "todo", "running"):
+                                            for c in new_pr_comments:
+                                                cmt_body = format_task_comment_body(c)
+                                                cursor.execute(
+                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                                                    (task_id, c["author"], cmt_body, now)
+                                                )
+                                                cursor.execute(
+                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
+                                                    (task_id, c["author"], f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}", now)
+                                                )
+                                                processed_cmt_ids.add(c["comment_id"])
+
+                                            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
+                                            task_meta["blocked_reason"] = "Reviewer approved; awaiting human merge"
+
+                                            stop_task_worker(task_id, cursor)
+                                            _remove_worktree(workspace_path, repo_path)
+                                            new_title = title if "[Human Review]" in title else f"{title} [Human Review]"
+                                            cursor.execute(
+                                                "UPDATE tasks SET title = ?, status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                                (new_title, json.dumps(task_meta), now, task_id)
+                                            )
+                                            cursor.execute(
+                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved PR; task blocked awaiting human merge', ?)",
+                                                (task_id, now)
+                                            )
+                                            continue
+                            except Exception as e:
+                                _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
+
+                        if assignee != "zf-reviewer" and (not row["pr_url"] or row["status"] == "done"):
                             # Guard: Do not treat task as finished work if worker failed/timed out
                             # or is permanently blocked!
                             if meta.get("permanently_blocked") or meta.get("last_worker_failure"):
@@ -2694,6 +3005,16 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 except Exception:
                                     pass
 
+                                # The builder process has just been stopped.  Do not
+                                # carry its PID into the reviewer phase: on the next
+                                # dispatch cycle ``reap_active_workers`` would see the
+                                # dead PID, mark the new reviewer task as failed, and
+                                # block it before it can be dispatched.
+                                for key in ("worker_pid", "session_id", "started_at",
+                                            "last_worker_failure", "worker_failure_retries",
+                                            "blocked_reason", "permanently_blocked"):
+                                    meta.pop(key, None)
+
                                 cursor.execute(
                                     "UPDATE tasks SET title = ?, assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'todo', updated_at = ? WHERE id = ?",
                                     (new_title, pr_url, json.dumps(meta), now, task_id)
@@ -2718,164 +3039,6 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 _log.warning("Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)", task_id, e.timeout, e.cmd)
                             except Exception as e:
                                 _log.warning("Task %s commit/PR failed: %s", task_id, e)
-                        elif row["pr_url"]:
-                            # Inspect GitHub PR state & review feedback
-                            if row["status"] == "done":
-                                continue
-                            # If permanently blocked, we only allow human merge completion, but skip routing back to builder
-                            if meta.get("permanently_blocked"):
-                                try:
-                                    res = subprocess.run(
-                                        ["gh", "pr", "view", f"task/{task_id}", "--json", "state"],
-                                        capture_output=True, text=True, cwd=str(repo_path), timeout=10
-                                    )
-                                    if res.returncode == 0 and json.loads(res.stdout).get("state") == "MERGED":
-                                        stop_task_worker(task_id, cursor)
-                                        _remove_worktree(workspace_path, repo_path)
-                                        cursor.execute(
-                                            "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                            (now, task_id)
-                                        )
-                                        cursor.execute(
-                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
-                                            (task_id, now)
-                                        )
-                                except Exception:
-                                    pass
-                                continue
-                            try:
-                                res = subprocess.run(
-                                    ["gh", "pr", "view", f"task/{task_id}", "--json", "reviewDecision,state,url,mergeable"],
-                                    capture_output=True, text=True, cwd=str(repo_path), timeout=10
-                                )
-                                if res.returncode == 0:
-                                    pr_data = json.loads(res.stdout)
-                                    pr_state = pr_data.get("state")
-                                    decision = pr_data.get("reviewDecision")
-                                    mergeable = pr_data.get("mergeable")
-                                    current_pr_url = pr_data.get("url") or row["pr_url"] or ""
-
-                                    if pr_state == "MERGED":
-                                        stop_task_worker(task_id, cursor)
-                                        _remove_worktree(workspace_path, repo_path)
-                                        cursor.execute(
-                                            "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                            (now, task_id)
-                                        )
-                                        cursor.execute(
-                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
-                                            (task_id, now)
-                                        )
-                                    elif mergeable == "CONFLICTING":
-                                        task_meta = {}
-                                        try:
-                                            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
-                                            m_res = cursor.fetchone()
-                                            if m_res and m_res[0]:
-                                                task_meta = json.loads(m_res[0])
-                                        except Exception:
-                                            pass
-                                        max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
-                                        if row["status"] == "blocked" and int(task_meta.get("conflict_retries", 0)) > max_conflict_retries:
-                                            _log.debug("Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling", task_id, int(task_meta.get("conflict_retries", 0)), max_conflict_retries)
-                                        else:
-                                            _handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
-                                    else:
-                                        # Check for review feedback (inline diff comments, reviews, PR conversation comments)
-                                        task_meta = {}
-                                        try:
-                                            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
-                                            m_res = cursor.fetchone()
-                                            if m_res and m_res[0]:
-                                                task_meta = json.loads(m_res[0])
-                                        except Exception:
-                                            pass
-
-                                        processed_cmt_ids = set(task_meta.get("processed_review_comment_ids", []))
-                                        all_pr_comments = fetch_pr_review_comments(
-                                            repo_path=repo_path,
-                                            pr_url=current_pr_url,
-                                            task_id=task_id,
-                                            pr_data=pr_data
-                                        )
-                                        new_pr_comments = [c for c in all_pr_comments if c["comment_id"] not in processed_cmt_ids]
-
-                                        actionable_comments = [
-                                            c for c in new_pr_comments
-                                            if not is_reviewer_approval_comment(c.get("body", ""), c.get("state"))
-                                        ]
-                                        approval_comments = [
-                                            c for c in new_pr_comments
-                                            if is_reviewer_approval_comment(c.get("body", ""), c.get("state"))
-                                        ]
-
-                                        has_actionable_feedback = bool(actionable_comments) or (decision == "CHANGES_REQUESTED")
-                                        is_approved = (decision == "APPROVED") or (bool(approval_comments) and not has_actionable_feedback)
-
-                                        if has_actionable_feedback and row["status"] in ("blocked", "todo"):
-                                            for c in new_pr_comments:
-                                                cmt_body = format_task_comment_body(c)
-                                                cursor.execute(
-                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                                                    (task_id, c["author"], cmt_body, now)
-                                                )
-                                                cursor.execute(
-                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
-                                                    (task_id, c["author"], f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}", now)
-                                                )
-                                                processed_cmt_ids.add(c["comment_id"])
-
-                                            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
-
-                                            stop_task_worker(task_id, cursor)
-                                            _remove_worktree(workspace_path, repo_path)
-                                            match = re.search(r"\[PR Opened by (.*?)\]", title)
-                                            author = match.group(1) if match else "zf-builder"
-                                            author = normalize_assignee(author)
-                                            clean_title = title.replace(" [Human Review]", "").replace("[Human Review]", "").strip()
-
-                                            cursor.execute(
-                                                "UPDATE tasks SET title = ?, assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-                                                (clean_title, author, json.dumps(task_meta), now, task_id)
-                                            )
-                                            setup_worktree(cursor, task_id, clean_title, author, tenant, db_path, board_slug=board_slug)
-                                            reason_text = (
-                                                f"Review feedback received ({len(actionable_comments)} actionable comment(s)), routed back to {author}"
-                                                if actionable_comments else "Changes requested by reviewer, routed back to author"
-                                            )
-                                            cursor.execute(
-                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', ?, ?)",
-                                                (task_id, reason_text, now)
-                                            )
-                                        elif is_approved and row["status"] in ("blocked", "todo", "running"):
-                                            for c in new_pr_comments:
-                                                cmt_body = format_task_comment_body(c)
-                                                cursor.execute(
-                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                                                    (task_id, c["author"], cmt_body, now)
-                                                )
-                                                cursor.execute(
-                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
-                                                    (task_id, c["author"], f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}", now)
-                                                )
-                                                processed_cmt_ids.add(c["comment_id"])
-
-                                            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
-                                            task_meta["blocked_reason"] = "Reviewer approved; awaiting human merge"
-
-                                            stop_task_worker(task_id, cursor)
-                                            _remove_worktree(workspace_path, repo_path)
-                                            new_title = title if "[Human Review]" in title else f"{title} [Human Review]"
-                                            cursor.execute(
-                                                "UPDATE tasks SET title = ?, status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                                (new_title, json.dumps(task_meta), now, task_id)
-                                            )
-                                            cursor.execute(
-                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved PR; task blocked awaiting human merge', ?)",
-                                                (task_id, now)
-                                            )
-                            except Exception as e:
-                                _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
 
                 # 4. Capacity-driven / Idle Improvement Scanner Check
                 reap_active_scanners()
