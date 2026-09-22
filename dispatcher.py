@@ -2968,8 +2968,6 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 _log.warning("Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)", task_id, e.timeout, e.cmd)
                             except Exception as e:
                                 _log.warning("Task %s commit/PR failed: %s", task_id, e)
-                            except Exception as e:
-                                _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
 
                 # 4. Capacity-driven / Idle Improvement Scanner Check
                 reap_active_scanners()

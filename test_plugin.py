@@ -7435,5 +7435,120 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         self.assertEqual(mem["task_id"], t_id)
 
 
+class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
+    """AST guards against unreachable duplicate exception handlers in dispatcher.py.
+
+    Regression: PR #42 (commit 6866a84) moved the author commit/PR try-block in
+    ``run_dispatch_cycle()`` section 3 into its own ``if`` block but left the
+    original reviewer PR-check tail (``except Exception: ... "Reviewer PR check
+    skipped"``) orphaned *inside* the new try-block. A second ``except Exception``
+    is unreachable — the first one shadows it — and would misattribute
+    commit/PR failures as reviewer-PR-check failures. This guard walks every
+    ``try`` in dispatcher.py and fails on any repeated exception-handler type.
+    """
+
+    @classmethod
+    def _dispatcher_tree(cls):
+        import ast
+        src_path = Path(__file__).resolve().parent / "dispatcher.py"
+        return ast.parse(src_path.read_text(), filename=str(src_path))
+
+    @staticmethod
+    def _handler_type_name(handler):
+        import ast
+        t = handler.type
+        if isinstance(t, ast.Name):
+            return t.id
+        if isinstance(t, (ast.Tuple, ast.List)):
+            return ",".join(
+                e.id if isinstance(e, ast.Name) else repr(e) for e in t.elts
+            )
+        return repr(t)
+
+    def test_no_duplicate_exception_handler_types_in_any_try_block(self):
+        """No try-block in dispatcher.py may repeat an exception-handler type."""
+        import ast
+        tree = self._dispatcher_tree()
+        duplicates = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            seen = set()
+            for handler in node.handlers:
+                tname = self._handler_type_name(handler)
+                if tname in seen:
+                    duplicates.append(
+                        f"dispatcher.py:{node.lineno} try-block has duplicate "
+                        f"'except {tname}' handler (line {handler.lineno})"
+                    )
+                seen.add(tname)
+        self.assertEqual(duplicates, [], "\n".join(duplicates))
+
+    def test_no_orphaned_reviewer_pr_check_skip_in_commit_pr_block(self):
+        """The commit/PR try-block must not log 'Reviewer PR check skipped'.
+
+        Asserts the exact regression pattern is gone: the author commit/PR
+        block (the one whose generic handler logs 'commit/PR failed') must
+        not contain a 'Reviewer PR check skipped' log line. The reviewer's
+        own PR-check block (guarded by ``if row["pr_url"] and assignee ==
+        "zf-reviewer"``) legitimately keeps that message; this asserts the
+        commit/PR block no longer carries the orphaned copy.
+        """
+        src = (Path(__file__).resolve().parent / "dispatcher.py").read_text()
+        lines = src.splitlines()
+
+        # Locate the author commit/PR block: the try whose generic handler
+        # logs 'commit/PR failed'. Its handler lines give us the block range.
+        commit_pr_generic_line = None
+        for i, ln in enumerate(lines):
+            if "_log.warning(\"Task %s commit/PR failed:" in ln:
+                # the 'except Exception as e:' is one line above
+                commit_pr_generic_line = i
+                break
+        self.assertIsNotNone(
+            commit_pr_generic_line,
+            "could not locate the author commit/PR generic handler",
+        )
+
+        # Walk backwards from that handler to the enclosing 'try:' line.
+        # The try-block body spans from the try line to the last handler's
+        # end; the orphaned handler would sit *after* the commit/PR handler.
+        try_line = None
+        for i in range(commit_pr_generic_line, -1, -1):
+            stripped = lines[i].strip()
+            if stripped == "try:":
+                try_line = i
+                break
+        self.assertIsNotNone(try_line, "could not locate commit/PR try: line")
+
+        # Collect the handler tail: everything from the first 'except' at
+        # this block's indent (the commit/PR generic handler) to the line
+        # where the block ends (indent drops back to the try's parent).
+        except_indent = len(lines[commit_pr_generic_line]) - len(
+            lines[commit_pr_generic_line].lstrip()
+        )
+        block_end = commit_pr_generic_line
+        for i in range(commit_pr_generic_line + 1, len(lines)):
+            ln = lines[i]
+            if ln.strip() == "":
+                continue
+            indent = len(ln) - len(ln.lstrip())
+            if indent <= except_indent and ln.lstrip().startswith(("except ",)):
+                block_end = i
+            elif indent < except_indent:
+                # dedented out of the handler tail -> block over
+                break
+            else:
+                block_end = i
+
+        tail = "\n".join(lines[commit_pr_generic_line:block_end + 1])
+        self.assertNotIn(
+            "Reviewer PR check skipped",
+            tail,
+            "orphaned 'Reviewer PR check skipped' handler left in the commit/PR "
+            "try-block (regression from PR #42 code move)",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
