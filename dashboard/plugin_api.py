@@ -130,6 +130,7 @@ def init_db(force: bool = False):
                 git_url TEXT DEFAULT '',
                 max_concurrent_running INTEGER NOT NULL DEFAULT 1,
                 auto_record_memory INTEGER NOT NULL DEFAULT 1,
+                additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]',
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -219,7 +220,7 @@ def init_db(force: bool = False):
             CREATE INDEX IF NOT EXISTS idx_activity_created ON task_activity(created_at, id);
             CREATE INDEX IF NOT EXISTS idx_activity_actor ON task_activity(actor, created_at);
             """)
-            # Idempotent migration: add max_concurrent_running and auto_record_memory to pre-existing boards tables
+            # Idempotent migration: add board settings to pre-existing boards tables.
             cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
             if "max_concurrent_running" not in cols:
                 conn.execute(
@@ -228,6 +229,10 @@ def init_db(force: bool = False):
             if "auto_record_memory" not in cols:
                 conn.execute(
                     "ALTER TABLE boards ADD COLUMN auto_record_memory INTEGER NOT NULL DEFAULT 1"
+                )
+            if "additional_reviewer_usernames" not in cols:
+                conn.execute(
+                    "ALTER TABLE boards ADD COLUMN additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]'"
                 )
 
             # Seed default global settings if missing. Values are derived from the
@@ -402,12 +407,14 @@ class BoardCreate(BaseModel):
     description: Optional[str] = ""
     max_concurrent_running: Optional[int] = Field(default=1, ge=1, description="Max tasks running in parallel on this board (default 1)")
     auto_record_memory: Optional[bool] = Field(default=True, description="Enable automatic memory recording from reviewer feedback")
+    additional_reviewer_usernames: Optional[List[str]] = Field(default_factory=list, description="Additional GitHub usernames whose PR feedback is trusted")
 
 class BoardUpdate(BaseModel):
     description: Optional[str] = None
     git_url: Optional[str] = None
     max_concurrent_running: Optional[int] = Field(default=None, ge=1, description="Max tasks running in parallel on this board")
     auto_record_memory: Optional[bool] = Field(default=None, description="Enable automatic memory recording from reviewer feedback")
+    additional_reviewer_usernames: Optional[List[str]] = Field(default=None, description="Additional GitHub usernames whose PR feedback is trusted")
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
@@ -1140,6 +1147,12 @@ def list_boards():
         # Attach task counts per board and normalize boolean fields
         for b in boards:
             b["auto_record_memory"] = bool(b.get("auto_record_memory", 1))
+            try:
+                b["additional_reviewer_usernames"] = json.loads(
+                    b.get("additional_reviewer_usernames") or "[]"
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                b["additional_reviewer_usernames"] = []
             cursor.execute("SELECT COUNT(*) as count FROM tasks WHERE board_slug = ?", (b["slug"],))
             b["task_count"] = cursor.fetchone()["count"]
             cursor.execute("SELECT COUNT(*) as count FROM tasks WHERE board_slug = ? AND status = 'running'", (b["slug"],))
@@ -1207,6 +1220,11 @@ def create_board(req: BoardCreate):
     desc = (req.description or "").strip()
     mcr = max(1, req.max_concurrent_running or 1)
     arm = 1 if (req.auto_record_memory is None or req.auto_record_memory) else 0
+    reviewer_usernames = sorted({
+        username.strip().lstrip("@").lower()
+        for username in (req.additional_reviewer_usernames or [])
+        if username and username.strip()
+    })
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -1215,8 +1233,8 @@ def create_board(req: BoardCreate):
             raise HTTPException(status_code=409, detail=f"Board '{slug}' already exists")
 
         cursor.execute(
-            "INSERT INTO boards (slug, description, git_url, max_concurrent_running, auto_record_memory, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (slug, desc, git_url, mcr, arm, now, now)
+            "INSERT INTO boards (slug, description, git_url, max_concurrent_running, auto_record_memory, additional_reviewer_usernames, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (slug, desc, git_url, mcr, arm, json.dumps(reviewer_usernames), now, now)
         )
         conn.commit()
 
@@ -1259,6 +1277,14 @@ def update_board(slug: str, req: BoardUpdate):
             arm = 1 if req.auto_record_memory else 0
             updates.append("auto_record_memory = ?")
             params.append(arm)
+        if req.additional_reviewer_usernames is not None:
+            reviewer_usernames = sorted({
+                username.strip().lstrip("@").lower()
+                for username in req.additional_reviewer_usernames
+                if username and username.strip()
+            })
+            updates.append("additional_reviewer_usernames = ?")
+            params.append(json.dumps(reviewer_usernames))
 
         if updates:
             updates.append("updated_at = ?")
@@ -1272,6 +1298,11 @@ def update_board(slug: str, req: BoardUpdate):
         board_data = dict(row) if row else {"slug": slug}
         if "auto_record_memory" in board_data:
             board_data["auto_record_memory"] = bool(board_data["auto_record_memory"])
+        if "additional_reviewer_usernames" in board_data:
+            try:
+                board_data["additional_reviewer_usernames"] = json.loads(board_data["additional_reviewer_usernames"] or "[]")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                board_data["additional_reviewer_usernames"] = []
 
     # Sync builtin cron jobs so updated board properties are reflected
     if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):

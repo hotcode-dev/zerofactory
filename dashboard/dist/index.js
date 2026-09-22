@@ -166,7 +166,8 @@
       git_url: "",
       description: "",
       max_concurrent_running: 1,
-      auto_record_memory: true
+      auto_record_memory: true,
+      additional_reviewer_usernames: ""
     });
 
     const [editBoardForm, setEditBoardForm] = useState({
@@ -174,7 +175,8 @@
       git_url: "",
       description: "",
       max_concurrent_running: 1,
-      auto_record_memory: true
+      auto_record_memory: true,
+      additional_reviewer_usernames: ""
     });
 
     const [createBoardError, setCreateBoardError] = useState("");
@@ -182,7 +184,7 @@
 
     const handleOpenNewBoardModal = () => {
       setCreateBoardError("");
-      setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true });
+      setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
       setShowNewBoardModal(true);
     };
 
@@ -1080,13 +1082,14 @@
             git_url: gitUrl,
             description: (newBoardForm.description || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
-            auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false)
+            auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
+            additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
           })
         });
         const createdSlug = (res && res.slug) ? res.slug : autoSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true });
+        setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
         setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
@@ -1109,7 +1112,8 @@
           description: curr.description || "",
           git_url: curr.git_url || "",
           max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1,
-          auto_record_memory: curr.auto_record_memory !== false
+          auto_record_memory: curr.auto_record_memory !== false,
+          additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
         });
         setShowEditBoardModal(true);
       }
@@ -1128,7 +1132,8 @@
             description: (editBoardForm.description || "").trim(),
             git_url: (editBoardForm.git_url || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
-            auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false)
+            auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
+            additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
           })
         });
         showToast("Board '" + editBoardForm.slug + "' updated!", "success");
@@ -5108,6 +5113,18 @@
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers (Optional)"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "alice, bob (GitHub usernames)",
+                      value: newBoardForm.additional_reviewer_usernames || "",
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, additional_reviewer_usernames: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Comma-separated usernames trusted to submit automation-relevant PR feedback.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
                     React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
                     React.createElement("input", {
                       type: "number",
@@ -5224,6 +5241,18 @@
                     value: editBoardForm.description,
                     onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
                   })
+                ),
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers"),
+                  React.createElement("input", {
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                    placeholder: "alice, bob (GitHub usernames; optional)",
+                    value: editBoardForm.additional_reviewer_usernames || "",
+                    onChange: (e) => setEditBoardForm({ ...editBoardForm, additional_reviewer_usernames: e.target.value })
+                  }),
+                  React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")
                 ),
                 React.createElement(
                   "div",

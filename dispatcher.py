@@ -814,13 +814,18 @@ def fetch_pr_review_comments(
     pr_url: Optional[str] = None,
     task_id: Optional[str] = None,
     pr_data: Optional[Dict[str, Any]] = None,
-    exclude_authors: Optional[set[str]] = None
+    exclude_authors: Optional[set[str]] = None,
+    additional_reviewer_usernames: Optional[set[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Fetch all types of review comments for a GitHub PR:
     1. Inline diff review comments (/pulls/{pr}/comments)
     2. Review summaries and states (/pulls/{pr}/reviews)
     3. PR issue/conversation comments (/issues/{pr}/comments)
     4. Code suggestions inside comments
+
+    Only feedback from repository owners, members, collaborators, or the
+    board's explicit additional-reviewer allowlist is returned. This prevents
+    unrelated PR participants from changing an automation task's disposition.
 
     Returns a standardized list of comment dicts.
     """
@@ -829,6 +834,33 @@ def fetch_pr_review_comments(
 
     if exclude_authors is None:
         exclude_authors = {"github-actions[bot]", "web-flow"}
+    trusted_associations = {"OWNER", "MEMBER", "COLLABORATOR"}
+    additional_reviewers = {
+        username.strip().lstrip("@").lower()
+        for username in (additional_reviewer_usernames or set())
+        if username and username.strip()
+    }
+
+    def is_excluded_author(author: str) -> bool:
+        """Exclude automation from actionable review feedback.
+
+        Deployment/status bots post ordinary PR conversation comments.  Those
+        comments must not undo an explicit reviewer approval and send the task
+        back to the builder.
+        """
+        normalized = (author or "").lower()
+        return not normalized or normalized in exclude_authors or normalized.endswith("[bot]")
+
+    def is_trusted_reviewer(author: str, association: str = "") -> bool:
+        """Return whether a non-bot PR participant may control task routing."""
+        normalized = (author or "").lower()
+        return (
+            not is_excluded_author(normalized)
+            and (
+                normalized in additional_reviewers
+                or (association or "").upper() in trusted_associations
+            )
+        )
 
     comments: List[Dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -854,11 +886,12 @@ def fetch_pr_review_comments(
     if pr_data:
         for rev in pr_data.get("reviews", []):
             author = (rev.get("author") or {}).get("login") or rev.get("user", {}).get("login") or ""
+            association = rev.get("authorAssociation") or rev.get("author_association") or ""
             body = (rev.get("body") or "").strip()
             state = rev.get("state") or ""
             rev_id = str(rev.get("id") or "")
             cid = f"review_{rev_id}"
-            if cid not in seen_ids and author and author.lower() not in exclude_authors:
+            if cid not in seen_ids and is_trusted_reviewer(author, association):
                 if body or state == "CHANGES_REQUESTED":
                     seen_ids.add(cid)
                     comments.append({
@@ -876,10 +909,11 @@ def fetch_pr_review_comments(
 
         for com in pr_data.get("comments", []):
             author = (com.get("author") or {}).get("login") or com.get("user", {}).get("login") or ""
+            association = com.get("authorAssociation") or com.get("author_association") or ""
             body = (com.get("body") or "").strip()
             com_id = str(com.get("id") or "")
             cid = f"issue_{com_id}"
-            if cid not in seen_ids and author and author.lower() not in exclude_authors:
+            if cid not in seen_ids and is_trusted_reviewer(author, association):
                 if body and "Automated PR for task" not in body:
                     seen_ids.add(cid)
                     comments.append({
@@ -914,7 +948,7 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not author or author.lower() in exclude_authors:
+                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
                         continue
                     body = (item.get("body") or "").strip()
                     if not body:
@@ -956,7 +990,7 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not author or author.lower() in exclude_authors:
+                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
                         continue
                     body = (item.get("body") or "").strip()
                     state = item.get("state") or ""
@@ -991,7 +1025,7 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not author or author.lower() in exclude_authors:
+                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
                         continue
                     body = (item.get("body") or "").strip()
                     if body and "Automated PR for task" not in body:
@@ -2751,11 +2785,28 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             pass
 
                                         processed_cmt_ids = set(task_meta.get("processed_review_comment_ids", []))
+                                        additional_reviewer_usernames: set[str] = set()
+                                        if board_slug:
+                                            try:
+                                                board_row = cursor.execute(
+                                                    "SELECT additional_reviewer_usernames FROM boards WHERE slug = ?",
+                                                    (board_slug,),
+                                                ).fetchone()
+                                                if board_row and board_row[0]:
+                                                    additional_reviewer_usernames = set(
+                                                        json.loads(board_row[0])
+                                                    )
+                                            except (TypeError, ValueError, json.JSONDecodeError):
+                                                _log.warning(
+                                                    "Ignoring malformed additional reviewer allowlist for board %s",
+                                                    board_slug,
+                                                )
                                         all_pr_comments = fetch_pr_review_comments(
                                             repo_path=repo_path,
                                             pr_url=current_pr_url,
                                             task_id=task_id,
-                                            pr_data=pr_data
+                                            pr_data=pr_data,
+                                            additional_reviewer_usernames=additional_reviewer_usernames,
                                         )
                                         new_pr_comments = [c for c in all_pr_comments if c["comment_id"] not in processed_cmt_ids]
 

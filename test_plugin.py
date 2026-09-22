@@ -5176,6 +5176,7 @@ class TestZeroFactory(unittest.TestCase):
                     "start_line": 522,
                     "diff_hunk": "@@ -517,14 +517,24 @@",
                     "user": {"login": "ntsd"},
+                    "author_association": "MEMBER",
                     "body": "the comment is too long\n```suggestion\n# Short comment\n```",
                     "created_at": "2026-09-20T01:26:50Z",
                 },
@@ -5194,6 +5195,7 @@ class TestZeroFactory(unittest.TestCase):
                     "user": {"login": "alice"},
                     "state": "CHANGES_REQUESTED",
                     "body": "Please address performance and shorten comments.",
+                    "author_association": "MEMBER",
                     "submitted_at": "2026-09-20T01:25:00Z",
                 }
             ]
@@ -5202,7 +5204,14 @@ class TestZeroFactory(unittest.TestCase):
                     "id": 88888,
                     "user": {"login": "bob"},
                     "body": "Can you also check test coverage?",
+                    "author_association": "MEMBER",
                     "created_at": "2026-09-20T01:24:00Z",
+                },
+                {
+                    "id": 99998,
+                    "user": {"login": "cloudflare-workers-and-pages[bot]"},
+                    "body": "Deployment successful.",
+                    "created_at": "2026-09-20T01:26:00Z",
                 }
             ]
 
@@ -5227,6 +5236,11 @@ class TestZeroFactory(unittest.TestCase):
                         repo_path=repo_path,
                         pr_url="https://github.com/hotcode-dev/zerofactory/pull/35",
                     )
+
+                self.assertFalse(
+                    any(c["author"] == "cloudflare-workers-and-pages[bot]" for c in comments),
+                    "deployment bot comments must not be routed as actionable review feedback",
+                )
 
                 # Bot comment filtered, 3 valid comments remain
                 self.assertEqual(len(comments), 3)
@@ -5259,6 +5273,47 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+    def test_pr_review_comments_allowlist_external_reviewer(self):
+        """External PR feedback is ignored unless its username is approved by
+        the board-level additional reviewer allowlist."""
+        import json
+        from unittest.mock import MagicMock, patch
+        from dispatcher import fetch_pr_review_comments
+
+        old_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        try:
+            payload = [{
+                "id": 12345,
+                "user": {"login": "outside-reviewer"},
+                "author_association": "CONTRIBUTOR",
+                "body": "Please add coverage for the error path.",
+                "created_at": "2026-09-20T01:24:00Z",
+            }]
+
+            def fake_run(cmd, *_args, **_kwargs):
+                result = MagicMock()
+                result.returncode = 0
+                result.stdout = json.dumps(payload if "issues/35/comments" in cmd[2] else [])
+                return result
+
+            with patch("dispatcher.subprocess.run", side_effect=fake_run):
+                ignored = fetch_pr_review_comments(
+                    Path(tempfile.mkdtemp()),
+                    pr_url="https://github.com/hotcode-dev/zerofactory/pull/35",
+                )
+                allowed = fetch_pr_review_comments(
+                    Path(tempfile.mkdtemp()),
+                    pr_url="https://github.com/hotcode-dev/zerofactory/pull/35",
+                    additional_reviewer_usernames={"outside-reviewer"},
+                )
+
+            self.assertEqual(ignored, [])
+            self.assertEqual(len(allowed), 1)
+            self.assertEqual(allowed[0]["author"], "outside-reviewer")
+        finally:
+            if old_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = old_skip_git
 
     def test_format_inline_comment_line_range_handles_null_line(self):
         """Regression: format_task_comment_body() must not interpolate a None
