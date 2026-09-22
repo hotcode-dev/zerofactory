@@ -27,6 +27,34 @@ _log = logging.getLogger("zerofactory.cron")
 
 DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
 
+# Bounded synchronous wait for `hermes cron run` triggered via trigger_builtin_job.
+# The three builtin jobs are bounded (queue watchdog is No-Agent mode; the daily
+# report is a single-turn synthesis; the idle scanner is gated) so a bounded
+# wait is safe and yields real exit-status feedback to the API/CLI caller.
+CRON_RUN_TIMEOUT = 300
+# How many trailing characters of the child's combined output to surface in the
+# result dict so callers can see a failure without keeping unbounded buffers.
+CRON_RUN_OUTPUT_TAIL_CHARS = 2048
+
+# Registry tracking active on-demand cron-run child processes keyed by job_id:
+# {job_id: subprocess.Popen}. Reap finished children (see reap_active_cron_runs)
+# so `hermes cron run` children never accumulate as unreaped zombies.
+_active_cron_runs: Dict[str, subprocess.Popen] = {}
+
+
+def reap_active_cron_runs() -> int:
+    """Reap finished on-demand cron-run child processes (analog of the
+    dispatcher's reap_active_scanners / reap_active_workers)."""
+    reaped = 0
+    for jid, proc in list(_active_cron_runs.items()):
+        if proc is not None:
+            retcode = proc.poll()
+            if retcode is not None:
+                _active_cron_runs.pop(jid, None)
+                reaped += 1
+                _log.debug("Cron-run process for job '%s' exited with code %d", jid, retcode)
+    return reaped
+
 
 def get_db_path() -> Path:
     override = os.environ.get("ZEROFACTORY_DB")
@@ -1086,23 +1114,119 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
     # Ensure job is registered in target files before running
     ensure_builtin_cron_jobs()
 
-    # Trigger via hermes CLI with target profile
+    # Trigger via hermes CLI with target profile.
+    #
+    # FIX (pipe deadlock + zombie/orphan): the previous implementation used
+    # `subprocess.Popen(stdout=PIPE, stderr=PIPE)` and returned immediately with
+    # only the child PID. Nothing ever drained those pipes, so a child writing
+    # more than the OS pipe buffer (~64KB) blocked forever on write() — a silent,
+    # unrecoverable hang — and the dropped Popen handle meant the child could
+    # linger as an unreaped zombie.
+    #
+    # Instead we write the child's combined output to a log file (never a
+    # pipe) and wait synchronously with a bounded timeout so the caller
+    # receives a real success/failure signal (exit status) and the child is
+    # always reaped. The three builtin jobs are bounded (queue watchdog is
+    # No-Agent mode; the daily report is a single-turn synthesis; the idle
+    # scanner is gated) so a bounded wait is safe.
     try:
         job_def = current_builtin_jobs.get(target_job_id) or {}
         profile = job_def.get("profile") or "zf-orchestrator"
+
+        # Per-job log file so the run is inspectable after the fact.
+        log_dir = Path.home() / ".hermes" / "logs"
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file_path = log_dir / f"cron_run_{target_job_id}.log"
+            log_handle = open(log_file_path, "ab")
+            try:
+                os.utime(log_file_path, None)
+            except Exception:
+                pass
+        except Exception:
+            log_file_path = None
+            log_handle = None
+
+        cmd = ["hermes", "-p", profile, "cron", "run", target_job_id, "--accept-hooks"]
+        if log_handle is not None:
+            stdout_dest: Any = log_handle
+        else:
+            # Fall back to DEVNULL if we couldn't open the log file.
+            stdout_dest = subprocess.DEVNULL
+
         proc = subprocess.Popen(
-            ["hermes", "-p", profile, "cron", "run", target_job_id, "--accept-hooks"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_dest,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
         )
-        return {
-            "ok": True,
+        if log_handle is not None:
+            log_handle.close()
+        # Register the handle so it can be reaped even if the wait below
+        # times out and the child outlives the caller.
+        _active_cron_runs[target_job_id] = proc
+
+        try:
+            proc.wait(timeout=CRON_RUN_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _log.error("Cron job %s timed out after %ss; terminating", target_job_id, CRON_RUN_TIMEOUT)
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    proc.wait(timeout=5)
+                except Exception:
+                    pass
+            _active_cron_runs.pop(target_job_id, None)
+            return {
+                "ok": False,
+                "job_id": target_job_id,
+                "pid": proc.pid,
+                "timed_out": True,
+                "message": (
+                    f"Cron job '{target_job_id}' (PID {proc.pid}) timed out after "
+                    f"{CRON_RUN_TIMEOUT}s and was terminated"
+                ),
+            }
+        # Child has exited (wait() returned) so it is reaped now.
+        _active_cron_runs.pop(target_job_id, None)
+
+        returncode = proc.returncode
+        if returncode == 0:
+            _log.info("Cron job %s completed (PID: %d, rc=0)", target_job_id, proc.pid)
+            return {
+                "ok": True,
+                "job_id": target_job_id,
+                "pid": proc.pid,
+                "returncode": returncode,
+                "message": f"Cron job '{target_job_id}' completed successfully (exit 0)",
+            }
+
+        # Non-zero exit: surface the tail of the run log for diagnosability.
+        tail = ""
+        if log_file_path is not None:
+            try:
+                with open(log_file_path, "rb") as lf:
+                    raw = lf.read()[-CRON_RUN_OUTPUT_TAIL_CHARS:]
+                tail = raw.decode("utf-8", errors="replace")
+            except Exception:
+                tail = ""
+        _log.error("Cron job %s failed (PID: %d, rc=%s)", target_job_id, proc.pid, returncode)
+        result: Dict[str, Any] = {
+            "ok": False,
             "job_id": target_job_id,
             "pid": proc.pid,
-            "message": f"Triggered execution for job '{target_job_id}' (PID: {proc.pid})"
+            "returncode": returncode,
+            "message": f"Cron job '{target_job_id}' exited with code {returncode}",
         }
+        if tail:
+            result["output_tail"] = tail
+        return result
     except Exception as e:
+        _active_cron_runs.pop(target_job_id, None)
         _log.error("Failed to run cron job %s: %s", target_job_id, e)
         return {"ok": False, "error": str(e)}
 
