@@ -1837,7 +1837,24 @@ def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = No
                     terminate_worker_process(proc, pid)
 
                     reason = item["stuck_reason"] or f"Manually reaped after running {item['running_seconds']}s"
-                    cursor.execute("UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?", (now, t_id))
+                    # Persist the reason into task metadata so downstream consumers
+                    # (e.g. the daily report's "Active Blockers") can recover it.
+                    # The reap previously only set a task_activity row, so the report
+                    # fell back to the task description for these blocked tasks.
+                    _meta = {}
+                    _row = cursor.execute(
+                        "SELECT metadata FROM tasks WHERE id = ?", (t_id,)
+                    ).fetchone()
+                    if _row is not None:
+                        try:
+                            _meta = json.loads(_row["metadata"] or "{}")
+                        except Exception:
+                            _meta = {}
+                    _meta["blocked_reason"] = reason
+                    cursor.execute(
+                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(_meta), now, t_id)
+                    )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
                         (t_id, reason, now)

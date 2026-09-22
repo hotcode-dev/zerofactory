@@ -991,6 +991,121 @@ class TestZeroFactory(unittest.TestCase):
         self.assertIn("Pre-Calculated ZeroFactory Daily Metrics", proc_stats.stdout)
         self.assertIn("Column Distribution", proc_stats.stdout)
 
+    def test_24a_daily_stats_inflight_duration_uses_started_at(self):
+        """Regression (zf-40aec377): the daily report's "Currently In-Flight"
+        duration must be derived from ``metadata.started_at`` (the authoritative
+        dispatch time the dispatcher records at spawn), NOT from
+        ``tasks.updated_at`` — which is written exactly once at claim/spawn and
+        never refreshed while a worker runs, so ``now - updated_at`` permanently
+        reports ~0-1m for the whole lifetime of a build.
+
+        Behavior contract:
+          * A task that has been running N minutes (``metadata.started_at =
+            now - N*60``) but whose ``updated_at`` is seconds old must report
+            ~N minutes, never ~0m.
+          * If clock skew puts ``started_at`` slightly ahead of ``now``, the
+            elapsed is clamped with ``max(0, ...)`` — the report never shows a
+            negative duration.
+        """
+        import importlib.util
+        import json
+        import io
+        import contextlib
+        import sqlite3
+        import time as _time
+        import re
+
+        scripts_dir = Path(__file__).resolve().parent / "scripts"
+        spec = importlib.util.spec_from_file_location(
+            "zf_daily_stats_under_test", scripts_dir / "zf_daily_stats.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        # --- Helper-level contract: started_at wins, then updated_at, then created_at.
+        now = 2_000_000_000
+        # started_at (recent) must beat a stale updated_at.
+        rt_a = {
+            "id": "t", "updated_at": now - 10, "created_at": now - 999,
+            "metadata": json.dumps({"started_at": now - 47 * 60}),
+        }
+        self.assertEqual(mod._resolve_running_since(rt_a, now), now - 47 * 60)
+        # No started_at -> fall back to updated_at.
+        rt_b = {
+            "id": "t", "updated_at": now - 120, "created_at": now - 999, "metadata": "{}",
+        }
+        self.assertEqual(mod._resolve_running_since(rt_b, now), now - 120)
+        # No started_at and no updated_at (0/unset) -> fall back to created_at.
+        rt_c = {
+            "id": "t", "updated_at": 0, "created_at": now - 999, "metadata": "not-json",
+        }
+        self.assertEqual(mod._resolve_running_since(rt_c, now), now - 999)
+
+        # --- End-to-end: run the report against a temp DB and assert the printed
+        # in-flight line reflects started_at (not the stale updated_at) and is clamped.
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "stats.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.executescript(
+                "CREATE TABLE boards ("
+                " slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+                "CREATE TABLE tasks ("
+                " id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL,"
+                " description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned',"
+                " priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, workspace_kind TEXT DEFAULT 'worktree', branch_name TEXT,"
+                " pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',"
+                " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+            )
+            real_now = int(_time.time())
+            conn.execute("INSERT INTO boards (slug, created_at, updated_at) VALUES (?,1,1)", ("stats-board",))
+            # Task A: running ~47 min per metadata.started_at, but updated_at is seconds old
+            # (the stale-0m bug: old code would have printed ~0m).
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, metadata, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                ("zf-run-a", "stats-board", "Long build", "running", "zf-builder",
+                 json.dumps({"started_at": real_now - 47 * 60, "worker_pid": 1234}),
+                 real_now - 47 * 60, real_now - 5),
+            )
+            # Task B: clock skew — started_at in the future; must clamp to 0m (never negative).
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, assignee, metadata, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                ("zf-run-b", "stats-board", "Skewed task", "running", "zf-builder",
+                 json.dumps({"started_at": real_now + 600}), real_now - 5, real_now - 5),
+            )
+            conn.commit()
+            conn.close()
+
+            old_db = os.environ.get("ZEROFACTORY_DB")
+            os.environ["ZEROFACTORY_DB"] = str(db_path)
+            buf = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(buf):
+                    rc = mod.run_daily_stats()
+            finally:
+                if old_db is None:
+                    os.environ.pop("ZEROFACTORY_DB", None)
+                else:
+                    os.environ["ZEROFACTORY_DB"] = old_db
+            out = buf.getvalue()
+            self.assertEqual(rc, 0)
+
+            # Task A: active for ~47m (derived from started_at, NOT the stale updated_at).
+            m = re.search(r"`zf-run-a`.*active for (-?\d+)m", out)
+            self.assertIsNotNone(m, f"missing in-flight line for zf-run-a in:\n{out}")
+            mins_a = int(m.group(1))
+            self.assertGreaterEqual(mins_a, 45,
+                "in-flight duration must reflect metadata.started_at (~47m), not the stale updated_at (~0m)")
+            self.assertLess(mins_a, 60, f"expected ~47m, got {mins_a}m")
+
+            # Task B: clamped to 0m, never negative (clock skew).
+            m2 = re.search(r"`zf-run-b`.*active for (-?\d+)m", out)
+            self.assertIsNotNone(m2, f"missing in-flight line for zf-run-b in:\n{out}")
+            self.assertGreaterEqual(int(m2.group(1)), 0, "in-flight duration must never be negative (clock-skew clamp)")
+            self.assertNotIn("active for -", out, "report must never show a negative elapsed duration")
+
     def test_25_hermes_script_sandbox_compliance(self):
         """Verify compliance with Hermes _script_health_issue path sandbox."""
         from profile_manager import get_hermes_home
