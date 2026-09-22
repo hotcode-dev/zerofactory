@@ -4050,10 +4050,10 @@
                           "div",
                           {
                             className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (
-                              (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                                ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
-                                : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                              (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                                 ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                : (t.title && t.title.includes("[Human Review]"))
+                                ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
                                 : t.blocking_parent_count > 0
                                 ? "bg-slate-800 border-slate-700 text-slate-300"
                                 : "bg-rose-500/15 border-rose-500/30 text-rose-300"
@@ -4061,10 +4061,10 @@
                           },
                           React.createElement("span", {
                             className: "w-2 h-2 rounded-full shrink-0 " + (
-                              (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                                ? "bg-teal-400"
-                                : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                              (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                                 ? "bg-amber-400"
+                                : (t.title && t.title.includes("[Human Review]"))
+                                ? "bg-teal-400"
                                 : t.blocking_parent_count > 0
                                 ? "bg-slate-400"
                                 : "bg-rose-400"
@@ -4073,10 +4073,10 @@
                           React.createElement(
                             "span",
                             { className: "text-[0.6875rem] truncate font-medium" },
-                            (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                              ? "🟢 Awaiting Human Merge"
-                              : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                            (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                               ? "🟠 Merge Conflict"
+                              : (t.title && t.title.includes("[Human Review]"))
+                              ? "🟢 Awaiting Human Merge"
                               : t.blocking_parent_count > 0
                               ? "⏳ Blocked by Parent Task"
                               : "🛑 Action Required / Stuck"
