@@ -84,6 +84,7 @@
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [settingsForm, setSettingsForm] = useState({
       max_active_tasks: 10,
+      max_concurrent_llm_workers: 10,
       default_max_concurrent_workers: 1,
       scan_on_idle: true,
       idle_scan_active_threshold: 2,
@@ -195,6 +196,7 @@
           const isCronEnabled = data.settings.enable_cron_scheduler ?? true;
           setSettingsForm({
             max_active_tasks: data.settings.max_active_tasks ?? 10,
+            max_concurrent_llm_workers: data.settings.max_concurrent_llm_workers ?? 10,
             default_max_concurrent_workers: data.settings.default_max_concurrent_workers ?? 1,
             scan_on_idle: data.settings.scan_on_idle ?? true,
             idle_scan_active_threshold: data.settings.idle_scan_active_threshold ?? 2,
@@ -222,6 +224,7 @@
       try {
         const payload = {
           max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
+          max_concurrent_llm_workers: Math.max(1, parseInt(settingsForm.max_concurrent_llm_workers, 10) || 10),
           default_max_concurrent_workers: Math.max(1, parseInt(settingsForm.default_max_concurrent_workers, 10) || 1),
           scan_on_idle: Boolean(settingsForm.scan_on_idle),
           idle_scan_active_threshold: Math.max(1, parseInt(settingsForm.idle_scan_active_threshold, 10) || 2),
@@ -245,6 +248,7 @@
           const isCronEnabled = res.settings.enable_cron_scheduler ?? true;
           setSettingsForm({
             max_active_tasks: res.settings.max_active_tasks ?? 10,
+            max_concurrent_llm_workers: res.settings.max_concurrent_llm_workers ?? 10,
             default_max_concurrent_workers: res.settings.default_max_concurrent_workers ?? 1,
             scan_on_idle: res.settings.scan_on_idle ?? true,
             idle_scan_active_threshold: res.settings.idle_scan_active_threshold ?? 2,
@@ -5374,6 +5378,20 @@
                   onChange: (e) => setSettingsForm({ ...settingsForm, max_active_tasks: e.target.value })
                 }),
                 React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps total tasks allowed in 'ready' and 'running' across all boards combined. Controls how many git worktrees are prepared from 'todo' to prevent queue and disk flooding. Default: 10.")
+              ),
+              React.createElement(
+                "div",
+                { className: "space-y-1.5" },
+                React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Global Max Concurrent LLM Workers"),
+                React.createElement("input", {
+                  type: "number",
+                  min: 1,
+                  step: 1,
+                  className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                  value: settingsForm.max_concurrent_llm_workers ?? 10,
+                  onChange: (e) => setSettingsForm({ ...settingsForm, max_concurrent_llm_workers: e.target.value })
+                }),
+                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")
               ),
               React.createElement(
                 "div",

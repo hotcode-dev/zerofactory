@@ -61,6 +61,7 @@ from typing import Any, Dict, List, Optional
 try:
     from .settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS,
+        DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         DEFAULT_MAX_CONCURRENT_WORKERS,
         DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
@@ -72,6 +73,7 @@ try:
 except ImportError:
     from settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS,
+        DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         DEFAULT_MAX_CONCURRENT_WORKERS,
         DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
@@ -1673,6 +1675,30 @@ def reap_active_scanners() -> int:
     return reaped
 
 
+def _running_cron_llm_jobs() -> int:
+    """Count in-process Zero Factory cron LLM jobs (exclude No-Agent queue checks)."""
+    try:
+        from cron.scheduler import get_running_job_ids
+        return sum(
+            job_id == "zero-factory-daily-report" or job_id.startswith("zero-factory-improvement-scanner-")
+            for job_id in get_running_job_ids()
+        )
+    except (ImportError, RuntimeError):
+        return 0
+
+
+def _global_llm_occupancy(running_tasks: int) -> int:
+    """LLM workers currently tracked by this Zero Factory process."""
+    try:
+        from .builtin_cron import _active_cron_runs, reap_active_cron_runs
+    except ImportError:
+        from builtin_cron import _active_cron_runs, reap_active_cron_runs
+    reap_active_cron_runs()
+    return running_tasks + len(_active_scanners) + _running_cron_llm_jobs() + sum(
+        job_id != "zero-factory-task-queue-check" for job_id in _active_cron_runs
+    )
+
+
 def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Optional[int]:
     """Spawn an improvement scanner agent worker process for a specific board."""
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN") or os.environ.get("ZEROFACTORY_SKIP_SCANNER_SPAWN"):
@@ -2504,12 +2530,17 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                 # 2. Reap finished workers and dispatch Todo tasks to Running
                 reaped = reap_active_workers(cursor, now)
+                reap_active_scanners()
 
                 # Derive the WIP limit from the shared settings read above.
                 max_active_tasks = int(settings.get("max_active_tasks", DEFAULT_MAX_ACTIVE_TASKS))
+                max_llm_workers = int(settings.get("max_concurrent_llm_workers", DEFAULT_MAX_CONCURRENT_LLM_WORKERS))
 
                 cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'")
                 active_count = cursor.fetchone()[0]
+                # Running tasks (including those on other boards) and live
+                # scanner subprocesses share the same global capacity.
+                llm_workers = _global_llm_occupancy(active_count)
 
                 # Fallback concurrent running workers per board from settings table
                 default_concurrent_workers = int(
@@ -2533,7 +2564,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 ).fetchall():
                     running_per_board[str(rc_row["board_slug"] or "")] = rc_row["cnt"]
 
-                if active_count < max_active_tasks:
+                if active_count < max_active_tasks and llm_workers < max_llm_workers:
                     # Fetch the full candidate set across all boards; a LIMIT
                     # here would starve other boards, so the global WIP budget
                     # is enforced in the loop below.
@@ -2545,7 +2576,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     for row in cursor.fetchall():
                         # Global WIP budget exhausted: stop claiming more
                         # tasks this cycle.
-                        if active_count >= max_active_tasks:
+                        if active_count >= max_active_tasks or llm_workers >= max_llm_workers:
                             break
                         task_id = str(row["id"])
                         assignee = normalize_assignee(row["assignee"] or "zf-builder")
@@ -2651,6 +2682,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         conn.commit()
                         running_per_board[board_key] = board_active + 1
                         active_count += 1
+                        llm_workers += 1
                         dispatched += 1
                         promoted += 1
 
@@ -3051,6 +3083,11 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                 # 4. Capacity-driven / Idle Improvement Scanner Check
                 reap_active_scanners()
+                # Phase 3 may have completed/rerouted tasks; refresh the count
+                # before allocating scan slots. Track successful mock spawns as
+                # well as real registered processes within this cycle.
+                active_count = cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
+                llm_workers = _global_llm_occupancy(active_count)
 
                 # Derive the idle-scan knobs from the shared settings read above.
                 # load_settings() stores idle_scan_cooldown_minutes in MINUTES; the
@@ -3081,6 +3118,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         pass
 
                     for b_row in b_rows:
+                        if llm_workers >= max_llm_workers:
+                            break
                         board_slug = str(b_row["slug"] or "")
                         if not board_slug:
                             continue
@@ -3099,6 +3138,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         # failure does not lock the board out for the cooldown.
                                         _last_idle_scan_times[board_slug] = now
                                         scans_triggered += 1
+                                        llm_workers += 1
                                         _log.info(
                                             "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %d)",
                                             board_slug, board_active_running, idle_active_threshold, board_todo_count, pid

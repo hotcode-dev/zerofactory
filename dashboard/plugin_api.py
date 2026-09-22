@@ -484,6 +484,7 @@ class DependencyLink(BaseModel):
 
 class SettingsUpdate(BaseModel):
     max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in running")
+    max_concurrent_llm_workers: Optional[int] = Field(default=None, ge=1, description="Max concurrent task and scanner LLM workers across all boards")
     default_max_concurrent_workers: Optional[int] = Field(default=None, ge=1, description="Default max concurrent running workers per board")
     scan_on_idle: Optional[bool] = Field(default=None, description="Automatically trigger improvement scans when active workers are below threshold")
     idle_scan_active_threshold: Optional[int] = Field(default=None, ge=1, description="Max active running workers on a board to trigger idle scan")
@@ -1374,6 +1375,11 @@ def update_settings(req: SettingsUpdate):
             cursor.execute(
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', ?, ?)",
                 (val, now)
+            )
+        if req.max_concurrent_llm_workers is not None:
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_concurrent_llm_workers', ?, ?)",
+                (str(req.max_concurrent_llm_workers), now)
             )
         if req.default_max_concurrent_workers is not None:
             val = str(max(1, int(req.default_max_concurrent_workers)))

@@ -4023,6 +4023,7 @@ class TestZeroFactory(unittest.TestCase):
         data = res.json()
         self.assertTrue(data["ok"])
         self.assertIn("max_active_tasks", data["settings"])
+        self.assertIn("max_concurrent_llm_workers", data["settings"])
         self.assertIn("default_max_concurrent_workers", data["settings"])
         self.assertIn("scan_on_idle", data["settings"])
         self.assertIn("idle_scan_active_threshold", data["settings"])
@@ -4038,6 +4039,7 @@ class TestZeroFactory(unittest.TestCase):
             "/api/plugins/zerofactory/settings",
             json={
                 "max_active_tasks": 12,
+                "max_concurrent_llm_workers": 3,
                 "default_max_concurrent_workers": 2,
                 "scan_on_idle": False,
                 "idle_scan_active_threshold": 1,
@@ -4048,6 +4050,7 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(res_patch.status_code, 200)
         settings = res_patch.json()["settings"]
         self.assertEqual(settings["max_active_tasks"], 12)
+        self.assertEqual(settings["max_concurrent_llm_workers"], 3)
         self.assertEqual(settings["default_max_concurrent_workers"], 2)
         self.assertFalse(settings["scan_on_idle"])
         self.assertEqual(settings["idle_scan_active_threshold"], 1)
@@ -4057,6 +4060,7 @@ class TestZeroFactory(unittest.TestCase):
         # Verify GET returns updated values
         res_after = client.get("/api/plugins/zerofactory/settings")
         self.assertEqual(res_after.json()["settings"]["max_active_tasks"], 12)
+        self.assertEqual(res_after.json()["settings"]["max_concurrent_llm_workers"], 3)
         self.assertEqual(res_after.json()["settings"]["default_max_concurrent_workers"], 2)
         self.assertFalse(res_after.json()["settings"]["scan_on_idle"])
         self.assertEqual(res_after.json()["settings"]["idle_scan_active_threshold"], 1)
@@ -4070,6 +4074,11 @@ class TestZeroFactory(unittest.TestCase):
         )
         self.assertEqual(res_bad.status_code, 422)
 
+        self.assertEqual(client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={"max_concurrent_llm_workers": 0}
+        ).status_code, 422)
+
         res_bad_threshold = client.patch(
             "/api/plugins/zerofactory/settings",
             json={"idle_scan_active_threshold": 0}
@@ -4081,6 +4090,7 @@ class TestZeroFactory(unittest.TestCase):
             "/api/plugins/zerofactory/settings",
             json={
                 "max_active_tasks": 10,
+                "max_concurrent_llm_workers": 10,
                 "default_max_concurrent_workers": 1,
                 "scan_on_idle": True,
                 "idle_scan_active_threshold": 2,
@@ -4244,6 +4254,134 @@ class TestZeroFactory(unittest.TestCase):
                 os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
             else:
                 os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = orig_skip_spawn
+
+    def test_48c_global_llm_capacity_counts_tasks_and_scans(self):
+        """Across boards, tasks and in-flight scanners share one worker budget."""
+        import sqlite3
+        import tempfile
+        from unittest.mock import MagicMock, patch
+        from dispatcher import run_dispatch_cycle, reset_idle_scanner_state, _active_scanners
+
+        with tempfile.TemporaryDirectory() as td:
+            db_file = Path(td) / "global_workers.db"
+            self._create_conflict_test_db(db_file)
+            with sqlite3.connect(db_file) as conn:
+                conn.execute("ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER DEFAULT 1")
+                conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER)")
+                for key, value in (("max_concurrent_llm_workers", "3"), ("scan_on_idle", "false")):
+                    conn.execute("INSERT INTO settings VALUES (?, ?, 1)", (key, value))
+                for slug in ("one", "two", "three"):
+                    conn.execute("INSERT INTO boards (slug, max_concurrent_running) VALUES (?, 4)", (slug,))
+                for task_id, board, status in (
+                    ("one-a", "one", "running"), ("one-b", "one", "running"),
+                    ("two-a", "two", "running"), ("two-next", "two", "todo"),
+                    ("three-next", "three", "todo"),
+                ):
+                    conn.execute("""INSERT INTO tasks (id, board_slug, title, status, assignee, created_at)
+                                    VALUES (?, ?, ?, ?, 'zf-builder', 1)""", (task_id, board, task_id, status))
+
+            with patch("dispatcher.reap_active_workers", return_value=0), \
+                 patch("dispatcher.spawn_agent_worker", return_value=(None, None)) as spawn:
+                self.assertEqual(run_dispatch_cycle(db_file)["dispatched"], 0)
+                spawn.assert_not_called()
+
+                with sqlite3.connect(db_file) as conn:
+                    conn.execute("UPDATE tasks SET status = 'done' WHERE id = 'one-b'")
+                self.assertEqual(run_dispatch_cycle(db_file)["dispatched"], 1)
+                self.assertEqual(spawn.call_args.args[0], "two-next")
+
+                with sqlite3.connect(db_file) as conn:
+                    conn.execute("UPDATE tasks SET status = 'done' WHERE id = 'one-a'")
+                mock_proc = MagicMock()
+                mock_proc.poll.return_value = None
+                _active_scanners["other-board"] = mock_proc
+                try:
+                    self.assertEqual(run_dispatch_cycle(db_file)["dispatched"], 0)
+                finally:
+                    _active_scanners.pop("other-board", None)
+
+                self.assertEqual(run_dispatch_cycle(db_file)["dispatched"], 1)
+                self.assertEqual(spawn.call_args.args[0], "three-next")
+
+    def test_48d_global_llm_capacity_limits_scans_and_reclaims_slots(self):
+        """Only remaining slots may scan, and a completed scan releases its slot."""
+        import sqlite3
+        import tempfile
+        from unittest.mock import MagicMock, patch
+        from dispatcher import run_dispatch_cycle, reset_idle_scanner_state, _active_scanners
+
+        with tempfile.TemporaryDirectory() as td:
+            db_file = Path(td) / "global_scan_workers.db"
+            self._create_conflict_test_db(db_file)
+            with sqlite3.connect(db_file) as conn:
+                conn.execute("ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER DEFAULT 1")
+                conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER)")
+                for key, value in (("max_concurrent_llm_workers", "3"), ("scan_on_idle", "true"),
+                                   ("idle_scan_max_todo", "2")):
+                    conn.execute("INSERT INTO settings VALUES (?, ?, 1)", (key, value))
+                for slug in ("one", "two", "three"):
+                    conn.execute("INSERT INTO boards (slug, max_concurrent_running) VALUES (?, 4)", (slug,))
+                for task_id, board in (("one-a", "one"), ("one-b", "one")):
+                    conn.execute("""INSERT INTO tasks (id, board_slug, title, status, assignee, created_at)
+                                    VALUES (?, ?, ?, 'running', 'zf-builder', 1)""", (task_id, board, task_id))
+
+            reset_idle_scanner_state()
+            with patch("dispatcher.reap_active_workers", return_value=0), \
+                 patch("dispatcher.spawn_board_scanner", return_value=1234) as scan:
+                self.assertEqual(run_dispatch_cycle(db_file)["scans_triggered"], 1)
+                scan.assert_called_once()
+                scan.reset_mock()
+                mock_proc = MagicMock()
+                mock_proc.poll.return_value = None
+                _active_scanners["one"] = mock_proc
+                try:
+                    self.assertEqual(run_dispatch_cycle(db_file)["scans_triggered"], 0)
+                    scan.assert_not_called()
+                    mock_proc.poll.return_value = 0
+                    self.assertEqual(run_dispatch_cycle(db_file)["scans_triggered"], 1)
+                    self.assertNotEqual(scan.call_args.args[0], "one")
+                finally:
+                    reset_idle_scanner_state()
+
+    def test_48e_global_llm_capacity_counts_cron_and_defers_tick(self):
+        """Manual and in-process cron LLM work also occupies global slots."""
+        import sqlite3
+        import tempfile
+        from unittest.mock import MagicMock, patch
+        import builtin_cron
+        from dispatcher import _global_llm_occupancy
+
+        active_cron = MagicMock()
+        active_cron.poll.return_value = None
+        with patch("dispatcher._running_cron_llm_jobs", return_value=1), patch.object(
+            builtin_cron, "_active_cron_runs", {"zero-factory-improvement-scanner-b1": active_cron}
+        ):
+            self.assertEqual(_global_llm_occupancy(1), 3)
+
+        with tempfile.TemporaryDirectory() as td:
+            db_file = Path(td) / "cron_capacity.db"
+            with sqlite3.connect(db_file) as conn:
+                conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER)")
+                conn.execute("CREATE TABLE tasks (id TEXT, status TEXT)")
+                conn.execute("INSERT INTO settings VALUES ('max_concurrent_llm_workers', '3', 1)")
+                for i in range(3):
+                    conn.execute("INSERT INTO tasks VALUES (?, 'running')", (str(i),))
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file), "ZEROFACTORY_LOCK_PATH": str(Path(td) / "lock")}), \
+                 patch("builtin_cron.is_cron_scheduler_enabled", return_value=True), \
+                 patch("builtin_cron.ensure_builtin_cron_jobs"), \
+                 patch("builtin_cron.subprocess.Popen") as popen:
+                self.assertEqual(builtin_cron.tick_builtin_cron(), 0)
+                result = builtin_cron.trigger_builtin_job("zero-factory-daily-report")
+                self.assertFalse(result["ok"])
+                self.assertIn("limit", result["error"].lower())
+                popen.assert_not_called()
+
+                # No-Agent queue watchdog is exempt, even at full LLM capacity.
+                proc = MagicMock()
+                proc.returncode = 0
+                proc.pid = 123
+                popen.return_value = proc
+                self.assertTrue(builtin_cron.trigger_builtin_job("zero-factory-task-queue-check")["ok"])
 
     def test_49_idle_improvement_scan_dispatch(self):
         """Dispatcher triggers improvement scan on idle and respects threshold, cooldown, and limits."""

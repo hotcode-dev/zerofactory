@@ -32,6 +32,10 @@ from typing import Any, Dict
 # Controls todo->ready promotion and worktree pre-provisioning to avoid queue flooding.
 DEFAULT_MAX_ACTIVE_TASKS = 10
 
+# Global cap on concurrent LLM workers across boards (tasks and scans).
+# Keep the legacy task WIP limit independent from the process capacity limit.
+DEFAULT_MAX_CONCURRENT_LLM_WORKERS = 10
+
 # Fallback cap for concurrent active agent worker subprocesses ('running').
 # Defaults to 1; customized per board via boards.max_concurrent_running.
 DEFAULT_MAX_CONCURRENT_WORKERS = 1
@@ -78,6 +82,7 @@ DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES * 60
 # Canonical list of the global settings keys (order is only for readability/seed order).
 SETTING_KEYS = (
     "max_active_tasks",
+    "max_concurrent_llm_workers",
     "default_max_concurrent_workers",
     "scan_on_idle",
     "idle_scan_active_threshold",
@@ -98,6 +103,7 @@ SETTING_KEYS = (
 # string literals) so the seed rows and the in-code defaults can never drift.
 DEFAULT_SETTING_VALUES: Dict[str, str] = {
     "max_active_tasks": str(DEFAULT_MAX_ACTIVE_TASKS),
+    "max_concurrent_llm_workers": str(DEFAULT_MAX_CONCURRENT_LLM_WORKERS),
     "default_max_concurrent_workers": str(DEFAULT_MAX_CONCURRENT_WORKERS),
     "scan_on_idle": "true" if DEFAULT_SCAN_ON_IDLE else "false",
     "idle_scan_active_threshold": str(DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD),
@@ -142,6 +148,7 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
     """
     settings: Dict[str, Any] = {
         "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
+        "max_concurrent_llm_workers": DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         "default_max_concurrent_workers": DEFAULT_MAX_CONCURRENT_WORKERS,
         "scan_on_idle": DEFAULT_SCAN_ON_IDLE,
         "idle_scan_active_threshold": DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
@@ -177,6 +184,10 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
             c = _clamp_int(v, 1)
             if c is not None:
                 settings["max_active_tasks"] = c
+        elif k == "max_concurrent_llm_workers":
+            c = _clamp_int(v, 1)
+            if c is not None:
+                settings["max_concurrent_llm_workers"] = c
         elif k == "default_max_concurrent_workers":
             c = _clamp_int(v, 1)
             if c is not None:
