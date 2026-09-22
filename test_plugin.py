@@ -6687,6 +6687,64 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             act = conn.execute("SELECT action FROM task_activity WHERE task_id = ? AND action = 'worker_failed_permanently'", (task_id,)).fetchone()
             self.assertIsNotNone(act)
 
+    def test_reaper_ignores_stale_builder_pid_before_reviewer_dispatch(self):
+        """A builder -> reviewer handoff must not be blocked by the stopped
+        builder PID persisted in legacy task metadata."""
+        import json
+        import time
+        from unittest.mock import patch
+        from dispatcher import reap_active_workers, _active_workers
+
+        now = int(time.time())
+        board_slug = "reviewer-handoff-regression"
+        with get_db_conn() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO boards (slug, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (board_slug, "Regression test board", "https://example.test/reviewer-handoff.git", now, now),
+            )
+            conn.commit()
+        task_id = create_task(TaskCreate(
+            title="Review stale worker handoff",
+            assignee="zf-reviewer",
+            board_slug=board_slug,
+        ))["id"]
+        stale_pid = 987654321
+        metadata = {
+            "worker_pid": stale_pid,
+            "session_id": "builder-session",
+            "started_at": now - 60,
+            "sessions": [{
+                "agent": "zf-builder",
+                "status": "finished",
+                "started_at": now - 120,
+                "ended_at": now - 60,
+                "pid": stale_pid,
+            }],
+        }
+
+        with get_db_conn() as conn:
+            conn.execute(
+                "UPDATE tasks SET status = 'running', metadata = ? WHERE id = ?",
+                (json.dumps(metadata), task_id),
+            )
+            conn.commit()
+
+            _active_workers.pop(task_id, None)
+            with patch("dispatcher.os.kill") as mock_kill:
+                self.assertEqual(reap_active_workers(conn.cursor(), now), 0)
+                mock_kill.assert_not_called()
+            conn.commit()
+
+            row = conn.execute(
+                "SELECT status, metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+
+        self.assertEqual(row["status"], "running")
+        metadata = json.loads(row["metadata"])
+        self.assertNotIn("worker_pid", metadata)
+        self.assertNotIn("session_id", metadata)
+        self.assertNotIn("started_at", metadata)
+
     def test_move_task_clears_failure_metadata(self):
         import json, time
         now = int(time.time())
