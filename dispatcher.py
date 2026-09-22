@@ -2234,6 +2234,54 @@ def _handle_local_merge_conflict(
 # cycle or hold the cross-process dispatcher lock indefinitely.
 _WORKTREE_REMOVE_TIMEOUT = 30
 
+# Bounded timeout (seconds) for best-effort remote branch deletion
+# (`git push origin --delete`) on the PR MERGED/CLOSED archive path.
+_REMOTE_BRANCH_DELETE_TIMEOUT = 30
+
+
+def _delete_remote_branch(task_id: str, repo_path: Path) -> None:
+    """Best-effort deletion of the remote ``task/<task_id>`` branch on origin.
+
+    When the dispatcher archives a task because its PR was MERGED or CLOSED,
+    the worktree is removed locally but the remote branch that was pushed with
+    ``git push -u origin task/<task_id>`` would otherwise linger on GitHub
+    permanently. This helper issues ``git push origin --delete task/<task_id>``
+    with a bounded timeout and ``GIT_TERMINAL_PROMPT=0``.
+
+    Fail-open by design (same style as :func:`_remove_worktree`): a failing
+    delete (branch already gone after merge, network hiccup, missing remote,
+    timeout) is logged as a warning and never raised, so the dispatch cycle
+    and the task archive outcome are never affected.
+    """
+    if not task_id:
+        return
+    if not repo_path or not Path(repo_path).exists():
+        return
+    branch = f"task/{task_id}"
+    try:
+        res = subprocess.run(
+            ["git", "push", "origin", "--delete", branch],
+            check=False, cwd=str(repo_path), capture_output=True,
+            timeout=_REMOTE_BRANCH_DELETE_TIMEOUT,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except subprocess.TimeoutExpired:
+        _log.warning(
+            "Remote branch delete timed out after %ss for %s; leaving remote branch for manual cleanup",
+            _REMOTE_BRANCH_DELETE_TIMEOUT, branch,
+        )
+        return
+    except Exception as e:
+        _log.warning("Remote branch delete failed for %s: %s", branch, e)
+        return
+    if res.returncode != 0:
+        _log.warning(
+            "Remote branch delete failed for %s (rc=%s): %s",
+            branch, res.returncode, (res.stderr or res.stdout or "").strip(),
+        )
+    else:
+        _log.info("Deleted remote branch %s (PR archived)", branch)
+
 
 def _remove_worktree(workspace_path: Optional[str], repo_path: Path) -> None:
     """Safely remove a git worktree without hanging the dispatch cycle.
@@ -2695,6 +2743,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     if pr_state == "MERGED":
                                         stop_task_worker(task_id, cursor)
                                         _remove_worktree(workspace_path, repo_path)
+                                        _delete_remote_branch(task_id, repo_path)
                                         cursor.execute(
                                             "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
                                             (now, task_id)
@@ -2707,6 +2756,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     elif pr_state == "CLOSED":
                                         stop_task_worker(task_id, cursor)
                                         _remove_worktree(workspace_path, repo_path)
+                                        _delete_remote_branch(task_id, repo_path)
                                         cursor.execute(
                                             "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
                                             (now, task_id)

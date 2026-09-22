@@ -5084,6 +5084,132 @@ class TestZeroFactory(unittest.TestCase):
         finally:
             shutil.rmtree(td2, ignore_errors=True)
 
+    def test_58c_merged_closed_pr_deletes_remote_branch(self):
+        """The MERGED and CLOSED PR archive paths must best-effort delete the
+        remote `task/<id>` branch on origin (`git push origin --delete task/<id>`).
+        A failing delete (non-zero rc, already-gone branch, raised exception)
+        must NOT raise, must not abort the dispatch cycle, and must not affect
+        the task archive outcome (status='done')."""
+        import json
+        import shutil
+        import sqlite3
+        import subprocess
+        from unittest.mock import patch, MagicMock
+        from dispatcher import run_dispatch_cycle, _delete_remote_branch
+
+        def run_archive_cycle(td, db_file, gh_payload, task_id, delete_rc=0, delete_raises=False):
+            repo_path, reviewer_ws = self._make_reviewer_test_repo(td)
+            self._create_conflict_test_db(db_file)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES (?, ?, 'blocked', 'zf-reviewer', ?, ?, 'https://github.com/hotcode-dev/zerofactory/pull/907', 1000, 1000)
+                """, (task_id, f"Archive {gh_payload['state']} task", str(reviewer_ws), f"task/{task_id}"))
+                conn.commit()
+
+            orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            orig_run = subprocess.run
+            delete_cmds = []
+
+            def fake_run(cmd, *args, **kwargs):
+                if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr" and cmd[2] == "view":
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = json.dumps(gh_payload)
+                    return res
+                if len(cmd) >= 2 and cmd[0] == "gh" and cmd[1] == "api":
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = json.dumps([])
+                    return res
+                if cmd[:4] == ["git", "push", "origin", "--delete"]:
+                    delete_cmds.append(list(cmd))
+                    if delete_raises:
+                        raise RuntimeError("simulated network failure")
+                    res = MagicMock()
+                    res.returncode = delete_rc
+                    res.stdout = ""
+                    res.stderr = "" if delete_rc == 0 else "fatal: unable to delete 'task/x' (no such ref)"
+                    return res
+                return orig_run(cmd, *args, **kwargs)
+
+            try:
+                with patch("dispatcher._remove_worktree"), \
+                     patch("dispatcher.setup_worktree", return_value=None), \
+                     patch("dispatcher.check_unresolved_conflicts", return_value=[]), \
+                     patch("fcntl.flock", return_value=0), \
+                     patch("subprocess.run", side_effect=fake_run):
+                    res = run_dispatch_cycle(db_file)
+            finally:
+                if orig_skip_git is not None:
+                    os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                t_row = conn.execute("SELECT status, workspace_path FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            return res, delete_cmds, t_row
+
+        # --- Case 1: MERGED PR -> remote branch delete attempted, task archived.
+        td1 = tempfile.mkdtemp()
+        try:
+            res, delete_cmds, t_row = run_archive_cycle(
+                td1, Path(td1) / "rb_merged.db",
+                {"state": "MERGED", "reviewDecision": None,
+                 "url": "https://github.com/hotcode-dev/zerofactory/pull/907",
+                 "mergeable": "MERGEABLE"},
+                task_id="wt-rb-merged",
+            )
+            self.assertTrue(res.get("ok"), f"merged cycle should succeed: {res}")
+            self.assertEqual(
+                delete_cmds, [["git", "push", "origin", "--delete", "task/wt-rb-merged"]],
+                f"expected exactly one remote-branch delete, got: {delete_cmds}",
+            )
+            self.assertEqual(t_row["status"], "done", "merged archive outcome must be unaffected by delete")
+            self.assertIsNone(t_row["workspace_path"])
+        finally:
+            shutil.rmtree(td1, ignore_errors=True)
+
+        # --- Case 2: CLOSED PR -> delete attempted; a FAILING delete (non-zero
+        # rc, e.g. branch already gone) must not raise and must not affect
+        # the archive outcome.
+        td2 = tempfile.mkdtemp()
+        try:
+            res, delete_cmds, t_row = run_archive_cycle(
+                td2, Path(td2) / "rb_closed.db",
+                {"state": "CLOSED", "reviewDecision": None,
+                 "url": "https://github.com/hotcode-dev/zerofactory/pull/908",
+                 "mergeable": "MERGEABLE"},
+                task_id="wt-rb-closed",
+                delete_rc=1,
+            )
+            self.assertTrue(res.get("ok"), f"closed cycle with failing delete should still succeed: {res}")
+            self.assertEqual(len(delete_cmds), 1, "closed archive must still attempt the remote delete")
+            self.assertEqual(delete_cmds[0][4], "task/wt-rb-closed")
+            self.assertEqual(t_row["status"], "done", "failing delete must not prevent task archival")
+        finally:
+            shutil.rmtree(td2, ignore_errors=True)
+
+        # --- Case 3: _delete_remote_branch is exception-safe: a raised
+        # subprocess error or TimeoutExpired must be swallowed (warning only),
+        # and a missing repo path / empty task id is a clean no-op.
+        td3 = tempfile.mkdtemp()
+        try:
+            repo_path3 = Path(td3) / "repo"
+            repo_path3.mkdir()
+            with patch("subprocess.run", side_effect=RuntimeError("boom")):
+                _delete_remote_branch("wt-rb-boom", repo_path3)  # must not raise
+            with self.assertLogs("zerofactory.kanban.dispatcher", level="WARNING") as log_cm:
+                with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=["git"], timeout=30)):
+                    _delete_remote_branch("wt-rb-timeout", repo_path3)  # must not raise
+            self.assertTrue(any("timed out" in line for line in log_cm.output),
+                            f"expected a timeout warning, got: {log_cm.output}")
+            with patch("subprocess.run") as mock_run:
+                _delete_remote_branch("", repo_path3)
+                _delete_remote_branch("wt-rb-norepo", Path(td3) / "does_not_exist")
+                mock_run.assert_not_called()
+        finally:
+            shutil.rmtree(td3, ignore_errors=True)
+
     def test_59_init_db_path_keyed_flag(self):
         """init_db() must re-initialize when ZEROFACTORY_DB changes to a new
         path within the same process (regression: a bare global boolean flag
