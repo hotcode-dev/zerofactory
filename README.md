@@ -252,8 +252,8 @@ zerofactory/
 ├── dispatcher.py                # Autonomous dispatch engine & worktree manager
 ├── builtin_cron.py              # Periodic scanner & reporting engine
 ├── profile_manager.py           # Auto-provisioning for zf-* profiles & scripts
-├── test_plugin.py               # Comprehensive unit & integration test suite (88 tests)
-├── test_e2e.py                  # Hermetic End-to-End test suite across all subsystems (19 tests)
+├── test_plugin.py               # Comprehensive unit & integration test suite (128 tests)
+├── test_e2e.py                  # Hermetic End-to-End test suite across all subsystems (20 tests)
 ├── scripts/                     # No-Agent Mode scripts & LLM context pre-processors
 │   ├── zf_queue_watchdog.py     # Autonomous worker reaper & queue monitor (0 tokens)
 │   ├── zf_scanner_gate.py       # Codebase diff pre-screen & wake-gate
@@ -283,7 +283,7 @@ Run the automated test suites against your local Hermes environment:
 # 1. Run unit & integration test suite
 python3 test_plugin.py
 
-# 2. Run hermetic end-to-end (E2E) test suite (19 tests)
+# 2. Run hermetic end-to-end (E2E) test suite (20 tests)
 python3 test_e2e.py
 ```
 
