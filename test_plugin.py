@@ -4383,6 +4383,104 @@ class TestZeroFactory(unittest.TestCase):
                 popen.return_value = proc
                 self.assertTrue(builtin_cron.trigger_builtin_job("zero-factory-task-queue-check")["ok"])
 
+    def test_48f_trigger_builtin_job_does_not_block_on_dispatcher_lock(self):
+        """Manual LLM cron runs must NOT serialize behind a running dispatch cycle.
+
+        Regression (commit 7fcc087, global LLM-worker limit): the capacity gate
+        in trigger_builtin_job() took a BLOCKING fcntl.flock on the shared
+        dispatcher lock file, so a dashboard/CLI `cron run` while a dispatch
+        cycle was in progress stalled for the full cycle duration (minutes,
+        when opening PRs over a slow network). The gate is best-effort and the
+        occupancy figure is a WAL-safe COUNT(*) + in-process counters, so it
+        must fail fast, never block behind the dispatch cycle.
+        """
+        import fcntl
+        import sqlite3
+        import tempfile
+        import threading
+        import time
+        from unittest.mock import MagicMock, patch
+        import builtin_cron
+
+        with tempfile.TemporaryDirectory() as td:
+            db_file = Path(td) / "lock_hold.db"
+            lock_path = Path(td) / "dispatch.lock"
+            with sqlite3.connect(db_file) as conn:
+                conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER)")
+                conn.execute("CREATE TABLE tasks (id TEXT, status TEXT)")
+                conn.execute("INSERT INTO settings VALUES ('max_concurrent_llm_workers', '3', 1)")
+                # Spare capacity: trigger should proceed, not be rejected.
+
+            # Simulate another process (a running dispatch cycle) holding the
+            # shared dispatcher flock for the full duration of the trigger call.
+            released = threading.Event()
+
+            def hold_lock():
+                fh = open(lock_path, "a+b")
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                time.sleep(3.0)
+                fcntl.flock(fh, fcntl.LOCK_UN)
+                fh.close()
+                released.set()
+
+            holder = threading.Thread(target=hold_lock)
+            holder.start()
+
+            # Wait until the holder actually owns the lock (probe with LOCK_NB),
+            # so the "cycle in progress" precondition is real, not raced.
+            deadline = time.monotonic() + 5.0
+            probe = open(lock_path, "a+b")
+            while time.monotonic() < deadline:
+                try:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(probe, fcntl.LOCK_UN)
+                except BlockingIOError:
+                    break
+                time.sleep(0.02)
+            else:
+                probe.close()
+                self.fail("Could not confirm the dispatcher lock is held by the simulating process")
+            probe.close()
+
+            jobs = {
+                "zero-factory-daily-report": {"no_agent": False, "profile": "zf-orchestrator"},
+                "zero-factory-task-queue-check": {"no_agent": True, "profile": "zf-orchestrator"},
+            }
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.pid = 456
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file), "ZEROFACTORY_LOCK_PATH": str(lock_path)}), \
+                 patch.object(builtin_cron, "get_all_builtin_cron_jobs", return_value=jobs), \
+                 patch.object(builtin_cron, "ensure_builtin_cron_jobs"), \
+                 patch.object(builtin_cron, "subprocess", create=True) as sub:
+                sub.Popen.return_value = proc
+                sub.DEVNULL = -3
+
+                # LLM job while the dispatch cycle holds the lock: must return
+                # quickly (< 2s) with a clean success result, not stall ~3s.
+                started = time.monotonic()
+                result = builtin_cron.trigger_builtin_job("zero-factory-daily-report")
+                elapsed = time.monotonic() - started
+                self.assertTrue(result["ok"], f"unexpected trigger result: {result}")
+                self.assertLess(
+                    elapsed, 2.0,
+                    f"trigger_blocked behind dispatcher lock for {elapsed:.1f}s; "
+                    "capacity gate must not serialize behind the dispatch cycle",
+                )
+                sub.Popen.assert_called_once()
+
+                # No-Agent queue watchdog is exempt and also unaffected.
+                sub.Popen.reset_mock()
+                started = time.monotonic()
+                result = builtin_cron.trigger_builtin_job("zero-factory-task-queue-check")
+                elapsed = time.monotonic() - started
+                self.assertTrue(result["ok"], f"unexpected trigger result: {result}")
+                self.assertLess(elapsed, 2.0)
+                sub.Popen.assert_called_once()
+
+            self.assertTrue(released.wait(10))
+            holder.join(10)
+
     def test_49_idle_improvement_scan_dispatch(self):
         """Dispatcher triggers improvement scan on idle and respects threshold, cooldown, and limits."""
         import time
@@ -5221,6 +5319,132 @@ class TestZeroFactory(unittest.TestCase):
             self.assertIn("archived", acts3[0][1].lower())
         finally:
             shutil.rmtree(td2, ignore_errors=True)
+
+    def test_58c_merged_closed_pr_deletes_remote_branch(self):
+        """The MERGED and CLOSED PR archive paths must best-effort delete the
+        remote `task/<id>` branch on origin (`git push origin --delete task/<id>`).
+        A failing delete (non-zero rc, already-gone branch, raised exception)
+        must NOT raise, must not abort the dispatch cycle, and must not affect
+        the task archive outcome (status='done')."""
+        import json
+        import shutil
+        import sqlite3
+        import subprocess
+        from unittest.mock import patch, MagicMock
+        from dispatcher import run_dispatch_cycle, _delete_remote_branch
+
+        def run_archive_cycle(td, db_file, gh_payload, task_id, delete_rc=0, delete_raises=False):
+            repo_path, reviewer_ws = self._make_reviewer_test_repo(td)
+            self._create_conflict_test_db(db_file)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES (?, ?, 'blocked', 'zf-reviewer', ?, ?, 'https://github.com/hotcode-dev/zerofactory/pull/907', 1000, 1000)
+                """, (task_id, f"Archive {gh_payload['state']} task", str(reviewer_ws), f"task/{task_id}"))
+                conn.commit()
+
+            orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            orig_run = subprocess.run
+            delete_cmds = []
+
+            def fake_run(cmd, *args, **kwargs):
+                if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr" and cmd[2] == "view":
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = json.dumps(gh_payload)
+                    return res
+                if len(cmd) >= 2 and cmd[0] == "gh" and cmd[1] == "api":
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = json.dumps([])
+                    return res
+                if cmd[:4] == ["git", "push", "origin", "--delete"]:
+                    delete_cmds.append(list(cmd))
+                    if delete_raises:
+                        raise RuntimeError("simulated network failure")
+                    res = MagicMock()
+                    res.returncode = delete_rc
+                    res.stdout = ""
+                    res.stderr = "" if delete_rc == 0 else "fatal: unable to delete 'task/x' (no such ref)"
+                    return res
+                return orig_run(cmd, *args, **kwargs)
+
+            try:
+                with patch("dispatcher._remove_worktree"), \
+                     patch("dispatcher.setup_worktree", return_value=None), \
+                     patch("dispatcher.check_unresolved_conflicts", return_value=[]), \
+                     patch("fcntl.flock", return_value=0), \
+                     patch("subprocess.run", side_effect=fake_run):
+                    res = run_dispatch_cycle(db_file)
+            finally:
+                if orig_skip_git is not None:
+                    os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                t_row = conn.execute("SELECT status, workspace_path FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            return res, delete_cmds, t_row
+
+        # --- Case 1: MERGED PR -> remote branch delete attempted, task archived.
+        td1 = tempfile.mkdtemp()
+        try:
+            res, delete_cmds, t_row = run_archive_cycle(
+                td1, Path(td1) / "rb_merged.db",
+                {"state": "MERGED", "reviewDecision": None,
+                 "url": "https://github.com/hotcode-dev/zerofactory/pull/907",
+                 "mergeable": "MERGEABLE"},
+                task_id="wt-rb-merged",
+            )
+            self.assertTrue(res.get("ok"), f"merged cycle should succeed: {res}")
+            self.assertEqual(
+                delete_cmds, [["git", "push", "origin", "--delete", "task/wt-rb-merged"]],
+                f"expected exactly one remote-branch delete, got: {delete_cmds}",
+            )
+            self.assertEqual(t_row["status"], "done", "merged archive outcome must be unaffected by delete")
+            self.assertIsNone(t_row["workspace_path"])
+        finally:
+            shutil.rmtree(td1, ignore_errors=True)
+
+        # --- Case 2: CLOSED PR -> delete attempted; a FAILING delete (non-zero
+        # rc, e.g. branch already gone) must not raise and must not affect
+        # the archive outcome.
+        td2 = tempfile.mkdtemp()
+        try:
+            res, delete_cmds, t_row = run_archive_cycle(
+                td2, Path(td2) / "rb_closed.db",
+                {"state": "CLOSED", "reviewDecision": None,
+                 "url": "https://github.com/hotcode-dev/zerofactory/pull/908",
+                 "mergeable": "MERGEABLE"},
+                task_id="wt-rb-closed",
+                delete_rc=1,
+            )
+            self.assertTrue(res.get("ok"), f"closed cycle with failing delete should still succeed: {res}")
+            self.assertEqual(len(delete_cmds), 1, "closed archive must still attempt the remote delete")
+            self.assertEqual(delete_cmds[0][4], "task/wt-rb-closed")
+            self.assertEqual(t_row["status"], "done", "failing delete must not prevent task archival")
+        finally:
+            shutil.rmtree(td2, ignore_errors=True)
+
+        # --- Case 3: _delete_remote_branch is exception-safe: a raised
+        # subprocess error or TimeoutExpired must be swallowed (warning only),
+        # and a missing repo path / empty task id is a clean no-op.
+        td3 = tempfile.mkdtemp()
+        try:
+            repo_path3 = Path(td3) / "repo"
+            repo_path3.mkdir()
+            with patch("subprocess.run", side_effect=RuntimeError("boom")):
+                _delete_remote_branch("wt-rb-boom", repo_path3)  # must not raise
+            with self.assertLogs("zerofactory.kanban.dispatcher", level="WARNING") as log_cm:
+                with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=["git"], timeout=30)):
+                    _delete_remote_branch("wt-rb-timeout", repo_path3)  # must not raise
+            self.assertTrue(any("timed out" in line for line in log_cm.output),
+                            f"expected a timeout warning, got: {log_cm.output}")
+            with patch("subprocess.run") as mock_run:
+                _delete_remote_branch("", repo_path3)
+                _delete_remote_branch("wt-rb-norepo", Path(td3) / "does_not_exist")
+                mock_run.assert_not_called()
+        finally:
+            shutil.rmtree(td3, ignore_errors=True)
 
     def test_59_init_db_path_keyed_flag(self):
         """init_db() must re-initialize when ZEROFACTORY_DB changes to a new
@@ -7795,7 +8019,240 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         self.assertEqual(mem["author"], "zf-reviewer")
         self.assertEqual(mem["task_id"], t_id)
 
-    def test_62_comment_auto_record_memory(self):
+    def test_62_memory_auto_record_near_duplicate_dedup(self):
+        """Test that near-identical rules (case/whitespace variants) dedup to a single row."""
+        from dashboard.plugin_api import extract_and_record_memory, get_db_conn
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-near-dup.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        base_rule = "GOTCHA: Always run db migrations before seeding test data"
+
+        with get_db_conn() as conn:
+            # 1. Record the base rule
+            recorded = extract_and_record_memory(conn, board_slug=b_slug, text=base_rule, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded), 1)
+
+            # 2. Case + extra whitespace variant of the same rule → deduplicated
+            variant = "gotcha:   always   run DB migrations before seeding test data"
+            recorded_variant = extract_and_record_memory(conn, board_slug=b_slug, text=variant, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_variant), 0)
+
+            # 3. Case variant with a markdown-bullet prefix → still deduplicated
+            variant_md = "- **Gotcha:** ALWAYS RUN DB MIGRATIONS before seeding  test data"
+            recorded_md = extract_and_record_memory(conn, board_slug=b_slug, text=variant_md, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_md), 0)
+
+            # 4. Exact-match regression guard: identical re-run is also deduplicated
+            recorded_exact = extract_and_record_memory(conn, board_slug=b_slug, text=base_rule, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_exact), 0)
+
+            # 5. Mid-sentence rule (block/reviewer reason style, e.g.
+            # "changes-requested. GOTCHA: ...") is still captured
+            mid_sentence = "changes-requested. GOTCHA: Always lock dependencies in requirements.txt before release"
+            recorded_mid = extract_and_record_memory(conn, board_slug=b_slug, text=mid_sentence, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_mid), 1)
+            self.assertEqual(recorded_mid[0]["category"], "gotcha")
+
+            # 6. A genuinely different rule is still recorded (no over-suppression)
+            other = "CONVENTION: Use snake_case for all module-level constants"
+            recorded_other = extract_and_record_memory(conn, board_slug=b_slug, text=other, author="zf-reviewer")
+            conn.commit()
+            self.assertEqual(len(recorded_other), 1)
+
+            # 7. Board state: exactly 3 rows (base rule + mid-sentence rule +
+            # genuinely different rule)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM board_memories WHERE board_slug = ?", (b_slug,))
+            self.assertEqual(cursor.fetchone()[0], 3)
+
+            # The gotcha rows are exactly the base rule + the mid-sentence
+            # rule (stored in their original phrasing); variants were not
+            # recorded as separate rows.
+            cursor.execute(
+                "SELECT content FROM board_memories WHERE board_slug = ? AND category = 'gotcha'",
+                (b_slug,)
+            )
+            contents = sorted(r[0] for r in cursor.fetchall())
+            self.assertEqual(
+                contents,
+                sorted([
+                    "Always run db migrations before seeding test data",
+                    "Always lock dependencies in requirements.txt before release",
+                ])
+            )
+
+    def test_63_memory_manual_content_length_cap(self):
+        """Test that manually created/updated memory content is bounded at 500 chars."""
+        from dashboard.plugin_api import MEMORY_CONTENT_MAX_LENGTH
+
+        self.assertGreater(MEMORY_CONTENT_MAX_LENGTH, 0)
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/arm-cap.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        # 1. Create: over-cap content is rejected with 422
+        too_long = "GOTCHA: " + ("x" * (MEMORY_CONTENT_MAX_LENGTH - 5))
+        res = client.post(
+            f"/api/plugins/zerofactory/boards/{b_slug}/memories",
+            json={"content": too_long}
+        )
+        self.assertEqual(res.status_code, 422)
+
+        # 2. Create: exactly-at-cap content is accepted
+        at_cap = "GOTCHA: " + ("x" * (MEMORY_CONTENT_MAX_LENGTH - 8))
+        self.assertEqual(len(at_cap), MEMORY_CONTENT_MAX_LENGTH)
+        ok = client.post(
+            f"/api/plugins/zerofactory/boards/{b_slug}/memories",
+            json={"content": at_cap, "category": "gotcha"}
+        )
+        self.assertEqual(ok.status_code, 200)
+        mem = ok.json()["memory"]
+        self.assertEqual(len(mem["content"]), MEMORY_CONTENT_MAX_LENGTH)
+
+        # 3. Update: over-cap replacement is rejected with 422, content unchanged
+        res = client.put(
+            f"/api/plugins/zerofactory/memories/{mem['id']}",
+            json={"content": too_long}
+        )
+        self.assertEqual(res.status_code, 422)
+        after = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(after["memories"][0]["content"], at_cap)
+
+        # 4. Update: whitespace-only replacement is rejected with 400
+        # (min_length counts raw chars, so "   " passes pydantic — the
+        # endpoint rejects blank content explicitly)
+        res = client.put(
+            f"/api/plugins/zerofactory/memories/{mem['id']}",
+            json={"content": "   "}
+        )
+        self.assertEqual(res.status_code, 400)
+
+        # 5. Update: valid shorter replacement is accepted
+        short = "GOTCHA: keep memory content short"
+        res = client.put(
+            f"/api/plugins/zerofactory/memories/{mem['id']}",
+            json={"content": short}
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["memory"]["content"], short)
+
+        # 6. CLI `memory add` documents the cap and refuses over-cap content
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+        from __init__ import register
+
+        class DummyCtx:
+            def __init__(self):
+                self.commands = {}
+            def register_cli_command(self, name, help, setup_fn, handler_fn):
+                self.commands[name] = (setup_fn, handler_fn)
+
+        ctx = DummyCtx()
+        register(ctx)
+        setup_fn, handler_fn = ctx.commands["zerofactory"]
+
+        parser = argparse.ArgumentParser()
+        setup_fn(parser)
+
+        # Cap is documented in the CLI help text
+        parser.parse_args(["memory", "add", "--board", b_slug, "rule"])
+        subparsers_actions = [
+            action for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        ]
+        memory_action = next(a for a in subparsers_actions if a.dest == "action")
+        memory_parser = memory_action.choices["memory"]
+        # Walk sub-subparsers: memory -> add
+        mem_add_help = None
+        for sub_action in memory_parser._actions:
+            if isinstance(sub_action, argparse._SubParsersAction):
+                add_parser = sub_action.choices["add"]
+                mem_add_help = add_parser.format_help()
+                break
+        self.assertIsNotNone(mem_add_help)
+        self.assertIn(str(MEMORY_CONTENT_MAX_LENGTH), mem_add_help)
+
+        # Over-cap content is refused with a clear message and no row created
+        f = io.StringIO()
+        args_long = parser.parse_args([
+            "memory", "add",
+            "--board", b_slug,
+            "GOTCHA: " + ("y" * 600),
+        ])
+        with redirect_stdout(f):
+            handler_fn(args_long)
+        out = f.getvalue()
+        self.assertIn("maximum allowed", out)
+        after_cli = client.get(f"/api/plugins/zerofactory/boards/{b_slug}/memories").json()
+        self.assertEqual(after_cli["total"], 1)
+
+        # Valid CLI add still works
+        f = io.StringIO()
+        args_ok = parser.parse_args([
+            "memory", "add",
+            "--board", b_slug,
+            "CLI rule within the cap",
+        ])
+        with redirect_stdout(f):
+            handler_fn(args_ok)
+        self.assertIn("Added memory", f.getvalue())
+
+    def test_64_digest_board_memories_unchanged_for_legit_rows(self):
+        """Test that digest_board_memories_context output format is unchanged for legitimate rows."""
+        from dispatcher import digest_board_memories_context
+
+        b_res = client.post(
+            "/api/plugins/zerofactory/boards",
+            json={"git_url": "https://github.com/example/digest-regression.git"}
+        ).json()
+        b_slug = b_res["slug"]
+
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": "Follow PEP 8 naming conventions",
+            "tags": ["style", "pep8"],
+            "author": "zf-builder"
+        })
+
+        digest = digest_board_memories_context(b_slug)
+        self.assertEqual(
+            digest,
+            (
+                "\U0001F9E0 REPOSITORY KNOWLEDGE & CONVENTIONS (Learned from prior tasks):\n"
+                "- [convention] Follow PEP 8 naming conventions [tags: style, pep8]\n"
+                "Please adhere to these conventions and avoid known gotchas during execution."
+            )
+        )
+
+        # Long legitimate content is still truncated to 200 chars in the digest
+        long_content = "CONVENTION-CONTENT: " + ("z" * 400)
+        client.post(f"/api/plugins/zerofactory/boards/{b_slug}/memories", json={
+            "category": "convention",
+            "content": long_content
+        })
+        digest2 = digest_board_memories_context(b_slug)
+        self.assertIn(long_content[:197] + "...", digest2)
+        self.assertNotIn(long_content, digest2)
+
+        # Signature is unchanged: (board_slug, db_path=None, limit=8)
+        import inspect
+        sig = inspect.signature(digest_board_memories_context)
+        self.assertEqual(list(sig.parameters), ["board_slug", "db_path", "limit"])
+        self.assertEqual(sig.parameters["limit"].default, 8)
+    def test_65_comment_auto_record_memory(self):
         """Test auto-recording memory when adding comment to a task."""
         b_res = client.post(
             "/api/plugins/zerofactory/boards",

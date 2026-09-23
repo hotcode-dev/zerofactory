@@ -12,7 +12,6 @@ allows background ticking and on-demand execution.
 from __future__ import annotations
 
 import json
-import fcntl
 import logging
 import os
 import re
@@ -1117,33 +1116,33 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
 
     # Manual LLM cron runs consume the same budget as task workers and scans.
     # The queue watchdog runs in No-Agent mode and does not occupy an LLM slot.
+    #
+    # This gate is deliberately lock-free: the occupancy figure is a plain
+    # `SELECT COUNT(*)` (safe under SQLite WAL mode) plus in-process counters,
+    # and the gate is best-effort — it tolerates a briefly stale count. The
+    # regression documented here (introduced with the global LLM-worker limit,
+    # commit 7fcc087): a BLOCKING fcntl.flock on the shared dispatcher lock
+    # file would stall dashboard/CLI callers of `trigger_builtin_job` for the
+    # full duration of a concurrent dispatch cycle, which holds that lock for
+    # minutes while opening PRs over a slow network. A best-effort capacity
+    # check must fail fast, not serialize behind the dispatch cycle.
     job_def = current_builtin_jobs.get(target_job_id) or {}
-    capacity_lock = None
     if not job_def.get("no_agent", False):
         try:
             try:
                 from .settings import load_settings
-                from .dispatcher import _global_llm_occupancy, get_dispatcher_lock_path, reap_active_scanners
+                from .dispatcher import _global_llm_occupancy, reap_active_scanners
             except ImportError:
                 from settings import load_settings
-                from dispatcher import _global_llm_occupancy, get_dispatcher_lock_path, reap_active_scanners
+                from dispatcher import _global_llm_occupancy, reap_active_scanners
 
-            lock_path = get_dispatcher_lock_path()
-            lock_path.parent.mkdir(parents=True, exist_ok=True)
-            capacity_lock = open(lock_path, "a+b")
-            fcntl.flock(capacity_lock, fcntl.LOCK_EX)
             with sqlite3.connect(str(get_db_path()), timeout=15) as conn:
                 cap = load_settings(conn)["max_concurrent_llm_workers"]
                 running = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
             reap_active_scanners()
             if _global_llm_occupancy(running) >= cap:
-                capacity_lock.close()
-                capacity_lock = None
                 return {"ok": False, "error": "Global concurrent LLM worker limit reached"}
         except (OSError, sqlite3.Error) as e:
-            if capacity_lock is not None:
-                capacity_lock.close()
-                capacity_lock = None
             _log.warning("Cron capacity check failed: %s", e)
             return {"ok": False, "error": f"Cannot verify LLM worker capacity: {e}"}
 
@@ -1199,10 +1198,6 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
         # Register the handle so it can be reaped even if the wait below
         # times out and the child outlives the caller.
         _active_cron_runs[target_job_id] = proc
-        if capacity_lock is not None:
-            fcntl.flock(capacity_lock, fcntl.LOCK_UN)
-            capacity_lock.close()
-            capacity_lock = None
 
         try:
             proc.wait(timeout=CRON_RUN_TIMEOUT)
@@ -1266,9 +1261,6 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
         _active_cron_runs.pop(target_job_id, None)
         _log.error("Failed to run cron job %s: %s", target_job_id, e)
         return {"ok": False, "error": str(e)}
-    finally:
-        if capacity_lock is not None:
-            capacity_lock.close()
 
 
 def tick_builtin_cron() -> int:
