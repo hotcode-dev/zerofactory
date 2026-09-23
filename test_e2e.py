@@ -345,9 +345,9 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
 
     def test_01_full_delivery_cycle_builder_review_rounds_approval_and_merge(self):
         """Complete E2E autonomous delivery flow:
-        Triage -> Todo -> Ready -> Running (Builder) -> PR -> 3 Review Rounds -> Approved -> Merged -> Done.
+        Triage -> Todo -> Running (Builder) -> PR -> 3 Review Rounds -> Approved -> Merged -> Done.
         """
-        # Step 1: Create goal task in 'ready'
+        # Step 1: Create goal task in 'todo'
         t_res = create_task(TaskCreate(
             board_slug=self.board_slug,
             title="Implement User Authentication",
@@ -358,7 +358,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         ))
         task_id = t_res["id"]
 
-        # Step 2: Dispatcher Promotion Cycle -> ready -> running with worktree
+        # Step 2: Dispatcher dispatch cycle -> todo -> running with worktree
         disp_res1 = dispatcher.run_dispatch_cycle(self.db_path)
         self.assertTrue(disp_res1["ok"])
 
@@ -456,7 +456,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         ))
         task_id = t_res["id"]
 
-        # Run cycle to promote to running and setup worktree
+        # Run cycle to dispatch to running and setup worktree
         dispatcher.run_dispatch_cycle(self.db_path)
         t_info = get_task(task_id)["task"]
         worktree_path = Path(t_info["workspace_path"])

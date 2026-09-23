@@ -1666,7 +1666,7 @@
             { cmd: "hermes zerofactory list", desc: "List all active tickets across all boards" },
             { cmd: "hermes zerofactory list --board <slug> --status running", desc: "Filter tickets by board and status" },
             { cmd: "hermes zerofactory create \"<title>\" --description \"<desc>\" --board <slug> --priority P1", desc: "Create a new ticket" },
-            { cmd: "hermes zerofactory move <task_id> ready", desc: "Transition ticket status" },
+            { cmd: "hermes zerofactory move <task_id> running", desc: "Transition ticket status" },
             { cmd: "hermes zerofactory block <task_id> --reason \"<reason>\"", desc: "Mark ticket as blocked with explanation" },
             { cmd: "hermes zerofactory comment <task_id> \"<message>\"", desc: "Post a comment to a ticket" }
           ]
@@ -5367,7 +5367,7 @@
                   value: settingsForm.max_active_tasks ?? 10,
                   onChange: (e) => setSettingsForm({ ...settingsForm, max_active_tasks: e.target.value })
                 }),
-                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps total tasks allowed in 'ready' and 'running' across all boards combined. Controls how many git worktrees are prepared from 'todo' to prevent queue and disk flooding. Default: 10.")
+                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps total tasks allowed in 'running' across all boards combined. Controls how many git worktrees are prepared from 'todo' to prevent queue and disk flooding. Default: 10.")
               ),
               React.createElement(
                 "div",

@@ -88,7 +88,7 @@ hermes zerofactory list                           # List all tasks
 hermes zerofactory list --status running          # Filter tasks by status
 hermes zerofactory list --assignee zf-builder     # Filter tasks by assignee
 hermes zerofactory create "Implement Feature X"   # Create a new ticket
-hermes zerofactory move <task_id> ready           # Transition task status
+hermes zerofactory move <task_id> running          # Transition task status
 hermes zerofactory block <task_id> --reason "..." # Block a task
 hermes zerofactory comment <task_id> "Note..."    # Post a comment to a ticket
 
