@@ -1,6 +1,19 @@
-@import "/home/ntsd/.hermes/hermes-agent/node_modules/tailwindcss/theme.css";
-@import "/home/ntsd/.hermes/hermes-agent/node_modules/tailwindcss/utilities.css";
+/*
+ * Tailwind v4 sources are imported as BARE package paths. dashboard/build_css.mjs
+ * resolves them against the project's node_modules (or ZEROFACTORY_TAILWIND_DIR)
+ * at build time and rewrites them to absolute file paths, so this file stays
+ * portable across machines / CI (no machine-specific absolute paths allowed).
+ */
+@import "tailwindcss/theme.css";
+@import "tailwindcss/utilities.css";
 
+/*
+ * Source for Tailwind v4 auto-scanning. When building with the Tailwind CLI
+ * (`npx @tailwindcss/cli`), this directive makes it scan dashboard/dist/index.js
+ * for utility candidates. The JS-API build in build_css.mjs additionally passes
+ * candidates extracted from index.js explicitly (the JS API does not auto-scan
+ * @source), so the two build paths agree.
+ */
 @source "./dist/index.js";
 
 /* Keep host dashboard font inheritance safe */

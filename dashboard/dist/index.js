@@ -84,14 +84,25 @@
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [settingsForm, setSettingsForm] = useState({
       max_active_tasks: 10,
+      max_concurrent_llm_workers: 10,
       default_max_concurrent_workers: 1,
       scan_on_idle: true,
       idle_scan_active_threshold: 2,
       idle_scan_cooldown_minutes: 15,
       idle_scan_max_todo: 2,
-      enable_cron_scheduler: true
+      enable_cron_scheduler: true,
+      langfuse_enabled: false,
+      langfuse_base_url: "https://cloud.langfuse.com",
+      langfuse_public_key: "",
+      langfuse_secret_key: "",
+      langfuse_capture_mode: "sanitized",
+      langfuse_env: "zerofactory",
+      auto_record_memory: true
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [isTestingLangfuse, setIsTestingLangfuse] = useState(false);
+    const [langfuseTestResult, setLangfuseTestResult] = useState(null);
+    const [showLangfuseSecret, setShowLangfuseSecret] = useState(false);
     const [cronJobs, setCronJobs] = useState([]);
     const [cronSchedulerEnabled, setCronSchedulerEnabled] = useState(true);
     const [loadingCron, setLoadingCron] = useState(false);
@@ -111,6 +122,19 @@
     const [sessionsAgentFilter, setSessionsAgentFilter] = useState("all");
     const [sessionsStatusFilter, setSessionsStatusFilter] = useState("all");
     const [sessionsSearchQuery, setSessionsSearchQuery] = useState("");
+
+    // Agents & Memory View State
+    const [agentsList, setAgentsList] = useState([]);
+    const [agentsLoading, setAgentsLoading] = useState(false);
+    const [agentsSubTab, setAgentsSubTab] = useState("sessions"); // "sessions" | "memory"
+    const [boardMemories, setBoardMemories] = useState([]);
+    const [memoriesLoading, setMemoriesLoading] = useState(false);
+    const [memoriesTotal, setMemoriesTotal] = useState(0);
+    const [memoryCategoryFilter, setMemoryCategoryFilter] = useState("all");
+    const [memorySearchQuery, setMemorySearchQuery] = useState("");
+    const [showAddMemoryModal, setShowAddMemoryModal] = useState(false);
+    const [newMemoryForm, setNewMemoryForm] = useState({ category: "general", content: "", tags: "", author: "user", task_id: "" });
+    const [submittingMemory, setSubmittingMemory] = useState(false);
 
     // Activities View State
     const [activities, setActivities] = useState([]);
@@ -142,14 +166,18 @@
     const [newBoardForm, setNewBoardForm] = useState({
       git_url: "",
       description: "",
-      max_concurrent_running: 1
+      max_concurrent_running: 1,
+      auto_record_memory: true,
+      additional_reviewer_usernames: ""
     });
 
     const [editBoardForm, setEditBoardForm] = useState({
       slug: "",
       git_url: "",
       description: "",
-      max_concurrent_running: 1
+      max_concurrent_running: 1,
+      auto_record_memory: true,
+      additional_reviewer_usernames: ""
     });
 
     const [createBoardError, setCreateBoardError] = useState("");
@@ -157,7 +185,7 @@
 
     const handleOpenNewBoardModal = () => {
       setCreateBoardError("");
-      setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1 });
+      setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
       setShowNewBoardModal(true);
     };
 
@@ -168,12 +196,20 @@
           const isCronEnabled = data.settings.enable_cron_scheduler ?? true;
           setSettingsForm({
             max_active_tasks: data.settings.max_active_tasks ?? 10,
+            max_concurrent_llm_workers: data.settings.max_concurrent_llm_workers ?? 10,
             default_max_concurrent_workers: data.settings.default_max_concurrent_workers ?? 1,
             scan_on_idle: data.settings.scan_on_idle ?? true,
             idle_scan_active_threshold: data.settings.idle_scan_active_threshold ?? 2,
             idle_scan_cooldown_minutes: data.settings.idle_scan_cooldown_minutes ?? 15,
             idle_scan_max_todo: data.settings.idle_scan_max_todo ?? 2,
-            enable_cron_scheduler: isCronEnabled
+            enable_cron_scheduler: isCronEnabled,
+            langfuse_enabled: Boolean(data.settings.langfuse_enabled),
+            langfuse_base_url: data.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
+            langfuse_public_key: data.settings.langfuse_public_key ?? "",
+            langfuse_secret_key: data.settings.langfuse_secret_key ?? "",
+            langfuse_capture_mode: data.settings.langfuse_capture_mode ?? "sanitized",
+            langfuse_env: data.settings.langfuse_env ?? "zerofactory",
+            auto_record_memory: data.settings.auto_record_memory ?? true
           });
           setCronSchedulerEnabled(isCronEnabled);
         }
@@ -188,12 +224,20 @@
       try {
         const payload = {
           max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
+          max_concurrent_llm_workers: Math.max(1, parseInt(settingsForm.max_concurrent_llm_workers, 10) || 10),
           default_max_concurrent_workers: Math.max(1, parseInt(settingsForm.default_max_concurrent_workers, 10) || 1),
           scan_on_idle: Boolean(settingsForm.scan_on_idle),
           idle_scan_active_threshold: Math.max(1, parseInt(settingsForm.idle_scan_active_threshold, 10) || 2),
           idle_scan_cooldown_minutes: Math.max(1, parseInt(settingsForm.idle_scan_cooldown_minutes, 10) || 15),
           idle_scan_max_todo: Math.max(0, parseInt(settingsForm.idle_scan_max_todo, 10) || 0),
-          enable_cron_scheduler: Boolean(settingsForm.enable_cron_scheduler !== false)
+          enable_cron_scheduler: Boolean(settingsForm.enable_cron_scheduler !== false),
+          langfuse_enabled: Boolean(settingsForm.langfuse_enabled),
+          langfuse_base_url: String(settingsForm.langfuse_base_url || "").trim(),
+          langfuse_public_key: String(settingsForm.langfuse_public_key || "").trim(),
+          langfuse_secret_key: String(settingsForm.langfuse_secret_key || "").trim(),
+          langfuse_capture_mode: String(settingsForm.langfuse_capture_mode || "sanitized").trim(),
+          langfuse_env: String(settingsForm.langfuse_env || "zerofactory").trim(),
+          auto_record_memory: Boolean(settingsForm.auto_record_memory !== false)
         };
         const res = await fetchJSON(API_BASE + "/settings", {
           method: "PATCH",
@@ -204,12 +248,20 @@
           const isCronEnabled = res.settings.enable_cron_scheduler ?? true;
           setSettingsForm({
             max_active_tasks: res.settings.max_active_tasks ?? 10,
+            max_concurrent_llm_workers: res.settings.max_concurrent_llm_workers ?? 10,
             default_max_concurrent_workers: res.settings.default_max_concurrent_workers ?? 1,
             scan_on_idle: res.settings.scan_on_idle ?? true,
             idle_scan_active_threshold: res.settings.idle_scan_active_threshold ?? 2,
             idle_scan_cooldown_minutes: res.settings.idle_scan_cooldown_minutes ?? 15,
             idle_scan_max_todo: res.settings.idle_scan_max_todo ?? 2,
-            enable_cron_scheduler: isCronEnabled
+            enable_cron_scheduler: isCronEnabled,
+            langfuse_enabled: Boolean(res.settings.langfuse_enabled),
+            langfuse_base_url: res.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
+            langfuse_public_key: res.settings.langfuse_public_key ?? "",
+            langfuse_secret_key: res.settings.langfuse_secret_key ?? "",
+            langfuse_capture_mode: res.settings.langfuse_capture_mode ?? "sanitized",
+            langfuse_env: res.settings.langfuse_env ?? "zerofactory",
+            auto_record_memory: res.settings.auto_record_memory ?? true
           });
           setCronSchedulerEnabled(isCronEnabled);
           loadCronJobs();
@@ -220,6 +272,31 @@
         showToast("Failed to save settings: " + (err.message || String(err)), "error");
       } finally {
         setIsSavingSettings(false);
+      }
+    };
+
+    const handleTestLangfuse = async () => {
+      setIsTestingLangfuse(true);
+      setLangfuseTestResult(null);
+      try {
+        const res = await fetchJSON(API_BASE + "/settings/langfuse/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base_url: settingsForm.langfuse_base_url,
+            public_key: settingsForm.langfuse_public_key,
+            secret_key: settingsForm.langfuse_secret_key
+          })
+        });
+        if (res && res.ok) {
+          setLangfuseTestResult({ ok: true, message: res.message || "Connected successfully!" });
+        } else {
+          setLangfuseTestResult({ ok: false, message: (res && res.error) || "Connection failed" });
+        }
+      } catch (err) {
+        setLangfuseTestResult({ ok: false, message: err.message || String(err) });
+      } finally {
+        setIsTestingLangfuse(false);
       }
     };
 
@@ -362,10 +439,11 @@
           method: "POST"
         });
         if (res && res.ok) {
-          showToast(`Job triggered successfully (PID: ${res.pid || "running"})`, "success");
+          const detail = (res.message && res.returncode !== undefined) ? res.message : (res.pid ? `PID: ${res.pid}` : "running");
+          showToast(`Job completed successfully (${detail})`, "success");
           setTimeout(() => loadCronJobs(), 1500);
         } else {
-          showToast("Failed to run cron job: " + (res.error || "Unknown error"), "error");
+          showToast("Failed to run cron job: " + (res.error || (res && res.message) || "Unknown error"), "error");
         }
       } catch (err) {
         showToast("Error running cron job: " + err.message, "error");
@@ -491,6 +569,88 @@
       }
     }, [fetchJSON]);
 
+    // Load 3 Specialist Agents Status
+    const loadAgents = useCallback(async () => {
+      try {
+        setAgentsLoading(true);
+        const res = await fetchJSON(API_BASE + "/agents");
+        if (res && res.ok && res.agents) {
+          setAgentsList(res.agents);
+        }
+      } catch (err) {
+        console.error("Failed to load agents status:", err);
+      } finally {
+        setAgentsLoading(false);
+      }
+    }, [fetchJSON]);
+
+    // Load Board Memories
+    const loadMemories = useCallback(async (slug) => {
+      const bSlug = slug || selectedBoard;
+      if (!bSlug) return;
+      try {
+        setMemoriesLoading(true);
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/memories?limit=100");
+        if (res && res.ok && res.memories) {
+          setBoardMemories(res.memories);
+          setMemoriesTotal(res.total || res.memories.length);
+        }
+      } catch (err) {
+        console.error("Failed to load board memories:", err);
+      } finally {
+        setMemoriesLoading(false);
+      }
+    }, [fetchJSON, selectedBoard]);
+
+    const handleDeleteMemory = useCallback(async (memId) => {
+      if (!window.confirm("Are you sure you want to delete this repository memory?")) return;
+      try {
+        const res = await fetchJSON(API_BASE + "/memories/" + encodeURIComponent(memId), { method: "DELETE" });
+        if (res && res.ok) {
+          setBoardMemories(prev => prev.filter(m => m.id !== memId));
+          setMemoriesTotal(prev => Math.max(0, prev - 1));
+        }
+      } catch (err) {
+        console.error("Failed to delete memory:", err);
+        alert("Failed to delete memory: " + (err.message || err));
+      }
+    }, [fetchJSON]);
+
+    const handleCreateMemorySubmit = useCallback(async (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      if (!newMemoryForm.content.trim()) {
+        alert("Memory content is required");
+        return;
+      }
+      try {
+        setSubmittingMemory(true);
+        const tagList = newMemoryForm.tags ? newMemoryForm.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+        const payload = {
+          category: newMemoryForm.category || "general",
+          content: newMemoryForm.content.trim(),
+          tags: tagList,
+          author: newMemoryForm.author || "user",
+          task_id: newMemoryForm.task_id || null
+        };
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(selectedBoard) + "/memories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (res && res.ok && res.memory) {
+          setBoardMemories(prev => [res.memory, ...prev]);
+          setMemoriesTotal(prev => prev + 1);
+          setShowAddMemoryModal(false);
+          setNewMemoryForm({ category: "general", content: "", tags: "", author: "user", task_id: "" });
+        }
+      } catch (err) {
+        console.error("Failed to create memory:", err);
+        alert("Failed to create memory: " + (err.message || err));
+      } finally {
+        setSubmittingMemory(false);
+      }
+    }, [fetchJSON, newMemoryForm, selectedBoard]);
+
     // Initial load
     useEffect(() => {
       loadBoards();
@@ -499,18 +659,25 @@
       loadSettings();
       loadActivities();
       loadSessions();
-    }, [loadBoards, loadTasksAndStats, selectedBoard, loadCronJobs, loadSettings, loadActivities, loadSessions]);
+      loadAgents();
+      loadMemories(selectedBoard);
+    }, [loadBoards, loadTasksAndStats, selectedBoard, loadCronJobs, loadSettings, loadActivities, loadSessions, loadAgents, loadMemories]);
 
     // Fetch activities on view switch or filter changes
     useEffect(() => {
       if (activeView === "activities") {
         loadActivities();
-      } else if (activeView === "sessions") {
+      } else if (activeView === "sessions" || activeView === "agents") {
         loadSessions();
-        const sTimer = setInterval(loadSessions, 3500);
+        loadAgents();
+        loadMemories(selectedBoard);
+        const sTimer = setInterval(() => {
+          loadSessions();
+          loadAgents();
+        }, 3500);
         return () => clearInterval(sTimer);
       }
-    }, [activeView, activityActorFilter, activityActionFilter, activityBoardFilter, activityPage, loadActivities, loadSessions]);
+    }, [activeView, activityActorFilter, activityActionFilter, activityBoardFilter, activityPage, loadActivities, loadSessions, loadAgents, loadMemories, selectedBoard]);
 
     // Auto-refresh interval
     useEffect(() => {
@@ -518,14 +685,15 @@
       const timer = setInterval(() => {
         if (activeView === "activities") {
           loadActivities();
-        } else if (activeView === "sessions") {
+        } else if (activeView === "sessions" || activeView === "agents") {
           loadSessions();
+          loadAgents();
         } else {
           loadTasksAndStats(selectedBoard);
         }
       }, 8000);
       return () => clearInterval(timer);
-    }, [autoRefresh, activeView, selectedBoard, loadTasksAndStats, loadActivities, loadSessions]);
+    }, [autoRefresh, activeView, selectedBoard, loadTasksAndStats, loadActivities, loadSessions, loadAgents]);
 
     const liveAgents = useMemo(() => {
       const baseAgents = activitiesAgents.length > 0 ? activitiesAgents : [
@@ -917,13 +1085,15 @@
           body: JSON.stringify({
             git_url: gitUrl,
             description: (newBoardForm.description || "").trim(),
-            max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1)
+            max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
+            auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
+            additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
           })
         });
         const createdSlug = (res && res.slug) ? res.slug : autoSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1 });
+        setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
         setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
@@ -945,7 +1115,9 @@
           slug: curr.slug || "",
           description: curr.description || "",
           git_url: curr.git_url || "",
-          max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1
+          max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1,
+          auto_record_memory: curr.auto_record_memory !== false,
+          additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
         });
         setShowEditBoardModal(true);
       }
@@ -963,7 +1135,9 @@
           body: JSON.stringify({
             description: (editBoardForm.description || "").trim(),
             git_url: (editBoardForm.git_url || "").trim(),
-            max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1)
+            max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
+            auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
+            additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
           })
         });
         showToast("Board '" + editBoardForm.slug + "' updated!", "success");
@@ -2471,6 +2645,20 @@
         return true;
       });
 
+      // Filter memories
+      const filteredMemories = boardMemories.filter((m) => {
+        if (memoryCategoryFilter !== "all" && m.category !== memoryCategoryFilter) return false;
+        if (memorySearchQuery.trim()) {
+          const q = memorySearchQuery.toLowerCase();
+          const matchContent = (m.content || "").toLowerCase().includes(q);
+          const matchTags = (m.tags || []).some(t => String(t).toLowerCase().includes(q));
+          const matchAuthor = (m.author || "").toLowerCase().includes(q);
+          const matchTask = (m.task_id || "").toLowerCase().includes(q);
+          if (!matchContent && !matchTags && !matchAuthor && !matchTask) return false;
+        }
+        return true;
+      });
+
       const totalCount = sessionsList.length;
       const ongoingCount = sessionsList.filter(s => s.status === "ongoing" || s.is_active).length;
       const finishedCount = sessionsList.filter(s => s.status === "finished" && !s.is_active).length;
@@ -2481,6 +2669,21 @@
         { id: "zf-orchestrator", label: "🧭 Orchestrator", count: sessionsList.filter(s => s.agent === "zf-orchestrator").length },
         { id: "zf-builder", label: "🔨 Builder", count: sessionsList.filter(s => s.agent === "zf-builder").length },
         { id: "zf-reviewer", label: "🔍 Reviewer", count: sessionsList.filter(s => s.agent === "zf-reviewer").length },
+      ];
+
+      const memoryCategories = [
+        { id: "all", label: "All", icon: "📚", count: boardMemories.length },
+        { id: "convention", label: "Convention", icon: "📐", count: boardMemories.filter(m => m.category === "convention").length },
+        { id: "gotcha", label: "Gotcha", icon: "⚠️", count: boardMemories.filter(m => m.category === "gotcha").length },
+        { id: "decision", label: "Decision", icon: "💡", count: boardMemories.filter(m => m.category === "decision").length },
+        { id: "rejected_path", label: "Rejected Path", icon: "🚫", count: boardMemories.filter(m => m.category === "rejected_path").length },
+        { id: "general", label: "General", icon: "📝", count: boardMemories.filter(m => m.category === "general").length },
+      ];
+
+      const agentMetas = [
+        { id: "zf-orchestrator", label: "Orchestrator", icon: "🧭", role: "Planning, Triage & Improvement Scans" },
+        { id: "zf-builder", label: "Builder", icon: "🔨", role: "Implementation, Bug Fixing & Pull Requests" },
+        { id: "zf-reviewer", label: "Reviewer", icon: "🔍", role: "Code Review, Testing & Quality Verification" },
       ];
 
       return React.createElement(
@@ -2498,14 +2701,14 @@
               "div",
               null,
               React.createElement("h2", { className: "text-base font-bold text-white tracking-tight flex items-center gap-2" },
-                "AI Agent Sessions",
+                "Specialist Agents & Memory",
                 ongoingCount > 0 &&
                   React.createElement("span", { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" },
                     React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-emerald-400 zfk-pulse-active" }),
                     ongoingCount + " Active"
                   )
               ),
-              React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "Real-time telemetry and session histories across Orchestrator, Builder, and Reviewer.")
+              React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "Live status of 3 specialist agents, session telemetry, and persistent repository memory.")
             )
           ),
           React.createElement(
@@ -2516,270 +2719,651 @@
               {
                 type: "button",
                 className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 shadow-sm transition-all cursor-pointer",
-                onClick: loadSessions,
-                disabled: sessionsLoading
+                onClick: () => {
+                  loadSessions();
+                  loadAgents();
+                  loadMemories(selectedBoard);
+                },
+                disabled: sessionsLoading || agentsLoading || memoriesLoading
               },
-              sessionsLoading ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "🔄",
+              (sessionsLoading || agentsLoading || memoriesLoading) ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "🔄",
               " Refresh"
             )
           )
         ),
 
-        // Summary Metric Cards
+        // Section 1: 3 Specialist Agent Cards
         React.createElement(
           "div",
-          { className: "grid grid-cols-2 sm:grid-cols-4 gap-3.5" },
-          React.createElement(
-            "div",
-            { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
-            React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-indigo-500/15 text-indigo-400 border border-indigo-500/25" }, "🤖"),
-            React.createElement(
-              "div",
-              { className: "min-w-0" },
-              React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, totalCount),
-              React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total AI Sessions")
-            )
-          ),
-          React.createElement(
-            "div",
-            { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
-            React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25" }, "⚡"),
-            React.createElement(
-              "div",
-              { className: "min-w-0" },
-              React.createElement("span", { className: "text-xl font-bold text-emerald-400 tracking-tight leading-none block" }, ongoingCount),
-              React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Ongoing / Active")
-            )
-          ),
-          React.createElement(
-            "div",
-            { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
-            React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-slate-800/60 text-slate-300 border border-slate-700/50" }, "✅"),
-            React.createElement(
-              "div",
-              { className: "min-w-0" },
-              React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, finishedCount),
-              React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Completed Sessions")
-            )
-          ),
-          React.createElement(
-            "div",
-            { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
-            React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-amber-500/15 text-amber-400 border border-amber-500/25" }, "🔄"),
-            React.createElement(
-              "div",
-              { className: "min-w-0" },
-              React.createElement("span", { className: "text-xl font-bold text-amber-300 tracking-tight leading-none block" }, totalTurns),
-              React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total Agent Turns")
-            )
-          )
-        ),
+          { className: "grid grid-cols-1 md:grid-cols-3 gap-4" },
+          agentMetas.map((meta) => {
+            const agentInfo = agentsList.find(a => a.name === meta.id) || {};
+            const isAgentActive = agentInfo.is_active || (agentInfo.status === "active") || sessionsList.some(s => s.agent === meta.id && (s.status === "ongoing" || s.is_active));
+            const currentTask = agentInfo.current_task;
+            const activeSession = agentInfo.active_session || sessionsList.find(s => s.agent === meta.id && (s.status === "ongoing" || s.is_active));
+            const agentSessions = sessionsList.filter(s => s.agent === meta.id);
+            const totalAgentTurns = agentSessions.reduce((acc, s) => acc + (s.turn_count || 0), 0);
 
-        // Controls Bar: Agent Pills, Status Filter, Search
-        React.createElement(
-          "div",
-          { className: "flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800/80" },
-          // Agent Pills
-          React.createElement(
-            "div",
-            { className: "flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 zfk-scrollbar" },
-            agentTabs.map(tab =>
-              React.createElement(
-                "button",
-                {
-                  key: tab.id,
-                  type: "button",
-                  className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 " +
-                    (sessionsAgentFilter === tab.id
-                      ? "bg-indigo-600 text-white shadow-xs"
-                      : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60"),
-                  onClick: () => setSessionsAgentFilter(tab.id)
-                },
-                tab.label,
-                React.createElement("span", { className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " + (sessionsAgentFilter === tab.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400") }, tab.count)
-              )
-            )
-          ),
-          // Right Controls: Status & Search
-          React.createElement(
-            "div",
-            { className: "flex items-center gap-2" },
-            React.createElement(
-              "select",
+            return React.createElement(
+              "div",
               {
-                className: "bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
-                value: sessionsStatusFilter,
-                onChange: (e) => setSessionsStatusFilter(e.target.value)
+                key: meta.id,
+                className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-2xl p-4.5 transition-all shadow-sm flex flex-col justify-between space-y-4"
               },
-              React.createElement("option", { value: "all" }, "All Statuses"),
-              React.createElement("option", { value: "ongoing" }, "🟢 Ongoing"),
-              React.createElement("option", { value: "finished" }, "⚪ Finished")
-            ),
-            React.createElement(
-              "input",
-              {
-                type: "text",
-                placeholder: "Search sessions, models, tasks...",
-                className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-48 md:w-56",
-                value: sessionsSearchQuery,
-                onChange: (e) => setSessionsSearchQuery(e.target.value)
+              React.createElement(
+                "div",
+                { className: "space-y-3" },
+                // Header row
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-between gap-2" },
+                  React.createElement(
+                    "div",
+                    { className: "flex items-center gap-2.5" },
+                    React.createElement(
+                      "div",
+                      { className: "w-9 h-9 rounded-xl flex items-center justify-center text-xl bg-slate-800/90 border border-slate-700/60 shadow-xs" },
+                      meta.icon
+                    ),
+                    React.createElement(
+                      "div",
+                      null,
+                      React.createElement("h3", { className: "text-sm font-bold text-white tracking-tight leading-none" }, meta.label),
+                      React.createElement("span", { className: "text-[10px] text-slate-500 font-mono" }, meta.id)
+                    )
+                  ),
+                  React.createElement(
+                    "span",
+                    {
+                      className: "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border " +
+                        (isAgentActive
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                          : "bg-slate-800/80 text-slate-400 border-slate-700/60")
+                    },
+                    React.createElement("span", {
+                      className: "w-1.5 h-1.5 rounded-full " + (isAgentActive ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
+                    }),
+                    isAgentActive ? "Active" : "Idle"
+                  )
+                ),
+                // Role description
+                React.createElement("p", { className: "text-xs text-slate-400 leading-relaxed" }, meta.role),
+                // Live Activity / Task Box
+                React.createElement(
+                  "div",
+                  { className: "bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 space-y-1.5" },
+                  React.createElement(
+                    "div",
+                    { className: "text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between" },
+                    React.createElement("span", null, isAgentActive ? "Current Work" : "Status"),
+                    isAgentActive && React.createElement("span", { className: "text-emerald-400 font-mono text-[10px]" }, "Executing")
+                  ),
+                  currentTask
+                    ? React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "text-left text-xs font-semibold text-indigo-300 hover:text-indigo-200 transition-colors line-clamp-1 cursor-pointer",
+                          onClick: () => {
+                            setActiveView("board");
+                            loadTaskDetails(currentTask.id);
+                          }
+                        },
+                        "📋 " + currentTask.title + " ↗"
+                      )
+                    : activeSession
+                    ? React.createElement(
+                        "div",
+                        { className: "text-xs text-slate-300 truncate", title: activeSession.last_action || activeSession.title },
+                        "⚡ " + (activeSession.last_action || activeSession.title || "Working on session...")
+                      )
+                    : React.createElement(
+                        "div",
+                        { className: "text-xs text-slate-500 italic" },
+                        "Ready for next dispatch cycle"
+                      )
+                )
+              ),
+              // Bottom stats
+              React.createElement(
+                "div",
+                { className: "grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80 text-center" },
+                React.createElement(
+                  "div",
+                  null,
+                  React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Sessions"),
+                  React.createElement("span", { className: "text-xs font-bold text-slate-200" }, agentSessions.length)
+                ),
+                React.createElement(
+                  "div",
+                  null,
+                  React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Turns"),
+                  React.createElement("span", { className: "text-xs font-bold text-amber-300" }, totalAgentTurns)
+                ),
+                React.createElement(
+                  "div",
+                  null,
+                  React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "State"),
+                  React.createElement("span", { className: "text-xs font-bold " + (isAgentActive ? "text-emerald-400" : "text-slate-400") }, isAgentActive ? "Busy" : "Ready")
+                )
+              )
+            );
+          })
+        ),
+
+        // Section 2: Sub-Tab Switcher
+        React.createElement(
+          "div",
+          { className: "flex items-center gap-2 border-b border-slate-800 pb-3" },
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: "px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 " +
+                (agentsSubTab === "sessions"
+                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                  : "bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800/80"),
+              onClick: () => setAgentsSubTab("sessions")
+            },
+            "💬 AI Sessions",
+            React.createElement("span", {
+              className: "px-2 py-0.5 rounded-full text-[10px] " +
+                (agentsSubTab === "sessions" ? "bg-indigo-700 text-indigo-100" : "bg-slate-800 text-slate-400")
+            }, sessionsList.length)
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: "px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 " +
+                (agentsSubTab === "memory"
+                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                  : "bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800/80"),
+              onClick: () => {
+                setAgentsSubTab("memory");
+                loadMemories(selectedBoard);
               }
-            )
+            },
+            "🧠 Repository Memory",
+            React.createElement("span", {
+              className: "px-2 py-0.5 rounded-full text-[10px] " +
+                (agentsSubTab === "memory" ? "bg-indigo-700 text-indigo-100" : "bg-slate-800 text-slate-400")
+            }, boardMemories.length)
           )
         ),
 
-        // Session Cards Grid
-        effectiveSessions.length === 0
+        // Section 3: Sub-View Content
+        agentsSubTab === "sessions"
           ? React.createElement(
               "div",
-              { className: "bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center" },
-              React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-2xl mx-auto mb-3 text-slate-500" }, "🤖"),
-              React.createElement("h3", { className: "text-sm font-semibold text-slate-300" }, "No AI Sessions Found"),
-              React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-sm mx-auto" },
-                sessionsSearchQuery || sessionsAgentFilter !== "all" || sessionsStatusFilter !== "all"
-                  ? "No sessions match your filter criteria. Try resetting the filters."
-                  : "AI agent sessions will appear here as Orchestrator, Builder, and Reviewer execute tasks."
-              )
+              { className: "space-y-6" },
+              // Summary Metric Cards
+              React.createElement(
+                "div",
+                { className: "grid grid-cols-2 sm:grid-cols-4 gap-3.5" },
+                React.createElement(
+                  "div",
+                  { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+                  React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-indigo-500/15 text-indigo-400 border border-indigo-500/25" }, "🤖"),
+                  React.createElement(
+                    "div",
+                    { className: "min-w-0" },
+                    React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, totalCount),
+                    React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total AI Sessions")
+                  )
+                ),
+                React.createElement(
+                  "div",
+                  { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+                  React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25" }, "⚡"),
+                  React.createElement(
+                    "div",
+                    { className: "min-w-0" },
+                    React.createElement("span", { className: "text-xl font-bold text-emerald-400 tracking-tight leading-none block" }, ongoingCount),
+                    React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Ongoing / Active")
+                  )
+                ),
+                React.createElement(
+                  "div",
+                  { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+                  React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-slate-800/60 text-slate-300 border border-slate-700/50" }, "✅"),
+                  React.createElement(
+                    "div",
+                    { className: "min-w-0" },
+                    React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, finishedCount),
+                    React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Completed Sessions")
+                  )
+                ),
+                React.createElement(
+                  "div",
+                  { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+                  React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-amber-500/15 text-amber-400 border border-amber-500/25" }, "🔄"),
+                  React.createElement(
+                    "div",
+                    { className: "min-w-0" },
+                    React.createElement("span", { className: "text-xl font-bold text-amber-300 tracking-tight leading-none block" }, totalTurns),
+                    React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total Agent Turns")
+                  )
+                )
+              ),
+
+              // Controls Bar: Agent Pills, Status Filter, Search
+              React.createElement(
+                "div",
+                { className: "flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800/80" },
+                // Agent Pills
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 zfk-scrollbar" },
+                  agentTabs.map(tab =>
+                    React.createElement(
+                      "button",
+                      {
+                        key: tab.id,
+                        type: "button",
+                        className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 " +
+                          (sessionsAgentFilter === tab.id
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60"),
+                        onClick: () => setSessionsAgentFilter(tab.id)
+                      },
+                      tab.label,
+                      React.createElement("span", { className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " + (sessionsAgentFilter === tab.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400") }, tab.count)
+                    )
+                  )
+                ),
+                // Right Controls: Status & Search
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-2" },
+                  React.createElement(
+                    "select",
+                    {
+                      className: "bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
+                      value: sessionsStatusFilter,
+                      onChange: (e) => setSessionsStatusFilter(e.target.value)
+                    },
+                    React.createElement("option", { value: "all" }, "All Statuses"),
+                    React.createElement("option", { value: "ongoing" }, "🟢 Ongoing"),
+                    React.createElement("option", { value: "finished" }, "⚪ Finished")
+                  ),
+                  React.createElement(
+                    "input",
+                    {
+                      type: "text",
+                      placeholder: "Search sessions, models, tasks...",
+                      className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-48 md:w-56",
+                      value: sessionsSearchQuery,
+                      onChange: (e) => setSessionsSearchQuery(e.target.value)
+                    }
+                  )
+                )
+              ),
+
+              // Session Cards Grid
+              effectiveSessions.length === 0
+                ? React.createElement(
+                    "div",
+                    { className: "bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center" },
+                    React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-2xl mx-auto mb-3 text-slate-500" }, "🤖"),
+                    React.createElement("h3", { className: "text-sm font-semibold text-slate-300" }, "No AI Sessions Found"),
+                    React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-sm mx-auto" },
+                      sessionsSearchQuery || sessionsAgentFilter !== "all" || sessionsStatusFilter !== "all"
+                        ? "No sessions match your filter criteria. Try resetting the filters."
+                        : "AI agent sessions will appear here as Orchestrator, Builder, and Reviewer execute tasks."
+                    )
+                  )
+                : React.createElement(
+                    "div",
+                    { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" },
+                    effectiveSessions.map((s) => {
+                      const isOngoing = s.status === "ongoing" || s.is_active;
+                      const agentRole = s.agent || "zf-builder";
+                      const agentBadge = agentRole === "zf-reviewer"
+                        ? { icon: "🔍", label: "Reviewer", border: "border-cyan-500/30", bg: "bg-cyan-500/10 text-cyan-300" }
+                        : agentRole === "zf-orchestrator"
+                        ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
+                        : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
+
+                      // Extract task ID if present in cwd or title
+                      let matchedTaskId = null;
+                      const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
+                      const taskMatch = cwdOrTitle.match(/zf-[a-f0-9]{8}/i) || cwdOrTitle.match(/task-[a-z0-9_-]+/i);
+                      if (taskMatch) {
+                        matchedTaskId = taskMatch[0];
+                      }
+
+                      const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
+                        ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
+                        : "";
+                      const chatUrl = basePath + "/chat?resume=" + encodeURIComponent(s.session_id) + (s.agent ? "&profile=" + encodeURIComponent(s.agent) : "");
+
+                      return React.createElement(
+                        "div",
+                        {
+                          key: s.session_id,
+                          className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-xl p-4 transition-all duration-150 shadow-sm space-y-3 flex flex-col justify-between"
+                        },
+                        React.createElement(
+                          "div",
+                          { className: "space-y-2.5" },
+                          // Card Top Row
+                          React.createElement(
+                            "div",
+                            { className: "flex items-center justify-between gap-2" },
+                            React.createElement(
+                              "div",
+                              { className: "flex items-center gap-2" },
+                              React.createElement(
+                                "span",
+                                { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + agentBadge.bg + " " + agentBadge.border },
+                                agentBadge.icon + " " + (s.agent_label || agentBadge.label)
+                              ),
+                              React.createElement(
+                                "span",
+                                { className: "inline-flex items-center gap-1 text-[11px] font-medium " + (isOngoing ? "text-emerald-400" : "text-slate-400") },
+                                React.createElement("span", { className: "w-2 h-2 rounded-full " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500") }),
+                                isOngoing ? "Ongoing" : "Finished"
+                              )
+                            ),
+                            React.createElement(
+                              "span",
+                              { className: "text-[11px] text-slate-400 font-mono" },
+                              s.duration_seconds ? `${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s` : timeAgo(s.ended_at || s.started_at)
+                            )
+                          ),
+
+                          // Title & Associated Task
+                          React.createElement(
+                            "div",
+                            { className: "space-y-1" },
+                            React.createElement(
+                              "div",
+                              { className: "text-xs font-semibold text-white line-clamp-1", title: s.title },
+                              s.title || "Autonomous Agent Execution"
+                            ),
+                            matchedTaskId &&
+                              React.createElement(
+                                "button",
+                                {
+                                  type: "button",
+                                  className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
+                                  onClick: () => {
+                                    setActiveView("board");
+                                    loadTaskDetails(matchedTaskId);
+                                  }
+                                },
+                                "📋 Task " + matchedTaskId + " ↗"
+                              )
+                          ),
+
+                          // Telemetry Grid
+                          React.createElement(
+                            "div",
+                            { className: "grid grid-cols-3 gap-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 text-center" },
+                            React.createElement(
+                              "div",
+                              null,
+                              React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Turns"),
+                              React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.turn_count || 0)
+                            ),
+                            React.createElement(
+                              "div",
+                              null,
+                              React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Tool Calls"),
+                              React.createElement("span", { className: "text-xs font-bold text-indigo-300" }, s.tool_calls_count || 0)
+                            ),
+                            React.createElement(
+                              "div",
+                              null,
+                              React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Messages"),
+                              React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.message_count || 0)
+                            )
+                          ),
+
+                          // Last Action / Snippet
+                          s.last_action &&
+                            React.createElement(
+                              "div",
+                              { className: "text-[11px] text-slate-400 bg-slate-950/40 px-2.5 py-1.5 rounded-lg border border-slate-800/60 font-mono truncate", title: s.last_action },
+                              "⚡ " + s.last_action
+                            )
+                        ),
+
+                        // Bottom Action: Session ID & Open Chat
+                        React.createElement(
+                          "div",
+                          { className: "pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" },
+                          React.createElement(
+                            "code",
+                            { className: "text-[10px] text-slate-500 font-mono truncate max-w-[140px]", title: s.session_id },
+                            s.session_id
+                          ),
+                          React.createElement(
+                            "a",
+                            {
+                              href: chatUrl,
+                              target: "_blank",
+                              rel: "noreferrer",
+                              className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600/90 hover:bg-indigo-600 text-white transition-colors cursor-pointer shadow-xs"
+                            },
+                            "Open Chat ↗"
+                          )
+                        )
+                      );
+                    })
+                  )
             )
           : React.createElement(
               "div",
-              { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" },
-              effectiveSessions.map((s) => {
-                const isOngoing = s.status === "ongoing" || s.is_active;
-                const agentRole = s.agent || "zf-builder";
-                const agentBadge = agentRole === "zf-reviewer"
-                  ? { icon: "🔍", label: "Reviewer", border: "border-cyan-500/30", bg: "bg-cyan-500/10 text-cyan-300" }
-                  : agentRole === "zf-orchestrator"
-                  ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
-                  : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
-
-                // Extract task ID if present in cwd or title
-                let matchedTaskId = null;
-                const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
-                const taskMatch = cwdOrTitle.match(/zf-[a-f0-9]{8}/i) || cwdOrTitle.match(/task-[a-z0-9_-]+/i);
-                if (taskMatch) {
-                  matchedTaskId = taskMatch[0];
-                }
-
-                const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
-                  ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
-                  : "";
-                const chatUrl = basePath + "/chat?resume=" + encodeURIComponent(s.session_id) + (s.agent ? "&profile=" + encodeURIComponent(s.agent) : "");
-
-                return React.createElement(
+              { className: "space-y-6" },
+              // Memory Action Bar: Category Filter Pills, Search, Add Memory
+              React.createElement(
+                "div",
+                { className: "flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800/80" },
+                // Category Pills
+                React.createElement(
                   "div",
-                  {
-                    key: s.session_id,
-                    className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-xl p-4 transition-all duration-150 shadow-sm space-y-3 flex flex-col justify-between"
-                  },
-                  React.createElement(
-                    "div",
-                    { className: "space-y-2.5" },
-                    // Card Top Row
+                  { className: "flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 zfk-scrollbar" },
+                  memoryCategories.map(cat =>
                     React.createElement(
-                      "div",
-                      { className: "flex items-center justify-between gap-2" },
-                      React.createElement(
-                        "div",
-                        { className: "flex items-center gap-2" },
-                        React.createElement(
-                          "span",
-                          { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + agentBadge.bg + " " + agentBadge.border },
-                          agentBadge.icon + " " + (s.agent_label || agentBadge.label)
-                        ),
-                        React.createElement(
-                          "span",
-                          { className: "inline-flex items-center gap-1 text-[11px] font-medium " + (isOngoing ? "text-emerald-400" : "text-slate-400") },
-                          React.createElement("span", { className: "w-2 h-2 rounded-full " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500") }),
-                          isOngoing ? "Ongoing" : "Finished"
-                        )
-                      ),
-                      React.createElement(
-                        "span",
-                        { className: "text-[11px] text-slate-400 font-mono" },
-                        s.duration_seconds ? `${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s` : timeAgo(s.ended_at || s.started_at)
-                      )
-                    ),
-
-                    // Title & Associated Task
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" },
-                      React.createElement(
-                        "div",
-                        { className: "text-xs font-semibold text-white line-clamp-1", title: s.title },
-                        s.title || "Autonomous Agent Execution"
-                      ),
-                      matchedTaskId &&
-                        React.createElement(
-                          "button",
-                          {
-                            type: "button",
-                            className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
-                            onClick: () => {
-                              setActiveView("board");
-                              loadTaskDetails(matchedTaskId);
-                            }
-                          },
-                          "📋 Task " + matchedTaskId + " ↗"
-                        )
-                    ),
-
-                    // Telemetry Grid
-                    React.createElement(
-                      "div",
-                      { className: "grid grid-cols-3 gap-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 text-center" },
-                      React.createElement(
-                        "div",
-                        null,
-                        React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Turns"),
-                        React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.turn_count || 0)
-                      ),
-                      React.createElement(
-                        "div",
-                        null,
-                        React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Tool Calls"),
-                        React.createElement("span", { className: "text-xs font-bold text-indigo-300" }, s.tool_calls_count || 0)
-                      ),
-                      React.createElement(
-                        "div",
-                        null,
-                        React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Messages"),
-                        React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.message_count || 0)
-                      )
-                    ),
-
-                    // Last Action / Snippet
-                    s.last_action &&
-                      React.createElement(
-                        "div",
-                        { className: "text-[11px] text-slate-400 bg-slate-950/40 px-2.5 py-1.5 rounded-lg border border-slate-800/60 font-mono truncate", title: s.last_action },
-                        "⚡ " + s.last_action
-                      )
-                  ),
-
-                  // Bottom Action: Session ID & Open Chat
-                  React.createElement(
-                    "div",
-                    { className: "pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" },
-                    React.createElement(
-                      "code",
-                      { className: "text-[10px] text-slate-500 font-mono truncate max-w-[140px]", title: s.session_id },
-                      s.session_id
-                    ),
-                    React.createElement(
-                      "a",
+                      "button",
                       {
-                        href: chatUrl,
-                        target: "_blank",
-                        rel: "noreferrer",
-                        className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600/90 hover:bg-indigo-600 text-white transition-colors cursor-pointer shadow-xs"
+                        key: cat.id,
+                        type: "button",
+                        className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 " +
+                          (memoryCategoryFilter === cat.id
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60"),
+                        onClick: () => setMemoryCategoryFilter(cat.id)
                       },
-                      "Open Chat ↗"
+                      cat.icon + " " + cat.label,
+                      React.createElement("span", {
+                        className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " +
+                          (memoryCategoryFilter === cat.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400")
+                      }, cat.count)
                     )
                   )
-                );
-              })
+                ),
+                // Search & Actions
+                (() => {
+                  const currentBoard = boards.find(b => b.slug === selectedBoard);
+                  const isAutoRecordOn = currentBoard ? (currentBoard.auto_record_memory !== false) : true;
+                  return React.createElement(
+                    "div",
+                    { className: "flex flex-wrap items-center gap-2" },
+                    currentBoard && React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer shrink-0 " +
+                          (isAutoRecordOn
+                            ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:text-white hover:bg-slate-800/80 shadow-xs"
+                            : "bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800"),
+                        title: "Click to toggle automatic memory recording from reviewer feedback for " + currentBoard.slug,
+                        onClick: async () => {
+                          const nextVal = !isAutoRecordOn;
+                          try {
+                            await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(currentBoard.slug), {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ auto_record_memory: nextVal })
+                            });
+                            showToast(`Auto-record memory ${nextVal ? "enabled" : "disabled"} for ${currentBoard.slug}`, "success");
+                            await loadBoards();
+                          } catch (err) {
+                            showToast("Failed to toggle auto-record: " + (err.message || String(err)), "error");
+                          }
+                        }
+                      },
+                      React.createElement("span", {
+                        className: "w-2 h-2 rounded-full " + (isAutoRecordOn ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
+                      }),
+                      "Auto-Record: " + (isAutoRecordOn ? "ON" : "OFF")
+                    ),
+                    React.createElement(
+                      "input",
+                      {
+                        type: "text",
+                        placeholder: "Search memories, tags, author...",
+                        className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-44 md:w-56",
+                        value: memorySearchQuery,
+                        onChange: (e) => setMemorySearchQuery(e.target.value)
+                      }
+                    ),
+                    React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        className: "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs shadow-indigo-600/30 transition-all cursor-pointer shrink-0",
+                        onClick: () => setShowAddMemoryModal(true)
+                      },
+                      "➕ Add Memory"
+                    )
+                  );
+                })()
+              ),
+
+              // Memory Cards Grid
+              filteredMemories.length === 0
+                ? React.createElement(
+                    "div",
+                    { className: "bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center" },
+                    React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-2xl mx-auto mb-3 text-slate-500" }, "🧠"),
+                    React.createElement("h3", { className: "text-sm font-semibold text-slate-300" }, "No Repository Memories Found"),
+                    React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-md mx-auto" },
+                      memorySearchQuery || memoryCategoryFilter !== "all"
+                        ? "No memories match your filter criteria. Try resetting the category or search."
+                        : "Repository memories persist architectural decisions, conventions, gotchas, and rejected paths for " + (selectedBoard || "this board") + " so future agent workers avoid repeat mistakes."
+                    ),
+                    React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        className: "mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all cursor-pointer",
+                        onClick: () => setShowAddMemoryModal(true)
+                      },
+                      "➕ Record First Memory"
+                    )
+                  )
+                : React.createElement(
+                    "div",
+                    { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" },
+                    filteredMemories.map((m) => {
+                      const catBadges = {
+                        decision: { icon: "💡", label: "Decision", bg: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" },
+                        gotcha: { icon: "⚠️", label: "Gotcha", bg: "bg-amber-500/10 text-amber-300 border-amber-500/30" },
+                        convention: { icon: "📐", label: "Convention", bg: "bg-sky-500/10 text-sky-300 border-sky-500/30" },
+                        rejected_path: { icon: "🚫", label: "Rejected Path", bg: "bg-purple-500/10 text-purple-300 border-purple-500/30" },
+                        general: { icon: "📝", label: "General", bg: "bg-slate-700/40 text-slate-300 border-slate-600/50" }
+                      };
+                      const badge = catBadges[m.category] || catBadges.general;
+
+                      return React.createElement(
+                        "div",
+                        {
+                          key: m.id,
+                          className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-xl p-4 transition-all duration-150 shadow-sm flex flex-col justify-between space-y-3"
+                        },
+                        React.createElement(
+                          "div",
+                          { className: "space-y-2.5" },
+                          // Card Top Row: Badge, Created At, Delete Button
+                          React.createElement(
+                            "div",
+                            { className: "flex items-center justify-between gap-2" },
+                            React.createElement(
+                              "span",
+                              { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + badge.bg },
+                              badge.icon + " " + badge.label
+                            ),
+                            React.createElement(
+                              "div",
+                              { className: "flex items-center gap-2" },
+                              React.createElement(
+                                "span",
+                                { className: "text-[11px] text-slate-500 font-mono" },
+                                timeAgo(m.created_at)
+                              ),
+                              React.createElement(
+                                "button",
+                                {
+                                  type: "button",
+                                  title: "Delete Memory",
+                                  className: "text-slate-500 hover:text-rose-300 p-1 rounded-md hover:bg-rose-500/20 transition-colors text-xs cursor-pointer",
+                                  onClick: () => handleDeleteMemory(m.id)
+                                },
+                                "🗑️"
+                              )
+                            )
+                          ),
+                          // Content
+                          React.createElement(
+                            "div",
+                            { className: "text-xs text-slate-200 leading-relaxed whitespace-pre-wrap select-text font-normal" },
+                            m.content
+                          )
+                        ),
+                        // Card Bottom Row: Author, Tags, Task Link
+                        React.createElement(
+                          "div",
+                          { className: "pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2" },
+                          React.createElement(
+                            "div",
+                            { className: "flex flex-wrap items-center gap-1.5" },
+                            React.createElement(
+                              "span",
+                              { className: "inline-flex items-center gap-1 text-[10px] text-slate-400 font-mono bg-slate-950/60 px-2 py-0.5 rounded-md border border-slate-800" },
+                              "👤 " + (m.author || "user")
+                            ),
+                            (m.tags || []).map((t, idx) =>
+                              React.createElement(
+                                "span",
+                                {
+                                  key: idx,
+                                  className: "text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                                },
+                                "#" + t
+                              )
+                            )
+                          ),
+                          m.task_id &&
+                            React.createElement(
+                              "button",
+                              {
+                                type: "button",
+                                className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
+                                onClick: () => {
+                                  setActiveView("board");
+                                  loadTaskDetails(m.task_id);
+                                }
+                              },
+                              "📋 " + m.task_id + " ↗"
+                            )
+                        )
+                      );
+                    })
+                  )
             )
       );
     };
@@ -2932,16 +3516,18 @@
                 {
                   type: "button",
                   className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer relative " +
-                    (activeView === "sessions"
+                    (activeView === "sessions" || activeView === "agents"
                       ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
                   onClick: () => {
-                    setActiveView("sessions");
+                    setActiveView("agents");
                     loadSessions();
+                    loadAgents();
+                    loadMemories(selectedBoard);
                   }
                 },
-                "🤖 AI Sessions",
-                (hasActiveAgents || sessionsList.some(s => s.status === "ongoing" || s.is_active)) &&
+                "🤖 Agents",
+                (hasActiveAgents || sessionsList.some(s => s.status === "ongoing" || s.is_active) || agentsList.some(a => a.is_active)) &&
                   React.createElement("span", {
                     className: "w-2 h-2 rounded-full bg-emerald-400 zfk-pulse-active shrink-0 ml-0.5"
                   })
@@ -2963,7 +3549,7 @@
           React.createElement(
             "div",
             { className: "flex flex-wrap items-center gap-2.5" },
-            (activeView === "instructions" || activeView === "activities" || activeView === "sessions") &&
+            (activeView === "instructions" || activeView === "activities" || activeView === "sessions" || activeView === "agents") &&
               React.createElement(
                 "button",
                 {
@@ -3108,7 +3694,7 @@
         ? renderActivities()
         : activeView === "instructions"
         ? renderInstructions()
-        : activeView === "sessions"
+        : (activeView === "sessions" || activeView === "agents")
         ? renderSessions()
         : boards.length === 0
         ? renderEmptyBoardState()
@@ -3473,10 +4059,10 @@
                           "div",
                           {
                             className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (
-                              (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                                ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
-                                : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                              (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                                 ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                : (t.title && t.title.includes("[Human Review]"))
+                                ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
                                 : t.blocking_parent_count > 0
                                 ? "bg-slate-800 border-slate-700 text-slate-300"
                                 : "bg-rose-500/15 border-rose-500/30 text-rose-300"
@@ -3484,10 +4070,10 @@
                           },
                           React.createElement("span", {
                             className: "w-2 h-2 rounded-full shrink-0 " + (
-                              (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                                ? "bg-teal-400"
-                                : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                              (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                                 ? "bg-amber-400"
+                                : (t.title && t.title.includes("[Human Review]"))
+                                ? "bg-teal-400"
                                 : t.blocking_parent_count > 0
                                 ? "bg-slate-400"
                                 : "bg-rose-400"
@@ -3496,10 +4082,10 @@
                           React.createElement(
                             "span",
                             { className: "text-[0.6875rem] truncate font-medium" },
-                            (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                              ? "🟢 Awaiting Human Merge"
-                              : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                            (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                               ? "🟠 Merge Conflict"
+                              : (t.title && t.title.includes("[Human Review]"))
+                              ? "🟢 Awaiting Human Merge"
                               : t.blocking_parent_count > 0
                               ? "⏳ Blocked by Parent Task"
                               : "🛑 Action Required / Stuck"
@@ -4270,6 +4856,148 @@
           )
         ),
 
+      // Record Memory Modal
+      showAddMemoryModal &&
+        React.createElement(
+          "div",
+          {
+            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
+            onClick: () => setShowAddMemoryModal(false)
+          },
+          React.createElement(
+            "div",
+            {
+              className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100 animate-fade-in",
+              onClick: (e) => e.stopPropagation()
+            },
+            React.createElement(
+              "div",
+              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+              React.createElement(
+                "div",
+                null,
+                React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "🧠 Record Repository Memory"),
+                React.createElement("p", { className: "text-xs text-slate-400 font-normal m-0 mt-0.5" }, "Persist decisions, conventions, and gotchas for " + (selectedBoard || "board"))
+              ),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                  onClick: () => setShowAddMemoryModal(false)
+                },
+                "✕"
+              )
+            ),
+            React.createElement(
+              "form",
+              { onSubmit: handleCreateMemorySubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
+              React.createElement(
+                "div",
+                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+                // Category
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Category"),
+                  React.createElement(
+                    "select",
+                    {
+                      className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
+                      value: newMemoryForm.category,
+                      onChange: (e) => setNewMemoryForm({ ...newMemoryForm, category: e.target.value })
+                    },
+                    React.createElement("option", { value: "convention" }, "📐 Convention (Architecture / Style / Code Rules)"),
+                    React.createElement("option", { value: "gotcha" }, "⚠️ Gotcha (Pitfall / Bug to Avoid)"),
+                    React.createElement("option", { value: "decision" }, "💡 Decision (Key Architectural Decision)"),
+                    React.createElement("option", { value: "rejected_path" }, "🚫 Rejected Path (Alternative Tried & Discarded)"),
+                    React.createElement("option", { value: "general" }, "📝 General Knowledge")
+                  )
+                ),
+                // Content
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Memory / Knowledge Content *"),
+                  React.createElement("textarea", {
+                    required: true,
+                    rows: 4,
+                    placeholder: "e.g. Always run 'python3 -m unittest test_plugin.py' before marking tasks done, as SQLite cascade triggers are verified there.",
+                    className: "w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none font-sans",
+                    value: newMemoryForm.content,
+                    onChange: (e) => setNewMemoryForm({ ...newMemoryForm, content: e.target.value })
+                  })
+                ),
+                // Tags
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Tags (comma-separated)"),
+                  React.createElement("input", {
+                    type: "text",
+                    placeholder: "sqlite, tests, git, caching",
+                    className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
+                    value: newMemoryForm.tags,
+                    onChange: (e) => setNewMemoryForm({ ...newMemoryForm, tags: e.target.value })
+                  })
+                ),
+                // Author & Task ID
+                React.createElement(
+                  "div",
+                  { className: "grid grid-cols-2 gap-3" },
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Author"),
+                    React.createElement("input", {
+                      type: "text",
+                      placeholder: "user",
+                      className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
+                      value: newMemoryForm.author,
+                      onChange: (e) => setNewMemoryForm({ ...newMemoryForm, author: e.target.value })
+                    })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Related Task ID (Optional)"),
+                    React.createElement("input", {
+                      type: "text",
+                      placeholder: "zf-xxxxxxxx",
+                      className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono",
+                      value: newMemoryForm.task_id || "",
+                      onChange: (e) => setNewMemoryForm({ ...newMemoryForm, task_id: e.target.value })
+                    })
+                  )
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0" },
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
+                    onClick: () => setShowAddMemoryModal(false)
+                  },
+                  "Cancel"
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    type: "submit",
+                    disabled: submittingMemory,
+                    className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+                  },
+                  submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"),
+                  "Save Memory"
+                )
+              )
+            )
+          )
+        ),
+
       // New Board Modal
       showNewBoardModal &&
         React.createElement(
@@ -4389,6 +5117,18 @@
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers (Optional)"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "alice, bob (GitHub usernames)",
+                      value: newBoardForm.additional_reviewer_usernames || "",
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, additional_reviewer_usernames: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Comma-separated usernames trusted to submit automation-relevant PR feedback.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
                     React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
                     React.createElement("input", {
                       type: "number",
@@ -4400,6 +5140,22 @@
                       onChange: (e) => setNewBoardForm({ ...newBoardForm, max_concurrent_running: e.target.value })
                     }),
                     React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once. Other boards keep their own limits.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-1 flex items-center justify-between" },
+                    React.createElement(
+                      "div",
+                      null,
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🧠 Auto-Record Memory"),
+                      React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Capture gotchas & conventions automatically from reviewer feedback.")
+                    ),
+                    React.createElement("input", {
+                      type: "checkbox",
+                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                      checked: Boolean(newBoardForm.auto_record_memory !== false),
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, auto_record_memory: e.target.checked })
+                    })
                   )
                 ),
                 React.createElement(
@@ -4493,6 +5249,18 @@
                 React.createElement(
                   "div",
                   { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers"),
+                  React.createElement("input", {
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                    placeholder: "alice, bob (GitHub usernames; optional)",
+                    value: editBoardForm.additional_reviewer_usernames || "",
+                    onChange: (e) => setEditBoardForm({ ...editBoardForm, additional_reviewer_usernames: e.target.value })
+                  }),
+                  React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")
+                ),
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
                   React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
                   React.createElement("input", {
                     type: "number",
@@ -4504,6 +5272,22 @@
                     onChange: (e) => setEditBoardForm({ ...editBoardForm, max_concurrent_running: e.target.value })
                   }),
                   React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once. Other boards keep their own limits.")
+                ),
+                React.createElement(
+                  "div",
+                  { className: "pt-1 flex items-center justify-between" },
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🧠 Auto-Record Memory"),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Capture gotchas & conventions automatically from reviewer feedback.")
+                  ),
+                  React.createElement("input", {
+                    type: "checkbox",
+                    className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                    checked: Boolean(editBoardForm.auto_record_memory !== false),
+                    onChange: (e) => setEditBoardForm({ ...editBoardForm, auto_record_memory: e.target.checked })
+                  })
                 )
               ),
               React.createElement(
@@ -4594,6 +5378,20 @@
                   onChange: (e) => setSettingsForm({ ...settingsForm, max_active_tasks: e.target.value })
                 }),
                 React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps total tasks allowed in 'running' across all boards combined. Controls how many git worktrees are prepared from 'todo' to prevent queue and disk flooding. Default: 10.")
+              ),
+              React.createElement(
+                "div",
+                { className: "space-y-1.5" },
+                React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Global Max Concurrent LLM Workers"),
+                React.createElement("input", {
+                  type: "number",
+                  min: 1,
+                  step: 1,
+                  className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                  value: settingsForm.max_concurrent_llm_workers ?? 10,
+                  onChange: (e) => setSettingsForm({ ...settingsForm, max_concurrent_llm_workers: e.target.value })
+                }),
+                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")
               ),
               React.createElement(
                 "div",
@@ -4698,6 +5496,187 @@
                       checked: settingsForm.enable_cron_scheduler !== false,
                       onChange: (e) => setSettingsForm({ ...settingsForm, enable_cron_scheduler: e.target.checked })
                     }
+                  )
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-between" },
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-1.5" },
+                      React.createElement("span", { className: "text-sm" }, "🧠"),
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")
+                    ),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules from reviewer feedback and rejections.")
+                  ),
+                  React.createElement(
+                    "input",
+                    {
+                      type: "checkbox",
+                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                      checked: Boolean(settingsForm.auto_record_memory !== false),
+                      onChange: (e) => setSettingsForm({ ...settingsForm, auto_record_memory: e.target.checked })
+                    }
+                  )
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-between" },
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-1.5" },
+                      React.createElement("span", { className: "text-sm" }, "🔭"),
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Langfuse Observability & Tracing")
+                    ),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Trace LLM calls, tool executions, latencies, and token costs across all agent profiles.")
+                  ),
+                  React.createElement(
+                    "input",
+                    {
+                      type: "checkbox",
+                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                      checked: Boolean(settingsForm.langfuse_enabled),
+                      onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_enabled: e.target.checked })
+                    }
+                  )
+                ),
+                settingsForm.langfuse_enabled && React.createElement(
+                  "div",
+                  { className: "space-y-3 pt-1 bg-slate-950/60 p-3 rounded-lg border border-slate-800/70" },
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" },
+                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Langfuse Host / Base URL"),
+                    React.createElement("input", {
+                      type: "text",
+                      placeholder: "https://cloud.langfuse.com",
+                      className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                      value: settingsForm.langfuse_base_url ?? "https://cloud.langfuse.com",
+                      onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_base_url: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Cloud instance (https://cloud.langfuse.com) or self-hosted URL (e.g. http://localhost:3000).")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5" },
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Public Key"),
+                      React.createElement("input", {
+                        type: "text",
+                        placeholder: "pk-lf-...",
+                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                        value: settingsForm.langfuse_public_key ?? "",
+                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_public_key: e.target.value })
+                      })
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between" },
+                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Secret Key"),
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "text-[10px] text-slate-400 hover:text-slate-200 cursor-pointer",
+                            onClick: () => setShowLangfuseSecret(!showLangfuseSecret)
+                          },
+                          showLangfuseSecret ? "Hide" : "Show"
+                        )
+                      ),
+                      React.createElement("input", {
+                        type: showLangfuseSecret ? "text" : "password",
+                        placeholder: "sk-lf-...",
+                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                        value: settingsForm.langfuse_secret_key ?? "",
+                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_secret_key: e.target.value })
+                      })
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5" },
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Environment Tag"),
+                      React.createElement("input", {
+                        type: "text",
+                        placeholder: "zerofactory",
+                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 font-mono",
+                        value: settingsForm.langfuse_env ?? "zerofactory",
+                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_env: e.target.value })
+                      })
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Content Capture Mode"),
+                      React.createElement(
+                        "select",
+                        {
+                          className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer",
+                          value: settingsForm.langfuse_capture_mode ?? "sanitized",
+                          onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_capture_mode: e.target.value })
+                        },
+                        React.createElement("option", { value: "sanitized" }, "Sanitized (Redact secrets & truncate)"),
+                        React.createElement("option", { value: "metadata" }, "Metadata Only (No prompts/outputs)"),
+                        React.createElement("option", { value: "full" }, "Full Content (Raw payloads)")
+                      )
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-t border-slate-800/60" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-1.5 text-[11px]" },
+                      React.createElement("span", { className: "text-emerald-400" }, "✓"),
+                      React.createElement("span", { className: "text-slate-400" }, "Syncs to zf-orchestrator, zf-builder, zf-reviewer & root")
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-2" },
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          disabled: isTestingLangfuse,
+                          onClick: handleTestLangfuse,
+                          className: "px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
+                        },
+                        isTestingLangfuse ? "Testing..." : "Test Connection"
+                      )
+                    )
+                  ),
+                  langfuseTestResult && React.createElement(
+                    "div",
+                    {
+                      className: `text-[11px] px-2.5 py-1.5 rounded border ${
+                        langfuseTestResult.ok
+                          ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                          : "bg-rose-950/40 border-rose-800/60 text-rose-300"
+                      }`
+                    },
+                    (langfuseTestResult.ok ? "✓ " : "✕ ") + langfuseTestResult.message
                   )
                 )
               ),
