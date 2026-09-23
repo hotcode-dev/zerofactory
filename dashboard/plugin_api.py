@@ -239,27 +239,6 @@ def init_db(force: bool = False):
                     "ALTER TABLE boards ADD COLUMN additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]'"
                 )
 
-            # Idempotent migration: the pipeline no longer has a 'ready' column
-            # (dispatch is now direct todo -> running). Normalize any legacy rows
-            # still stuck in 'ready' to 'todo' so the next dispatch cycle picks
-            # them up; the dispatcher's atomic claim CAS (status = 'todo') is
-            # the safety net against double-dispatch.
-            legacy_ready_ids = [
-                r[0] for r in conn.execute("SELECT id FROM tasks WHERE status = 'ready'").fetchall()
-            ]
-            if legacy_ready_ids:
-                now_ts = int(time.time())
-                for _legacy_id in legacy_ready_ids:
-                    conn.execute(
-                        "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ? AND status = 'ready'",
-                        (now_ts, _legacy_id),
-                    )
-                    conn.execute(
-                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) "
-                        "VALUES (?, 'dispatcher', 'migrate', \"Legacy 'ready' status normalized to 'todo'\", ?)",
-                        (_legacy_id, now_ts),
-                    )
-
             # Seed default global settings if missing. Values are derived from the
             # shared constants (settings.DEFAULT_SETTING_VALUES) so the seed rows and
             # the in-code defaults can never drift apart.

@@ -3947,60 +3947,6 @@ class TestZeroFactory(unittest.TestCase):
             else:
                 os.environ["ZEROFACTORY_DB"] = old_db
 
-    def test_46a_legacy_ready_status_normalized_to_todo_on_init(self):
-        """init_db() must normalize legacy rows still in the removed 'ready'
-        status to 'todo' (logging a task_activity row per normalized task),
-        and the migration must be idempotent on a second run."""
-        import sqlite3
-
-        old_db = os.environ.get("ZEROFACTORY_DB")
-        td = tempfile.mkdtemp(prefix="zf-ready-migrate-")
-        old_path = Path(td) / "legacy_ready.db"
-        try:
-            conn = sqlite3.connect(str(old_path))
-            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', max_concurrent_running INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
-            conn.execute("""CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, branch_name TEXT, pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)""")
-            conn.execute("CREATE TABLE task_links (parent_id TEXT NOT NULL, child_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (parent_id, child_id))")
-            conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, author TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL)")
-            conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, details TEXT DEFAULT '', created_at INTEGER NOT NULL)")
-            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)")
-            conn.execute("INSERT INTO boards (slug, created_at, updated_at) VALUES ('legacy-board', 1, 1)")
-            conn.execute(
-                "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) "
-                "VALUES ('legacy-1', 'legacy-board', 'Stuck task', 'ready', 'zf-builder', 'P2', 1000, 1000)"
-            )
-            conn.commit()
-            conn.close()
-            os.environ["ZEROFACTORY_DB"] = str(old_path)
-            try:
-                init_db(force=True)  # must normalize the legacy ready row in place
-                conn = sqlite3.connect(str(old_path))
-                row = conn.execute("SELECT status FROM tasks WHERE id = 'legacy-1'").fetchone()
-                acts = conn.execute("SELECT actor, action FROM task_activity WHERE task_id = 'legacy-1' AND action = 'migrate'").fetchall()
-                conn.close()
-                self.assertEqual(row[0], "todo", "legacy 'ready' row must be normalized to 'todo'")
-                self.assertEqual(len(acts), 1, "one migrate activity row per normalized task")
-
-                # Idempotency: a second init_db() must not double-log
-                init_db(force=True)
-                conn = sqlite3.connect(str(old_path))
-                acts2 = conn.execute("SELECT action FROM task_activity WHERE task_id = 'legacy-1' AND action = 'migrate'").fetchall()
-                row2 = conn.execute("SELECT status FROM tasks WHERE id = 'legacy-1'").fetchone()
-                conn.close()
-                self.assertEqual(len(acts2), 1, "migration must be idempotent (no duplicate activity rows)")
-                self.assertEqual(row2[0], "todo")
-            finally:
-                if old_db is None:
-                    os.environ.pop("ZEROFACTORY_DB", None)
-                else:
-                    os.environ["ZEROFACTORY_DB"] = old_db
-        finally:
-            shutil.rmtree(td, ignore_errors=True)
-            if old_db is None:
-                os.environ.pop("ZEROFACTORY_DB", None)
-            else:
-                os.environ["ZEROFACTORY_DB"] = old_db
-
     def test_46_board_max_concurrent_running_dispatch(self):
         """The dispatch cycle caps concurrent 'running' tasks per board at the
         board's max_concurrent_running (default 1). With cap 1 and three todo
