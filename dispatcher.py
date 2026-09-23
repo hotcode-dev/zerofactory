@@ -2509,48 +2509,6 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 except Exception:
                     settings = {}
 
-                # 0b. Defensive migration: normalize legacy 'ready' status rows.
-                #     The ready status was removed from the workflow (tasks now
-                #     transition directly todo -> running), so the promotion
-                #     query below only selects 'todo' rows. A pre-refactor DB
-                #     that still contains 'ready' rows would be silently
-                #     orphaned — invisible to dispatch and unmovable via the
-                #     CLI/API (which reject 'ready'). The canonical migration
-                #     lives in init_db() (dashboard/plugin_api.py); this
-                #     re-mapping is the safety net for DBs that are driven
-                #     exclusively through the dispatcher and never opened via
-                #     the API. Idempotent: a no-op once no 'ready' rows remain.
-                migrated_ready = 0
-                try:
-                    _legacy_ready_rows = cursor.execute(
-                        "SELECT id FROM tasks WHERE status = 'ready'"
-                    ).fetchall()
-                    if _legacy_ready_rows:
-                        _migrated_ids = [str(r["id"]) for r in _legacy_ready_rows]
-                        cursor.execute(
-                            "UPDATE tasks SET status = 'todo', updated_at = ? WHERE status = 'ready'",
-                            (now,),
-                        )
-                        for _mr_id in _migrated_ids:
-                            cursor.execute(
-                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'migrate', ?, ?)",
-                                (_mr_id, "Legacy 'ready' status normalized to 'todo'", now),
-                            )
-                        migrated_ready = len(_migrated_ids)
-                        _log.warning(
-                            "Migrated %d legacy 'ready' task(s) to 'todo': %s",
-                            migrated_ready,
-                            ", ".join(_migrated_ids),
-                        )
-                        # Commit immediately so the status normalization is
-                        # durable even if a later step in this cycle fails and
-                        # the shared transaction is rolled back: the rows are
-                        # then simply picked up by the promotion query on the
-                        # next cycle.
-                        conn.commit()
-                except Exception as e:
-                    _log.warning("Legacy 'ready' status migration skipped: %s", e)
-
                 # 1. Unblock tasks whose parent dependencies are all done
                 cursor.execute("""
                     SELECT id, title FROM tasks
@@ -3201,8 +3159,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 "reaped": reaped,
                 "prs_opened": prs_opened,
                 "scans_triggered": scans_triggered,
-                "migrated_ready": migrated_ready,
-                "message": f"Dispatch cycle complete: {unblocked} unblocked, {promoted} promoted, {dispatched} dispatched to running, {reaped} reaped, {prs_opened} PRs opened, {scans_triggered} scans triggered, {migrated_ready} legacy ready-status tasks migrated."
+                "message": f"Dispatch cycle complete: {unblocked} unblocked, {promoted} promoted, {dispatched} dispatched to running, {reaped} reaped, {prs_opened} PRs opened, {scans_triggered} scans triggered."
             }
         except Exception as e:
             _log.error("Error during dispatch cycle: %s", e)
