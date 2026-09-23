@@ -4383,6 +4383,104 @@ class TestZeroFactory(unittest.TestCase):
                 popen.return_value = proc
                 self.assertTrue(builtin_cron.trigger_builtin_job("zero-factory-task-queue-check")["ok"])
 
+    def test_48f_trigger_builtin_job_does_not_block_on_dispatcher_lock(self):
+        """Manual LLM cron runs must NOT serialize behind a running dispatch cycle.
+
+        Regression (commit 7fcc087, global LLM-worker limit): the capacity gate
+        in trigger_builtin_job() took a BLOCKING fcntl.flock on the shared
+        dispatcher lock file, so a dashboard/CLI `cron run` while a dispatch
+        cycle was in progress stalled for the full cycle duration (minutes,
+        when opening PRs over a slow network). The gate is best-effort and the
+        occupancy figure is a WAL-safe COUNT(*) + in-process counters, so it
+        must fail fast, never block behind the dispatch cycle.
+        """
+        import fcntl
+        import sqlite3
+        import tempfile
+        import threading
+        import time
+        from unittest.mock import MagicMock, patch
+        import builtin_cron
+
+        with tempfile.TemporaryDirectory() as td:
+            db_file = Path(td) / "lock_hold.db"
+            lock_path = Path(td) / "dispatch.lock"
+            with sqlite3.connect(db_file) as conn:
+                conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER)")
+                conn.execute("CREATE TABLE tasks (id TEXT, status TEXT)")
+                conn.execute("INSERT INTO settings VALUES ('max_concurrent_llm_workers', '3', 1)")
+                # Spare capacity: trigger should proceed, not be rejected.
+
+            # Simulate another process (a running dispatch cycle) holding the
+            # shared dispatcher flock for the full duration of the trigger call.
+            released = threading.Event()
+
+            def hold_lock():
+                fh = open(lock_path, "a+b")
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                time.sleep(3.0)
+                fcntl.flock(fh, fcntl.LOCK_UN)
+                fh.close()
+                released.set()
+
+            holder = threading.Thread(target=hold_lock)
+            holder.start()
+
+            # Wait until the holder actually owns the lock (probe with LOCK_NB),
+            # so the "cycle in progress" precondition is real, not raced.
+            deadline = time.monotonic() + 5.0
+            probe = open(lock_path, "a+b")
+            while time.monotonic() < deadline:
+                try:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(probe, fcntl.LOCK_UN)
+                except BlockingIOError:
+                    break
+                time.sleep(0.02)
+            else:
+                probe.close()
+                self.fail("Could not confirm the dispatcher lock is held by the simulating process")
+            probe.close()
+
+            jobs = {
+                "zero-factory-daily-report": {"no_agent": False, "profile": "zf-orchestrator"},
+                "zero-factory-task-queue-check": {"no_agent": True, "profile": "zf-orchestrator"},
+            }
+            proc = MagicMock()
+            proc.returncode = 0
+            proc.pid = 456
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file), "ZEROFACTORY_LOCK_PATH": str(lock_path)}), \
+                 patch.object(builtin_cron, "get_all_builtin_cron_jobs", return_value=jobs), \
+                 patch.object(builtin_cron, "ensure_builtin_cron_jobs"), \
+                 patch.object(builtin_cron, "subprocess", create=True) as sub:
+                sub.Popen.return_value = proc
+                sub.DEVNULL = -3
+
+                # LLM job while the dispatch cycle holds the lock: must return
+                # quickly (< 2s) with a clean success result, not stall ~3s.
+                started = time.monotonic()
+                result = builtin_cron.trigger_builtin_job("zero-factory-daily-report")
+                elapsed = time.monotonic() - started
+                self.assertTrue(result["ok"], f"unexpected trigger result: {result}")
+                self.assertLess(
+                    elapsed, 2.0,
+                    f"trigger_blocked behind dispatcher lock for {elapsed:.1f}s; "
+                    "capacity gate must not serialize behind the dispatch cycle",
+                )
+                sub.Popen.assert_called_once()
+
+                # No-Agent queue watchdog is exempt and also unaffected.
+                sub.Popen.reset_mock()
+                started = time.monotonic()
+                result = builtin_cron.trigger_builtin_job("zero-factory-task-queue-check")
+                elapsed = time.monotonic() - started
+                self.assertTrue(result["ok"], f"unexpected trigger result: {result}")
+                self.assertLess(elapsed, 2.0)
+                sub.Popen.assert_called_once()
+
+            self.assertTrue(released.wait(10))
+            holder.join(10)
+
     def test_49_idle_improvement_scan_dispatch(self):
         """Dispatcher triggers improvement scan on idle and respects threshold, cooldown, and limits."""
         import time
