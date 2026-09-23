@@ -6538,12 +6538,20 @@ class TestZeroFactory(unittest.TestCase):
             ))
             return t_res["id"]
 
-        def _set_started_and_pid(t_id, started_at, worker_pid):
+        def _set_started_and_pid(t_id, started_at, worker_pid, ongoing_session=None):
             import json as _json
+            meta = {"started_at": started_at, "worker_pid": worker_pid}
+            # Real dispatch always records an ongoing session in task metadata
+            # (spawn_agent_worker). Without one, a dead-pid task with no
+            # _active_workers entry falls into the reaper's orphan-recovery
+            # path (back to 'todo') instead of the worker_lost -> blocked
+            # path this harness pins, so mirror the real shape.
+            if ongoing_session is not None:
+                meta["sessions"] = [ongoing_session]
             with get_db_conn() as conn:
                 conn.execute(
                     "UPDATE tasks SET updated_at = ?, metadata = ? WHERE id = ?",
-                    (started_at, _json.dumps({"started_at": started_at, "worker_pid": worker_pid}), t_id),
+                    (started_at, _json.dumps(meta), t_id),
                 )
                 conn.commit()
 
@@ -6636,7 +6644,14 @@ class TestZeroFactory(unittest.TestCase):
             log3 = log_dir / f"worker_{t3}.log"
             log3.write_text("died after write\n")
             os.utime(log3, (now, now))  # fresh mtime, then the process died
-            _set_started_and_pid(t3, started3, dead_pid)  # NOT registered in _active_workers
+            _set_started_and_pid(
+                t3, started3, dead_pid,
+                ongoing_session={
+                    "session_id": "dead-pid-case",
+                    "status": "ongoing",
+                    "started_at": started3,
+                },
+            )  # NOT registered in _active_workers; ongoing session mirrors real dispatch
 
             reaped3, status3, _to3, acts3, term3 = _run_reap(t3)
 
