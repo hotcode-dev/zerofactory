@@ -2706,6 +2706,159 @@ class TestZeroFactory(unittest.TestCase):
             stop_task_worker("task-test-stop")
             self.assertNotIn("task-test-stop", _active_workers)
             mock_term.assert_called_once_with(mock_proc, 88888)
+
+    # -- test_89: worker termination signals the whole process group --------
+    # All spawn sites use start_new_session=True (new session, PGID == child
+    # PID). Signalling only the direct hermes child left the descendant tree
+    # (agent loop, git, npm, network) orphaned. These tests pin the group
+    # termination contract.
+
+    def test_89a_terminate_worker_process_signals_process_group(self):
+        """Group path: os.killpg SIGTERM then SIGKILL (pgid == child PID);
+        child-only proc.terminate()/proc.kill() must NOT be used."""
+        import signal as signal_mod
+        import subprocess as subprocess_mod
+        from unittest.mock import MagicMock, patch
+        from dispatcher import terminate_worker_process
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 12345
+        # Simulate the child ignoring SIGTERM: the grace wait expires.
+        mock_proc.wait.side_effect = subprocess_mod.TimeoutExpired(cmd="hermes", timeout=2.0)
+
+        with patch("dispatcher.os.getpgid", return_value=12345) as mock_getpgid, \
+             patch("dispatcher.os.killpg") as mock_killpg:
+            terminate_worker_process(mock_proc, 12345)
+
+        mock_getpgid.assert_called_once_with(12345)
+        # Probe (signal 0), SIGTERM, SIGKILL — all against the GROUP.
+        signals = [c.args for c in mock_killpg.call_args_list]
+        self.assertIn((12345, 0), signals)
+        self.assertIn((12345, signal_mod.SIGTERM), signals)
+        self.assertIn((12345, signal_mod.SIGKILL), signals)
+        self.assertEqual(signals[0], (12345, 0))  # liveness probe first
+        self.assertEqual(signals[1], (12345, signal_mod.SIGTERM))
+        self.assertEqual(signals[-1], (12345, signal_mod.SIGKILL))
+        # Child-only signalling must NOT happen on the group path.
+        mock_proc.terminate.assert_not_called()
+        mock_proc.kill.assert_not_called()
+
+    def test_89b_terminate_worker_process_pid_only_uses_killpg(self):
+        """PID-only fallback (metadata path, no live handle): killpg via
+        pgid == child PID since start_new_session=True guarantees it."""
+        import signal as signal_mod
+        import subprocess as subprocess_mod
+        from unittest.mock import patch
+        from dispatcher import terminate_worker_process
+
+        with patch("dispatcher.os.killpg", side_effect=lambda g, s: None) as mock_killpg, \
+             patch("dispatcher.time.sleep"):
+            terminate_worker_process(None, 4321)
+
+        signals = [c.args for c in mock_killpg.call_args_list]
+        self.assertEqual(signals, [(4321, 0), (4321, signal_mod.SIGTERM), (4321, signal_mod.SIGKILL)])
+
+    def test_89c_terminate_worker_process_dead_group_swallows_error(self):
+        """killpg of a dead/unknown group raises ProcessLookupError -> the
+        helper swallows it (fail-open), logs, and never raises."""
+        from unittest.mock import MagicMock, patch
+        from dispatcher import terminate_worker_process
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 999
+        with patch("dispatcher.os.getpgid", return_value=999), \
+             patch("dispatcher.os.killpg", side_effect=ProcessLookupError(3, "No such process")):
+            terminate_worker_process(mock_proc, 999)  # must not raise
+        mock_proc.terminate.assert_not_called()
+        mock_proc.kill.assert_not_called()
+
+        # Same for the PID-only fallback path.
+        with patch("dispatcher.os.killpg", side_effect=ProcessLookupError(3, "No such process")):
+            terminate_worker_process(None, 999)  # must not raise
+
+    def test_89d_stop_task_worker_reaps_descendants_integration(self):
+        """Integration (real processes, Linux): a worker spawned in its own
+        session with a live descendant is fully reaped by
+        stop_task_worker — no orphaned processes survive.
+
+        The worker is ``sh -c 'sleep 300 & sleep 300'`` in a new session: the
+        sh process is the group leader and the backgrounded sleep is a
+        descendant in the SAME group (the exact shape of a hermes wrapper +
+        its agent loop). The old child-only SIGTERM/SIGKILL would have left
+        the descendant group member orphaned.
+        """
+        import os as os_mod
+        import subprocess
+        import time
+        from dispatcher import stop_task_worker, _active_workers
+
+        if not hasattr(os_mod, "killpg"):
+            self.skipTest("os.killpg unavailable (non-POSIX platform)")
+
+        worker = None
+        pgid = None
+        try:
+            worker = subprocess.Popen(
+                ["sh", "-c", "sleep 300 & sleep 300"],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            time.sleep(0.4)
+            worker_pid = worker.pid
+            pgid = os_mod.getpgid(worker_pid)
+            self.assertEqual(pgid, worker_pid, "worker must lead its own session")
+
+            # Confirm a descendant really exists in the group before we stop
+            # it (the backgrounded sleep), so the test guards the actual
+            # orphan scenario.
+            descendant = False
+            for entry in os_mod.listdir("/proc"):
+                if not entry.isdigit():
+                    continue
+                try:
+                    with open(f"/proc/{entry}/stat") as st:
+                        raw = st.read()
+                    # comm is wrapped in parentheses and may contain spaces;
+                    # anchor on the LAST ')' so the numeric fields align:
+                    # rest = [state, ppid, pgrp, session, ...]
+                    rest = raw[raw.rindex(")") + 1:].split()
+                    if int(rest[2]) == pgid and int(entry) != worker_pid:
+                        descendant = True
+                except (OSError, ValueError):
+                    continue
+            self.assertTrue(descendant, "setup: expected a descendant inside the worker group")
+
+            _active_workers["task-89d"] = worker
+            try:
+                stop_task_worker("task-89d")
+                # The WHOLE group (leader + descendant) must be gone after the
+                # grace window + SIGKILL.
+                deadline = time.monotonic() + 15.0
+                group_alive = True
+                while time.monotonic() < deadline:
+                    try:
+                        os_mod.killpg(pgid, 0)
+                        time.sleep(0.1)
+                    except ProcessLookupError:
+                        group_alive = False
+                        break
+                self.assertFalse(group_alive, "worker process group survived stop_task_worker")
+            finally:
+                _active_workers.pop("task-89d", None)
+        finally:
+            # Best-effort sweep of the whole group in case of partial teardown.
+            if pgid is not None:
+                try:
+                    os_mod.killpg(pgid, 9)
+                except OSError:
+                    pass
+            if worker is not None:
+                try:
+                    worker.wait(timeout=5)
+                except Exception:
+                    pass
+
     def _create_conflict_test_db(self, db_file: Path) -> None:
         """Create the scratch SQLite schema used by the conflict-handling tests."""
         import sqlite3
