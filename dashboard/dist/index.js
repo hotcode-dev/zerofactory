@@ -89,7 +89,6 @@
       idle_scan_active_threshold: 2,
       idle_scan_cooldown_minutes: 15,
       idle_scan_max_todo: 2,
-      enable_cron_scheduler: true,
       langfuse_enabled: false,
       langfuse_base_url: "https://cloud.langfuse.com",
       langfuse_public_key: "",
@@ -200,7 +199,6 @@
             idle_scan_active_threshold: data.settings.idle_scan_active_threshold ?? 2,
             idle_scan_cooldown_minutes: data.settings.idle_scan_cooldown_minutes ?? 15,
             idle_scan_max_todo: data.settings.idle_scan_max_todo ?? 2,
-            enable_cron_scheduler: isCronEnabled,
             langfuse_enabled: Boolean(data.settings.langfuse_enabled),
             langfuse_base_url: data.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
             langfuse_public_key: data.settings.langfuse_public_key ?? "",
@@ -227,7 +225,6 @@
           idle_scan_active_threshold: Math.max(1, parseInt(settingsForm.idle_scan_active_threshold, 10) || 2),
           idle_scan_cooldown_minutes: Math.max(1, parseInt(settingsForm.idle_scan_cooldown_minutes, 10) || 15),
           idle_scan_max_todo: Math.max(0, parseInt(settingsForm.idle_scan_max_todo, 10) || 0),
-          enable_cron_scheduler: Boolean(settingsForm.enable_cron_scheduler !== false),
           langfuse_enabled: Boolean(settingsForm.langfuse_enabled),
           langfuse_base_url: String(settingsForm.langfuse_base_url || "").trim(),
           langfuse_public_key: String(settingsForm.langfuse_public_key || "").trim(),
@@ -250,7 +247,6 @@
             idle_scan_active_threshold: res.settings.idle_scan_active_threshold ?? 2,
             idle_scan_cooldown_minutes: res.settings.idle_scan_cooldown_minutes ?? 15,
             idle_scan_max_todo: res.settings.idle_scan_max_todo ?? 2,
-            enable_cron_scheduler: isCronEnabled,
             langfuse_enabled: Boolean(res.settings.langfuse_enabled),
             langfuse_base_url: res.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
             langfuse_public_key: res.settings.langfuse_public_key ?? "",
@@ -259,8 +255,6 @@
             langfuse_env: res.settings.langfuse_env ?? "zerofactory",
             auto_record_memory: res.settings.auto_record_memory ?? true
           });
-          setCronSchedulerEnabled(isCronEnabled);
-          loadCronJobs();
         }
         showToast("Global settings saved successfully!", "success");
         setShowSettingsModal(false);
@@ -5455,29 +5449,6 @@
                       onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_max_todo: e.target.value })
                     }),
                     React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Suppresses scan if todo backlog >= this.")
-                  )
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center justify-between" },
-                  React.createElement(
-                    "div",
-                    null,
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Background Cron Scheduler"),
-                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Enable periodic background cron ticking for queue health checks, daily metrics, and automated scanners.")
-                  ),
-                  React.createElement(
-                    "input",
-                    {
-                      type: "checkbox",
-                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-                      checked: settingsForm.enable_cron_scheduler !== false,
-                      onChange: (e) => setSettingsForm({ ...settingsForm, enable_cron_scheduler: e.target.checked })
-                    }
                   )
                 )
               ),
