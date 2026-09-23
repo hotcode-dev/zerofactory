@@ -5,7 +5,7 @@ Designed for Hermes No-Agent Mode (`no_agent: true`).
 Runs on a scheduled interval without calling an LLM:
 1. Detects and reaps stuck worker subprocesses.
 2. Moves timed-out tasks to 'blocked'.
-3. Triggers the dispatcher loop to promote ready tasks and handle PR workflows.
+3. Triggers the dispatcher loop to promote todo tasks and handle PR workflows.
 4. If healthy: outputs `{"wakeAgent": false}` (silent execution).
 5. If issues found: outputs markdown alert for operator delivery.
 """
