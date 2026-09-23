@@ -2786,7 +2786,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                         # If task has an associated PR, check GitHub PR state first
                         if row["pr_url"]:
-                            if row["status"] == "done":
+                            if row["status"] == "done" and (assignee == "zf-reviewer" or not workspace_path or not Path(workspace_path).exists()):
                                 continue
 
                             try:
@@ -2837,7 +2837,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     if meta.get("permanently_blocked") or row["status"] == "running":
                                         continue
 
-                                    if assignee != "zf-reviewer" and row["status"] == "done":
+                                    if assignee != "zf-reviewer" and row["status"] in ("done", "blocked"):
                                         # Author finished re-implementing/fixing review feedback -> commit and update PR below
                                         pass
                                     elif mergeable == "CONFLICTING":
@@ -2979,7 +2979,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             except Exception as e:
                                 _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
 
-                        if assignee != "zf-reviewer" and (not row["pr_url"] or row["status"] == "done"):
+                        if assignee != "zf-reviewer" and (not row["pr_url"] or row["status"] in ("done", "blocked")):
                             # Guard: Do not treat task as finished work if worker failed/timed out
                             # or is permanently blocked!
                             if meta.get("permanently_blocked") or meta.get("last_worker_failure"):

@@ -3203,6 +3203,75 @@ class TestZeroFactory(unittest.TestCase):
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
+    def test_36d_author_handoff_with_done_status_and_existing_pr_url(self):
+        """Verify that when an author marks work done on an existing PR, the dispatcher
+        commits, pushes, and routes to zf-reviewer instead of skipping."""
+        from dispatcher import run_dispatch_cycle
+        import json
+        import shutil
+        import sqlite3
+        import subprocess
+        from unittest.mock import patch, MagicMock
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_path = Path(td) / "test_repo"
+            repo_path.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+            (repo_path / "README.md").write_text("# Test Repo\n")
+            subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True)
+            subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(repo_path), check=True, capture_output=True)
+
+            ws_dir = Path(td) / "ws_author"
+            subprocess.run(
+                ["git", "worktree", "add", str(ws_dir), "-b", "task/author-handoff-done"],
+                cwd=str(repo_path), check=True, capture_output=True
+            )
+            (ws_dir / "fix2.txt").write_text("fixed review feedback\n")
+
+            db_file = Path(td) / "author_handoff_done.db"
+            self._create_conflict_test_db(db_file)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, created_at, updated_at)
+                    VALUES ('task-author-done', 'Fix review feedback [PR Opened by zf-builder]', 'done', 'zf-builder', ?, 'task/author-handoff-done',
+                            'https://github.com/hotcode-dev/zerofactory/pull/999', 1000, 1000)
+                """, (str(ws_dir),))
+                conn.commit()
+
+            orig_run = subprocess.run
+            pushed_calls = []
+
+            def fake_run(cmd, *args, **kwargs):
+                if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
+                    pushed_calls.append(cmd)
+                    res = MagicMock()
+                    res.returncode = 0
+                    res.stdout = ""
+                    return res
+                return orig_run(cmd, *args, **kwargs)
+
+            with patch("subprocess.run", side_effect=fake_run):
+                res = run_dispatch_cycle(db_file)
+
+            self.assertTrue(res.get("ok"))
+            self.assertGreaterEqual(len(pushed_calls), 1)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                row = cur.execute("SELECT status, assignee FROM tasks WHERE id = 'task-author-done'").fetchone()
+                self.assertEqual(row["status"], "todo")
+                self.assertEqual(row["assignee"], "zf-reviewer")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+
     def test_37_pre_implement_pull_guardrail(self):
         """Verify that run_dispatch_cycle pulls latest main before implementing,
         and routes to conflict handling if merge fails."""
@@ -5759,6 +5828,7 @@ class TestZeroFactory(unittest.TestCase):
                     "start_line": 522,
                     "diff_hunk": "@@ -517,14 +517,24 @@",
                     "user": {"login": "ntsd"},
+                    "author_association": "MEMBER",
                     "body": "the comment is too long",
                     "created_at": "2026-09-20T01:26:50Z",
                 }
