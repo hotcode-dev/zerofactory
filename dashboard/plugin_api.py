@@ -912,6 +912,15 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                     if not is_match:
                         continue
 
+                    # Defensive check: if the session explicitly references another zf task in title or worktree, do not match it
+                    r_title = str(r["title"] or "")
+                    r_cwd = str(r["cwd"] or "")
+                    if task_id:
+                        if "Task ID: zf-" in r_title and task_id not in r_title:
+                            continue
+                        if "/zf-" in r_cwd and task_id not in r_cwd:
+                            continue
+
                     if sid in seen_ids:
                         continue
                     seen_ids.add(sid)

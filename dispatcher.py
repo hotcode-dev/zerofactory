@@ -1398,9 +1398,20 @@ def spawn_agent_worker(
                         s_conn = sqlite3.connect(str(resolved_state), timeout=2.0)
                     with closing(s_conn) as s_conn:
                         s_cur = s_conn.cursor()
+                        # Match sessions started around this spawn that explicitly reference this task_id
+                        # in the session title (e.g. "Task ID: zf-...") or working directory to avoid
+                        # cross-task contamination when multiple workers run under the same profile.
                         s_cur.execute(
-                            "SELECT id FROM sessions WHERE started_at >= ? ORDER BY started_at DESC LIMIT 1",
-                            (spawn_time - 2.0,)
+                            """
+                            SELECT id FROM sessions
+                            WHERE started_at >= ?
+                              AND (
+                                  (title IS NOT NULL AND title LIKE ?)
+                                  OR (cwd IS NOT NULL AND cwd LIKE ?)
+                              )
+                            ORDER BY started_at DESC LIMIT 1
+                            """,
+                            (spawn_time - 2.0, f"%{task_id}%", f"%{task_id}%")
                         )
                         s_row = s_cur.fetchone()
                         if s_row:

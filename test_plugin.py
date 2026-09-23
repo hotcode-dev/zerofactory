@@ -900,6 +900,52 @@ class TestZeroFactory(unittest.TestCase):
                 if profile_dir.exists():
                     self.assertEqual(env.get("HERMES_HOME"), str(profile_dir))
 
+    def test_20b_worker_spawn_session_isolation(self):
+        """Worker spawn must only match sessions corresponding to its own task_id to prevent cross-contamination."""
+        import tempfile
+        import sqlite3
+        import time
+        from dispatcher import spawn_agent_worker
+        from unittest.mock import patch, MagicMock
+
+        with tempfile.NamedTemporaryFile(suffix=".db") as tmp_db:
+            conn = sqlite3.connect(tmp_db.name)
+            conn.execute("""
+                CREATE TABLE sessions (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    cwd TEXT,
+                    started_at REAL
+                )
+            """)
+            now = time.time()
+            # Session from concurrent task under same profile
+            conn.execute("INSERT INTO sessions (id, title, cwd, started_at) VALUES ('sess-other', 'Task ID: zf-other', '/worktrees/zf-other', ?)", (now + 0.1,))
+            # Session from our task
+            conn.execute("INSERT INTO sessions (id, title, cwd, started_at) VALUES ('sess-mine', 'Task ID: zf-mine', '/worktrees/zf-mine', ?)", (now,))
+            conn.commit()
+            conn.close()
+
+            with patch("dispatcher.resolve_profile_state_db", return_value=Path(tmp_db.name)), \
+                 patch("subprocess.Popen") as mock_popen, \
+                 patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+                mock_proc = MagicMock()
+                mock_proc.pid = 99999
+                mock_proc.poll.return_value = None
+                mock_popen.return_value = mock_proc
+
+                pid, sess = spawn_agent_worker(
+                    task_id="zf-mine",
+                    title="My Task",
+                    assignee="zf-reviewer",
+                    priority="P0",
+                    description="Test isolation",
+                    workspace_path="/worktrees/zf-mine",
+                    branch_name="task/zf-mine"
+                )
+                self.assertEqual(sess, "sess-mine")
+
     def test_21_zerofactory_api_route(self):
         # Verify /api/plugins/zerofactory works directly
         resp = client.get("/api/plugins/zerofactory/boards")
