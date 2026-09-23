@@ -81,6 +81,90 @@ except (ImportError, ValueError):
 
 _log = logging.getLogger(__name__)
 
+# --- Scanner state file helpers -----------------------------------------------
+# The wake-gate state file (~/.hermes/scanner_state.json or
+# ZEROFACTORY_SCANNER_STATE) is written by TWO independent processes: the
+# per-board scanner cron (scripts/zf_scanner_gate.py) and this dashboard server.
+# Both writes must be atomic (temp file + os.replace) and the read-modify-write
+# here must run under an exclusive flock, or a mid-write reader sees a torn
+# JSON document and silently resets the whole state (lost last_scanned_sha ->
+# LLM re-fires; lost task_created -> duplicate improvement tasks).
+# Import the shared atomic writer from the gate script (the source of truth);
+# fall back to a self-contained equivalent if the script cannot be imported.
+
+def _load_scanner_gate_module():
+    import importlib.util
+    gate_path = Path(__file__).resolve().parent.parent / "scripts" / "zf_scanner_gate.py"
+    if not gate_path.is_file():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("zf_scanner_gate", gate_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+_scanner_gate_mod = _load_scanner_gate_module()
+
+
+def _mark_scanner_task_created(board_slug: str) -> bool:
+    """Atomically flag that a task was created for ``board_slug`` in the shared
+    scanner state file (flock-guarded read-modify-write + atomic os.replace).
+
+    Prefer the shared implementation in scripts/zf_scanner_gate.py; fall back
+    to an equivalent local implementation if that module is unavailable.
+    """
+    if not board_slug:
+        return False
+    if _scanner_gate_mod is not None and hasattr(_scanner_gate_mod, "mark_task_created"):
+        return bool(_scanner_gate_mod.mark_task_created(board_slug))
+
+    import fcntl
+    import tempfile as _tempfile
+    state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+    state_file = Path(state_override) if state_override else (Path.home() / ".hermes" / "scanner_state.json")
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = state_file.with_name(state_file.name + ".lock")
+        with open(str(lock_path), "a+", encoding="utf-8") as lock_f:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+            try:
+                data = {}
+                if state_file.exists():
+                    try:
+                        parsed = json.loads(state_file.read_text(encoding="utf-8"))
+                        if isinstance(parsed, dict):
+                            data = parsed
+                    except Exception:
+                        data = {}
+                board_state = data.setdefault(board_slug, {})
+                if isinstance(board_state, dict):
+                    board_state["task_created"] = True
+                    board_state["scan_attempts"] = 0
+                data[board_slug] = board_state
+                payload = json.dumps(data, indent=2)
+                temp_fd, temp_path = _tempfile.mkstemp(
+                    dir=str(state_file.parent), prefix="scanner_state_", suffix=".tmp"
+                )
+                try:
+                    with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                        f.write(payload)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(temp_path, str(state_file))
+                except BaseException:
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
+        return True
+    except Exception:
+        return False
+
 router = APIRouter()
 
 # --- Database Setup & Connection ---------------------------------------------
@@ -1868,19 +1952,11 @@ def create_task(req: TaskCreate):
         log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
         conn.commit()
 
-        # Mark scanner state as having successfully produced a task for this board
+        # Mark scanner state as having successfully produced a task for this board.
+        # Atomic flock-guarded read-modify-write (see _mark_scanner_task_created)
+        # so concurrent scanner-gate writers can't lose this update.
         if board_slug:
-            try:
-                state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
-                state_file = Path(state_override) if state_override else (Path.home() / ".hermes" / "scanner_state.json")
-                if state_file.exists():
-                    s_data = json.loads(state_file.read_text(encoding="utf-8"))
-                    if board_slug in s_data:
-                        s_data[board_slug]["task_created"] = True
-                        s_data[board_slug]["scan_attempts"] = 0
-                        state_file.write_text(json.dumps(s_data, indent=2), encoding="utf-8")
-            except Exception:
-                pass
+            _mark_scanner_task_created(board_slug)
 
     return {"ok": True, "id": task_id}
 

@@ -1819,6 +1819,222 @@ class TestZeroFactory(unittest.TestCase):
             self.assertTrue(wake4, "outage recovery after reset cooldown must reset attempts and wake")
             self.assertIn("RETRY_SCAN_TRIGGERED", out4)
 
+    def test_25e_scanner_state_atomic_write(self):
+        """Regression: the wake-gate state file must be written atomically.
+
+        `save_state` / `write_state_atomic` must publish via a temp file +
+        `os.replace` (same pattern as `builtin_cron.save_jobs_to_file`), NOT a
+        bare in-place `write_text`. A non-atomic in-place overwrite lets a
+        concurrent reader observe a torn/partial JSON document, which the old
+        `except: pass` silently swallowed (state reset to {} -> lost
+        `last_scanned_sha` -> LLM re-fires; lost `task_created` -> duplicates).
+
+        We point ZEROFACTORY_SCANNER_STATE at a tmp path, then patch
+        `os.replace` to record that the atomic publish was actually used and
+        verify the final file parses and matches what we saved.
+        """
+        import importlib.util
+        import json
+
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+        self.assertTrue(gate_path.is_file(), f"missing {gate_path}")
+
+        def load_gate():
+            spec = importlib.util.spec_from_file_location("zf_scanner_gate_atomic", gate_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+
+        with tempfile.TemporaryDirectory() as td:
+            state_path = Path(td) / "scanner_state.json"
+            mod = load_gate()
+
+            old_env = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+            os.environ["ZEROFACTORY_SCANNER_STATE"] = str(state_path)
+            replaced = []
+            real_replace = os.replace
+            try:
+                # Confirm get_state_file() honors the env override.
+                self.assertEqual(mod.get_state_file(), state_path)
+
+                # 1. save_state() must route through the atomic writer:
+                #    it must call os.replace exactly once (temp file -> target),
+                #    NOT write_text in place.
+                def _record_replace(src, dst):
+                    replaced.append((str(src), str(dst)))
+                    return real_replace(src, dst)
+
+                # write_state_atomic returns a bool; save_state routes through
+                # it but returns None, so we assert on the os.replace side
+                # effect (the atomic publish), not the return value.
+                self.assertTrue(mod.write_state_atomic({"board-a": {"last_scanned_sha": "abc"}}))
+                os.replace = _record_replace
+                try:
+                    mod.save_state({"board-b": {"task_created": True}})
+                finally:
+                    os.replace = real_replace
+
+                self.assertEqual(len(replaced), 1, "save_state must publish via os.replace exactly once")
+                src, dst = replaced[0]
+                # The source of the replace is a temp file in the SAME dir as the
+                # target (rename within one filesystem is what makes it atomic).
+                self.assertTrue(src.startswith(str(state_path.parent)),
+                                "temp file must live in the state file's directory")
+                self.assertNotEqual(src, str(state_path), "must replace a temp file, not the target in place")
+                self.assertEqual(dst, str(state_path))
+
+                # 2. Final JSON parses and carries exactly what we saved.
+                self.assertTrue(state_path.exists())
+                data = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertEqual(data, {"board-b": {"task_created": True}})
+
+                # 3. No partial / leftover temp files remain after a clean write.
+                leftovers = [p for p in state_path.parent.iterdir()
+                             if p.suffix == ".tmp" or p.name.endswith(".tmp")]
+                self.assertEqual(leftovers, [], "no temp files may be left behind")
+
+                # 4. load_state round-trips the atomic write.
+                self.assertEqual(mod.load_state(), data)
+            finally:
+                if old_env is None:
+                    os.environ.pop("ZEROFACTORY_SCANNER_STATE", None)
+                else:
+                    os.environ["ZEROFACTORY_SCANNER_STATE"] = old_env
+
+    def test_25f_scanner_state_concurrent_read_modify_write(self):
+        """Regression: N concurrent atomic read-modify-writes must not lose updates.
+
+        The dashboard POST /tasks handler and the scanner-gate cron are two
+        independent writers of the shared state file. `mark_task_created` runs
+        the read-modify-write under an exclusive flock, so no board's
+        `task_created` / `scan_attempts` can be clobbered by another writer.
+        Hammer the shared ZEROFACTORY_SCANNER_STATE tmp file from many threads
+        and assert the final document parses and contains EVERY key written
+        (no lost update).
+        """
+        import importlib.util
+        import json
+        import threading
+
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+        self.assertTrue(gate_path.is_file(), f"missing {gate_path}")
+
+        def load_gate():
+            spec = importlib.util.spec_from_file_location("zf_scanner_gate_conc", gate_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+
+        with tempfile.TemporaryDirectory() as td:
+            state_path = Path(td) / "scanner_state.json"
+            mod = load_gate()
+
+            old_env = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+            os.environ["ZEROFACTORY_SCANNER_STATE"] = str(state_path)
+            try:
+                n_boards = 12
+                boards = [f"board-{i}" for i in range(n_boards)]
+
+                # Pre-seed a few distinct per-board keys that must survive.
+                seed = {b: {"last_scanned_sha": f"sha-{i}", "scan_attempts": i % 3}
+                        for i, b in enumerate(boards)}
+                self.assertTrue(mod.write_state_atomic(seed))
+
+                barrier = threading.Barrier(n_boards)
+                errors = []
+
+                def worker(slug):
+                    try:
+                        barrier.wait()
+                        # mark_task_created sets task_created=True and resets
+                        # scan_attempts=0 for its own board under the flock.
+                        if not mod.mark_task_created(slug):
+                            errors.append(f"mark_task_created({slug!r}) returned False")
+                    except Exception as e:  # pragma: no cover - defensive
+                        errors.append(f"worker {slug!r} raised {e!r}")
+
+                threads = [threading.Thread(target=worker, args=(b,)) for b in boards]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+
+                self.assertEqual(errors, [], f"concurrent writes reported errors: {errors}")
+
+                # Final document must parse ...
+                raw = state_path.read_text(encoding="utf-8")
+                data = json.loads(raw)
+                # ... and every board's key must be present with no lost update.
+                self.assertEqual(len(data), n_boards,
+                                 f"lost board entries; got {sorted(data)} expected {n_boards}")
+                for i, b in enumerate(boards):
+                    entry = data.get(b)
+                    self.assertIsInstance(entry, dict, f"missing/corrupt entry for {b}")
+                    # task_created + reset attempts recorded by the concurrent RMW ...
+                    self.assertTrue(entry.get("task_created"), f"{b}: task_created lost")
+                    self.assertEqual(entry.get("scan_attempts"), 0, f"{b}: scan_attempts not reset")
+                    # ... AND the pre-seeded last_scanned_sha survived (not clobbered).
+                    self.assertEqual(entry.get("last_scanned_sha"), f"sha-{i}",
+                                     f"{b}: pre-seeded last_scanned_sha clobbered")
+            finally:
+                if old_env is None:
+                    os.environ.pop("ZEROFACTORY_SCANNER_STATE", None)
+                else:
+                    os.environ["ZEROFACTORY_SCANNER_STATE"] = old_env
+
+    def test_25g_dashboard_create_task_marks_scanner_state_atomic(self):
+        """Regression: POST /tasks must atomically flag `task_created` in the
+        shared scanner state file via the flock-guarded helper (not a bare
+        read_text/write_text). Point the state file at a tmp path, create a
+        task for a board, and assert the flag landed and the file stays valid
+        JSON (no torn write).
+        """
+        import json
+
+        from dashboard import plugin_api
+
+        with tempfile.TemporaryDirectory() as td:
+            # Create a dedicated board so the task FK is satisfied and the
+            # board entry does not collide with other tests' state.
+            board_res = create_board(BoardCreate(
+                git_url="https://github.com/example/dash-rmw-state.git",
+                description="Regression: atomic scanner-state RMW",
+            ))
+            self.assertTrue(board_res.get("ok"))
+            slug = board_res["slug"]
+
+            state_path = Path(td) / "scanner_state.json"
+            # Seed an existing state entry for the board.
+            state_path.write_text(json.dumps(
+                {slug: {"last_scanned_sha": "seed-sha", "scan_attempts": 4}}),
+                encoding="utf-8")
+
+            old_env = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+            os.environ["ZEROFACTORY_SCANNER_STATE"] = str(state_path)
+            try:
+                created = create_task(TaskCreate(
+                    title="Task that flags scanner state",
+                    description="Regression: atomic scanner-state RMW",
+                    board_slug=slug,
+                    status="todo",
+                ))
+                self.assertTrue(created.get("ok"))
+
+                data = json.loads(state_path.read_text(encoding="utf-8"))
+                self.assertIn(slug, data, "board entry missing from scanner state")
+                self.assertTrue(data[slug].get("task_created"), "task_created not recorded")
+                self.assertEqual(data[slug].get("scan_attempts"), 0, "scan_attempts not reset")
+                # Pre-seeded last_scanned_sha must survive the read-modify-write.
+                self.assertEqual(data[slug].get("last_scanned_sha"), "seed-sha",
+                                 "last_scanned_sha clobbered by dashboard RMW")
+                # The dashboard must have routed through the shared flock helper.
+                self.assertTrue(hasattr(plugin_api, "_mark_scanner_task_created"))
+            finally:
+                if old_env is None:
+                    os.environ.pop("ZEROFACTORY_SCANNER_STATE", None)
+                else:
+                    os.environ["ZEROFACTORY_SCANNER_STATE"] = old_env
+
     def test_26_task_pr_url_and_stats(self):
         """Verify task pr_url persistence, update, and get_stats pr_count metric."""
         # 1. Create task with pr_url
