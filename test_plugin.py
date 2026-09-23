@@ -7524,6 +7524,54 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         self.assertNotIn("session_id", metadata)
         self.assertNotIn("started_at", metadata)
 
+    def test_reaper_recovers_orphaned_running_task_without_worker_or_session(self):
+        """Tasks left in 'running' with no active process or ongoing session
+        (e.g. daemon restarted during/after claim) must be recovered to 'todo'
+        after the grace period rather than waiting 30 minutes."""
+        import json, time
+        from dispatcher import reap_active_workers, _active_workers
+
+        now = int(time.time())
+        board_slug = "reaper-orphan-recovery"
+        with get_db_conn() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO boards (slug, description, git_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (board_slug, "Recovery test board", "https://example.test/repo.git", now, now),
+            )
+            conn.commit()
+        created = create_task(TaskCreate(title="Orphaned running task", assignee="zf-reviewer", board_slug=board_slug))
+        task_id = created["id"]
+
+        with get_db_conn() as conn:
+            conn.execute(
+                "UPDATE tasks SET status = 'running', updated_at = ?, metadata = ? WHERE id = ?",
+                (now - 10, json.dumps({"sessions": []}), task_id)
+            )
+            conn.commit()
+
+            _active_workers.pop(task_id, None)
+
+            # Within grace period (< 30s): not reaped yet
+            reaped = reap_active_workers(conn.cursor(), now)
+            conn.commit()
+            self.assertEqual(reaped, 0)
+            row = conn.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            self.assertEqual(row["status"], "running")
+
+            # Past grace period (>= 30s): recovered to 'todo'
+            reaped = reap_active_workers(conn.cursor(), now + 35)
+            conn.commit()
+            self.assertGreaterEqual(reaped, 1)
+
+            row = conn.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            self.assertEqual(row["status"], "todo")
+
+            act = conn.execute(
+                "SELECT action FROM task_activity WHERE task_id = ? AND action = 'worker_recovered'",
+                (task_id,)
+            ).fetchone()
+            self.assertIsNotNone(act)
+
     def test_move_task_clears_failure_metadata(self):
         import json, time
         now = int(time.time())

@@ -1461,7 +1461,18 @@ def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int]
     try:
         os.killpg(pgid, 0)
     except ProcessLookupError:
-        _log.debug("terminate_process_group: group %s no longer exists; nothing to do", pgid)
+        # Not a process group leader (e.g. spawned without start_new_session) or already dead.
+        if pid:
+            try:
+                os.kill(pid, 0)
+            except (ProcessLookupError, OSError):
+                return
+            try:
+                os.kill(pid, signal.SIGTERM)
+                time.sleep(min(grace, 0.5))
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
         return
     except OSError as e:
         # EPERM (we lack permission for the group) still proves it exists —
@@ -1666,6 +1677,22 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         (task_id, f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries}); moved to blocked", now)
                     )
                 _log.warning("Worker PID %d for task %s not found; moved to blocked", pid, task_id)
+                reaped += 1
+                continue
+        elif not has_ongoing_session:
+            # Task is marked 'running' but has no active process, PID, or ongoing session
+            # (e.g. daemon restarted during/after claim, or worker spawn failed).
+            claim_age = max(0, now - int(row["updated_at"] or now))
+            if claim_age >= 30:
+                cursor.execute(
+                    "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?",
+                    (now, task_id)
+                )
+                cursor.execute(
+                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_recovered', 'Orphaned running task (no active worker process or session) recovered to todo', ?)",
+                    (task_id, now)
+                )
+                _log.warning("Recovered orphaned running task %s to todo (no active worker or session, age %ds)", task_id, claim_age)
                 reaped += 1
                 continue
 
