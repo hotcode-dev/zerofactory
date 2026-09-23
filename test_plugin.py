@@ -2883,6 +2883,121 @@ class TestZeroFactory(unittest.TestCase):
             if orig_skip_git is not None:
                 os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
 
+    def test_32d_dispatcher_auto_stages_clean_conflict_resolution(self):
+        """Dispatcher must automatically stage and commit resolved conflicts on handoff.
+
+        When a builder resolves conflict markers in an in-progress merge (UU index
+        state) but does not run `git add` (per prompt instructions), the
+        dispatcher must detect that all markers are removed, deterministically
+        stage the files with `git add .`, verify clean status, and complete the
+        merge commit `fix(merge): resolve merge conflicts with main`.
+        """
+        import shutil
+        import sqlite3
+        import subprocess
+        import tempfile
+        from unittest.mock import patch
+        from dispatcher import (
+            run_dispatch_cycle,
+            get_unmerged_status_files,
+            check_files_for_conflict_markers,
+        )
+
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td = tempfile.mkdtemp()
+        try:
+            repo_dir = Path(td) / "repo"
+            repo_dir.mkdir()
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_dir), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", "Tester"], cwd=str(repo_dir), check=True)
+            subprocess.run(["git", "config", "user.email", "tester@test.com"], cwd=str(repo_dir), check=True)
+
+            f = repo_dir / "target.py"
+            f.write_text("line_1 = 'base'\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo_dir), check=True, capture_output=True)
+
+            ws_dir = Path(td) / "wt"
+            subprocess.run(["git", "worktree", "add", str(ws_dir), "-b", "task/task-cr-1"], cwd=str(repo_dir), check=True, capture_output=True)
+
+            # Commit A on main
+            f.write_text("line_1 = 'from_main'\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True)
+            subprocess.run(["git", "commit", "-m", "main edit"], cwd=str(repo_dir), check=True, capture_output=True)
+
+            # Commit B on task branch in worktree
+            wt_f = ws_dir / "target.py"
+            wt_f.write_text("line_1 = 'from_branch'\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=str(ws_dir), check=True)
+            subprocess.run(["git", "commit", "-m", "branch edit"], cwd=str(ws_dir), check=True, capture_output=True)
+
+            # Trigger merge conflict in worktree
+            merge_res = subprocess.run(["git", "merge", "main"], cwd=str(ws_dir), capture_output=True, text=True)
+            self.assertNotEqual(merge_res.returncode, 0)
+            self.assertTrue((ws_dir / ".git").is_file() or (repo_dir / ".git" / "worktrees" / "wt" / "MERGE_HEAD").exists())
+
+            # 1. Verify helper detects unmerged UU file
+            unmerged = get_unmerged_status_files(ws_dir)
+            self.assertEqual(unmerged, ["target.py"])
+
+            # 2. Verify helper detects conflict markers before resolution
+            markers = check_files_for_conflict_markers(ws_dir, unmerged)
+            self.assertEqual(markers, ["target.py"])
+
+            # 3. Simulate builder resolving markers without running git add
+            wt_f.write_text("line_1 = 'reconciled_code'\n", encoding="utf-8")
+            # Index is still UU, but file has zero conflict markers
+            self.assertEqual(check_files_for_conflict_markers(ws_dir, unmerged), [])
+
+            # 4. Set up database with task in blocked (review-required handoff)
+            db_file = Path(td) / "zf.db"
+            orig_db = os.environ.get("ZEROFACTORY_DB")
+            os.environ["ZEROFACTORY_DB"] = str(db_file)
+            init_db(force=True)
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("""
+                    INSERT INTO tasks (id, title, status, assignee, workspace_path, branch_name, pr_url, metadata, created_at, updated_at)
+                    VALUES ('task-cr-1', 'Bug: merge conflict task [PR Conflict]', 'blocked', 'zf-builder', ?, 'task/task-cr-1', 'https://github.com/example/pr/1', '{}', 1000, 1000)
+                """, (str(ws_dir),))
+                conn.commit()
+
+            # 5. Run dispatch cycle. It should auto-stage, commit the merge, and hand off to reviewer.
+            orig_run = subprocess.run
+            def safe_run(cmd, *args, **kwargs):
+                if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
+                    return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+                if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "gh" and cmd[1] == "pr":
+                    fake_pr = json.dumps({"reviewDecision": None, "state": "OPEN", "url": "https://github.com/example/pr/1", "mergeable": "UNKNOWN"})
+                    return subprocess.CompletedProcess(cmd, 0, stdout=fake_pr, stderr="")
+                return orig_run(cmd, *args, **kwargs)
+
+            with patch("dispatcher.reap_active_workers", return_value=0), \
+                 patch("dispatcher.resolve_task_repo_path", return_value=repo_dir), \
+                 patch("dispatcher.pull_and_merge_main", return_value=(True, [], "ok")), \
+                 patch("dispatcher.subprocess.run", side_effect=safe_run):
+                res = run_dispatch_cycle(db_file)
+                self.assertTrue(res.get("ok"))
+
+            # 6. Verify worktree was committed and merge commit exists on branch
+            log_res = subprocess.run(["git", "log", "-1", "--format=%s", "task/task-cr-1"], cwd=str(repo_dir), capture_output=True, text=True, check=True)
+            self.assertEqual(log_res.stdout.strip(), "fix(merge): resolve merge conflicts with main")
+
+            # 7. Verify task was transitioned to zf-reviewer
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT status, assignee FROM tasks WHERE id = 'task-cr-1'").fetchone()
+                self.assertEqual(row["assignee"], "zf-reviewer")
+        finally:
+            shutil.rmtree(td, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            else:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            if orig_db is not None:
+                os.environ["ZEROFACTORY_DB"] = orig_db
+            else:
+                os.environ.pop("ZEROFACTORY_DB", None)
+
     def test_33_worktree_symlink_guardrail_and_resolution(self):
         """Verify that get_plugin_root() resolves main repo from inside worktrees and ensure_plugin_symlinks cleans up worktree symlinks."""
         from profile_manager import get_plugin_root, ensure_plugin_symlinks
