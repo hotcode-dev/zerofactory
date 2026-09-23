@@ -1203,15 +1203,28 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
             proc.wait(timeout=CRON_RUN_TIMEOUT)
         except subprocess.TimeoutExpired:
             _log.error("Cron job %s timed out after %ss; terminating", target_job_id, CRON_RUN_TIMEOUT)
-            proc.terminate()
+            # The child was spawned with start_new_session=True; terminate the
+            # WHOLE process group (via the shared dispatcher helper, fail-open)
+            # so no descendant outlives the timeout or keeps the log pipe open.
             try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+                try:
+                    from .dispatcher import terminate_process_group
+                except ImportError:
+                    from dispatcher import terminate_process_group  # type: ignore
+                terminate_process_group(proc, proc.pid, grace=5.0)
+            except Exception as term_exc:
+                # Last-resort child-only termination (legacy behavior) if the
+                # group helper is unavailable/failed for any reason.
+                _log.warning("Group termination failed for cron job %s: %s", target_job_id, term_exc)
+                proc.terminate()
                 try:
                     proc.wait(timeout=5)
-                except Exception:
-                    pass
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:
+                        pass
             _active_cron_runs.pop(target_job_id, None)
             return {
                 "ok": False,

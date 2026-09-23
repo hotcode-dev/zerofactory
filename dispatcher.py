@@ -1418,28 +1418,96 @@ def spawn_agent_worker(
         return None, None
 
 
-def terminate_worker_process(proc: Optional[subprocess.Popen], pid: Optional[int]) -> None:
-    """Safely terminate a worker process with SIGTERM then SIGKILL."""
-    if proc is not None:
+def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int], grace: float = 2.0) -> None:
+    """Terminate a worker's ENTIRE process group (session), not just the child.
+
+    All Zero Factory spawn sites run children with ``start_new_session=True``
+    so the tree survives the spawner; the direct child (the ``hermes`` CLI
+    wrapper) spawns its own descendants (the agent loop, git, npm, network
+    subprocesses). Signalling only the direct child (``proc.terminate()`` /
+    ``os.kill(pid, ...)``) left the whole descendant tree orphaned: it kept
+    consuming LLM API credits, could write to the worktree/GitHub after the
+    task had already transitioned, and (when a descendant held the combined
+    stdout log pipe open) blocked the dispatcher on ``proc.wait(timeout=...)``.
+
+    Because ``start_new_session=True`` puts the child in a NEW session whose
+    PGID equals its PID, ``os.killpg`` on that group reaches every descendant.
+    Linux-only (``os.killpg``); Windows is not a target platform.
+
+    Fail-open contract (matches the previous child-only termination path):
+    every failure mode — dead/unknown group (``ProcessLookupError``),
+    permission problems, recycled PIDs — is logged and swallowed; this never
+    raises. A cheap pre-flight ``killpg(pgid, 0)`` probes the group without
+    delivering a signal and guards against signalling a recycled PGID.
+    """
+    pgid: Optional[int] = None
+    if proc is not None and isinstance(proc.pid, int):
         try:
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            pgid = os.getpgid(proc.pid)
+        except (AttributeError, OSError):
+            pgid = None
+    if pgid is None and isinstance(pid, int) and pid > 0:
+        # PID-only fallback (metadata path, no live handle): start_new_session
+        # guarantees PGID == PID, so signal the group via the child's PID.
+        pgid = pid
+
+    if pgid is None:
+        _log.debug("terminate_process_group: no resolvable process group (proc=%s, pid=%s)", proc, pid)
+        return
+
+    # Cheap guard: make sure the group still exists before signalling (avoids
+    # racing a recycled PGID). killpg(..., 0) probes without delivering a
+    # signal; a recycled/unknown group raises ProcessLookupError here.
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        _log.debug("terminate_process_group: group %s no longer exists; nothing to do", pgid)
+        return
+    except OSError as e:
+        # EPERM (we lack permission for the group) still proves it exists —
+        # proceed and let the TERM/KILL attempts handle it.
+        _log.debug("terminate_process_group: probe on group %s failed: %s", pgid, e)
+
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except (ProcessLookupError, OSError) as e:
+        _log.debug("terminate_process_group: SIGTERM to group %s failed: %s", pgid, e)
+        return
+
+    if proc is not None and isinstance(proc.pid, int):
+        try:
+            proc.wait(timeout=grace)
+            return  # group exited gracefully within the grace window
         except Exception:
             pass
-    elif pid:
+    elif grace > 0:
+        time.sleep(grace)
+
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, OSError) as e:
+        # Group likely exited between the grace window and the SIGKILL — fine.
+        _log.debug("terminate_process_group: SIGKILL to group %s failed: %s", pgid, e)
+
+    if proc is not None and isinstance(proc.pid, int):
         try:
-            os.kill(pid, signal.SIGTERM)
-            time.sleep(0.5)
-            try:
-                os.kill(pid, 0)
-                os.kill(pid, signal.SIGKILL)
-            except OSError:
-                pass
-        except OSError:
+            proc.wait(timeout=5)
+        except Exception:
             pass
+
+
+def terminate_worker_process(proc: Optional[subprocess.Popen], pid: Optional[int]) -> None:
+    """Safely terminate a worker process with SIGTERM then SIGKILL.
+
+    Signals the worker's whole process group (session) rather than just the
+    direct child, because all spawn sites use ``start_new_session=True`` and
+    the ``hermes`` CLI wrapper spawns its own descendants. Fail-open: never
+    raises. See ``terminate_process_group`` for details.
+    """
+    try:
+        terminate_process_group(proc, pid)
+    except Exception as e:  # defensive: the helper is fail-open, but never leak
+        _log.debug("terminate_worker_process: group termination raised: %s", e)
 
 
 def stop_task_worker(task_id: str, cursor: Optional[sqlite3.Cursor] = None) -> None:
@@ -1791,10 +1859,9 @@ def reset_idle_scanner_state() -> None:
     _last_idle_scan_times.clear()
     for slug, proc in list(_active_scanners.items()):
         if proc is not None and proc.poll() is None:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
+            # Scanners are spawned with start_new_session=True; terminate the
+            # whole process group so no descendants outlive the scanner.
+            terminate_process_group(proc, proc.pid)
     _active_scanners.clear()
 
 
