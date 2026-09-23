@@ -12,6 +12,7 @@ allows background ticking and on-demand execution.
 from __future__ import annotations
 
 import json
+import fcntl
 import logging
 import os
 import re
@@ -1114,6 +1115,38 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
     # Ensure job is registered in target files before running
     ensure_builtin_cron_jobs()
 
+    # Manual LLM cron runs consume the same budget as task workers and scans.
+    # The queue watchdog runs in No-Agent mode and does not occupy an LLM slot.
+    job_def = current_builtin_jobs.get(target_job_id) or {}
+    capacity_lock = None
+    if not job_def.get("no_agent", False):
+        try:
+            try:
+                from .settings import load_settings
+                from .dispatcher import _global_llm_occupancy, get_dispatcher_lock_path, reap_active_scanners
+            except ImportError:
+                from settings import load_settings
+                from dispatcher import _global_llm_occupancy, get_dispatcher_lock_path, reap_active_scanners
+
+            lock_path = get_dispatcher_lock_path()
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            capacity_lock = open(lock_path, "a+b")
+            fcntl.flock(capacity_lock, fcntl.LOCK_EX)
+            with sqlite3.connect(str(get_db_path()), timeout=15) as conn:
+                cap = load_settings(conn)["max_concurrent_llm_workers"]
+                running = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
+            reap_active_scanners()
+            if _global_llm_occupancy(running) >= cap:
+                capacity_lock.close()
+                capacity_lock = None
+                return {"ok": False, "error": "Global concurrent LLM worker limit reached"}
+        except (OSError, sqlite3.Error) as e:
+            if capacity_lock is not None:
+                capacity_lock.close()
+                capacity_lock = None
+            _log.warning("Cron capacity check failed: %s", e)
+            return {"ok": False, "error": f"Cannot verify LLM worker capacity: {e}"}
+
     # Trigger via hermes CLI with target profile.
     #
     # FIX (pipe deadlock + zombie/orphan): the previous implementation used
@@ -1166,6 +1199,10 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
         # Register the handle so it can be reaped even if the wait below
         # times out and the child outlives the caller.
         _active_cron_runs[target_job_id] = proc
+        if capacity_lock is not None:
+            fcntl.flock(capacity_lock, fcntl.LOCK_UN)
+            capacity_lock.close()
+            capacity_lock = None
 
         try:
             proc.wait(timeout=CRON_RUN_TIMEOUT)
@@ -1229,6 +1266,9 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
         _active_cron_runs.pop(target_job_id, None)
         _log.error("Failed to run cron job %s: %s", target_job_id, e)
         return {"ok": False, "error": str(e)}
+    finally:
+        if capacity_lock is not None:
+            capacity_lock.close()
 
 
 def tick_builtin_cron() -> int:
@@ -1239,6 +1279,26 @@ def tick_builtin_cron() -> int:
     """
     if not is_cron_scheduler_enabled():
         _log.debug("[builtin_cron] Cron scheduler is disabled in config; skipping tick")
+        return 0
+
+    # Do not admit scheduled LLM jobs when task workers/scanners have already
+    # filled the shared capacity. Leave due jobs due for the next permitted tick.
+    try:
+        from .settings import load_settings
+        from .dispatcher import _global_llm_occupancy, reap_active_scanners
+    except ImportError:
+        from settings import load_settings
+        from dispatcher import _global_llm_occupancy, reap_active_scanners
+    try:
+        with sqlite3.connect(str(get_db_path()), timeout=5) as conn:
+            cap = load_settings(conn)["max_concurrent_llm_workers"]
+            running = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
+        reap_active_scanners()
+        if _global_llm_occupancy(running) >= cap:
+            _log.debug("[builtin_cron] Global LLM worker limit reached; deferring scheduled jobs")
+            return 0
+    except sqlite3.Error as e:
+        _log.warning("[builtin_cron] Cannot verify LLM worker capacity: %s", e)
         return 0
 
     try:

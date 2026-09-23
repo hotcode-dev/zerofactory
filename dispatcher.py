@@ -61,6 +61,7 @@ from typing import Any, Dict, List, Optional
 try:
     from .settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS,
+        DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         DEFAULT_MAX_CONCURRENT_WORKERS,
         DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
@@ -72,6 +73,7 @@ try:
 except ImportError:
     from settings import (  # type: ignore
         DEFAULT_MAX_ACTIVE_TASKS,
+        DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         DEFAULT_MAX_CONCURRENT_WORKERS,
         DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
@@ -814,13 +816,18 @@ def fetch_pr_review_comments(
     pr_url: Optional[str] = None,
     task_id: Optional[str] = None,
     pr_data: Optional[Dict[str, Any]] = None,
-    exclude_authors: Optional[set[str]] = None
+    exclude_authors: Optional[set[str]] = None,
+    additional_reviewer_usernames: Optional[set[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Fetch all types of review comments for a GitHub PR:
     1. Inline diff review comments (/pulls/{pr}/comments)
     2. Review summaries and states (/pulls/{pr}/reviews)
     3. PR issue/conversation comments (/issues/{pr}/comments)
     4. Code suggestions inside comments
+
+    Only feedback from repository owners, members, collaborators, or the
+    board's explicit additional-reviewer allowlist is returned. This prevents
+    unrelated PR participants from changing an automation task's disposition.
 
     Returns a standardized list of comment dicts.
     """
@@ -829,6 +836,33 @@ def fetch_pr_review_comments(
 
     if exclude_authors is None:
         exclude_authors = {"github-actions[bot]", "web-flow"}
+    trusted_associations = {"OWNER", "MEMBER", "COLLABORATOR"}
+    additional_reviewers = {
+        username.strip().lstrip("@").lower()
+        for username in (additional_reviewer_usernames or set())
+        if username and username.strip()
+    }
+
+    def is_excluded_author(author: str) -> bool:
+        """Exclude automation from actionable review feedback.
+
+        Deployment/status bots post ordinary PR conversation comments.  Those
+        comments must not undo an explicit reviewer approval and send the task
+        back to the builder.
+        """
+        normalized = (author or "").lower()
+        return not normalized or normalized in exclude_authors or normalized.endswith("[bot]")
+
+    def is_trusted_reviewer(author: str, association: str = "") -> bool:
+        """Return whether a non-bot PR participant may control task routing."""
+        normalized = (author or "").lower()
+        return (
+            not is_excluded_author(normalized)
+            and (
+                normalized in additional_reviewers
+                or (association or "").upper() in trusted_associations
+            )
+        )
 
     comments: List[Dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -854,11 +888,12 @@ def fetch_pr_review_comments(
     if pr_data:
         for rev in pr_data.get("reviews", []):
             author = (rev.get("author") or {}).get("login") or rev.get("user", {}).get("login") or ""
+            association = rev.get("authorAssociation") or rev.get("author_association") or ""
             body = (rev.get("body") or "").strip()
             state = rev.get("state") or ""
             rev_id = str(rev.get("id") or "")
             cid = f"review_{rev_id}"
-            if cid not in seen_ids and author and author.lower() not in exclude_authors:
+            if cid not in seen_ids and is_trusted_reviewer(author, association):
                 if body or state == "CHANGES_REQUESTED":
                     seen_ids.add(cid)
                     comments.append({
@@ -876,10 +911,11 @@ def fetch_pr_review_comments(
 
         for com in pr_data.get("comments", []):
             author = (com.get("author") or {}).get("login") or com.get("user", {}).get("login") or ""
+            association = com.get("authorAssociation") or com.get("author_association") or ""
             body = (com.get("body") or "").strip()
             com_id = str(com.get("id") or "")
             cid = f"issue_{com_id}"
-            if cid not in seen_ids and author and author.lower() not in exclude_authors:
+            if cid not in seen_ids and is_trusted_reviewer(author, association):
                 if body and "Automated PR for task" not in body:
                     seen_ids.add(cid)
                     comments.append({
@@ -914,7 +950,7 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not author or author.lower() in exclude_authors:
+                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
                         continue
                     body = (item.get("body") or "").strip()
                     if not body:
@@ -956,7 +992,7 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not author or author.lower() in exclude_authors:
+                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
                         continue
                     body = (item.get("body") or "").strip()
                     state = item.get("state") or ""
@@ -991,7 +1027,7 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not author or author.lower() in exclude_authors:
+                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
                         continue
                     body = (item.get("body") or "").strip()
                     if body and "Automated PR for task" not in body:
@@ -1637,6 +1673,30 @@ def reap_active_scanners() -> int:
                 reaped += 1
                 _log.debug("Scanner process for board '%s' exited with code %d", slug, retcode)
     return reaped
+
+
+def _running_cron_llm_jobs() -> int:
+    """Count in-process Zero Factory cron LLM jobs (exclude No-Agent queue checks)."""
+    try:
+        from cron.scheduler import get_running_job_ids
+        return sum(
+            job_id == "zero-factory-daily-report" or job_id.startswith("zero-factory-improvement-scanner-")
+            for job_id in get_running_job_ids()
+        )
+    except (ImportError, RuntimeError):
+        return 0
+
+
+def _global_llm_occupancy(running_tasks: int) -> int:
+    """LLM workers currently tracked by this Zero Factory process."""
+    try:
+        from .builtin_cron import _active_cron_runs, reap_active_cron_runs
+    except ImportError:
+        from builtin_cron import _active_cron_runs, reap_active_cron_runs
+    reap_active_cron_runs()
+    return running_tasks + len(_active_scanners) + _running_cron_llm_jobs() + sum(
+        job_id != "zero-factory-task-queue-check" for job_id in _active_cron_runs
+    )
 
 
 def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Optional[int]:
@@ -2512,12 +2572,17 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                 # 2. Reap finished workers and dispatch Todo tasks to Running
                 reaped = reap_active_workers(cursor, now)
+                reap_active_scanners()
 
                 # Derive the WIP limit from the shared settings read above.
                 max_active_tasks = int(settings.get("max_active_tasks", DEFAULT_MAX_ACTIVE_TASKS))
+                max_llm_workers = int(settings.get("max_concurrent_llm_workers", DEFAULT_MAX_CONCURRENT_LLM_WORKERS))
 
                 cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'")
                 active_count = cursor.fetchone()[0]
+                # Running tasks (including those on other boards) and live
+                # scanner subprocesses share the same global capacity.
+                llm_workers = _global_llm_occupancy(active_count)
 
                 # Fallback concurrent running workers per board from settings table
                 default_concurrent_workers = int(
@@ -2541,7 +2606,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 ).fetchall():
                     running_per_board[str(rc_row["board_slug"] or "")] = rc_row["cnt"]
 
-                if active_count < max_active_tasks:
+                if active_count < max_active_tasks and llm_workers < max_llm_workers:
                     # Fetch the full candidate set across all boards; a LIMIT
                     # here would starve other boards, so the global WIP budget
                     # is enforced in the loop below.
@@ -2553,7 +2618,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                     for row in cursor.fetchall():
                         # Global WIP budget exhausted: stop claiming more
                         # tasks this cycle.
-                        if active_count >= max_active_tasks:
+                        if active_count >= max_active_tasks or llm_workers >= max_llm_workers:
                             break
                         task_id = str(row["id"])
                         assignee = normalize_assignee(row["assignee"] or "zf-builder")
@@ -2659,6 +2724,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         conn.commit()
                         running_per_board[board_key] = board_active + 1
                         active_count += 1
+                        llm_workers += 1
                         dispatched += 1
                         promoted += 1
 
@@ -2793,11 +2859,28 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             pass
 
                                         processed_cmt_ids = set(task_meta.get("processed_review_comment_ids", []))
+                                        additional_reviewer_usernames: set[str] = set()
+                                        if board_slug:
+                                            try:
+                                                board_row = cursor.execute(
+                                                    "SELECT additional_reviewer_usernames FROM boards WHERE slug = ?",
+                                                    (board_slug,),
+                                                ).fetchone()
+                                                if board_row and board_row[0]:
+                                                    additional_reviewer_usernames = set(
+                                                        json.loads(board_row[0])
+                                                    )
+                                            except (TypeError, ValueError, json.JSONDecodeError):
+                                                _log.warning(
+                                                    "Ignoring malformed additional reviewer allowlist for board %s",
+                                                    board_slug,
+                                                )
                                         all_pr_comments = fetch_pr_review_comments(
                                             repo_path=repo_path,
                                             pr_url=current_pr_url,
                                             task_id=task_id,
-                                            pr_data=pr_data
+                                            pr_data=pr_data,
+                                            additional_reviewer_usernames=additional_reviewer_usernames,
                                         )
                                         new_pr_comments = [c for c in all_pr_comments if c["comment_id"] not in processed_cmt_ids]
 
@@ -3042,6 +3125,11 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                 # 4. Capacity-driven / Idle Improvement Scanner Check
                 reap_active_scanners()
+                # Phase 3 may have completed/rerouted tasks; refresh the count
+                # before allocating scan slots. Track successful mock spawns as
+                # well as real registered processes within this cycle.
+                active_count = cursor.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
+                llm_workers = _global_llm_occupancy(active_count)
 
                 # Derive the idle-scan knobs from the shared settings read above.
                 # load_settings() stores idle_scan_cooldown_minutes in MINUTES; the
@@ -3072,6 +3160,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         pass
 
                     for b_row in b_rows:
+                        if llm_workers >= max_llm_workers:
+                            break
                         board_slug = str(b_row["slug"] or "")
                         if not board_slug:
                             continue
@@ -3090,6 +3180,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         # failure does not lock the board out for the cooldown.
                                         _last_idle_scan_times[board_slug] = now
                                         scans_triggered += 1
+                                        llm_workers += 1
                                         _log.info(
                                             "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %d)",
                                             board_slug, board_active_running, idle_active_threshold, board_todo_count, pid

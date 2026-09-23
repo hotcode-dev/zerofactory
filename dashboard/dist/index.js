@@ -84,6 +84,7 @@
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [settingsForm, setSettingsForm] = useState({
       max_active_tasks: 10,
+      max_concurrent_llm_workers: 10,
       default_max_concurrent_workers: 1,
       scan_on_idle: true,
       idle_scan_active_threshold: 2,
@@ -166,7 +167,8 @@
       git_url: "",
       description: "",
       max_concurrent_running: 1,
-      auto_record_memory: true
+      auto_record_memory: true,
+      additional_reviewer_usernames: ""
     });
 
     const [editBoardForm, setEditBoardForm] = useState({
@@ -174,7 +176,8 @@
       git_url: "",
       description: "",
       max_concurrent_running: 1,
-      auto_record_memory: true
+      auto_record_memory: true,
+      additional_reviewer_usernames: ""
     });
 
     const [createBoardError, setCreateBoardError] = useState("");
@@ -182,7 +185,7 @@
 
     const handleOpenNewBoardModal = () => {
       setCreateBoardError("");
-      setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true });
+      setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
       setShowNewBoardModal(true);
     };
 
@@ -193,6 +196,7 @@
           const isCronEnabled = data.settings.enable_cron_scheduler ?? true;
           setSettingsForm({
             max_active_tasks: data.settings.max_active_tasks ?? 10,
+            max_concurrent_llm_workers: data.settings.max_concurrent_llm_workers ?? 10,
             default_max_concurrent_workers: data.settings.default_max_concurrent_workers ?? 1,
             scan_on_idle: data.settings.scan_on_idle ?? true,
             idle_scan_active_threshold: data.settings.idle_scan_active_threshold ?? 2,
@@ -220,6 +224,7 @@
       try {
         const payload = {
           max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
+          max_concurrent_llm_workers: Math.max(1, parseInt(settingsForm.max_concurrent_llm_workers, 10) || 10),
           default_max_concurrent_workers: Math.max(1, parseInt(settingsForm.default_max_concurrent_workers, 10) || 1),
           scan_on_idle: Boolean(settingsForm.scan_on_idle),
           idle_scan_active_threshold: Math.max(1, parseInt(settingsForm.idle_scan_active_threshold, 10) || 2),
@@ -243,6 +248,7 @@
           const isCronEnabled = res.settings.enable_cron_scheduler ?? true;
           setSettingsForm({
             max_active_tasks: res.settings.max_active_tasks ?? 10,
+            max_concurrent_llm_workers: res.settings.max_concurrent_llm_workers ?? 10,
             default_max_concurrent_workers: res.settings.default_max_concurrent_workers ?? 1,
             scan_on_idle: res.settings.scan_on_idle ?? true,
             idle_scan_active_threshold: res.settings.idle_scan_active_threshold ?? 2,
@@ -1080,13 +1086,14 @@
             git_url: gitUrl,
             description: (newBoardForm.description || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
-            auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false)
+            auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
+            additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
           })
         });
         const createdSlug = (res && res.slug) ? res.slug : autoSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true });
+        setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
         setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
@@ -1109,7 +1116,8 @@
           description: curr.description || "",
           git_url: curr.git_url || "",
           max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1,
-          auto_record_memory: curr.auto_record_memory !== false
+          auto_record_memory: curr.auto_record_memory !== false,
+          additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
         });
         setShowEditBoardModal(true);
       }
@@ -1128,7 +1136,8 @@
             description: (editBoardForm.description || "").trim(),
             git_url: (editBoardForm.git_url || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
-            auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false)
+            auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
+            additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
           })
         });
         showToast("Board '" + editBoardForm.slug + "' updated!", "success");
@@ -4050,10 +4059,10 @@
                           "div",
                           {
                             className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (
-                              (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                                ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
-                                : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                              (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                                 ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                : (t.title && t.title.includes("[Human Review]"))
+                                ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
                                 : t.blocking_parent_count > 0
                                 ? "bg-slate-800 border-slate-700 text-slate-300"
                                 : "bg-rose-500/15 border-rose-500/30 text-rose-300"
@@ -4061,10 +4070,10 @@
                           },
                           React.createElement("span", {
                             className: "w-2 h-2 rounded-full shrink-0 " + (
-                              (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                                ? "bg-teal-400"
-                                : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                              (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                                 ? "bg-amber-400"
+                                : (t.title && t.title.includes("[Human Review]"))
+                                ? "bg-teal-400"
                                 : t.blocking_parent_count > 0
                                 ? "bg-slate-400"
                                 : "bg-rose-400"
@@ -4073,10 +4082,10 @@
                           React.createElement(
                             "span",
                             { className: "text-[0.6875rem] truncate font-medium" },
-                            (t.pr_url || (t.title && t.title.includes("[Human Review]")))
-                              ? "🟢 Awaiting Human Merge"
-                              : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                            (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
                               ? "🟠 Merge Conflict"
+                              : (t.title && t.title.includes("[Human Review]"))
+                              ? "🟢 Awaiting Human Merge"
                               : t.blocking_parent_count > 0
                               ? "⏳ Blocked by Parent Task"
                               : "🛑 Action Required / Stuck"
@@ -5108,6 +5117,18 @@
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers (Optional)"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "alice, bob (GitHub usernames)",
+                      value: newBoardForm.additional_reviewer_usernames || "",
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, additional_reviewer_usernames: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Comma-separated usernames trusted to submit automation-relevant PR feedback.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
                     React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
                     React.createElement("input", {
                       type: "number",
@@ -5224,6 +5245,18 @@
                     value: editBoardForm.description,
                     onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
                   })
+                ),
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers"),
+                  React.createElement("input", {
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                    placeholder: "alice, bob (GitHub usernames; optional)",
+                    value: editBoardForm.additional_reviewer_usernames || "",
+                    onChange: (e) => setEditBoardForm({ ...editBoardForm, additional_reviewer_usernames: e.target.value })
+                  }),
+                  React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")
                 ),
                 React.createElement(
                   "div",
@@ -5345,6 +5378,20 @@
                   onChange: (e) => setSettingsForm({ ...settingsForm, max_active_tasks: e.target.value })
                 }),
                 React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps total tasks allowed in 'ready' and 'running' across all boards combined. Controls how many git worktrees are prepared from 'todo' to prevent queue and disk flooding. Default: 10.")
+              ),
+              React.createElement(
+                "div",
+                { className: "space-y-1.5" },
+                React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Global Max Concurrent LLM Workers"),
+                React.createElement("input", {
+                  type: "number",
+                  min: 1,
+                  step: 1,
+                  className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                  value: settingsForm.max_concurrent_llm_workers ?? 10,
+                  onChange: (e) => setSettingsForm({ ...settingsForm, max_concurrent_llm_workers: e.target.value })
+                }),
+                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")
               ),
               React.createElement(
                 "div",
