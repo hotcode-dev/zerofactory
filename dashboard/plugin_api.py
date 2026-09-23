@@ -34,14 +34,14 @@ from pydantic import BaseModel, Field
 # via the bare module name when the dashboard dir is placed on ``sys.path``.
 try:
     from ..settings import (  # type: ignore
-        DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
+        DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
         DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_ACTIVITY_RETENTION_DAYS,
         DEFAULT_SETTING_VALUES, load_settings,
     )
 except (ImportError, ValueError):
     from settings import (  # type: ignore
-        DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_MAX_CONCURRENT_WORKERS, DEFAULT_SCAN_ON_IDLE,
+        DEFAULT_MAX_ACTIVE_TASKS, DEFAULT_SCAN_ON_IDLE,
         DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD, DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
         DEFAULT_IDLE_SCAN_MAX_TODO, DEFAULT_ACTIVITY_RETENTION_DAYS,
         DEFAULT_SETTING_VALUES, load_settings,
@@ -71,7 +71,99 @@ except (ImportError, ValueError):
         resolve_profile_state_db,
     )
 
+try:
+    from ..profile_manager import sync_langfuse_profiles  # type: ignore
+except (ImportError, ValueError):
+    try:
+        from profile_manager import sync_langfuse_profiles  # type: ignore
+    except (ImportError, ValueError):
+        sync_langfuse_profiles = None  # type: ignore
+
 _log = logging.getLogger(__name__)
+
+# --- Scanner state file helpers -----------------------------------------------
+# The wake-gate state file (~/.hermes/scanner_state.json or
+# ZEROFACTORY_SCANNER_STATE) is written by TWO independent processes: the
+# per-board scanner cron (scripts/zf_scanner_gate.py) and this dashboard server.
+# Both writes must be atomic (temp file + os.replace) and the read-modify-write
+# here must run under an exclusive flock, or a mid-write reader sees a torn
+# JSON document and silently resets the whole state (lost last_scanned_sha ->
+# LLM re-fires; lost task_created -> duplicate improvement tasks).
+# Import the shared atomic writer from the gate script (the source of truth);
+# fall back to a self-contained equivalent if the script cannot be imported.
+
+def _load_scanner_gate_module():
+    import importlib.util
+    gate_path = Path(__file__).resolve().parent.parent / "scripts" / "zf_scanner_gate.py"
+    if not gate_path.is_file():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("zf_scanner_gate", gate_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+_scanner_gate_mod = _load_scanner_gate_module()
+
+
+def _mark_scanner_task_created(board_slug: str) -> bool:
+    """Atomically flag that a task was created for ``board_slug`` in the shared
+    scanner state file (flock-guarded read-modify-write + atomic os.replace).
+
+    Prefer the shared implementation in scripts/zf_scanner_gate.py; fall back
+    to an equivalent local implementation if that module is unavailable.
+    """
+    if not board_slug:
+        return False
+    if _scanner_gate_mod is not None and hasattr(_scanner_gate_mod, "mark_task_created"):
+        return bool(_scanner_gate_mod.mark_task_created(board_slug))
+
+    import fcntl
+    import tempfile as _tempfile
+    state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+    state_file = Path(state_override) if state_override else (Path.home() / ".hermes" / "scanner_state.json")
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = state_file.with_name(state_file.name + ".lock")
+        with open(str(lock_path), "a+", encoding="utf-8") as lock_f:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+            try:
+                data = {}
+                if state_file.exists():
+                    try:
+                        parsed = json.loads(state_file.read_text(encoding="utf-8"))
+                        if isinstance(parsed, dict):
+                            data = parsed
+                    except Exception:
+                        data = {}
+                board_state = data.setdefault(board_slug, {})
+                if isinstance(board_state, dict):
+                    board_state["task_created"] = True
+                    board_state["scan_attempts"] = 0
+                data[board_slug] = board_state
+                payload = json.dumps(data, indent=2)
+                temp_fd, temp_path = _tempfile.mkstemp(
+                    dir=str(state_file.parent), prefix="scanner_state_", suffix=".tmp"
+                )
+                try:
+                    with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                        f.write(payload)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(temp_path, str(state_file))
+                except BaseException:
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
+                    raise
+            finally:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
+        return True
+    except Exception:
+        return False
 
 router = APIRouter()
 
@@ -121,6 +213,8 @@ def init_db(force: bool = False):
                 description TEXT DEFAULT '',
                 git_url TEXT DEFAULT '',
                 max_concurrent_running INTEGER NOT NULL DEFAULT 1,
+                auto_record_memory INTEGER NOT NULL DEFAULT 1,
+                additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]',
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
@@ -180,6 +274,20 @@ def init_db(force: bool = False):
                 updated_at INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS board_memories (
+                id TEXT PRIMARY KEY,
+                board_slug TEXT NOT NULL,
+                task_id TEXT,
+                category TEXT NOT NULL DEFAULT 'general',
+                content TEXT NOT NULL,
+                tags TEXT DEFAULT '[]',
+                author TEXT DEFAULT 'agent',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (board_slug) REFERENCES boards(slug) ON DELETE CASCADE,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_slug, status);
             CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
@@ -187,6 +295,12 @@ def init_db(force: bool = False):
             CREATE INDEX IF NOT EXISTS idx_links_child ON task_links(child_id);
             CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_activity_task ON task_activity(task_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_memories_board ON board_memories(board_slug, created_at);
+            CREATE INDEX IF NOT EXISTS idx_memories_category ON board_memories(category);
+            -- Backs the per-board content dedup check in extract_and_record_memory
+            -- (WHERE board_slug = ? AND content = ?); idx_memories_board only
+            -- covers (board_slug, created_at) and cannot prune content equality.
+            CREATE INDEX IF NOT EXISTS idx_memories_board_content ON board_memories(board_slug, content);
             -- task_activity is an append-only log read by the /activities endpoint.
             -- idx_activity_created backs the "ORDER BY created_at DESC, id DESC"
             -- paginated list and the "created_at >= ?" today-counts; idx_activity_actor
@@ -194,11 +308,19 @@ def init_db(force: bool = False):
             CREATE INDEX IF NOT EXISTS idx_activity_created ON task_activity(created_at, id);
             CREATE INDEX IF NOT EXISTS idx_activity_actor ON task_activity(actor, created_at);
             """)
-            # Idempotent migration: add max_concurrent_running to pre-existing boards tables
+            # Idempotent migration: add board settings to pre-existing boards tables.
             cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
             if "max_concurrent_running" not in cols:
                 conn.execute(
                     "ALTER TABLE boards ADD COLUMN max_concurrent_running INTEGER NOT NULL DEFAULT 1"
+                )
+            if "auto_record_memory" not in cols:
+                conn.execute(
+                    "ALTER TABLE boards ADD COLUMN auto_record_memory INTEGER NOT NULL DEFAULT 1"
+                )
+            if "additional_reviewer_usernames" not in cols:
+                conn.execute(
+                    "ALTER TABLE boards ADD COLUMN additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]'"
                 )
 
             # Seed default global settings if missing. Values are derived from the
@@ -372,11 +494,15 @@ class BoardCreate(BaseModel):
     git_url: str = Field(..., min_length=1, description="Remote Git URL (e.g. https://github.com/owner/repo.git)")
     description: Optional[str] = ""
     max_concurrent_running: Optional[int] = Field(default=1, ge=1, description="Max tasks running in parallel on this board (default 1)")
+    auto_record_memory: Optional[bool] = Field(default=True, description="Enable automatic memory recording from reviewer feedback")
+    additional_reviewer_usernames: Optional[List[str]] = Field(default_factory=list, description="Additional GitHub usernames whose PR feedback is trusted")
 
 class BoardUpdate(BaseModel):
     description: Optional[str] = None
     git_url: Optional[str] = None
     max_concurrent_running: Optional[int] = Field(default=None, ge=1, description="Max tasks running in parallel on this board")
+    auto_record_memory: Optional[bool] = Field(default=None, description="Enable automatic memory recording from reviewer feedback")
+    additional_reviewer_usernames: Optional[List[str]] = Field(default=None, description="Additional GitHub usernames whose PR feedback is trusted")
 
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
@@ -446,13 +572,52 @@ class DependencyLink(BaseModel):
 
 class SettingsUpdate(BaseModel):
     max_active_tasks: Optional[int] = Field(default=None, ge=1, description="Max total active tasks across all boards in running")
-    default_max_concurrent_workers: Optional[int] = Field(default=None, ge=1, description="Default max concurrent running workers per board")
+    max_concurrent_llm_workers: Optional[int] = Field(default=None, ge=1, description="Max concurrent task and scanner LLM workers across all boards")
     scan_on_idle: Optional[bool] = Field(default=None, description="Automatically trigger improvement scans when active workers are below threshold")
     idle_scan_active_threshold: Optional[int] = Field(default=None, ge=1, description="Max active running workers on a board to trigger idle scan")
     idle_scan_cooldown_minutes: Optional[int] = Field(default=None, ge=1, description="Minimum cooldown in minutes between idle improvement scans per board")
     idle_scan_max_todo: Optional[int] = Field(default=None, ge=0, description="Max todo backlog tasks on board before suppressing idle scan")
     activity_retention_days: Optional[int] = Field(default=None, ge=1, description="Days to retain task_activity log rows before pruning (default 30)")
     enable_cron_scheduler: Optional[bool] = Field(default=None, description="Enable periodic background cron scheduler execution")
+    langfuse_enabled: Optional[bool] = Field(default=None, description="Enable Langfuse observability tracing across profiles")
+    langfuse_base_url: Optional[str] = Field(default=None, description="Langfuse base API URL")
+    langfuse_public_key: Optional[str] = Field(default=None, description="Langfuse public API key (pk-lf-...)")
+    langfuse_secret_key: Optional[str] = Field(default=None, description="Langfuse secret API key (sk-lf-...)")
+    langfuse_capture_mode: Optional[str] = Field(default=None, description="Capture mode: sanitized, metadata, or full")
+    langfuse_env: Optional[str] = Field(default=None, description="Langfuse environment tag")
+    auto_record_memory: Optional[bool] = Field(default=None, description="Automatically record gotchas/conventions to board memory on reviewer feedback")
+
+
+class LangfuseTestRequest(BaseModel):
+    base_url: Optional[str] = Field(default="https://cloud.langfuse.com", description="Langfuse host URL")
+    public_key: Optional[str] = Field(default="", description="Langfuse public key (pk-lf-...)")
+    secret_key: Optional[str] = Field(default="", description="Langfuse secret key (sk-lf-...)")
+
+
+VALID_MEMORY_CATEGORIES = {"decision", "gotcha", "convention", "rejected_path", "general"}
+
+
+# Hard bound for manually written memory content (API + CLI). The auto-record
+# path caps at 1000 chars; manual writes get a tighter 500-char cap so a single
+# oversized blob can never bloat storage or the pre-injected worker prompt.
+MEMORY_CONTENT_MAX_LENGTH = 500
+
+
+class MemoryCreate(BaseModel):
+    category: Optional[str] = Field(default="general", description="Category: decision, gotcha, convention, rejected_path, general")
+    # max_length enforced: content > 500 chars is rejected with a 422.
+    content: str = Field(..., min_length=1, max_length=MEMORY_CONTENT_MAX_LENGTH, description=f"Memory content / rule / finding (max {MEMORY_CONTENT_MAX_LENGTH} chars)")
+    tags: Optional[List[str]] = Field(default_factory=list, description="Tags for categorization")
+    author: Optional[str] = Field(default="user", description="Author: agent name or user")
+    task_id: Optional[str] = Field(default=None, description="Related task ID if applicable")
+
+
+class MemoryUpdate(BaseModel):
+    category: Optional[str] = None
+    content: Optional[str] = Field(default=None, min_length=1, max_length=MEMORY_CONTENT_MAX_LENGTH, description=f"Replacement memory content (max {MEMORY_CONTENT_MAX_LENGTH} chars); omitted to keep current content")
+    tags: Optional[List[str]] = None
+    author: Optional[str] = None
+    task_id: Optional[str] = None
 
 
 # --- Helper Functions --------------------------------------------------------
@@ -499,6 +664,137 @@ def log_activity(conn: sqlite3.Connection, task_id: str, actor: str, action: str
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, ?, ?, ?)",
         (task_id, actor, action, details, now)
     )
+
+# Anchors the rule prefix at a line start OR right after whitespace, so rules
+# embedded mid-sentence in reviewer/block reasons (e.g. "changes-requested.
+# GOTCHA: Always lock dependencies...") are captured too, not just bullet
+# lines. The optional leading bullet/markdown chars and ``**`` keep the
+# existing "- **GOTCHA:** ..." phrasings matching.
+AUTO_MEMORY_PREFIX_REGEX = re.compile(
+    r"(?:^|\n|[\s\.\;\,\:\-\(\)\[\]])(?:\*{1,2})?(GOTCHA|RULE|CONVENTION|GUIDELINE|DECISION|ARCH|REJECTED_PATH|REJECTED PATH|REJECTED|LESSON|LEARNING|TIP)(?:\*{1,2})?:\s*(?:\*{1,2})?([^\n\r]+)",
+    re.IGNORECASE
+)
+
+def normalize_memory_content(content: str) -> str:
+    """Normalize memory content for deduplication comparisons.
+
+    Strips surrounding whitespace and markdown quoting, collapses internal
+    whitespace runs (spaces/tabs/newlines) to a single space, and casefolds.
+    Near-identical rules ("GOTCHA: run tests before committing" vs
+    "GOTCHA:   Run Tests  Before Committing") map to the same key so the
+    auto-record path does not accumulate near-duplicate rows.
+    """
+    text = str(content).strip().strip("`*\"'")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.casefold()
+
+
+def extract_and_record_memory(
+    conn: sqlite3.Connection,
+    board_slug: str,
+    text: str,
+    task_id: Optional[str] = None,
+    author: str = "zf-reviewer",
+) -> List[Dict[str, Any]]:
+    """Extract structured rules/gotchas from reviewer feedback and auto-record to board_memories if enabled."""
+    if not text or not board_slug:
+        return []
+
+    # 1. Check global settings switch
+    settings = load_settings(conn)
+    if not settings.get("auto_record_memory", True):
+        return []
+
+    # 2. Check per-board switch
+    try:
+        b_row = conn.execute("SELECT auto_record_memory FROM boards WHERE slug = ?", (board_slug,)).fetchone()
+        if b_row:
+            arm_val = b_row["auto_record_memory"] if "auto_record_memory" in b_row.keys() else b_row[0]
+            if arm_val is not None and not bool(arm_val):
+                return []
+    except Exception:
+        pass
+
+    # Category normalization map
+    category_map = {
+        "gotcha": "gotcha",
+        "rule": "gotcha",
+        "lesson": "gotcha",
+        "learning": "gotcha",
+        "tip": "convention",
+        "convention": "convention",
+        "guideline": "convention",
+        "decision": "decision",
+        "arch": "decision",
+        "rejected_path": "rejected_path",
+        "rejected path": "rejected_path",
+        "rejected": "rejected_path",
+    }
+
+    recorded = []
+    now = int(time.time())
+
+    for match in AUTO_MEMORY_PREFIX_REGEX.finditer(text):
+        raw_prefix = match.group(1).lower().strip()
+        raw_content = match.group(2).strip()
+
+        # Clean markdown formatting or quotes
+        clean_content = raw_content.strip("`*\"' ")
+        if len(clean_content) < 5 or len(clean_content) > 1000:
+            continue
+
+        cat = category_map.get(raw_prefix, "gotcha")
+
+        # Deduplication check: first a fast exact-content lookup (regression
+        # guard for identical re-runs), then a normalized lookup (casefold +
+        # collapsed whitespace) so near-identical phrasings ("Gotcha: run
+        # tests" vs "GOTCHA:  Run   Tests") do not accumulate as separate rows.
+        dedup_key = normalize_memory_content(clean_content)
+        exact_row = conn.execute(
+            "SELECT id FROM board_memories WHERE board_slug = ? AND content = ?",
+            (board_slug, clean_content)
+        ).fetchone()
+        if exact_row:
+            continue
+        # Fuzzy-near-miss fallback: compare normalized forms of existing rows.
+        rows = conn.execute(
+            "SELECT content FROM board_memories WHERE board_slug = ?",
+            (board_slug,)
+        ).fetchall()
+        if any(normalize_memory_content(r["content"]) == dedup_key for r in rows):
+            continue
+
+        mem_id = f"mem-{secrets.token_hex(4)}"
+        tags = ["auto-recorded", f"from-{author}"]
+        tags_json = json.dumps(tags)
+
+        conn.execute(
+            """
+            INSERT INTO board_memories (id, board_slug, task_id, category, content, tags, author, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (mem_id, board_slug, task_id, cat, clean_content, tags_json, author, now, now)
+        )
+
+        if task_id:
+            try:
+                log_activity(conn, task_id, author, "auto_memory_recorded", f"Auto-recorded {cat}: {clean_content[:80]}")
+            except Exception:
+                pass
+
+        recorded.append({
+            "id": mem_id,
+            "board_slug": board_slug,
+            "task_id": task_id,
+            "category": cat,
+            "content": clean_content,
+            "tags": tags,
+            "author": author,
+            "created_at": now,
+            "updated_at": now
+        })
+
+    return recorded
 
 def normalize_file_path(path_str: str) -> str:
     """Normalize file path for consistent deduplication comparisons."""
@@ -607,7 +903,6 @@ AGENT_LABELS = {
     "zf-orchestrator": "Orchestrator",
     "zf-builder": "Builder",
     "zf-reviewer": "Reviewer",
-    "dispatcher": "Dispatcher",
     "unassigned": "Agent",
 }
 
@@ -615,7 +910,6 @@ AGENT_ICONS = {
     "zf-orchestrator": "🧭",
     "zf-builder": "🔨",
     "zf-reviewer": "🔍",
-    "dispatcher": "⚡",
     "unassigned": "🤖",
 }
 
@@ -658,7 +952,7 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
     seen_ids = set()
 
     # Profiles to inspect for sessions
-    profile_roles = ["zf-builder", "zf-reviewer", "zf-orchestrator", "dispatcher"]
+    profile_roles = ["zf-builder", "zf-reviewer", "zf-orchestrator"]
 
     for prof in profile_roles:
         state_db_path = resolve_profile_state_db(prof)
@@ -701,6 +995,15 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
 
                     if not is_match:
                         continue
+
+                    # Defensive check: if the session explicitly references another zf task in title or worktree, do not match it
+                    r_title = str(r["title"] or "")
+                    r_cwd = str(r["cwd"] or "")
+                    if task_id:
+                        if "Task ID: zf-" in r_title and task_id not in r_title:
+                            continue
+                        if "/zf-" in r_cwd and task_id not in r_cwd:
+                            continue
 
                     if sid in seen_ids:
                         continue
@@ -767,14 +1070,16 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
 
                     # Determine if ongoing
                     is_active_session = False
-                    if is_alive and (sid == active_sess_id or r["ended_at"] is None) and task_status in ("running", "todo"):
+                    started = r["started_at"]
+                    ended = r["ended_at"]
+                    task_started_at = meta.get("started_at")
+                    is_stale_start = bool(task_started_at and started and started < (task_started_at - 60))
+                    if is_alive and not is_stale_start and (sid == active_sess_id or r["ended_at"] is None) and task_status in ("running", "todo"):
                         is_active_session = True
-                    elif r["ended_at"] is None and task_status == "running" and (time.time() - (r["last_activity_at"] or r["started_at"] or 0)) < 300:
+                    elif r["ended_at"] is None and not is_stale_start and task_status == "running" and (time.time() - (r["last_activity_at"] or r["started_at"] or 0)) < 300:
                         is_active_session = True
 
                     sess_status = "ongoing" if is_active_session else "finished"
-                    started = r["started_at"]
-                    ended = r["ended_at"]
                     duration = None
                     if started and ended:
                         duration = max(0, int(ended - started))
@@ -795,6 +1100,7 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                         "model": r["model"],
                         "started_at": started,
                         "ended_at": ended,
+                        "last_activity_at": r["last_activity_at"],
                         "duration_seconds": duration,
                         "message_count": r["message_count"] or 0,
                         "turn_count": turn_count or r["tool_call_count"] or 0,
@@ -829,6 +1135,7 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                     "model": s.get("model"),
                     "started_at": s.get("started_at"),
                     "ended_at": s.get("ended_at"),
+                    "last_activity_at": s.get("last_activity_at") or s.get("started_at"),
                     "duration_seconds": None,
                     "message_count": s.get("message_count", 0),
                     "turn_count": s.get("turn_count", 0),
@@ -877,13 +1184,17 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
         except Exception:
             pass
 
-    # Resolve all sessions across all agents (orchestrator, builder, reviewer, dispatcher)
+    # Resolve all sessions across all agents (orchestrator, builder, reviewer)
     sessions = resolve_task_all_sessions(task, backfill=backfill)
 
     # Find the ongoing or latest session
-    active_session = next((s for s in sessions if s.get("status") == "ongoing"), None)
-    if not active_session and sessions:
+    ongoing_sessions = [s for s in sessions if s.get("status") == "ongoing"]
+    if ongoing_sessions:
+        active_session = ongoing_sessions[-1]
+    elif sessions:
         active_session = sessions[-1]
+    else:
+        active_session = None
 
     if active_session:
         s_id = active_session.get("session_id")
@@ -897,10 +1208,11 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             except Exception:
                 pass
 
+        last_active_ts = active_session.get("last_activity_at") or active_session.get("started_at")
         r_sec, i_sec, stuck, reason = _compute_stuck_status(
             task, is_alive, worker_pid,
             active_session.get("started_at"),
-            active_session.get("started_at"),
+            last_active_ts,
             log_path
         )
 
@@ -912,7 +1224,11 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             "is_alive": is_alive,
             "model": active_session.get("model"),
             "started_at": active_session.get("started_at"),
-            "last_active": active_session.get("ended_at") or active_session.get("started_at"),
+            "last_active": (
+                active_session.get("last_activity_at")
+                or active_session.get("ended_at")
+                or active_session.get("started_at")
+            ),
             "message_count": active_session.get("message_count", 0),
             "turn_count": active_session.get("turn_count", 0),
             "tool_calls_count": active_session.get("tool_calls_count", 0),
@@ -962,8 +1278,15 @@ def list_boards():
         cursor.execute("SELECT * FROM boards ORDER BY created_at ASC")
         boards = [dict(row) for row in cursor.fetchall()]
 
-        # Attach task counts per board
+        # Attach task counts per board and normalize boolean fields
         for b in boards:
+            b["auto_record_memory"] = bool(b.get("auto_record_memory", 1))
+            try:
+                b["additional_reviewer_usernames"] = json.loads(
+                    b.get("additional_reviewer_usernames") or "[]"
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                b["additional_reviewer_usernames"] = []
             cursor.execute("SELECT COUNT(*) as count FROM tasks WHERE board_slug = ?", (b["slug"],))
             b["task_count"] = cursor.fetchone()["count"]
             cursor.execute("SELECT COUNT(*) as count FROM tasks WHERE board_slug = ? AND status = 'running'", (b["slug"],))
@@ -1030,6 +1353,12 @@ def create_board(req: BoardCreate):
 
     desc = (req.description or "").strip()
     mcr = max(1, req.max_concurrent_running or 1)
+    arm = 1 if (req.auto_record_memory is None or req.auto_record_memory) else 0
+    reviewer_usernames = sorted({
+        username.strip().lstrip("@").lower()
+        for username in (req.additional_reviewer_usernames or [])
+        if username and username.strip()
+    })
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -1038,8 +1367,8 @@ def create_board(req: BoardCreate):
             raise HTTPException(status_code=409, detail=f"Board '{slug}' already exists")
 
         cursor.execute(
-            "INSERT INTO boards (slug, description, git_url, max_concurrent_running, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (slug, desc, git_url, mcr, now, now)
+            "INSERT INTO boards (slug, description, git_url, max_concurrent_running, auto_record_memory, additional_reviewer_usernames, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (slug, desc, git_url, mcr, arm, json.dumps(reviewer_usernames), now, now)
         )
         conn.commit()
 
@@ -1078,6 +1407,18 @@ def update_board(slug: str, req: BoardUpdate):
             mcr = max(1, int(req.max_concurrent_running))
             updates.append("max_concurrent_running = ?")
             params.append(mcr)
+        if req.auto_record_memory is not None:
+            arm = 1 if req.auto_record_memory else 0
+            updates.append("auto_record_memory = ?")
+            params.append(arm)
+        if req.additional_reviewer_usernames is not None:
+            reviewer_usernames = sorted({
+                username.strip().lstrip("@").lower()
+                for username in req.additional_reviewer_usernames
+                if username and username.strip()
+            })
+            updates.append("additional_reviewer_usernames = ?")
+            params.append(json.dumps(reviewer_usernames))
 
         if updates:
             updates.append("updated_at = ?")
@@ -1089,6 +1430,13 @@ def update_board(slug: str, req: BoardUpdate):
         cursor.execute("SELECT * FROM boards WHERE slug = ?", (slug,))
         row = cursor.fetchone()
         board_data = dict(row) if row else {"slug": slug}
+        if "auto_record_memory" in board_data:
+            board_data["auto_record_memory"] = bool(board_data["auto_record_memory"])
+        if "additional_reviewer_usernames" in board_data:
+            try:
+                board_data["additional_reviewer_usernames"] = json.loads(board_data["additional_reviewer_usernames"] or "[]")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                board_data["additional_reviewer_usernames"] = []
 
     # Sync builtin cron jobs so updated board properties are reflected
     if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
@@ -1106,6 +1454,7 @@ def delete_board(slug: str):
     """Delete a board and its associated tasks."""
     with get_db_conn() as conn:
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM board_memories WHERE board_slug = ?", (slug,))
         cursor.execute("DELETE FROM tasks WHERE board_slug = ?", (slug,))
         cursor.execute("DELETE FROM boards WHERE slug = ?", (slug,))
         if cursor.rowcount == 0:
@@ -1160,11 +1509,10 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_active_tasks', ?, ?)",
                 (val, now)
             )
-        if req.default_max_concurrent_workers is not None:
-            val = str(max(1, int(req.default_max_concurrent_workers)))
+        if req.max_concurrent_llm_workers is not None:
             cursor.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('default_max_concurrent_workers', ?, ?)",
-                (val, now)
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_concurrent_llm_workers', ?, ?)",
+                (str(req.max_concurrent_llm_workers), now)
             )
         if req.scan_on_idle is not None:
             val = "true" if req.scan_on_idle else "false"
@@ -1202,9 +1550,157 @@ def update_settings(req: SettingsUpdate):
             except ImportError:
                 from builtin_cron import set_cron_scheduler_enabled
             set_cron_scheduler_enabled(bool(req.enable_cron_scheduler), conn=conn)
+        if req.langfuse_enabled is not None:
+            val = "true" if req.langfuse_enabled else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_enabled', ?, ?)",
+                (val, now)
+            )
+        if req.langfuse_base_url is not None:
+            val = str(req.langfuse_base_url).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_base_url', ?, ?)",
+                (val, now)
+            )
+        if req.langfuse_public_key is not None:
+            val = str(req.langfuse_public_key).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_public_key', ?, ?)",
+                (val, now)
+            )
+        if req.langfuse_secret_key is not None:
+            val = str(req.langfuse_secret_key).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_secret_key', ?, ?)",
+                (val, now)
+            )
+        if req.langfuse_capture_mode is not None:
+            val = str(req.langfuse_capture_mode).strip().lower()
+            if val in ("sanitized", "metadata", "full"):
+                cursor.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_capture_mode', ?, ?)",
+                    (val, now)
+                )
+        if req.langfuse_env is not None:
+            val = str(req.langfuse_env).strip()
+            if val:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('langfuse_env', ?, ?)",
+                    (val, now)
+                )
+        if req.auto_record_memory is not None:
+            val = "true" if req.auto_record_memory else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('auto_record_memory', ?, ?)",
+                (val, now)
+            )
         conn.commit()
 
-    return get_settings()
+    res = get_settings()
+    current_settings = res.get("settings", {})
+    # Synchronize across all profiles if Langfuse settings were touched or enabled
+    if any(getattr(req, k) is not None for k in (
+        "langfuse_enabled", "langfuse_base_url", "langfuse_public_key",
+        "langfuse_secret_key", "langfuse_capture_mode", "langfuse_env"
+    )):
+        if callable(sync_langfuse_profiles):
+            try:
+                sync_langfuse_profiles(current_settings)
+            except Exception as e:
+                _log.warning("Could not sync Langfuse across profiles: %s", e)
+
+    return res
+
+
+@router.post("/settings/langfuse/test")
+def test_langfuse_connection(req: LangfuseTestRequest):
+    """Test connection to Langfuse server and optionally validate API keys."""
+    base_url = (req.base_url or "").strip().rstrip("/")
+    if not base_url:
+        base_url = "https://cloud.langfuse.com"
+    if not (base_url.startswith("http://") or base_url.startswith("https://")):
+        base_url = "https://" + base_url
+
+    public_key = (req.public_key or "").strip()
+    secret_key = (req.secret_key or "").strip()
+
+    import base64
+    import urllib.error
+    import urllib.request
+
+    # 1. Health check
+    health_url = f"{base_url}/api/public/health"
+    status_code = None
+    try:
+        req_obj = urllib.request.Request(
+            health_url,
+            headers={"User-Agent": "ZeroFactory/1.0", "Accept": "application/json"}
+        )
+        with urllib.request.urlopen(req_obj, timeout=6.0) as resp:
+            status_code = resp.status
+    except urllib.error.HTTPError as e:
+        status_code = e.code
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": f"Failed to connect to Langfuse host at {base_url}: {e}"
+        }
+
+    # 2. If credentials are provided, test auth
+    if public_key or secret_key:
+        if not public_key.startswith("pk-lf-") or not secret_key.startswith("sk-lf-"):
+            return {
+                "ok": False,
+                "error": "Invalid key format: public key must start with 'pk-lf-' and secret key with 'sk-lf-'"
+            }
+
+        auth_url = f"{base_url}/api/public/projects"
+        auth_header = base64.b64encode(f"{public_key}:{secret_key}".encode("utf-8")).decode("ascii")
+        try:
+            auth_req = urllib.request.Request(
+                auth_url,
+                headers={
+                    "Authorization": f"Basic {auth_header}",
+                    "User-Agent": "ZeroFactory/1.0",
+                    "Accept": "application/json"
+                }
+            )
+            with urllib.request.urlopen(auth_req, timeout=6.0) as resp:
+                if resp.status in (200, 201):
+                    return {
+                        "ok": True,
+                        "message": f"Successfully connected and authenticated with Langfuse ({base_url})!"
+                    }
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                return {
+                    "ok": False,
+                    "error": f"Authentication failed (HTTP {e.code}): Check that your public and secret keys are correct."
+                }
+            if status_code in (200, 204):
+                return {
+                    "ok": True,
+                    "message": f"Server reached at {base_url} (HTTP {e.code} on auth check)."
+                }
+            return {
+                "ok": False,
+                "error": f"Langfuse server returned HTTP {e.code}: {e.reason}"
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "error": f"Error during auth check to {base_url}: {e}"
+            }
+
+    if status_code in (200, 204):
+        return {
+            "ok": True,
+            "message": f"Langfuse server is healthy and reachable at {base_url}."
+        }
+    return {
+        "ok": False,
+        "error": f"Unexpected health status {status_code} from {base_url}."
+    }
 
 
 # --- Task Endpoints ----------------------------------------------------------
@@ -1456,19 +1952,11 @@ def create_task(req: TaskCreate):
         log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
         conn.commit()
 
-        # Mark scanner state as having successfully produced a task for this board
+        # Mark scanner state as having successfully produced a task for this board.
+        # Atomic flock-guarded read-modify-write (see _mark_scanner_task_created)
+        # so concurrent scanner-gate writers can't lose this update.
         if board_slug:
-            try:
-                state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
-                state_file = Path(state_override) if state_override else (Path.home() / ".hermes" / "scanner_state.json")
-                if state_file.exists():
-                    s_data = json.loads(state_file.read_text(encoding="utf-8"))
-                    if board_slug in s_data:
-                        s_data[board_slug]["task_created"] = True
-                        s_data[board_slug]["scan_attempts"] = 0
-                        state_file.write_text(json.dumps(s_data, indent=2), encoding="utf-8")
-            except Exception:
-                pass
+            _mark_scanner_task_created(board_slug)
 
     return {"ok": True, "id": task_id}
 
@@ -1548,8 +2036,8 @@ def get_task_sessions(task_id: str):
 
 @router.get("/sessions")
 def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, limit: int = 50):
-    """List recent and active AI agent sessions across Orchestrator, Builder, Reviewer, and Dispatcher."""
-    profiles = ["zf-builder", "zf-reviewer", "zf-orchestrator", "dispatcher"]
+    """List recent and active AI agent sessions across Orchestrator, Builder, and Reviewer."""
+    profiles = ["zf-builder", "zf-reviewer", "zf-orchestrator"]
     if role and role in profiles:
         profiles = [role]
 
@@ -1593,6 +2081,7 @@ def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, 
                         "model": r["model"],
                         "started_at": started,
                         "ended_at": ended,
+                        "last_activity_at": r["last_activity_at"],
                         "duration_seconds": duration,
                         "message_count": r["message_count"] or 0,
                         "tool_calls_count": r["tool_call_count"] or 0,
@@ -1694,16 +2183,40 @@ def move_task(task_id: str, req: TaskMove):
     now = int(time.time())
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        cursor.execute("SELECT status, metadata, board_slug FROM tasks WHERE id = ?", (task_id,))
         curr = cursor.fetchone()
         if not curr:
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
         prev_status = curr["status"]
-        if prev_status != req.status:
-            cursor.execute("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?", (req.status, now, task_id))
-            move_actor = req.actor or "user"
-            log_activity(conn, task_id, move_actor, "move", f"Moved from {prev_status} to {req.status}")
+        meta_raw = curr["metadata"] if "metadata" in curr.keys() else "{}"
+        meta = {}
+        try:
+            meta = json.loads(meta_raw or "{}")
+        except Exception:
+            pass
+
+        meta_updated = False
+        if req.status in ("todo", "ready", "running", "done") or (req.status == "blocked" and req.reason == "review-required"):
+            if "last_worker_failure" in meta:
+                meta.pop("last_worker_failure", None)
+                meta_updated = True
+            if req.status in ("todo", "ready", "running", "done"):
+                if "permanently_blocked" in meta:
+                    meta.pop("permanently_blocked", None)
+                    meta_updated = True
+                if "worker_failure_retries" in meta:
+                    meta.pop("worker_failure_retries", None)
+                    meta_updated = True
+                if "blocked_reason" in meta:
+                    meta.pop("blocked_reason", None)
+                    meta_updated = True
+
+        if prev_status != req.status or meta_updated:
+            cursor.execute("UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?", (req.status, json.dumps(meta), now, task_id))
+            if prev_status != req.status:
+                move_actor = req.actor or "user"
+                log_activity(conn, task_id, move_actor, "move", f"Moved from {prev_status} to {req.status}")
 
         # When moving to 'blocked' with a reason, record it as a comment so
         # the handoff reason is auditable. This is the single source of truth:
@@ -1724,6 +2237,14 @@ def move_task(task_id: str, req: TaskMove):
                 )
                 comment_id = cursor.lastrowid
                 log_activity(conn, task_id, actor, "comment", f"Added comment #{comment_id}")
+
+            # Auto-record memory if structured rule/gotcha is present in reason
+            b_slug = curr["board_slug"] if "board_slug" in curr.keys() else ""
+            if b_slug:
+                try:
+                    extract_and_record_memory(conn, board_slug=b_slug, text=req.reason, task_id=task_id, author=actor)
+                except Exception as _mem_err:
+                    _log.debug("Auto-record memory from move_task reason failed: %s", _mem_err)
 
         conn.commit()
 
@@ -1755,8 +2276,9 @@ def add_comment(task_id: str, req: CommentCreate):
     now = int(time.time())
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM tasks WHERE id = ?", (task_id,))
-        if not cursor.fetchone():
+        cursor.execute("SELECT id, board_slug FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
         body_str = req.body.strip()
@@ -1777,6 +2299,14 @@ def add_comment(task_id: str, req: CommentCreate):
         first_line = body_str.split("\n")[0][:60]
         details_str = f"Added comment #{comment_id}: {first_line}" if first_line else f"Added comment #{comment_id}"
         log_activity(conn, task_id, author_val, "comment", details_str)
+
+        b_slug = task_row["board_slug"] if "board_slug" in task_row.keys() else ""
+        if b_slug:
+            try:
+                extract_and_record_memory(conn, board_slug=b_slug, text=body_str, task_id=task_id, author=author_val)
+            except Exception as _mem_err:
+                _log.debug("Auto-record memory from comment failed: %s", _mem_err)
+
         conn.commit()
 
     return {"ok": True, "id": comment_id}
@@ -2593,4 +3123,309 @@ def reset_builtin_cron_job(job_id: str):
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("error", "Reset failed"))
     return res
+
+
+# --- Native Kanban.db Memory Endpoints ---------------------------------------
+
+@router.get("/boards/{slug}/memories")
+def list_board_memories(
+    slug: str,
+    category: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0
+):
+    """List repository memories, conventions, and gotchas for a board."""
+    init_db()
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT slug FROM boards WHERE slug = ?", (slug,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
+
+        query = "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE board_slug = ?"
+        params: List[Any] = [slug]
+
+        if category and category != "all":
+            query += " AND category = ?"
+            params.append(category)
+
+        if q and q.strip():
+            query += " AND (content LIKE ? OR tags LIKE ?)"
+            params.extend([f"%{q.strip()}%", f"%{q.strip()}%"])
+
+        # Count total
+        count_query = query.replace("SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at", "SELECT COUNT(*)")
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()[0]
+
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([max(1, min(limit, 200)), max(0, offset)])
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        memories = []
+        for r in rows:
+            tags = []
+            try:
+                tags = json.loads(r[5] or "[]")
+            except Exception:
+                pass
+            memories.append({
+                "id": r[0],
+                "board_slug": r[1],
+                "task_id": r[2],
+                "category": r[3],
+                "content": r[4],
+                "tags": tags,
+                "author": r[6],
+                "created_at": r[7],
+                "updated_at": r[8],
+            })
+
+        return {"ok": True, "board_slug": slug, "total": total, "memories": memories}
+
+
+@router.post("/boards/{slug}/memories")
+def create_board_memory(slug: str, req: MemoryCreate):
+    """Record a new memory, decision, convention, or gotcha for a board.
+
+    ``req.content`` is hard-capped at 500 characters (``MemoryCreate.content``
+    enforces ``max_length``) — oversized content is rejected with a 422.
+    Whitespace-only content is rejected with a 400.
+    """
+    init_db()
+    cat = (req.category or "general").strip().lower()
+    if cat not in VALID_MEMORY_CATEGORIES:
+        cat = "general"
+
+    stripped_content = req.content.strip()
+    if not stripped_content:
+        raise HTTPException(status_code=400, detail="Memory content must not be blank")
+
+    now = int(time.time())
+    mem_id = f"mem-{secrets.token_hex(4)}"
+    tags_json = json.dumps(req.tags or [])
+    author = req.author or "user"
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT slug FROM boards WHERE slug = ?", (slug,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
+
+        cursor.execute(
+            """
+            INSERT INTO board_memories (id, board_slug, task_id, category, content, tags, author, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (mem_id, slug, req.task_id, cat, req.content.strip(), tags_json, author, now, now)
+        )
+        conn.commit()
+
+    return {
+        "ok": True,
+        "memory": {
+            "id": mem_id,
+            "board_slug": slug,
+            "task_id": req.task_id,
+            "category": cat,
+            "content": req.content.strip(),
+            "tags": req.tags or [],
+            "author": author,
+            "created_at": now,
+            "updated_at": now
+        }
+    }
+
+
+@router.put("/memories/{memory_id}")
+def update_board_memory(memory_id: str, req: MemoryUpdate):
+    """Update an existing board memory.
+
+    When ``req.content`` is provided it must be non-empty and at most 500
+    characters (``MemoryUpdate.content`` enforces ``min_length``/
+    ``max_length``) — violations are rejected with a 422. Whitespace-only
+    content is rejected with a 400.
+    """
+    init_db()
+    now = int(time.time())
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE id = ?", (memory_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
+
+        updates = []
+        params = []
+        if req.category is not None:
+            cat = req.category.strip().lower()
+            if cat in VALID_MEMORY_CATEGORIES:
+                updates.append("category = ?")
+                params.append(cat)
+        if req.content is not None:
+            stripped_content = req.content.strip()
+            if not stripped_content:
+                raise HTTPException(status_code=400, detail="Memory content must not be blank")
+            updates.append("content = ?")
+            params.append(stripped_content)
+        if req.tags is not None:
+            updates.append("tags = ?")
+            params.append(json.dumps(req.tags))
+        if req.author is not None:
+            updates.append("author = ?")
+            params.append(req.author)
+        if req.task_id is not None:
+            updates.append("task_id = ?")
+            params.append(req.task_id or None)
+
+        if updates:
+            updates.append("updated_at = ?")
+            params.append(now)
+            params.append(memory_id)
+            cursor.execute(f"UPDATE board_memories SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
+
+        cursor.execute("SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE id = ?", (memory_id,))
+        r = cursor.fetchone()
+        tags = []
+        try:
+            tags = json.loads(r[5] or "[]")
+        except Exception:
+            pass
+
+        return {
+            "ok": True,
+            "memory": {
+                "id": r[0],
+                "board_slug": r[1],
+                "task_id": r[2],
+                "category": r[3],
+                "content": r[4],
+                "tags": tags,
+                "author": r[6],
+                "created_at": r[7],
+                "updated_at": r[8],
+            }
+        }
+
+
+@router.delete("/memories/{memory_id}")
+def delete_board_memory(memory_id: str):
+    """Delete a memory entry."""
+    init_db()
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM board_memories WHERE id = ?", (memory_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
+        conn.commit()
+    return {"ok": True, "deleted": memory_id}
+
+
+list_memories = list_board_memories
+create_memory = create_board_memory
+update_memory = update_board_memory
+delete_memory = delete_board_memory
+
+
+# --- Agents Status Endpoint --------------------------------------------------
+
+@router.get("/agents")
+def get_agents_status():
+    """Retrieve real-time status and telemetry for the 3 Zero Factory specialist agents."""
+    init_db()
+    profiles = ["zf-orchestrator", "zf-builder", "zf-reviewer"]
+    role_descriptions = {
+        "zf-orchestrator": "Backlog planning, triage, workflow coordination & improvement scans",
+        "zf-builder": "Autonomous code implementation, bug fixing, test writing & pull requests",
+        "zf-reviewer": "Automated pull request review, edge case verification & test suite execution"
+    }
+
+    # Fetch any currently running tasks from DB
+    running_tasks_by_assignee = {}
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title, board_slug, assignee, workspace_path, updated_at FROM tasks WHERE status = 'running'")
+        for row in cursor.fetchall():
+            asgn = row[3]
+            if asgn:
+                running_tasks_by_assignee[asgn] = {
+                    "id": row[0],
+                    "title": row[1],
+                    "board_slug": row[2],
+                    "workspace_path": row[4],
+                    "updated_at": row[5]
+                }
+
+    agents_data = []
+    for prof in profiles:
+        active_sess = None
+        total_sessions = 0
+        total_tool_calls = 0
+        last_active_at = None
+
+        sdb = resolve_profile_state_db(prof)
+        if sdb and sdb.exists():
+            try:
+                conn = sqlite3.connect(f"file:{sdb.resolve()}?mode=ro", uri=True, timeout=2.0)
+                conn.row_factory = sqlite3.Row
+                with closing(conn):
+                    cur = conn.cursor()
+                    rows = cur.execute("""
+                        SELECT id, model, started_at, ended_at, last_activity_at, last_activity_description,
+                               message_count, tool_call_count, cwd, title
+                        FROM sessions
+                        ORDER BY started_at DESC
+                        LIMIT 100
+                    """).fetchall()
+
+                    total_sessions = len(rows)
+                    for r in rows:
+                        total_tool_calls += (r["tool_call_count"] or 0)
+                        act_ts = r["last_activity_at"] or r["started_at"]
+                        if act_ts and (last_active_at is None or act_ts > last_active_at):
+                            last_active_at = act_ts
+
+                        ended = r["ended_at"]
+                        is_ongoing = (ended is None and (time.time() - (r["last_activity_at"] or r["started_at"] or 0)) < 300)
+                        if is_ongoing and active_sess is None:
+                            started = r["started_at"]
+                            duration = max(0, int(time.time() - started)) if started else None
+                            active_sess = {
+                                "session_id": str(r["id"]),
+                                "model": r["model"],
+                                "started_at": started,
+                                "duration_seconds": duration,
+                                "message_count": r["message_count"] or 0,
+                                "tool_calls_count": r["tool_call_count"] or 0,
+                                "title": r["title"],
+                                "last_action": r["last_activity_description"] or "Active",
+                                "cwd": r["cwd"]
+                            }
+            except Exception as e:
+                _log.debug("Error checking agent status for %s: %s", prof, e)
+
+        current_task = running_tasks_by_assignee.get(prof)
+        is_active = (active_sess is not None) or (current_task is not None)
+
+        agents_data.append({
+            "name": prof,
+            "label": AGENT_LABELS.get(prof, prof.replace("zf-", "").capitalize()),
+            "icon": AGENT_ICONS.get(prof, "🤖"),
+            "description": role_descriptions.get(prof, ""),
+            "status": "active" if is_active else "idle",
+            "is_active": is_active,
+            "active_session": active_sess,
+            "current_task": current_task,
+            "stats": {
+                "total_sessions": total_sessions,
+                "total_tool_calls": total_tool_calls,
+                "last_active_at": last_active_at
+            }
+        })
+
+    return {"ok": True, "agents": agents_data}
+
 

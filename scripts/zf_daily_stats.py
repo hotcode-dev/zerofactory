@@ -21,6 +21,37 @@ from typing import Any, Dict, List
 DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
 
 
+def _resolve_running_since(rt: Dict[str, Any], now: int) -> int:
+    """Return the epoch second a running task started, for in-flight duration.
+
+    ``tasks.updated_at`` is written exactly once — at claim/spawn time — and is
+    never refreshed while a worker runs, so deriving duration from
+    ``now - updated_at`` permanently reports ~0-1m for the whole lifetime of a
+    build (the exact metric needed to spot hung/stuck workers is wrong).
+
+    The dispatcher records the authoritative dispatch time in task metadata at
+    spawn (``meta["started_at"]``) — the same field the stuck-detection path
+    relies on (``meta.get("started_at") or updated_at or created_at``) — so we
+    prefer that and fall back to ``updated_at`` then ``created_at``.
+    """
+    started_at = None
+    meta = rt.get("metadata")
+    if isinstance(meta, dict):
+        started_at = meta.get("started_at")
+    elif meta:
+        try:
+            parsed = json.loads(meta)
+            if isinstance(parsed, dict):
+                started_at = parsed.get("started_at")
+        except Exception:
+            started_at = None
+    since = started_at or rt.get("updated_at") or rt.get("created_at") or now
+    try:
+        return int(since)
+    except (TypeError, ValueError):
+        return now
+
+
 def run_daily_stats() -> int:
     db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
     if not db_path.exists():
@@ -58,7 +89,7 @@ def run_daily_stats() -> int:
 
             # Active running tasks
             cursor.execute(
-                "SELECT id, title, assignee, board_slug, updated_at FROM tasks WHERE status = 'running'"
+                "SELECT id, title, assignee, board_slug, updated_at, created_at, metadata FROM tasks WHERE status = 'running'"
             )
             running_tasks = [dict(r) for r in cursor.fetchall()]
 
@@ -106,7 +137,7 @@ def run_daily_stats() -> int:
     if running_tasks:
         print(f"#### ⚡ Currently In-Flight ({len(running_tasks)} tasks):")
         for rt in running_tasks:
-            elapsed = (now - rt.get("updated_at", now)) // 60
+            elapsed = max(0, (now - _resolve_running_since(rt, now)) // 60)
             print(f"- `{rt['id']}` ({rt['assignee']}): {rt['title']} (active for {elapsed}m)")
         print()
 

@@ -15,12 +15,14 @@ Runs locally in the target repository workdir before the Hermes LLM scanner fire
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -49,23 +51,115 @@ def get_state_file() -> Path:
     return Path(env_override) if env_override else STATE_FILE
 
 
+def _state_lock_path(state_file: Path) -> Path:
+    """Sidecar lock file path for atomic read-modify-write of the state file.
+
+    The lock is a separate file (not the state file itself) so `os.replace` of
+    the state file never invalidates a lock held on it mid-write.
+    """
+    return state_file.with_name(state_file.name + ".lock")
+
+
 def load_state() -> Dict[str, Any]:
+    # The state file is only ever published atomically (write_state_atomic ->
+    # os.replace), so a reader can never observe a torn/partial JSON document.
     sf = get_state_file()
     if sf.exists():
         try:
-            return json.loads(sf.read_text(encoding="utf-8"))
+            data = json.loads(sf.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
         except Exception:
             return {}
     return {}
 
 
-def save_state(state: Dict[str, Any]) -> None:
-    sf = get_state_file()
+def _atomic_write_json(sf: Path, data: Dict[str, Any]) -> None:
+    """Write ``data`` to ``sf`` atomically: temp file + fsync + os.replace.
+
+    Same pattern as ``builtin_cron.save_jobs_to_file`` — the target is replaced
+    (renamed) rather than overwritten in place, so a concurrent reader can
+    never observe a torn/partial JSON document.
+    """
+    sf.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(data, indent=2)
+    temp_fd, temp_path = tempfile.mkstemp(dir=str(sf.parent), prefix="scanner_state_", suffix=".tmp")
     try:
-        sf.parent.mkdir(parents=True, exist_ok=True)
-        sf.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, str(sf))
+    except BaseException:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
+def write_state_atomic(state: Dict[str, Any]) -> bool:
+    """Atomically persist the full state dict (temp file + os.replace)."""
+    try:
+        _atomic_write_json(get_state_file(), state)
+        return True
     except Exception:
-        pass
+        return False
+
+
+def save_state(state: Dict[str, Any]) -> None:
+    write_state_atomic(state)
+
+
+def _locked_state_rmw(mutate: Any) -> bool:
+    """Read-modify-write the state file under an exclusive sidecar flock.
+
+    ``mutate`` receives the parsed state dict (freshly loaded under the lock)
+    and may mutate it in place; the result is then published atomically. The
+    lock is a SEPARATE sidecar file because the state file itself is replaced
+    via os.replace — locking the state file would not protect across the
+    rename. Returns True on success.
+    """
+    sf = get_state_file()
+    lock_path = _state_lock_path(sf)
+    with open(str(lock_path), "a+", encoding="utf-8") as lock_f:
+        fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+        try:
+            data = {}
+            if sf.exists():
+                try:
+                    parsed = json.loads(sf.read_text(encoding="utf-8"))
+                    if isinstance(parsed, dict):
+                        data = parsed
+                except Exception:
+                    data = {}
+            mutate(data)
+            _atomic_write_json(sf, data)
+        finally:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
+    return True
+
+
+def mark_task_created(board_slug: str) -> bool:
+    """Atomically flag that a task was created for ``board_slug``.
+
+    Called by the dashboard after task creation. The entire read-modify-write
+    happens under an exclusive ``fcntl.flock``, so concurrent writers (this
+    dashboard handler and the scanner gate cron) can never lose each other's
+    updates. Returns True when the flag was recorded.
+    """
+    if not board_slug:
+        return False
+
+    def _mutate(data: Dict[str, Any]) -> None:
+        board_state = data.setdefault(board_slug, {})
+        if isinstance(board_state, dict):
+            board_state["task_created"] = True
+            board_state["scan_attempts"] = 0
+
+    try:
+        return _locked_state_rmw(_mutate)
+    except Exception:
+        return False
 
 
 def is_llm_reachable(timeout: float = 2.0) -> bool:

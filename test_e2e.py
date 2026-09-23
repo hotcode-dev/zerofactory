@@ -345,9 +345,9 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
 
     def test_01_full_delivery_cycle_builder_review_rounds_approval_and_merge(self):
         """Complete E2E autonomous delivery flow:
-        Triage -> Todo -> Ready -> Running (Builder) -> PR -> 3 Review Rounds -> Approved -> Merged -> Done.
+        Triage -> Todo -> Running (Builder) -> PR -> 3 Review Rounds -> Approved -> Merged -> Done.
         """
-        # Step 1: Create goal task in 'ready'
+        # Step 1: Create goal task in 'todo'
         t_res = create_task(TaskCreate(
             board_slug=self.board_slug,
             title="Implement User Authentication",
@@ -358,7 +358,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         ))
         task_id = t_res["id"]
 
-        # Step 2: Dispatcher Promotion Cycle -> ready -> running with worktree
+        # Step 2: Dispatcher dispatch cycle -> todo -> running with worktree
         disp_res1 = dispatcher.run_dispatch_cycle(self.db_path)
         self.assertTrue(disp_res1["ok"])
 
@@ -456,7 +456,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         ))
         task_id = t_res["id"]
 
-        # Run cycle to promote to running and setup worktree
+        # Run cycle to dispatch to running and setup worktree
         dispatcher.run_dispatch_cycle(self.db_path)
         t_info = get_task(task_id)["task"]
         worktree_path = Path(t_info["workspace_path"])
@@ -1007,6 +1007,61 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
             dispatcher._remove_worktree(str(fake_ws), fake_repo)
 
         self.assertEqual(len(prune_calls), 1, "Worktree prune must be called on remove timeout")
+
+    def test_20_langfuse_settings_and_test_connection(self):
+        """Verify Langfuse settings lifecycle and /settings/langfuse/test endpoint."""
+        # 1. Update settings
+        patch_res = client.patch("/api/plugins/zerofactory/settings", json={
+            "langfuse_enabled": True,
+            "langfuse_base_url": "https://cloud.langfuse.com",
+            "langfuse_public_key": "pk-lf-test-e2e",
+            "langfuse_secret_key": "sk-lf-test-e2e",
+            "langfuse_capture_mode": "metadata",
+            "langfuse_env": "e2e-test"
+        })
+        self.assertEqual(patch_res.status_code, 200)
+        st = patch_res.json()["settings"]
+        self.assertTrue(st["langfuse_enabled"])
+        self.assertEqual(st["langfuse_public_key"], "pk-lf-test-e2e")
+        self.assertEqual(st["langfuse_capture_mode"], "metadata")
+
+        # 2. Test endpoint validation
+        test_res = client.post("/api/plugins/zerofactory/settings/langfuse/test", json={
+            "base_url": "https://cloud.langfuse.com",
+            "public_key": "invalid_key_prefix",
+            "secret_key": "sk-lf-123"
+        })
+        self.assertEqual(test_res.status_code, 200)
+        self.assertFalse(test_res.json()["ok"])
+        self.assertIn("Invalid key format", test_res.json()["error"])
+
+        # 3. Regression (hermetic, temp home): disabling must scrub every
+        #    HERMES_LANGFUSE_* key from .env files — no stale secrets left.
+        with tempfile.TemporaryDirectory() as tmp_hermes:
+            hermes_fake = Path(tmp_hermes)
+            profiles_dir = hermes_fake / "profiles" / "zf-builder"
+            profiles_dir.mkdir(parents=True)
+            enable_settings = {
+                "langfuse_enabled": True,
+                "langfuse_base_url": "https://cloud.langfuse.com",
+                "langfuse_public_key": "«redacted:pk-lf-…»",
+                "langfuse_secret_key": "«redacted:sk-…»",
+                "langfuse_capture_mode": "metadata",
+                "langfuse_env": "e2e-test",
+            }
+            with patch.object(profile_manager, "get_hermes_home", return_value=hermes_fake):
+                profile_manager.sync_langfuse_profiles(enable_settings)
+                self.assertIn(
+                    "HERMES_LANGFUSE_SECRET_KEY=«redacted:sk-…»",
+                    (hermes_fake / ".env").read_text(encoding="utf-8"),
+                )
+                profile_manager.sync_langfuse_profiles(dict(enable_settings, langfuse_enabled=False))
+                for d in (hermes_fake, profiles_dir):
+                    env_text = (d / ".env").read_text(encoding="utf-8")
+                    for k in ("HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_PUBLIC_KEY",
+                              "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE",
+                              "HERMES_LANGFUSE_ENV"):
+                        self.assertNotIn(k, env_text, f"stale {k} left in {d / '.env'}")
 
 
 if __name__ == "__main__":

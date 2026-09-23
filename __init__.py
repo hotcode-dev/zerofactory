@@ -16,8 +16,9 @@ try:
         update_task as _update_task, move_task as _move_task, add_comment as _add_comment,
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
-        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate,
-        ACTIVITY_ACTORS
+        list_memories as _list_memories, create_memory as _create_memory, delete_memory as _delete_memory,
+        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate, MemoryCreate,
+        ACTIVITY_ACTORS, MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH
     )
 except ImportError:
     current_dir = Path(__file__).parent
@@ -28,8 +29,9 @@ except ImportError:
         update_task as _update_task, move_task as _move_task, add_comment as _add_comment,
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
-        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate,
-        ACTIVITY_ACTORS
+        list_memories as _list_memories, create_memory as _create_memory, delete_memory as _delete_memory,
+        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate, MemoryCreate,
+        ACTIVITY_ACTORS, MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH
     )
 
 try:
@@ -150,6 +152,25 @@ def register(ctx: Any):
         p_bcreate.add_argument("--description", default="", help="Board description")
         p_bdelete = board_subs.add_parser("delete", help="Delete a board and clear its cron scanner job")
         p_bdelete.add_argument("slug", help="Board slug to delete")
+
+        # memory
+        p_mem = subparsers.add_parser("memory", help="Manage native board memories & repository knowledge")
+        mem_subs = p_mem.add_subparsers(dest="memory_action", help="Memory actions")
+        p_mlist = mem_subs.add_parser("list", help="List memories for a board")
+        p_mlist.add_argument("--board", required=True, help="Board slug")
+        p_mlist.add_argument("--category", default=None, help="Category filter (decision, gotcha, convention, rejected_path, general)")
+        p_mlist.add_argument("--query", "-q", default=None, help="Keyword search query")
+
+        p_madd = mem_subs.add_parser("add", help=f"Add a new repository memory (max {_MEMORY_CONTENT_MAX_LENGTH} chars)")
+        p_madd.add_argument("--board", required=True, help="Board slug")
+        p_madd.add_argument("content", help=f"Memory content / finding / convention (max {_MEMORY_CONTENT_MAX_LENGTH} chars)")
+        p_madd.add_argument("--category", default="general", choices=["decision", "gotcha", "convention", "rejected_path", "general"], help="Category")
+        p_madd.add_argument("--tags", default=None, help="Comma-separated tags")
+        p_madd.add_argument("--author", default=None, help="Author name (defaults to HERMES_PROFILE or 'user')")
+        p_madd.add_argument("--task", default=None, help="Associated task ID")
+
+        p_mdel = mem_subs.add_parser("delete", help="Delete a memory by ID")
+        p_mdel.add_argument("memory_id", help="Memory ID")
 
     def cmd_run(args: argparse.Namespace):
         init_db()
@@ -366,6 +387,57 @@ def register(ctx: Any):
             elif b_act == "delete":
                 res = _delete_board(args.slug)
                 print(f"✓ Deleted board '{args.slug}' and cleared associated cron scanner job.")
+
+        elif action == "memory":
+            m_act = getattr(args, "memory_action", "list") or "list"
+            if m_act == "list":
+                res = _list_memories(
+                    slug=args.board,
+                    category=getattr(args, "category", None),
+                    q=getattr(args, "query", None)
+                )
+                memories = res.get("memories", [])
+                print(f"\nRepository Memories for '{args.board}' ({len(memories)} entries):")
+                print(f"{'ID':<14} {'CATEGORY':<14} {'AUTHOR':<14} {'CONTENT'}")
+                print("-" * 80)
+                for m in memories:
+                    cat = m.get("category", "general")
+                    author = m.get("author", "user")
+                    content = m.get("content", "").replace("\n", " ")
+                    if len(content) > 45:
+                        content = content[:42] + "..."
+                    print(f"{m['id']:<14} {cat:<14} {author:<14} {content}")
+                print()
+            elif m_act == "add":
+                tag_list = [t.strip() for t in args.tags.split(",") if t.strip()] if getattr(args, "tags", None) else []
+                author = getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user"
+                content = (args.content or "").strip()
+                if len(content) > _MEMORY_CONTENT_MAX_LENGTH:
+                    print(
+                        f"✗ Memory content is {len(content)} chars; "
+                        f"the maximum allowed is {_MEMORY_CONTENT_MAX_LENGTH} (API rejects it with 422)."
+                    )
+                    return
+                if not content:
+                    print("✗ Memory content must not be empty.")
+                    return
+                try:
+                    req = MemoryCreate(
+                        category=args.category,
+                        content=args.content,
+                        tags=tag_list,
+                        author=author,
+                        task_id=getattr(args, "task", None)
+                    )
+                except Exception as e:
+                    print(f"✗ Invalid memory payload: {e}")
+                    return
+                res = _create_memory(args.board, req)
+                mem = res.get("memory", {})
+                print(f"✓ Added memory {mem.get('id')} to board '{args.board}' [{mem.get('category')}].")
+            elif m_act == "delete":
+                res = _delete_memory(args.memory_id)
+                print(f"✓ Deleted memory '{args.memory_id}'.")
 
     if hasattr(ctx, "register_cli_command"):
         ctx.register_cli_command(
