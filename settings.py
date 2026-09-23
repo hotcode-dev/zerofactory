@@ -83,7 +83,6 @@ DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES * 60
 SETTING_KEYS = (
     "max_active_tasks",
     "max_concurrent_llm_workers",
-    "default_max_concurrent_workers",
     "scan_on_idle",
     "idle_scan_active_threshold",
     "idle_scan_cooldown_minutes",
@@ -104,7 +103,6 @@ SETTING_KEYS = (
 DEFAULT_SETTING_VALUES: Dict[str, str] = {
     "max_active_tasks": str(DEFAULT_MAX_ACTIVE_TASKS),
     "max_concurrent_llm_workers": str(DEFAULT_MAX_CONCURRENT_LLM_WORKERS),
-    "default_max_concurrent_workers": str(DEFAULT_MAX_CONCURRENT_WORKERS),
     "scan_on_idle": "true" if DEFAULT_SCAN_ON_IDLE else "false",
     "idle_scan_active_threshold": str(DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD),
     "idle_scan_cooldown_minutes": str(DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES),
@@ -149,7 +147,6 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
     settings: Dict[str, Any] = {
         "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
         "max_concurrent_llm_workers": DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
-        "default_max_concurrent_workers": DEFAULT_MAX_CONCURRENT_WORKERS,
         "scan_on_idle": DEFAULT_SCAN_ON_IDLE,
         "idle_scan_active_threshold": DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
         "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
@@ -188,10 +185,6 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
             c = _clamp_int(v, 1)
             if c is not None:
                 settings["max_concurrent_llm_workers"] = c
-        elif k == "default_max_concurrent_workers":
-            c = _clamp_int(v, 1)
-            if c is not None:
-                settings["default_max_concurrent_workers"] = c
         elif k == "scan_on_idle":
             # Bool is unconditional (matches prior behavior: a present row always wins).
             settings["scan_on_idle"] = _parse_bool(v)

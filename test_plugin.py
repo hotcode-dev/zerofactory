@@ -4093,7 +4093,7 @@ class TestZeroFactory(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertIn("max_active_tasks", data["settings"])
         self.assertIn("max_concurrent_llm_workers", data["settings"])
-        self.assertIn("default_max_concurrent_workers", data["settings"])
+        self.assertNotIn("default_max_concurrent_workers", data["settings"])
         self.assertIn("scan_on_idle", data["settings"])
         self.assertIn("idle_scan_active_threshold", data["settings"])
         self.assertIn("idle_scan_cooldown_minutes", data["settings"])
@@ -4109,7 +4109,6 @@ class TestZeroFactory(unittest.TestCase):
             json={
                 "max_active_tasks": 12,
                 "max_concurrent_llm_workers": 3,
-                "default_max_concurrent_workers": 2,
                 "scan_on_idle": False,
                 "idle_scan_active_threshold": 1,
                 "idle_scan_cooldown_minutes": 30,
@@ -4120,7 +4119,6 @@ class TestZeroFactory(unittest.TestCase):
         settings = res_patch.json()["settings"]
         self.assertEqual(settings["max_active_tasks"], 12)
         self.assertEqual(settings["max_concurrent_llm_workers"], 3)
-        self.assertEqual(settings["default_max_concurrent_workers"], 2)
         self.assertFalse(settings["scan_on_idle"])
         self.assertEqual(settings["idle_scan_active_threshold"], 1)
         self.assertEqual(settings["idle_scan_cooldown_minutes"], 30)
@@ -4130,7 +4128,6 @@ class TestZeroFactory(unittest.TestCase):
         res_after = client.get("/api/plugins/zerofactory/settings")
         self.assertEqual(res_after.json()["settings"]["max_active_tasks"], 12)
         self.assertEqual(res_after.json()["settings"]["max_concurrent_llm_workers"], 3)
-        self.assertEqual(res_after.json()["settings"]["default_max_concurrent_workers"], 2)
         self.assertFalse(res_after.json()["settings"]["scan_on_idle"])
         self.assertEqual(res_after.json()["settings"]["idle_scan_active_threshold"], 1)
         self.assertEqual(res_after.json()["settings"]["idle_scan_cooldown_minutes"], 30)
@@ -4160,7 +4157,6 @@ class TestZeroFactory(unittest.TestCase):
             json={
                 "max_active_tasks": 10,
                 "max_concurrent_llm_workers": 10,
-                "default_max_concurrent_workers": 1,
                 "scan_on_idle": True,
                 "idle_scan_active_threshold": 2,
                 "idle_scan_cooldown_minutes": 15,

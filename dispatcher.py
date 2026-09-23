@@ -2590,11 +2590,6 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                 # scanner subprocesses share the same global capacity.
                 llm_workers = _global_llm_occupancy(active_count)
 
-                # Fallback concurrent running workers per board from settings table
-                default_concurrent_workers = int(
-                    settings.get("default_max_concurrent_workers", DEFAULT_MAX_CONCURRENT_WORKERS)
-                )
-
                 # Per-board concurrent running caps (boards.max_concurrent_running, default 1).
                 board_max_running: Dict[str, int] = {}
                 try:
@@ -2602,7 +2597,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         "SELECT slug, max_concurrent_running FROM boards"
                     ).fetchall():
                         b_mcr = b_row["max_concurrent_running"]
-                        board_max_running[str(b_row["slug"])] = max(1, int(b_mcr)) if b_mcr else default_concurrent_workers
+                        board_max_running[str(b_row["slug"])] = max(1, int(b_mcr)) if b_mcr else DEFAULT_MAX_CONCURRENT_WORKERS
                 except Exception:
                     board_max_running = {}
 
@@ -2636,7 +2631,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                         branch_name = row["branch_name"] if "branch_name" in row.keys() else None
                         board_slug = row["board_slug"] if "board_slug" in row.keys() else None
                         board_key = str(board_slug or "")
-                        board_cap = board_max_running.get(board_key, default_concurrent_workers)
+                        board_cap = board_max_running.get(board_key, DEFAULT_MAX_CONCURRENT_WORKERS)
                         board_active = running_per_board.get(board_key, 0)
                         if board_active >= board_cap:
                             _log.info("Task %s skipped (board %s at running limit %d/%d); will dispatch next cycle", task_id, board_key or "global", board_active, board_cap)
