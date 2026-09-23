@@ -292,6 +292,61 @@ def _has_unresolved_conflict_markers(content: bytes) -> bool:
     return False
 
 
+def check_files_for_conflict_markers(workspace_path: Path, files: Iterable[str]) -> List[str]:
+    """Scan given relative file paths within workspace_path for conflict markers."""
+    conflicted = []
+    for rel_file in files:
+        fp = workspace_path / rel_file
+        if fp.is_file() and not fp.is_symlink():
+            try:
+                if fp.stat().st_size < 10 * 1024 * 1024:
+                    if _has_unresolved_conflict_markers(fp.read_bytes()):
+                        conflicted.append(rel_file)
+            except Exception:
+                pass
+    return sorted(conflicted)
+
+
+def get_unmerged_status_files(workspace_path: Path) -> List[str]:
+    """Return files that have unmerged git status codes (UU, AA, UD, DU, DD, AU, UA)."""
+    unmerged = []
+    try:
+        status_res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(workspace_path), capture_output=True, text=True, timeout=5
+        )
+        if status_res.returncode == 0:
+            for line in status_res.stdout.splitlines():
+                if len(line) >= 3 and line[:2] in ("UU", "AA", "UD", "DU", "DD", "AU", "UA"):
+                    f = line[3:].strip()
+                    if " -> " in f:
+                        f = f.split(" -> ")[-1].strip()
+                    unmerged.append(f)
+    except Exception:
+        pass
+    return sorted(unmerged)
+
+
+def get_modified_status_files(workspace_path: Path) -> List[str]:
+    """Return all modified/unmerged/untracked file paths from git status --porcelain."""
+    files = set()
+    try:
+        status_res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(workspace_path), capture_output=True, text=True, timeout=5
+        )
+        if status_res.returncode == 0:
+            for line in status_res.stdout.splitlines():
+                if len(line) >= 3:
+                    f = line[3:].strip()
+                    if " -> " in f:
+                        f = f.split(" -> ")[-1].strip()
+                    files.add(f)
+    except Exception:
+        pass
+    return sorted(list(files))
+
+
 class GitConflictCheckError(Exception):
     """Raised when a git-backed conflict check could not be verified.
 
@@ -382,16 +437,8 @@ def check_unresolved_conflicts(workspace_path: Path) -> List[str]:
                 if f.strip():
                     files_to_check.add(f.strip())
 
-        for rel_file in files_to_check:
-            fp = workspace_path / rel_file
-            if fp.is_file() and not fp.is_symlink():
-                try:
-                    if fp.stat().st_size < 10 * 1024 * 1024:
-                        content = fp.read_bytes()
-                        if _has_unresolved_conflict_markers(content):
-                            conflicted.add(rel_file)
-                except Exception:
-                    pass
+        for rel_file in check_files_for_conflict_markers(workspace_path, files_to_check):
+            conflicted.add(rel_file)
     except Exception:
         pass
 
@@ -3093,7 +3140,28 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 git_dir = get_git_dir(Path(workspace_path))
                                 is_merging = bool(git_dir and (git_dir / "MERGE_HEAD").exists())
 
-                                # 1. Guardrail: Check if worktree is already in an unmerged conflict state
+                                # 1. Guardrail: Check if worktree is resolving conflicts or in an unmerged conflict state
+                                # When in an in-progress merge (is_merging is True) or unmerged files exist:
+                                # The builder was instructed: "Do NOT run git commands (git add/commit/push).
+                                # The factory dispatcher automatically verifies clean conflict resolution and
+                                # commits upon handoff."
+                                # Check whether any conflicted/unmerged files still contain conflict markers.
+                                # - If markers remain: the conflict is not yet resolved -> route back to builder.
+                                # - If zero markers remain: deterministically stage (git add .) to clear the unmerged
+                                #   index state (UU) so git status and index checks reflect clean resolution.
+                                unmerged_files = get_unmerged_status_files(Path(workspace_path))
+                                if is_merging or unmerged_files:
+                                    files_to_scan = unmerged_files if unmerged_files else get_modified_status_files(Path(workspace_path))
+                                    markers = check_files_for_conflict_markers(Path(workspace_path), files_to_scan)
+                                    if markers:
+                                        _log.warning("Task %s has unresolved conflict markers in worktree: %s", task_id, markers)
+                                        _handle_local_merge_conflict(cursor, task_id, title, workspace_path, markers, now, "Unresolved conflict markers in worktree")
+                                        continue
+                                    try:
+                                        subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True, timeout=60)
+                                    except Exception as e:
+                                        _log.warning("Task %s failed to stage resolved conflict files: %s", task_id, e)
+
                                 # Fail-closed: if the worktree cannot be verified clean,
                                 # do NOT commit / merge / push. Leave the task in its
                                 # current (pre-PR) status and retry next cycle.
@@ -3120,8 +3188,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 if status_res.stdout.strip() or is_merging:
                                     subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True, timeout=60)
                                     commit_cmd = ["git", "commit"]
-                                    if is_merging and not status_res.stdout.strip():
-                                        commit_cmd.append("--no-edit")
+                                    if is_merging:
+                                        commit_cmd.extend(["-m", "fix(merge): resolve merge conflicts with main", "-m", f"Task: {task_id}\n\n{title}"])
                                     else:
                                         commit_cmd.extend(["-m", subject, "-m", commit_body])
                                     subprocess.run(
