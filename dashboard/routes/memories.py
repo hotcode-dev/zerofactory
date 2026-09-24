@@ -31,9 +31,10 @@ _log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/memories")
 @router.get("/boards/{slug}/memories")
 def list_board_memories(
-    slug: str,
+    slug: str = "all",
     category: Optional[str] = None,
     q: Optional[str] = None,
     limit: int = 50,

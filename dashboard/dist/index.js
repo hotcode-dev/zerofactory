@@ -63,6 +63,10 @@
   function ZeroFactoryKanbanApp() {
     const [boards, setBoards] = useState([]);
     const [selectedBoard, setSelectedBoard] = useState("all");
+    const boardsRef = useRef(boards);
+    boardsRef.current = boards;
+    const selectedBoardRef = useRef(selectedBoard);
+    selectedBoardRef.current = selectedBoard;
     const [tasks, setTasks] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -321,15 +325,16 @@
     }, [fetchJSON]);
 
     // Load Tasks & Stats
-    const loadTasksAndStats = useCallback(async (boardSlug = selectedBoard) => {
-      if (!boardSlug) {
+    const loadTasksAndStats = useCallback(async (boardSlug) => {
+      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      if (!bSlug) {
         setLoading(false);
         setTasks([]);
         setStats(null);
         return;
       }
       try {
-        const bParam = (boardSlug && boardSlug !== "all") ? ("?board=" + encodeURIComponent(boardSlug)) : "";
+        const bParam = (bSlug && bSlug !== "all") ? ("?board=" + encodeURIComponent(bSlug)) : "";
         const [tasksData, statsData] = await Promise.all([
           fetchJSON(API_BASE + "/tasks" + bParam),
           fetchJSON(API_BASE + "/stats" + bParam)
@@ -346,7 +351,7 @@
       } finally {
         setLoading(false);
       }
-    }, [fetchJSON, selectedBoard]);
+    }, [fetchJSON]);
 
     // Cron management handlers
     const loadCronJobs = useCallback(async () => {
@@ -578,25 +583,70 @@
 
     // Load Board Memories
     const loadMemories = useCallback(async (slug) => {
-      const bSlug = slug || selectedBoard;
-      if (!bSlug || bSlug === "all") {
-        setBoardMemories([]);
-        setMemoriesTotal(0);
-        return;
-      }
+      const bSlug = slug !== undefined ? slug : selectedBoardRef.current;
+      if (!bSlug) return;
       try {
         setMemoriesLoading(true);
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/memories?limit=100");
-        if (res && res.ok && res.memories) {
-          setBoardMemories(res.memories);
-          setMemoriesTotal(res.total || res.memories.length);
+        if (bSlug === "all") {
+          let allMems = [];
+          let totalCount = 0;
+          let fetchedViaAll = false;
+          try {
+            const res = await fetchJSON(API_BASE + "/boards/all/memories?limit=100");
+            if (res && res.ok && Array.isArray(res.memories)) {
+              allMems = res.memories;
+              totalCount = res.total || allMems.length;
+              fetchedViaAll = true;
+            }
+          } catch (_) { }
+
+          if (!fetchedViaAll) {
+            let activeBoards = boardsRef.current;
+            if (!activeBoards || activeBoards.length === 0) {
+              try {
+                const bData = await fetchJSON(API_BASE + "/boards");
+                if (bData && bData.boards) activeBoards = bData.boards;
+              } catch (_) { }
+            }
+            if (activeBoards && activeBoards.length > 0) {
+              const results = await Promise.all(
+                activeBoards.map((b) =>
+                  fetchJSON(API_BASE + "/boards/" + encodeURIComponent(b.slug) + "/memories?limit=100")
+                    .catch(() => null)
+                )
+              );
+              const combined = [];
+              const seen = new Set();
+              results.forEach((r) => {
+                if (r && r.memories) {
+                  r.memories.forEach((m) => {
+                    if (!seen.has(m.id)) {
+                      seen.add(m.id);
+                      combined.push(m);
+                    }
+                  });
+                }
+              });
+              combined.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+              allMems = combined;
+              totalCount = combined.length;
+            }
+          }
+          setBoardMemories(allMems);
+          setMemoriesTotal(totalCount);
+        } else {
+          const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/memories?limit=100");
+          if (res && res.ok && res.memories) {
+            setBoardMemories(res.memories);
+            setMemoriesTotal(res.total || res.memories.length);
+          }
         }
       } catch (err) {
         console.error("Failed to load board memories:", err);
       } finally {
         setMemoriesLoading(false);
       }
-    }, [fetchJSON, selectedBoard]);
+    }, [fetchJSON]);
 
     const handleDeleteMemory = useCallback(async (memId) => {
       if (!window.confirm("Are you sure you want to delete this repository memory?")) return;
@@ -628,7 +678,10 @@
           author: newMemoryForm.author || "user",
           task_id: newMemoryForm.task_id || null
         };
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(selectedBoard) + "/memories", {
+        const targetBoard = (selectedBoard && selectedBoard !== "all")
+          ? selectedBoard
+          : (newMemoryForm.board_slug || (boards[0] ? boards[0].slug : ""));
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(targetBoard) + "/memories", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
@@ -637,7 +690,7 @@
           setBoardMemories(prev => [res.memory, ...prev]);
           setMemoriesTotal(prev => prev + 1);
           setShowAddMemoryModal(false);
-          setNewMemoryForm({ category: "general", content: "", tags: "", author: "user", task_id: "" });
+          setNewMemoryForm({ category: "general", content: "", tags: "", author: "user", task_id: "", board_slug: "" });
         }
       } catch (err) {
         console.error("Failed to create memory:", err);
@@ -645,19 +698,33 @@
       } finally {
         setSubmittingMemory(false);
       }
-    }, [fetchJSON, newMemoryForm, selectedBoard]);
+    }, [fetchJSON, newMemoryForm, selectedBoard, boards]);
 
-    // Initial load
+    // Initial load: mount only
+    const initialLoadDone = useRef(false);
     useEffect(() => {
+      if (initialLoadDone.current) return;
+      initialLoadDone.current = true;
       loadBoards();
-      loadTasksAndStats(selectedBoard);
+      loadTasksAndStats("all");
       loadCronJobs();
       loadSettings();
       loadActivities();
       loadSessions();
       loadAgents();
-      loadMemories(selectedBoard);
-    }, [loadBoards, loadTasksAndStats, selectedBoard, loadCronJobs, loadSettings, loadActivities, loadSessions, loadAgents, loadMemories]);
+      loadMemories("all");
+    }, [loadBoards, loadTasksAndStats, loadCronJobs, loadSettings, loadActivities, loadSessions, loadAgents, loadMemories]);
+
+    // On selectedBoard change: reload board-specific data (tasks, stats, memories)
+    const prevSelectedBoard = useRef(selectedBoard);
+    useEffect(() => {
+      if (prevSelectedBoard.current === selectedBoard) return;
+      prevSelectedBoard.current = selectedBoard;
+      if (selectedBoard) {
+        loadTasksAndStats(selectedBoard);
+        loadMemories(selectedBoard);
+      }
+    }, [selectedBoard, loadTasksAndStats, loadMemories]);
 
     // Fetch activities on view switch or filter changes
     useEffect(() => {
@@ -982,7 +1049,7 @@
             if (tRes && tRes.task && tRes.task.session_progress) {
               setSelectedTask(prev => prev && prev.id === activeRunningTaskId ? { ...prev, session_progress: tRes.task.session_progress } : prev);
             }
-          } catch (_) {}
+          } catch (_) { }
         }
       }, 3500);
       return () => clearInterval(timer);
@@ -1936,8 +2003,8 @@
                     (isAgentActive
                       ? "border-emerald-500/50 shadow-emerald-950/30 ring-1 ring-emerald-500/30"
                       : isAgentStuck
-                      ? "border-rose-500/50 shadow-rose-950/30 ring-1 ring-rose-500/30"
-                      : "border-slate-800 hover:border-slate-700")
+                        ? "border-rose-500/50 shadow-rose-950/30 ring-1 ring-rose-500/30"
+                        : "border-slate-800 hover:border-slate-700")
                 },
                 // Top row: Avatar, Name, Status Pill
                 React.createElement(
@@ -1956,18 +2023,18 @@
                   ),
                   isAgentActive
                     ? React.createElement(
-                        "span",
-                        { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0" },
-                        React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-emerald-400 zfk-pulse-active" }),
-                        "Active"
-                      )
+                      "span",
+                      { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0" },
+                      React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-emerald-400 zfk-pulse-active" }),
+                      "Active"
+                    )
                     : isAgentStuck
-                    ? React.createElement(
+                      ? React.createElement(
                         "span",
                         { className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 shrink-0" },
                         "⚠️ Stuck"
                       )
-                    : React.createElement(
+                      : React.createElement(
                         "span",
                         { className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0" },
                         "⚪ Idle"
@@ -1980,36 +2047,36 @@
                   { className: "space-y-1.5 bg-slate-950/60 rounded-lg p-2.5 border border-slate-800/70 text-xs min-h-[58px] flex flex-col justify-center" },
                   currTask
                     ? React.createElement(
+                      "div",
+                      { className: "space-y-1" },
+                      React.createElement(
                         "div",
-                        { className: "space-y-1" },
-                        React.createElement(
-                          "div",
-                          { className: "flex items-center gap-1.5" },
-                          React.createElement("span", { className: "text-[10px] font-bold uppercase tracking-wider text-amber-400" }, "Running Task:"),
-                          React.createElement("span", { className: "text-[10px] font-mono px-1 rounded bg-indigo-900/60 text-indigo-200 border border-indigo-700/50 font-bold" }, currTask.priority || "P2")
-                        ),
-                        React.createElement(
-                          "button",
-                          {
-                            type: "button",
-                            className: "text-left text-xs font-semibold text-indigo-300 hover:text-indigo-200 hover:underline truncate block w-full cursor-pointer",
-                            onClick: () => loadTaskDetails(currTask.id),
-                            title: currTask.title
-                          },
-                          `#${currTask.id} ${currTask.title}`
-                        ),
-                        sess &&
-                          React.createElement(
-                            "div",
-                            { className: "text-[10px] text-slate-400 flex items-center gap-2 pt-0.5" },
-                            React.createElement("span", null, `💬 ${sess.turn_count || 0} turns`),
-                            React.createElement("span", null, `🔧 ${sess.tool_calls_count || 0} tools`),
-                            currTask.running_seconds > 0 &&
-                              React.createElement("span", { className: "text-emerald-400 font-medium" }, `${Math.floor(currTask.running_seconds / 60)}m active`)
-                          )
+                        { className: "flex items-center gap-1.5" },
+                        React.createElement("span", { className: "text-[10px] font-bold uppercase tracking-wider text-amber-400" }, "Running Task:"),
+                        React.createElement("span", { className: "text-[10px] font-mono px-1 rounded bg-indigo-900/60 text-indigo-200 border border-indigo-700/50 font-bold" }, currTask.priority || "P2")
+                      ),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "text-left text-xs font-semibold text-indigo-300 hover:text-indigo-200 hover:underline truncate block w-full cursor-pointer",
+                          onClick: () => loadTaskDetails(currTask.id),
+                          title: currTask.title
+                        },
+                        `#${currTask.id} ${currTask.title}`
+                      ),
+                      sess &&
+                      React.createElement(
+                        "div",
+                        { className: "text-[10px] text-slate-400 flex items-center gap-2 pt-0.5" },
+                        React.createElement("span", null, `💬 ${sess.turn_count || 0} turns`),
+                        React.createElement("span", null, `🔧 ${sess.tool_calls_count || 0} tools`),
+                        currTask.running_seconds > 0 &&
+                        React.createElement("span", { className: "text-emerald-400 font-medium" }, `${Math.floor(currTask.running_seconds / 60)}m active`)
                       )
+                    )
                     : lastAct
-                    ? React.createElement(
+                      ? React.createElement(
                         "div",
                         { className: "space-y-0.5" },
                         React.createElement(
@@ -2024,7 +2091,7 @@
                           lastAct.action.replace("_", " ") + (lastAct.details ? `: ${lastAct.details}` : "")
                         )
                       )
-                    : React.createElement("p", { className: "text-xs text-slate-500 m-0 italic" }, "Awaiting task dispatch")
+                      : React.createElement("p", { className: "text-xs text-slate-500 m-0 italic" }, "Awaiting task dispatch")
                 ),
 
                 // Bottom row: Today's actions & quick filter button
@@ -2169,21 +2236,21 @@
 
               // Clear Filters button if any active
               (activityActorFilter !== "all" || activityActionFilter !== "all" || activityBoardFilter !== "all" || activitySearchQuery.trim()) &&
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "text-xs font-semibold text-rose-400 hover:text-rose-300 px-2 py-1 rounded hover:bg-rose-950/30 transition-colors cursor-pointer",
-                    onClick: () => {
-                      setActivityActorFilter("all");
-                      setActivityActionFilter("all");
-                      setActivityBoardFilter("all");
-                      setActivitySearchQuery("");
-                      setActivityPage(0);
-                    }
-                  },
-                  "✕ Reset Filters"
-                )
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "text-xs font-semibold text-rose-400 hover:text-rose-300 px-2 py-1 rounded hover:bg-rose-950/30 transition-colors cursor-pointer",
+                  onClick: () => {
+                    setActivityActorFilter("all");
+                    setActivityActionFilter("all");
+                    setActivityBoardFilter("all");
+                    setActivitySearchQuery("");
+                    setActivityPage(0);
+                  }
+                },
+                "✕ Reset Filters"
+              )
             ),
 
             // Right Search & View Mode Switcher
@@ -2206,18 +2273,18 @@
                 }),
                 React.createElement("span", { className: "absolute left-2.5 top-1.5 text-slate-500 text-xs" }, "🔍"),
                 activitySearchQuery &&
-                  React.createElement(
-                    "button",
-                    {
-                      type: "button",
-                      className: "absolute right-2.5 top-1.5 text-slate-500 hover:text-slate-300 text-xs cursor-pointer",
-                      onClick: () => {
-                        setActivitySearchQuery("");
-                        setActivityPage(0);
-                      }
-                    },
-                    "✕"
-                  )
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "absolute right-2.5 top-1.5 text-slate-500 hover:text-slate-300 text-xs cursor-pointer",
+                    onClick: () => {
+                      setActivitySearchQuery("");
+                      setActivityPage(0);
+                    }
+                  },
+                  "✕"
+                )
               ),
 
               // View Mode Switcher (Timeline vs Agent Cards)
@@ -2269,134 +2336,134 @@
         // 4. Main Activity Feed Content
         activityViewMode === "agents"
           ? // View Mode 2: By Agent Grouped Panels
-            React.createElement(
-              "div",
-              { className: "grid grid-cols-1 lg:grid-cols-2 gap-4" },
-              liveAgents.map((agent) => {
-                const b = getActorBadge(agent.id);
-                const agentActivities = effectiveActivities.filter((act) =>
-                  act.actor === agent.id || (act.task_assignee === agent.id && act.actor === "dispatcher")
-                );
+          React.createElement(
+            "div",
+            { className: "grid grid-cols-1 lg:grid-cols-2 gap-4" },
+            liveAgents.map((agent) => {
+              const b = getActorBadge(agent.id);
+              const agentActivities = effectiveActivities.filter((act) =>
+                act.actor === agent.id || (act.task_assignee === agent.id && act.actor === "dispatcher")
+              );
 
-                return React.createElement(
+              return React.createElement(
+                "div",
+                { key: agent.id, className: "bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md flex flex-col" },
+                // Agent Panel Header
+                React.createElement(
                   "div",
-                  { key: agent.id, className: "bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md flex flex-col" },
-                  // Agent Panel Header
+                  { className: "flex items-center justify-between pb-3 border-b border-slate-800" },
                   React.createElement(
                     "div",
-                    { className: "flex items-center justify-between pb-3 border-b border-slate-800" },
+                    { className: "flex items-center gap-3" },
+                    React.createElement("div", { className: "w-9 h-9 rounded-xl flex items-center justify-center text-base " + b.color }, b.icon),
                     React.createElement(
                       "div",
-                      { className: "flex items-center gap-3" },
-                      React.createElement("div", { className: "w-9 h-9 rounded-xl flex items-center justify-center text-base " + b.color }, b.icon),
-                      React.createElement(
-                        "div",
-                        null,
-                        React.createElement("h3", { className: "text-sm font-bold text-white m-0 font-mono" }, agent.id),
-                        React.createElement("p", { className: "text-xs text-slate-400 m-0" }, agent.role || b.role)
-                      )
-                    ),
-                    agent.status === "active"
-                      ? React.createElement(
-                          "span",
-                          { className: "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" },
-                          React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-emerald-400 zfk-pulse-active" }),
-                          "Executing"
-                        )
-                      : React.createElement(
-                          "span",
-                          { className: "text-xs text-slate-400 font-medium px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700" },
-                          "Idle"
-                        )
+                      null,
+                      React.createElement("h3", { className: "text-sm font-bold text-white m-0 font-mono" }, agent.id),
+                      React.createElement("p", { className: "text-xs text-slate-400 m-0" }, agent.role || b.role)
+                    )
                   ),
+                  agent.status === "active"
+                    ? React.createElement(
+                      "span",
+                      { className: "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" },
+                      React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-emerald-400 zfk-pulse-active" }),
+                      "Executing"
+                    )
+                    : React.createElement(
+                      "span",
+                      { className: "text-xs text-slate-400 font-medium px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700" },
+                      "Idle"
+                    )
+                ),
 
-                  // Session Telemetry (if active)
-                  agent.current_task &&
-                    React.createElement(
-                      "div",
-                      { className: "bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3 space-y-1.5" },
-                      React.createElement(
-                        "div",
-                        { className: "flex items-center justify-between text-xs" },
-                        React.createElement("span", { className: "font-bold text-indigo-300" }, "⚡ Active Task:"),
-                        React.createElement(
-                          "button",
-                          {
-                            type: "button",
-                            className: "font-semibold text-indigo-400 hover:text-indigo-200 underline cursor-pointer",
-                            onClick: () => loadTaskDetails(agent.current_task.id)
-                          },
-                          `#${agent.current_task.id} ↗`
-                        )
-                      ),
-                      React.createElement("p", { className: "text-xs font-medium text-white truncate m-0" }, agent.current_task.title),
-                      agent.session_progress &&
-                        React.createElement(
-                          "div",
-                          { className: "text-[11px] text-indigo-200/80 flex items-center gap-3 pt-1 border-t border-indigo-900/50" },
-                          React.createElement("span", null, `Model: ${agent.session_progress.model || "Hermes"}`),
-                          React.createElement("span", null, `Turns: ${agent.session_progress.turn_count || 0}`),
-                          React.createElement("span", null, `Tools: ${agent.session_progress.tool_calls_count || 0}`)
-                        )
-                    ),
-
-                  // Recent Actions list for this agent
+                // Session Telemetry (if active)
+                agent.current_task &&
+                React.createElement(
+                  "div",
+                  { className: "bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3 space-y-1.5" },
                   React.createElement(
                     "div",
-                    { className: "space-y-2 flex-1" },
-                    React.createElement("h4", { className: "text-xs font-bold text-slate-400 uppercase tracking-wider m-0" }, "Recent Actions"),
-                    agentActivities.length === 0
-                      ? React.createElement("p", { className: "text-xs text-slate-500 italic py-4 text-center m-0" }, "No recent events recorded for this agent")
-                      : React.createElement(
-                          "div",
-                          { className: "space-y-2" },
-                          agentActivities.slice(0, 6).map((item) => {
-                            const actBadge = getActionBadge(item.action);
-                            return React.createElement(
-                              "div",
-                              {
-                                key: item.id,
-                                className: "bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col gap-1.5 hover:border-slate-700 transition-colors"
-                              },
-                              React.createElement(
-                                "div",
-                                { className: "flex items-center justify-between gap-2" },
-                                React.createElement(
-                                  "div",
-                                  { className: "flex items-center gap-2" },
-                                  React.createElement(
-                                    "span",
-                                    { className: `inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border ${actBadge.bg}` },
-                                    actBadge.icon,
-                                    actBadge.label
-                                  ),
-                                  item.task_id &&
-                                    React.createElement(
-                                      "button",
-                                      {
-                                        type: "button",
-                                        className: "text-xs font-mono font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
-                                        onClick: () => loadTaskDetails(item.task_id)
-                                      },
-                                      `#${item.task_id}`
-                                    )
-                                ),
-                                React.createElement("span", { className: "text-[11px] text-slate-400" }, timeAgo(item.created_at))
-                              ),
-                              item.task_title &&
-                                React.createElement("p", { className: "text-xs font-medium text-slate-200 truncate m-0" }, item.task_title),
-                              item.details &&
-                                React.createElement("p", { className: "text-[11px] font-mono text-slate-400 truncate m-0 bg-slate-900/60 px-2 py-1 rounded" }, item.details)
-                            );
-                          })
-                        )
+                    { className: "flex items-center justify-between text-xs" },
+                    React.createElement("span", { className: "font-bold text-indigo-300" }, "⚡ Active Task:"),
+                    React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        className: "font-semibold text-indigo-400 hover:text-indigo-200 underline cursor-pointer",
+                        onClick: () => loadTaskDetails(agent.current_task.id)
+                      },
+                      `#${agent.current_task.id} ↗`
+                    )
+                  ),
+                  React.createElement("p", { className: "text-xs font-medium text-white truncate m-0" }, agent.current_task.title),
+                  agent.session_progress &&
+                  React.createElement(
+                    "div",
+                    { className: "text-[11px] text-indigo-200/80 flex items-center gap-3 pt-1 border-t border-indigo-900/50" },
+                    React.createElement("span", null, `Model: ${agent.session_progress.model || "Hermes"}`),
+                    React.createElement("span", null, `Turns: ${agent.session_progress.turn_count || 0}`),
+                    React.createElement("span", null, `Tools: ${agent.session_progress.tool_calls_count || 0}`)
                   )
-                );
-              })
-            )
+                ),
+
+                // Recent Actions list for this agent
+                React.createElement(
+                  "div",
+                  { className: "space-y-2 flex-1" },
+                  React.createElement("h4", { className: "text-xs font-bold text-slate-400 uppercase tracking-wider m-0" }, "Recent Actions"),
+                  agentActivities.length === 0
+                    ? React.createElement("p", { className: "text-xs text-slate-500 italic py-4 text-center m-0" }, "No recent events recorded for this agent")
+                    : React.createElement(
+                      "div",
+                      { className: "space-y-2" },
+                      agentActivities.slice(0, 6).map((item) => {
+                        const actBadge = getActionBadge(item.action);
+                        return React.createElement(
+                          "div",
+                          {
+                            key: item.id,
+                            className: "bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col gap-1.5 hover:border-slate-700 transition-colors"
+                          },
+                          React.createElement(
+                            "div",
+                            { className: "flex items-center justify-between gap-2" },
+                            React.createElement(
+                              "div",
+                              { className: "flex items-center gap-2" },
+                              React.createElement(
+                                "span",
+                                { className: `inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border ${actBadge.bg}` },
+                                actBadge.icon,
+                                actBadge.label
+                              ),
+                              item.task_id &&
+                              React.createElement(
+                                "button",
+                                {
+                                  type: "button",
+                                  className: "text-xs font-mono font-bold text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
+                                  onClick: () => loadTaskDetails(item.task_id)
+                                },
+                                `#${item.task_id}`
+                              )
+                            ),
+                            React.createElement("span", { className: "text-[11px] text-slate-400" }, timeAgo(item.created_at))
+                          ),
+                          item.task_title &&
+                          React.createElement("p", { className: "text-xs font-medium text-slate-200 truncate m-0" }, item.task_title),
+                          item.details &&
+                          React.createElement("p", { className: "text-[11px] font-mono text-slate-400 truncate m-0 bg-slate-900/60 px-2 py-1 rounded" }, item.details)
+                        );
+                      })
+                    )
+                )
+              );
+            })
+          )
           : // View Mode 1: Unified Timeline Feed
           effectiveActivities.length === 0
-          ? React.createElement(
+            ? React.createElement(
               "div",
               { className: "bg-slate-900/60 border border-slate-800 rounded-2xl p-12 text-center space-y-4 shadow-sm" },
               React.createElement("div", { className: "w-14 h-14 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-2xl mx-auto" }, "🔍"),
@@ -2418,7 +2485,7 @@
                 "Reset All Filters"
               )
             )
-          : React.createElement(
+            : React.createElement(
               "div",
               { className: "space-y-4" },
               // Timeline Items List
@@ -2472,33 +2539,33 @@
                           ),
                           // Task Link Pill (if associated with a task)
                           item.task_id &&
-                            React.createElement(
-                              "button",
-                              {
-                                type: "button",
-                                className: "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-950 hover:bg-slate-800 text-indigo-300 hover:text-indigo-200 border border-slate-700/80 shadow-xs transition-colors cursor-pointer group/task",
-                                onClick: () => loadTaskDetails(item.task_id),
-                                title: "Click to open full task details modal"
-                              },
-                              React.createElement("span", { className: "font-mono font-bold text-indigo-400" }, `#${item.task_id}`),
-                              item.task_title &&
-                                React.createElement("span", { className: "truncate max-w-[200px] sm:max-w-[320px]" }, item.task_title),
-                              React.createElement("span", { className: "text-slate-500 group-hover/task:text-slate-300" }, "↗")
-                            ),
+                          React.createElement(
+                            "button",
+                            {
+                              type: "button",
+                              className: "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-950 hover:bg-slate-800 text-indigo-300 hover:text-indigo-200 border border-slate-700/80 shadow-xs transition-colors cursor-pointer group/task",
+                              onClick: () => loadTaskDetails(item.task_id),
+                              title: "Click to open full task details modal"
+                            },
+                            React.createElement("span", { className: "font-mono font-bold text-indigo-400" }, `#${item.task_id}`),
+                            item.task_title &&
+                            React.createElement("span", { className: "truncate max-w-[200px] sm:max-w-[320px]" }, item.task_title),
+                            React.createElement("span", { className: "text-slate-500 group-hover/task:text-slate-300" }, "↗")
+                          ),
                           // Task Priority Pill
                           item.task_priority &&
-                            React.createElement(
-                              "span",
-                              { className: "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-800 text-slate-300 border border-slate-700" },
-                              item.task_priority
-                            ),
+                          React.createElement(
+                            "span",
+                            { className: "px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-800 text-slate-300 border border-slate-700" },
+                            item.task_priority
+                          ),
                           // Task Status Pill
                           item.task_status &&
-                            React.createElement(
-                              "span",
-                              { className: "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-slate-800/60 text-slate-400 border border-slate-700/60" },
-                              item.task_status
-                            )
+                          React.createElement(
+                            "span",
+                            { className: "px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-slate-800/60 text-slate-400 border border-slate-700/60" },
+                            item.task_status
+                          )
                         ),
 
                         // Right: Board & Timestamp
@@ -2506,11 +2573,11 @@
                           "div",
                           { className: "flex items-center gap-2 text-xs text-slate-400 shrink-0" },
                           item.board_slug &&
-                            React.createElement(
-                              "span",
-                              { className: "px-2 py-0.5 rounded text-[11px] font-mono bg-slate-950 text-slate-400 border border-slate-800" },
-                              item.board_slug
-                            ),
+                          React.createElement(
+                            "span",
+                            { className: "px-2 py-0.5 rounded text-[11px] font-mono bg-slate-950 text-slate-400 border border-slate-800" },
+                            item.board_slug
+                          ),
                           React.createElement(
                             "span",
                             {
@@ -2524,32 +2591,32 @@
 
                       // Details Box
                       item.details &&
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1.5" },
                         React.createElement(
                           "div",
-                          { className: "space-y-1.5" },
-                          React.createElement(
-                            "div",
-                            {
-                              className: "bg-slate-950/80 border border-slate-800/90 rounded-xl p-3 text-xs font-mono text-slate-300 leading-relaxed break-words whitespace-pre-wrap " +
-                                (!isExpanded && isLongDetails ? "max-h-20 overflow-hidden relative" : "")
-                            },
-                            item.details,
-                            !isExpanded && isLongDetails &&
-                              React.createElement("div", {
-                                className: "absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-950 to-transparent pointer-events-none"
-                              })
-                          ),
-                          isLongDetails &&
-                            React.createElement(
-                              "button",
-                              {
-                                type: "button",
-                                className: "text-xs font-semibold text-indigo-400 hover:text-indigo-300 cursor-pointer pt-0.5",
-                                onClick: () => setExpandedActivityId(isExpanded ? null : item.id)
-                              },
-                              isExpanded ? "▲ Collapse details" : "▼ Show full details / trace"
-                            )
+                          {
+                            className: "bg-slate-950/80 border border-slate-800/90 rounded-xl p-3 text-xs font-mono text-slate-300 leading-relaxed break-words whitespace-pre-wrap " +
+                              (!isExpanded && isLongDetails ? "max-h-20 overflow-hidden relative" : "")
+                          },
+                          item.details,
+                          !isExpanded && isLongDetails &&
+                          React.createElement("div", {
+                            className: "absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-slate-950 to-transparent pointer-events-none"
+                          })
                         ),
+                        isLongDetails &&
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "text-xs font-semibold text-indigo-400 hover:text-indigo-300 cursor-pointer pt-0.5",
+                            onClick: () => setExpandedActivityId(isExpanded ? null : item.id)
+                          },
+                          isExpanded ? "▲ Collapse details" : "▼ Show full details / trace"
+                        )
+                      ),
 
                       // Footer Quick Actions
                       React.createElement(
@@ -2560,18 +2627,18 @@
                           { className: "flex items-center gap-3" },
                           React.createElement("span", { className: "text-[11px] text-slate-500 font-mono" }, `Event #${item.id}`),
                           item.task_assignee &&
-                            React.createElement("span", { className: "text-[11px] text-slate-400" }, `Assignee: ${item.task_assignee}`)
+                          React.createElement("span", { className: "text-[11px] text-slate-400" }, `Assignee: ${item.task_assignee}`)
                         ),
                         item.task_id &&
-                          React.createElement(
-                            "button",
-                            {
-                              type: "button",
-                              className: "inline-flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer",
-                              onClick: () => loadTaskDetails(item.task_id)
-                            },
-                            "Inspect Task Modal ↗"
-                          )
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "inline-flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer",
+                            onClick: () => loadTaskDetails(item.task_id)
+                          },
+                          "Inspect Task Modal ↗"
+                        )
                       )
                     )
                   );
@@ -2697,10 +2764,10 @@
               React.createElement("h2", { className: "text-base font-bold text-white tracking-tight flex items-center gap-2" },
                 "Specialist Agents & Memory",
                 ongoingCount > 0 &&
-                  React.createElement("span", { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" },
-                    React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-emerald-400 zfk-pulse-active" }),
-                    ongoingCount + " Active"
-                  )
+                React.createElement("span", { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" },
+                  React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-emerald-400 zfk-pulse-active" }),
+                  ongoingCount + " Active"
+                )
               ),
               React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "Live status of 3 specialist agents, session telemetry, and persistent repository memory.")
             )
@@ -2794,24 +2861,24 @@
                   ),
                   currentTask
                     ? React.createElement(
-                        "button",
-                        {
-                          type: "button",
-                          className: "text-left text-xs font-semibold text-indigo-300 hover:text-indigo-200 transition-colors line-clamp-1 cursor-pointer",
-                          onClick: () => {
-                            setActiveView("board");
-                            loadTaskDetails(currentTask.id);
-                          }
-                        },
-                        "📋 " + currentTask.title + " ↗"
-                      )
+                      "button",
+                      {
+                        type: "button",
+                        className: "text-left text-xs font-semibold text-indigo-300 hover:text-indigo-200 transition-colors line-clamp-1 cursor-pointer",
+                        onClick: () => {
+                          setActiveView("board");
+                          loadTaskDetails(currentTask.id);
+                        }
+                      },
+                      "📋 " + currentTask.title + " ↗"
+                    )
                     : activeSession
-                    ? React.createElement(
+                      ? React.createElement(
                         "div",
                         { className: "text-xs text-slate-300 truncate", title: activeSession.last_action || activeSession.title },
                         "⚡ " + (activeSession.last_action || activeSession.title || "Working on session...")
                       )
-                    : React.createElement(
+                      : React.createElement(
                         "div",
                         { className: "text-xs text-slate-500 italic" },
                         "Ready for next dispatch cycle"
@@ -2889,510 +2956,515 @@
         // Section 3: Sub-View Content
         agentsSubTab === "sessions"
           ? React.createElement(
+            "div",
+            { className: "space-y-6" },
+            // Summary Metric Cards
+            React.createElement(
               "div",
-              { className: "space-y-6" },
-              // Summary Metric Cards
+              { className: "grid grid-cols-2 sm:grid-cols-4 gap-3.5" },
               React.createElement(
                 "div",
-                { className: "grid grid-cols-2 sm:grid-cols-4 gap-3.5" },
+                { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+                React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-indigo-500/15 text-indigo-400 border border-indigo-500/25" }, "🤖"),
                 React.createElement(
                   "div",
-                  { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
-                  React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-indigo-500/15 text-indigo-400 border border-indigo-500/25" }, "🤖"),
-                  React.createElement(
-                    "div",
-                    { className: "min-w-0" },
-                    React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, totalCount),
-                    React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total AI Sessions")
-                  )
-                ),
+                  { className: "min-w-0" },
+                  React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, totalCount),
+                  React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total AI Sessions")
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+                React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25" }, "⚡"),
                 React.createElement(
                   "div",
-                  { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
-                  React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25" }, "⚡"),
-                  React.createElement(
-                    "div",
-                    { className: "min-w-0" },
-                    React.createElement("span", { className: "text-xl font-bold text-emerald-400 tracking-tight leading-none block" }, ongoingCount),
-                    React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Ongoing / Active")
-                  )
-                ),
+                  { className: "min-w-0" },
+                  React.createElement("span", { className: "text-xl font-bold text-emerald-400 tracking-tight leading-none block" }, ongoingCount),
+                  React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Ongoing / Active")
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+                React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-slate-800/60 text-slate-300 border border-slate-700/50" }, "✅"),
                 React.createElement(
                   "div",
-                  { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
-                  React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-slate-800/60 text-slate-300 border border-slate-700/50" }, "✅"),
-                  React.createElement(
-                    "div",
-                    { className: "min-w-0" },
-                    React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, finishedCount),
-                    React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Completed Sessions")
-                  )
-                ),
+                  { className: "min-w-0" },
+                  React.createElement("span", { className: "text-xl font-bold text-white tracking-tight leading-none block" }, finishedCount),
+                  React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Completed Sessions")
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
+                React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-amber-500/15 text-amber-400 border border-amber-500/25" }, "🔄"),
                 React.createElement(
                   "div",
-                  { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-3.5 flex items-center gap-3 shadow-sm" },
-                  React.createElement("div", { className: "w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0 bg-amber-500/15 text-amber-400 border border-amber-500/25" }, "🔄"),
+                  { className: "min-w-0" },
+                  React.createElement("span", { className: "text-xl font-bold text-amber-300 tracking-tight leading-none block" }, totalTurns),
+                  React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total Agent Turns")
+                )
+              )
+            ),
+
+            // Controls Bar: Agent Pills, Status Filter, Search
+            React.createElement(
+              "div",
+              { className: "flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800/80" },
+              // Agent Pills
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 zfk-scrollbar" },
+                agentTabs.map(tab =>
                   React.createElement(
-                    "div",
-                    { className: "min-w-0" },
-                    React.createElement("span", { className: "text-xl font-bold text-amber-300 tracking-tight leading-none block" }, totalTurns),
-                    React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1 block" }, "Total Agent Turns")
+                    "button",
+                    {
+                      key: tab.id,
+                      type: "button",
+                      className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 " +
+                        (sessionsAgentFilter === tab.id
+                          ? "bg-indigo-600 text-white shadow-xs"
+                          : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60"),
+                      onClick: () => setSessionsAgentFilter(tab.id)
+                    },
+                    tab.label,
+                    React.createElement("span", { className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " + (sessionsAgentFilter === tab.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400") }, tab.count)
                   )
                 )
               ),
-
-              // Controls Bar: Agent Pills, Status Filter, Search
+              // Right Controls: Status & Search
               React.createElement(
                 "div",
-                { className: "flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800/80" },
-                // Agent Pills
+                { className: "flex items-center gap-2" },
                 React.createElement(
-                  "div",
-                  { className: "flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 zfk-scrollbar" },
-                  agentTabs.map(tab =>
-                    React.createElement(
-                      "button",
-                      {
-                        key: tab.id,
-                        type: "button",
-                        className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 " +
-                          (sessionsAgentFilter === tab.id
-                            ? "bg-indigo-600 text-white shadow-xs"
-                            : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60"),
-                        onClick: () => setSessionsAgentFilter(tab.id)
-                      },
-                      tab.label,
-                      React.createElement("span", { className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " + (sessionsAgentFilter === tab.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400") }, tab.count)
-                    )
-                  )
+                  "select",
+                  {
+                    className: "bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
+                    value: sessionsStatusFilter,
+                    onChange: (e) => setSessionsStatusFilter(e.target.value)
+                  },
+                  React.createElement("option", { value: "all" }, "All Statuses"),
+                  React.createElement("option", { value: "ongoing" }, "🟢 Ongoing"),
+                  React.createElement("option", { value: "finished" }, "⚪ Finished")
                 ),
-                // Right Controls: Status & Search
                 React.createElement(
-                  "div",
-                  { className: "flex items-center gap-2" },
-                  React.createElement(
-                    "select",
+                  "input",
+                  {
+                    type: "text",
+                    placeholder: "Search sessions, models, tasks...",
+                    className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-48 md:w-56",
+                    value: sessionsSearchQuery,
+                    onChange: (e) => setSessionsSearchQuery(e.target.value)
+                  }
+                )
+              )
+            ),
+
+            // Session Cards Grid
+            effectiveSessions.length === 0
+              ? React.createElement(
+                "div",
+                { className: "bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center" },
+                React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-2xl mx-auto mb-3 text-slate-500" }, "🤖"),
+                React.createElement("h3", { className: "text-sm font-semibold text-slate-300" }, "No AI Sessions Found"),
+                React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-sm mx-auto" },
+                  sessionsSearchQuery || sessionsAgentFilter !== "all" || sessionsStatusFilter !== "all"
+                    ? "No sessions match your filter criteria. Try resetting the filters."
+                    : "AI agent sessions will appear here as Orchestrator, Builder, and Reviewer execute tasks."
+                )
+              )
+              : React.createElement(
+                "div",
+                { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" },
+                effectiveSessions.map((s) => {
+                  const isOngoing = s.status === "ongoing" || s.is_active;
+                  const agentRole = s.agent || "zf-builder";
+                  const agentBadge = agentRole === "zf-reviewer"
+                    ? { icon: "🔍", label: "Reviewer", border: "border-cyan-500/30", bg: "bg-cyan-500/10 text-cyan-300" }
+                    : agentRole === "zf-orchestrator"
+                      ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
+                      : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
+
+                  const lastUpdateTs = s.last_activity_at || s.ended_at || s.started_at;
+                  const lastUpdateStr = lastUpdateTs ? timeAgo(lastUpdateTs) : null;
+                  const lastUpdateFull = lastUpdateTs ? new Date(lastUpdateTs * 1000).toLocaleString() : null;
+
+                  // Extract task ID if present in cwd or title
+                  let matchedTaskId = null;
+                  const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
+                  const taskMatch = cwdOrTitle.match(/zf-[a-f0-9]{8}/i) || cwdOrTitle.match(/task-[a-z0-9_-]+/i);
+                  if (taskMatch) {
+                    matchedTaskId = taskMatch[0];
+                  }
+
+                  const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
+                    ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
+                    : "";
+                  const chatUrl = basePath + "/chat?resume=" + encodeURIComponent(s.session_id) + (s.agent ? "&profile=" + encodeURIComponent(s.agent) : "");
+
+                  return React.createElement(
+                    "div",
                     {
-                      className: "bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
-                      value: sessionsStatusFilter,
-                      onChange: (e) => setSessionsStatusFilter(e.target.value)
+                      key: s.session_id,
+                      className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-xl p-4 transition-all duration-150 shadow-sm space-y-3 flex flex-col justify-between"
                     },
-                    React.createElement("option", { value: "all" }, "All Statuses"),
-                    React.createElement("option", { value: "ongoing" }, "🟢 Ongoing"),
-                    React.createElement("option", { value: "finished" }, "⚪ Finished")
+                    React.createElement(
+                      "div",
+                      { className: "space-y-2.5" },
+                      // Card Top Row
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between gap-2" },
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-2" },
+                          React.createElement(
+                            "span",
+                            { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + agentBadge.bg + " " + agentBadge.border },
+                            agentBadge.icon + " " + (s.agent_label || agentBadge.label)
+                          ),
+                          React.createElement(
+                            "span",
+                            { className: "inline-flex items-center gap-1 text-[11px] font-medium " + (isOngoing ? "text-emerald-400" : "text-slate-400") },
+                            React.createElement("span", { className: "w-2 h-2 rounded-full " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500") }),
+                            isOngoing ? "Ongoing" : "Finished"
+                          )
+                        ),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-col shrink-0", style: { alignItems: "flex-end", textAlign: "right" } },
+                          lastUpdateStr
+                            ? React.createElement(
+                              "span",
+                              {
+                                className: "text-[11px] text-slate-300 font-mono flex items-center gap-1",
+                                title: lastUpdateFull ? ("Last updated: " + lastUpdateFull) : undefined
+                              },
+                              React.createElement("span", { className: "text-slate-500 text-[10px]" }, "Updated"),
+                              lastUpdateStr
+                            )
+                            : React.createElement("span", { className: "text-[11px] text-slate-400 font-mono" }, "No activity"),
+                          s.duration_seconds != null && s.duration_seconds > 0
+                            ? React.createElement(
+                              "span",
+                              { className: "text-[10px] text-slate-500 font-mono" },
+                              `${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s duration`
+                            )
+                            : null
+                        )
+                      ),
+
+                      // Title & Associated Task
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1" },
+                        React.createElement(
+                          "div",
+                          { className: "text-xs font-semibold text-white line-clamp-1", title: s.title },
+                          s.title || "Autonomous Agent Execution"
+                        ),
+                        matchedTaskId &&
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
+                            onClick: () => {
+                              setActiveView("board");
+                              loadTaskDetails(matchedTaskId);
+                            }
+                          },
+                          "📋 Task " + matchedTaskId + " ↗"
+                        )
+                      ),
+
+                      // Telemetry Grid
+                      React.createElement(
+                        "div",
+                        { className: "grid grid-cols-3 gap-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 text-center" },
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Turns"),
+                          React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.turn_count || 0)
+                        ),
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Tool Calls"),
+                          React.createElement("span", { className: "text-xs font-bold text-indigo-300" }, s.tool_calls_count || 0)
+                        ),
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Messages"),
+                          React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.message_count || 0)
+                        )
+                      ),
+
+                      // Last Action / Snippet
+                      s.last_action &&
+                      React.createElement(
+                        "div",
+                        { className: "text-[11px] text-slate-400 bg-slate-950/40 px-2.5 py-1.5 rounded-lg border border-slate-800/60 font-mono truncate", title: s.last_action },
+                        "⚡ " + s.last_action
+                      )
+                    ),
+
+                    // Bottom Action: Session ID & Open Chat
+                    React.createElement(
+                      "div",
+                      { className: "pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-1.5 min-w-0" },
+                        React.createElement(
+                          "code",
+                          { className: "text-[10px] text-slate-500 font-mono truncate max-w-[120px]", title: s.session_id },
+                          s.session_id
+                        ),
+                        lastUpdateStr &&
+                        React.createElement(
+                          "span",
+                          {
+                            className: "text-[10px] text-slate-500 font-mono shrink-0 flex items-center gap-1",
+                            title: lastUpdateFull ? ("Last updated: " + lastUpdateFull) : undefined
+                          },
+                          "• updated " + lastUpdateStr
+                        )
+                      ),
+                      React.createElement(
+                        "a",
+                        {
+                          href: chatUrl,
+                          target: "_blank",
+                          rel: "noreferrer",
+                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600/90 hover:bg-indigo-600 text-white transition-colors cursor-pointer shadow-xs shrink-0"
+                        },
+                        "Open Chat ↗"
+                      )
+                    )
+                  );
+                })
+              )
+          )
+          : React.createElement(
+            "div",
+            { className: "space-y-6" },
+            // Memory Action Bar: Category Filter Pills, Search, Add Memory
+            React.createElement(
+              "div",
+              { className: "flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800/80" },
+              // Category Pills
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 zfk-scrollbar" },
+                memoryCategories.map(cat =>
+                  React.createElement(
+                    "button",
+                    {
+                      key: cat.id,
+                      type: "button",
+                      className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 " +
+                        (memoryCategoryFilter === cat.id
+                          ? "bg-indigo-600 text-white shadow-xs"
+                          : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60"),
+                      onClick: () => setMemoryCategoryFilter(cat.id)
+                    },
+                    cat.icon + " " + cat.label,
+                    React.createElement("span", {
+                      className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " +
+                        (memoryCategoryFilter === cat.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400")
+                    }, cat.count)
+                  )
+                )
+              ),
+              // Search & Actions
+              (() => {
+                const currentBoard = boards.find(b => b.slug === selectedBoard);
+                const isAutoRecordOn = currentBoard ? (currentBoard.auto_record_memory !== false) : true;
+                return React.createElement(
+                  "div",
+                  { className: "flex flex-wrap items-center gap-2" },
+                  currentBoard && React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer shrink-0 " +
+                        (isAutoRecordOn
+                          ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:text-white hover:bg-slate-800/80 shadow-xs"
+                          : "bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800"),
+                      title: "Click to toggle automatic memory recording from reviewer feedback for " + currentBoard.slug,
+                      onClick: async () => {
+                        const nextVal = !isAutoRecordOn;
+                        try {
+                          await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(currentBoard.slug), {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ auto_record_memory: nextVal })
+                          });
+                          showToast(`Auto-record memory ${nextVal ? "enabled" : "disabled"} for ${currentBoard.slug}`, "success");
+                          await loadBoards();
+                        } catch (err) {
+                          showToast("Failed to toggle auto-record: " + (err.message || String(err)), "error");
+                        }
+                      }
+                    },
+                    React.createElement("span", {
+                      className: "w-2 h-2 rounded-full " + (isAutoRecordOn ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
+                    }),
+                    "Auto-Record: " + (isAutoRecordOn ? "ON" : "OFF")
                   ),
                   React.createElement(
                     "input",
                     {
                       type: "text",
-                      placeholder: "Search sessions, models, tasks...",
-                      className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-48 md:w-56",
-                      value: sessionsSearchQuery,
-                      onChange: (e) => setSessionsSearchQuery(e.target.value)
+                      placeholder: "Search memories, tags, author...",
+                      className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-44 md:w-56",
+                      value: memorySearchQuery,
+                      onChange: (e) => setMemorySearchQuery(e.target.value)
                     }
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs shadow-indigo-600/30 transition-all cursor-pointer shrink-0",
+                      onClick: () => setShowAddMemoryModal(true)
+                    },
+                    "➕ Add Memory"
                   )
-                )
-              ),
+                );
+              })()
+            ),
 
-              // Session Cards Grid
-              effectiveSessions.length === 0
-                ? React.createElement(
-                    "div",
-                    { className: "bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center" },
-                    React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-2xl mx-auto mb-3 text-slate-500" }, "🤖"),
-                    React.createElement("h3", { className: "text-sm font-semibold text-slate-300" }, "No AI Sessions Found"),
-                    React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-sm mx-auto" },
-                      sessionsSearchQuery || sessionsAgentFilter !== "all" || sessionsStatusFilter !== "all"
-                        ? "No sessions match your filter criteria. Try resetting the filters."
-                        : "AI agent sessions will appear here as Orchestrator, Builder, and Reviewer execute tasks."
-                    )
-                  )
-                : React.createElement(
-                    "div",
-                    { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" },
-                    effectiveSessions.map((s) => {
-                      const isOngoing = s.status === "ongoing" || s.is_active;
-                      const agentRole = s.agent || "zf-builder";
-                      const agentBadge = agentRole === "zf-reviewer"
-                        ? { icon: "🔍", label: "Reviewer", border: "border-cyan-500/30", bg: "bg-cyan-500/10 text-cyan-300" }
-                        : agentRole === "zf-orchestrator"
-                        ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
-                        : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
-
-                      const lastUpdateTs = s.last_activity_at || s.ended_at || s.started_at;
-                      const lastUpdateStr = lastUpdateTs ? timeAgo(lastUpdateTs) : null;
-                      const lastUpdateFull = lastUpdateTs ? new Date(lastUpdateTs * 1000).toLocaleString() : null;
-
-                      // Extract task ID if present in cwd or title
-                      let matchedTaskId = null;
-                      const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
-                      const taskMatch = cwdOrTitle.match(/zf-[a-f0-9]{8}/i) || cwdOrTitle.match(/task-[a-z0-9_-]+/i);
-                      if (taskMatch) {
-                        matchedTaskId = taskMatch[0];
-                      }
-
-                      const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
-                        ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
-                        : "";
-                      const chatUrl = basePath + "/chat?resume=" + encodeURIComponent(s.session_id) + (s.agent ? "&profile=" + encodeURIComponent(s.agent) : "");
-
-                      return React.createElement(
-                        "div",
-                        {
-                          key: s.session_id,
-                          className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-xl p-4 transition-all duration-150 shadow-sm space-y-3 flex flex-col justify-between"
-                        },
-                        React.createElement(
-                          "div",
-                          { className: "space-y-2.5" },
-                          // Card Top Row
-                          React.createElement(
-                            "div",
-                            { className: "flex items-center justify-between gap-2" },
-                            React.createElement(
-                              "div",
-                              { className: "flex items-center gap-2" },
-                              React.createElement(
-                                "span",
-                                { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + agentBadge.bg + " " + agentBadge.border },
-                                agentBadge.icon + " " + (s.agent_label || agentBadge.label)
-                              ),
-                              React.createElement(
-                                "span",
-                                { className: "inline-flex items-center gap-1 text-[11px] font-medium " + (isOngoing ? "text-emerald-400" : "text-slate-400") },
-                                React.createElement("span", { className: "w-2 h-2 rounded-full " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500") }),
-                                isOngoing ? "Ongoing" : "Finished"
-                              )
-                            ),
-                            React.createElement(
-                              "div",
-                              { className: "flex flex-col shrink-0", style: { alignItems: "flex-end", textAlign: "right" } },
-                              lastUpdateStr
-                                ? React.createElement(
-                                    "span",
-                                    {
-                                      className: "text-[11px] text-slate-300 font-mono flex items-center gap-1",
-                                      title: lastUpdateFull ? ("Last updated: " + lastUpdateFull) : undefined
-                                    },
-                                    React.createElement("span", { className: "text-slate-500 text-[10px]" }, "Updated"),
-                                    lastUpdateStr
-                                  )
-                                : React.createElement("span", { className: "text-[11px] text-slate-400 font-mono" }, "No activity"),
-                              s.duration_seconds != null && s.duration_seconds > 0
-                                ? React.createElement(
-                                    "span",
-                                    { className: "text-[10px] text-slate-500 font-mono" },
-                                    `${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s duration`
-                                  )
-                                : null
-                            )
-                          ),
-
-                          // Title & Associated Task
-                          React.createElement(
-                            "div",
-                            { className: "space-y-1" },
-                            React.createElement(
-                              "div",
-                              { className: "text-xs font-semibold text-white line-clamp-1", title: s.title },
-                              s.title || "Autonomous Agent Execution"
-                            ),
-                            matchedTaskId &&
-                              React.createElement(
-                                "button",
-                                {
-                                  type: "button",
-                                  className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
-                                  onClick: () => {
-                                    setActiveView("board");
-                                    loadTaskDetails(matchedTaskId);
-                                  }
-                                },
-                                "📋 Task " + matchedTaskId + " ↗"
-                              )
-                          ),
-
-                          // Telemetry Grid
-                          React.createElement(
-                            "div",
-                            { className: "grid grid-cols-3 gap-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80 text-center" },
-                            React.createElement(
-                              "div",
-                              null,
-                              React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Turns"),
-                              React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.turn_count || 0)
-                            ),
-                            React.createElement(
-                              "div",
-                              null,
-                              React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Tool Calls"),
-                              React.createElement("span", { className: "text-xs font-bold text-indigo-300" }, s.tool_calls_count || 0)
-                            ),
-                            React.createElement(
-                              "div",
-                              null,
-                              React.createElement("span", { className: "text-[10px] text-slate-500 uppercase tracking-wider block" }, "Messages"),
-                              React.createElement("span", { className: "text-xs font-bold text-slate-200" }, s.message_count || 0)
-                            )
-                          ),
-
-                          // Last Action / Snippet
-                          s.last_action &&
-                            React.createElement(
-                              "div",
-                              { className: "text-[11px] text-slate-400 bg-slate-950/40 px-2.5 py-1.5 rounded-lg border border-slate-800/60 font-mono truncate", title: s.last_action },
-                              "⚡ " + s.last_action
-                            )
-                        ),
-
-                        // Bottom Action: Session ID & Open Chat
-                        React.createElement(
-                          "div",
-                          { className: "pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" },
-                          React.createElement(
-                            "div",
-                            { className: "flex items-center gap-1.5 min-w-0" },
-                            React.createElement(
-                              "code",
-                              { className: "text-[10px] text-slate-500 font-mono truncate max-w-[120px]", title: s.session_id },
-                              s.session_id
-                            ),
-                            lastUpdateStr &&
-                              React.createElement(
-                                "span",
-                                {
-                                  className: "text-[10px] text-slate-500 font-mono shrink-0 flex items-center gap-1",
-                                  title: lastUpdateFull ? ("Last updated: " + lastUpdateFull) : undefined
-                                },
-                                "• updated " + lastUpdateStr
-                              )
-                          ),
-                          React.createElement(
-                            "a",
-                            {
-                              href: chatUrl,
-                              target: "_blank",
-                              rel: "noreferrer",
-                              className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600/90 hover:bg-indigo-600 text-white transition-colors cursor-pointer shadow-xs shrink-0"
-                            },
-                            "Open Chat ↗"
-                          )
-                        )
-                      );
-                    })
-                  )
-            )
-          : React.createElement(
-              "div",
-              { className: "space-y-6" },
-              // Memory Action Bar: Category Filter Pills, Search, Add Memory
-              React.createElement(
+            // Memory Cards Grid
+            filteredMemories.length === 0
+              ? React.createElement(
                 "div",
-                { className: "flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/40 p-3 rounded-xl border border-slate-800/80" },
-                // Category Pills
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 zfk-scrollbar" },
-                  memoryCategories.map(cat =>
-                    React.createElement(
-                      "button",
-                      {
-                        key: cat.id,
-                        type: "button",
-                        className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 " +
-                          (memoryCategoryFilter === cat.id
-                            ? "bg-indigo-600 text-white shadow-xs"
-                            : "bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/60"),
-                        onClick: () => setMemoryCategoryFilter(cat.id)
-                      },
-                      cat.icon + " " + cat.label,
-                      React.createElement("span", {
-                        className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " +
-                          (memoryCategoryFilter === cat.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400")
-                      }, cat.count)
-                    )
-                  )
+                { className: "bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center" },
+                React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-2xl mx-auto mb-3 text-slate-500" }, "🧠"),
+                React.createElement("h3", { className: "text-sm font-semibold text-slate-300" }, "No Repository Memories Found"),
+                React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-md mx-auto" },
+                  memorySearchQuery || memoryCategoryFilter !== "all"
+                    ? "No memories match your filter criteria. Try resetting the category or search."
+                    : "Repository memories persist architectural decisions, conventions, gotchas, and rejected paths for " + (selectedBoard || "this board") + " so future agent workers avoid repeat mistakes."
                 ),
-                // Search & Actions
-                (() => {
-                  const currentBoard = boards.find(b => b.slug === selectedBoard);
-                  const isAutoRecordOn = currentBoard ? (currentBoard.auto_record_memory !== false) : true;
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all cursor-pointer",
+                    onClick: () => setShowAddMemoryModal(true)
+                  },
+                  "➕ Record First Memory"
+                )
+              )
+              : React.createElement(
+                "div",
+                { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" },
+                filteredMemories.map((m) => {
+                  const catBadges = {
+                    decision: { icon: "💡", label: "Decision", bg: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" },
+                    gotcha: { icon: "⚠️", label: "Gotcha", bg: "bg-amber-500/10 text-amber-300 border-amber-500/30" },
+                    convention: { icon: "📐", label: "Convention", bg: "bg-sky-500/10 text-sky-300 border-sky-500/30" },
+                    rejected_path: { icon: "🚫", label: "Rejected Path", bg: "bg-purple-500/10 text-purple-300 border-purple-500/30" },
+                    general: { icon: "📝", label: "General", bg: "bg-slate-700/40 text-slate-300 border-slate-600/50" }
+                  };
+                  const badge = catBadges[m.category] || catBadges.general;
+
                   return React.createElement(
                     "div",
-                    { className: "flex flex-wrap items-center gap-2" },
-                    currentBoard && React.createElement(
-                      "button",
-                      {
-                        type: "button",
-                        className: "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer shrink-0 " +
-                          (isAutoRecordOn
-                            ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:text-white hover:bg-slate-800/80 shadow-xs"
-                            : "bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800"),
-                        title: "Click to toggle automatic memory recording from reviewer feedback for " + currentBoard.slug,
-                        onClick: async () => {
-                          const nextVal = !isAutoRecordOn;
-                          try {
-                            await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(currentBoard.slug), {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ auto_record_memory: nextVal })
-                            });
-                            showToast(`Auto-record memory ${nextVal ? "enabled" : "disabled"} for ${currentBoard.slug}`, "success");
-                            await loadBoards();
-                          } catch (err) {
-                            showToast("Failed to toggle auto-record: " + (err.message || String(err)), "error");
+                    {
+                      key: m.id,
+                      className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-xl p-4 transition-all duration-150 shadow-sm flex flex-col justify-between space-y-3"
+                    },
+                    React.createElement(
+                      "div",
+                      { className: "space-y-2.5" },
+                      // Card Top Row: Badge, Created At, Delete Button
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between gap-2" },
+                        React.createElement(
+                          "span",
+                          { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + badge.bg },
+                          badge.icon + " " + badge.label
+                        ),
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-2" },
+                          React.createElement(
+                            "span",
+                            { className: "text-[11px] text-slate-500 font-mono" },
+                            timeAgo(m.created_at)
+                          ),
+                          React.createElement(
+                            "button",
+                            {
+                              type: "button",
+                              title: "Delete Memory",
+                              className: "text-slate-500 hover:text-rose-300 p-1 rounded-md hover:bg-rose-500/20 transition-colors text-xs cursor-pointer",
+                              onClick: () => handleDeleteMemory(m.id)
+                            },
+                            "🗑️"
+                          )
+                        )
+                      ),
+                      // Content
+                      React.createElement(
+                        "div",
+                        { className: "text-xs text-slate-200 leading-relaxed whitespace-pre-wrap select-text font-normal" },
+                        m.content
+                      )
+                    ),
+                    // Card Bottom Row: Author, Tags, Task Link
+                    React.createElement(
+                      "div",
+                      { className: "pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2" },
+                      React.createElement(
+                        "div",
+                        { className: "flex flex-wrap items-center gap-1.5" },
+                        selectedBoard === "all" && m.board_slug && React.createElement(
+                          "span",
+                          { className: "inline-flex items-center gap-1 text-[10px] text-sky-400 font-mono bg-sky-950/60 px-2 py-0.5 rounded-md border border-sky-800/60" },
+                          "📋 " + m.board_slug
+                        ),
+                        React.createElement(
+                          "span",
+                          { className: "inline-flex items-center gap-1 text-[10px] text-slate-400 font-mono bg-slate-950/60 px-2 py-0.5 rounded-md border border-slate-800" },
+                          "👤 " + (m.author || "user")
+                        ),
+                        (m.tags || []).map((t, idx) =>
+                          React.createElement(
+                            "span",
+                            {
+                              key: idx,
+                              className: "text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                            },
+                            "#" + t
+                          )
+                        )
+                      ),
+                      m.task_id &&
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
+                          onClick: () => {
+                            setActiveView("board");
+                            loadTaskDetails(m.task_id);
                           }
-                        }
-                      },
-                      React.createElement("span", {
-                        className: "w-2 h-2 rounded-full " + (isAutoRecordOn ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
-                      }),
-                      "Auto-Record: " + (isAutoRecordOn ? "ON" : "OFF")
-                    ),
-                    React.createElement(
-                      "input",
-                      {
-                        type: "text",
-                        placeholder: "Search memories, tags, author...",
-                        className: "bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-44 md:w-56",
-                        value: memorySearchQuery,
-                        onChange: (e) => setMemorySearchQuery(e.target.value)
-                      }
-                    ),
-                    React.createElement(
-                      "button",
-                      {
-                        type: "button",
-                        className: "inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs shadow-indigo-600/30 transition-all cursor-pointer shrink-0",
-                        onClick: () => setShowAddMemoryModal(true)
-                      },
-                      "➕ Add Memory"
+                        },
+                        "📋 " + m.task_id + " ↗"
+                      )
                     )
                   );
-                })()
-              ),
-
-              // Memory Cards Grid
-              filteredMemories.length === 0
-                ? React.createElement(
-                    "div",
-                    { className: "bg-slate-900/30 border border-dashed border-slate-800 rounded-2xl p-12 text-center" },
-                    React.createElement("div", { className: "w-12 h-12 rounded-full bg-slate-800/80 flex items-center justify-center text-2xl mx-auto mb-3 text-slate-500" }, "🧠"),
-                    React.createElement("h3", { className: "text-sm font-semibold text-slate-300" }, "No Repository Memories Found"),
-                    React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-md mx-auto" },
-                      memorySearchQuery || memoryCategoryFilter !== "all"
-                        ? "No memories match your filter criteria. Try resetting the category or search."
-                        : "Repository memories persist architectural decisions, conventions, gotchas, and rejected paths for " + (selectedBoard || "this board") + " so future agent workers avoid repeat mistakes."
-                    ),
-                    React.createElement(
-                      "button",
-                      {
-                        type: "button",
-                        className: "mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all cursor-pointer",
-                        onClick: () => setShowAddMemoryModal(true)
-                      },
-                      "➕ Record First Memory"
-                    )
-                  )
-                : React.createElement(
-                    "div",
-                    { className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" },
-                    filteredMemories.map((m) => {
-                      const catBadges = {
-                        decision: { icon: "💡", label: "Decision", bg: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" },
-                        gotcha: { icon: "⚠️", label: "Gotcha", bg: "bg-amber-500/10 text-amber-300 border-amber-500/30" },
-                        convention: { icon: "📐", label: "Convention", bg: "bg-sky-500/10 text-sky-300 border-sky-500/30" },
-                        rejected_path: { icon: "🚫", label: "Rejected Path", bg: "bg-purple-500/10 text-purple-300 border-purple-500/30" },
-                        general: { icon: "📝", label: "General", bg: "bg-slate-700/40 text-slate-300 border-slate-600/50" }
-                      };
-                      const badge = catBadges[m.category] || catBadges.general;
-
-                      return React.createElement(
-                        "div",
-                        {
-                          key: m.id,
-                          className: "bg-slate-900/70 backdrop-blur-md border border-slate-800/90 hover:border-slate-700/80 rounded-xl p-4 transition-all duration-150 shadow-sm flex flex-col justify-between space-y-3"
-                        },
-                        React.createElement(
-                          "div",
-                          { className: "space-y-2.5" },
-                          // Card Top Row: Badge, Created At, Delete Button
-                          React.createElement(
-                            "div",
-                            { className: "flex items-center justify-between gap-2" },
-                            React.createElement(
-                              "span",
-                              { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + badge.bg },
-                              badge.icon + " " + badge.label
-                            ),
-                            React.createElement(
-                              "div",
-                              { className: "flex items-center gap-2" },
-                              React.createElement(
-                                "span",
-                                { className: "text-[11px] text-slate-500 font-mono" },
-                                timeAgo(m.created_at)
-                              ),
-                              React.createElement(
-                                "button",
-                                {
-                                  type: "button",
-                                  title: "Delete Memory",
-                                  className: "text-slate-500 hover:text-rose-300 p-1 rounded-md hover:bg-rose-500/20 transition-colors text-xs cursor-pointer",
-                                  onClick: () => handleDeleteMemory(m.id)
-                                },
-                                "🗑️"
-                              )
-                            )
-                          ),
-                          // Content
-                          React.createElement(
-                            "div",
-                            { className: "text-xs text-slate-200 leading-relaxed whitespace-pre-wrap select-text font-normal" },
-                            m.content
-                          )
-                        ),
-                        // Card Bottom Row: Author, Tags, Task Link
-                        React.createElement(
-                          "div",
-                          { className: "pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2" },
-                          React.createElement(
-                            "div",
-                            { className: "flex flex-wrap items-center gap-1.5" },
-                            React.createElement(
-                              "span",
-                              { className: "inline-flex items-center gap-1 text-[10px] text-slate-400 font-mono bg-slate-950/60 px-2 py-0.5 rounded-md border border-slate-800" },
-                              "👤 " + (m.author || "user")
-                            ),
-                            (m.tags || []).map((t, idx) =>
-                              React.createElement(
-                                "span",
-                                {
-                                  key: idx,
-                                  className: "text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                                },
-                                "#" + t
-                              )
-                            )
-                          ),
-                          m.task_id &&
-                            React.createElement(
-                              "button",
-                              {
-                                type: "button",
-                                className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
-                                onClick: () => {
-                                  setActiveView("board");
-                                  loadTaskDetails(m.task_id);
-                                }
-                              },
-                              "📋 " + m.task_id + " ↗"
-                            )
-                        )
-                      );
-                    })
-                  )
-            )
+                })
+              )
+          )
       );
     };
 
@@ -3486,98 +3558,98 @@
         "div",
         { className: "max-w-[1600px] mx-auto p-4 md:p-6 space-y-6 text-slate-100 font-sans antialiased min-h-screen" },
 
-      // Header Section
-      React.createElement(
-        "header",
-        { className: "space-y-4 pb-5 border-b border-slate-800/80" },
+        // Header Section
         React.createElement(
-          "div",
-          { className: "flex flex-col lg:flex-row lg:items-center justify-between gap-4" },
+          "header",
+          { className: "space-y-4 pb-5 border-b border-slate-800/80" },
           React.createElement(
             "div",
-            { className: "flex items-center gap-4 flex-wrap" },
+            { className: "flex flex-col lg:flex-row lg:items-center justify-between gap-4" },
             React.createElement(
               "div",
-              { className: "flex items-center gap-3.5" },
-              React.createElement("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 text-sm tracking-wider shrink-0" }, "ZF"),
+              { className: "flex items-center gap-4 flex-wrap" },
               React.createElement(
                 "div",
-                null,
-                React.createElement("h1", { className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" }, "Zero Factory Kanban"),
-                React.createElement("p", { className: "text-xs text-slate-400 font-medium" }, "Autonomous Multi-Agent Coordination Engine")
+                { className: "flex items-center gap-3.5" },
+                React.createElement("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 text-sm tracking-wider shrink-0" }, "ZF"),
+                React.createElement(
+                  "div",
+                  null,
+                  React.createElement("h1", { className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" }, "Zero Factory Kanban"),
+                  React.createElement("p", { className: "text-xs text-slate-400 font-medium" }, "Autonomous Multi-Agent Coordination Engine")
+                )
+              ),
+              // Navigation Tabs: Board vs Activities vs Instructions
+              React.createElement(
+                "div",
+                { className: "flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1" },
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
+                      (activeView === "board"
+                        ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
+                    onClick: () => setActiveView("board")
+                  },
+                  "📋 Board"
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer relative " +
+                      (activeView === "activities"
+                        ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
+                    onClick: () => setActiveView("activities")
+                  },
+                  "⚡ Activities",
+                  hasActiveAgents &&
+                  React.createElement("span", {
+                    className: "w-2 h-2 rounded-full bg-emerald-400 zfk-pulse-active shrink-0 ml-0.5"
+                  })
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer relative " +
+                      (activeView === "sessions" || activeView === "agents"
+                        ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
+                    onClick: () => {
+                      setActiveView("agents");
+                      loadSessions();
+                      loadAgents();
+                      loadMemories(selectedBoard);
+                    }
+                  },
+                  "🤖 Agents",
+                  (hasActiveAgents || sessionsList.some(s => s.status === "ongoing" || s.is_active) || agentsList.some(a => a.is_active)) &&
+                  React.createElement("span", {
+                    className: "w-2 h-2 rounded-full bg-emerald-400 zfk-pulse-active shrink-0 ml-0.5"
+                  })
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
+                      (activeView === "instructions"
+                        ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
+                    onClick: () => setActiveView("instructions")
+                  },
+                  "📖 Instructions"
+                )
               )
             ),
-            // Navigation Tabs: Board vs Activities vs Instructions
             React.createElement(
               "div",
-              { className: "flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1" },
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
-                    (activeView === "board"
-                      ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
-                  onClick: () => setActiveView("board")
-                },
-                "📋 Board"
-              ),
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer relative " +
-                    (activeView === "activities"
-                      ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
-                  onClick: () => setActiveView("activities")
-                },
-                "⚡ Activities",
-                hasActiveAgents &&
-                  React.createElement("span", {
-                    className: "w-2 h-2 rounded-full bg-emerald-400 zfk-pulse-active shrink-0 ml-0.5"
-                  })
-              ),
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer relative " +
-                    (activeView === "sessions" || activeView === "agents"
-                      ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
-                  onClick: () => {
-                    setActiveView("agents");
-                    loadSessions();
-                    loadAgents();
-                    loadMemories(selectedBoard);
-                  }
-                },
-                "🤖 Agents",
-                (hasActiveAgents || sessionsList.some(s => s.status === "ongoing" || s.is_active) || agentsList.some(a => a.is_active)) &&
-                  React.createElement("span", {
-                    className: "w-2 h-2 rounded-full bg-emerald-400 zfk-pulse-active shrink-0 ml-0.5"
-                  })
-              ),
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
-                    (activeView === "instructions"
-                      ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
-                  onClick: () => setActiveView("instructions")
-                },
-                "📖 Instructions"
-              )
-            )
-          ),
-          React.createElement(
-            "div",
-            { className: "flex flex-wrap items-center gap-2.5" },
-            (activeView === "instructions" || activeView === "activities" || activeView === "sessions" || activeView === "agents") &&
+              { className: "flex flex-wrap items-center gap-2.5" },
+              (activeView === "instructions" || activeView === "activities" || activeView === "sessions" || activeView === "agents") &&
               React.createElement(
                 "button",
                 {
@@ -3587,14 +3659,19 @@
                 },
                 "← Back to Board"
               ),
-            // Board Switcher (if boards exist)
-            boards.length > 0
-              ? React.createElement(
+              // Board Switcher (if boards exist)
+              boards.length > 0
+                ? React.createElement(
                   "select",
                   {
                     className: "bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none cursor-pointer transition-colors shadow-sm",
                     value: selectedBoard,
-                    onChange: (e) => setSelectedBoard(e.target.value)
+                    onChange: (e) => {
+                      const val = e.target.value;
+                      setSelectedBoard(val);
+                      loadTasksAndStats(val);
+                      loadMemories(val);
+                    }
                   },
                   React.createElement(
                     "option",
@@ -3609,25 +3686,25 @@
                     )
                   )
                 )
-              : React.createElement(
+                : React.createElement(
                   "span",
                   { className: "px-2.5 py-1 text-xs font-semibold text-amber-300 bg-amber-950/60 border border-amber-800/60 rounded-lg" },
                   "No Boards Configured"
                 ),
-            React.createElement(
-              "button",
-              {
-                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold " +
-                  (boards.length === 0
-                    ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30"
-                    : "bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm") +
-                  " transition-all duration-150 cursor-pointer",
-                onClick: handleOpenNewBoardModal,
-                title: "Create New Board"
-              },
-              "+ Board"
-            ),
-            selectedBoard && selectedBoard !== "all" &&
+              React.createElement(
+                "button",
+                {
+                  className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold " +
+                    (boards.length === 0
+                      ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30"
+                      : "bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm") +
+                    " transition-all duration-150 cursor-pointer",
+                  onClick: handleOpenNewBoardModal,
+                  title: "Create New Board"
+                },
+                "+ Board"
+              ),
+              selectedBoard && selectedBoard !== "all" &&
               React.createElement(
                 "button",
                 {
@@ -3637,673 +3714,673 @@
                 },
                 "⚙️ Edit Board"
               ),
-            React.createElement(
-              "button",
-              {
-                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
-                onClick: () => {
-                  setShowCronModal(true);
-                  loadCronJobs();
-                },
-                title: "Configure built-in Cron schedules and periodic automation"
-              },
-              "⏰ Cron Config",
               React.createElement(
-                "span",
+                "button",
                 {
-                  className:
-                    "px-1.5 py-0.5 rounded-full text-[10px] font-bold " +
-                    (!cronSchedulerEnabled
-                      ? "bg-rose-950/90 text-rose-300 border border-rose-800/80 shadow-xs"
-                      : cronJobs.some((j) => j.enabled)
-                      ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
-                      : "bg-slate-800 text-slate-400")
+                  className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
+                  onClick: () => {
+                    setShowCronModal(true);
+                    loadCronJobs();
+                  },
+                  title: "Configure built-in Cron schedules and periodic automation"
                 },
-                !cronSchedulerEnabled
-                  ? "PAUSED"
-                  : cronJobs.length > 0
-                  ? cronJobs.filter((j) => j.enabled).length + "/" + cronJobs.length
-                  : "CRON"
-              )
-            ),
-            React.createElement(
-              "button",
-              {
-                className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
-                onClick: () => {
-                  loadSettings();
-                  setShowSettingsModal(true);
-                },
-                title: "Global Zero Factory configuration (WIP limits, worker caps)"
-              },
-              "⚙️ Settings"
-            ),
-            React.createElement(
-              "button",
-              {
-                className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
-                onClick: handleRunDispatcher,
-                disabled: isDispatching || boards.length === 0,
-                title: boards.length === 0 ? "Create a board first" : "Trigger Zero Factory Dispatcher Cycle"
-              },
-              isDispatching
-                ? React.createElement("span", { className: "zfk-spinning" }, "⏳")
-                : "⚡",
-              isDispatching ? " Dispatching..." : " Dispatch"
-            ),
-            React.createElement(
-              "button",
-              {
-                className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
-                onClick: () => {
-                  if (boards.length === 0) {
-                    handleOpenNewBoardModal();
-                  } else {
-                    setNewTaskForm(prev => ({
-                      ...prev,
-                      board_slug: (selectedBoard && selectedBoard !== "all") ? selectedBoard : (boards[0] ? boards[0].slug : "")
-                    }));
-                    setShowNewTaskModal(true);
-                  }
-                },
-                disabled: boards.length === 0,
-                title: boards.length === 0 ? "Create a board first" : "Create New Task"
-              },
-              "+ New Task"
-            ),
-            React.createElement(
-              "button",
-              {
-                className: "inline-flex items-center justify-center p-2 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
-                onClick: () => {
-                  loadBoards();
-                  loadTasksAndStats();
-                },
-                title: "Refresh Board"
-              },
-              "🔄"
-            )
-          )
-        ),
-
-      // Main Body: Activities View OR Instructions View OR Sessions View OR Empty Boards State OR Kanban Grid
-      activeView === "activities"
-        ? renderActivities()
-        : activeView === "instructions"
-        ? renderInstructions()
-        : (activeView === "sessions" || activeView === "agents")
-        ? renderSessions()
-        : boards.length === 0
-        ? renderEmptyBoardState()
-        : React.createElement(
-            "div",
-            { className: "space-y-6" },
-            // Metrics Banner
-            stats &&
-              React.createElement(
-                "div",
-                { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1" },
-            React.createElement(
-              "div",
-              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
-              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-indigo-500/15 text-indigo-400" }, "📊"),
-              React.createElement(
-                "div",
-                { className: "flex flex-col min-w-0" },
-                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.total || 0),
-                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Total Tasks")
-              )
-            ),
-            React.createElement(
-              "div",
-              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
-              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-amber-500/15 text-amber-400" }, "⚡"),
-              React.createElement(
-                "div",
-                { className: "flex flex-col min-w-0" },
-                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.running) || 0),
-                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Active In Progress")
-              )
-            ),
-            React.createElement(
-              "div",
-              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
-              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-rose-500/15 text-rose-400" }, "🛑"),
-              React.createElement(
-                "div",
-                { className: "flex flex-col min-w-0" },
-                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.blocked) || 0),
-                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Blocked / Action")
-              )
-            ),
-            React.createElement(
-              "div",
-              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
-              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, "✅"),
-              React.createElement(
-                "div",
-                { className: "flex flex-col min-w-0" },
-                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.done) || 0),
-                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Completed")
-              )
-            ),
-            React.createElement(
-              "div",
-              { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
-              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-emerald-500/15 text-emerald-400" }, "🌿"),
-              React.createElement(
-                "div",
-                { className: "flex flex-col min-w-0" },
-                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.active_worktrees || 0),
-                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Git Worktrees")
-              )
-            ),
-            React.createElement(
-              "div",
-              {
-                className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150 cursor-pointer " + (prFilter === "has_pr" ? "ring-1 ring-purple-500/50 bg-purple-950/20" : ""),
-                onClick: () => setPrFilter(prFilter === "has_pr" ? "all" : "has_pr"),
-                title: "Filter by tasks with Pull Requests"
-              },
-              React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, renderPrIcon("w-4 h-4 text-purple-400")),
-              React.createElement(
-                "div",
-                { className: "flex flex-col min-w-0" },
-                React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.pr_count || 0),
-                React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Pull Requests")
-              )
-            )
-          ),
-
-      // Toolbar (Search & Filter)
-      React.createElement(
-        "div",
-        { className: "flex flex-wrap items-center justify-between gap-3 bg-slate-900/40 backdrop-blur-sm border border-slate-800/70 p-3 rounded-xl" },
-        React.createElement(
-          "div",
-          { className: "flex items-center gap-2 bg-slate-950/60 border border-slate-800 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 rounded-lg px-3 py-1.5 min-w-[240px] md:w-80 transition-all" },
-          React.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, "🔍"),
-          React.createElement("input", {
-            type: "text",
-            className: "bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none w-full",
-            placeholder: "Search tasks by title, description, ID or PR...",
-            value: searchQuery,
-            onChange: (e) => setSearchQuery(e.target.value)
-          })
-        ),
-        React.createElement(
-          "div",
-          { className: "flex items-center gap-1.5 flex-wrap" },
-          React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "Role:"),
-          [
-            { id: "all", label: "All" },
-            { id: "zf-builder", label: "ZF Builder" },
-            { id: "zf-reviewer", label: "ZF Reviewer" },
-            { id: "zf-orchestrator", label: "ZF Orchestrator" },
-            { id: "unassigned", label: "Unassigned" }
-          ].map((roleObj) =>
-            React.createElement(
-              "button",
-              {
-                key: roleObj.id,
-                type: "button",
-                className: (assigneeFilter === roleObj.id
-                  ? "bg-indigo-600 text-white border-indigo-500 shadow-xs shadow-indigo-600/30"
-                  : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
-                  " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center",
-                onClick: () => setAssigneeFilter(roleObj.id)
-              },
-              roleObj.label
-            )
-          )
-        ),
-        React.createElement(
-          "div",
-          { className: "flex items-center gap-1.5 flex-wrap" },
-          React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "Prio:"),
-          ["all", "P0", "P1", "P2", "P3"].map((prio) =>
-            React.createElement(
-              "button",
-              {
-                key: prio,
-                type: "button",
-                className: (priorityFilter === prio
-                  ? "bg-indigo-600 text-white border-indigo-500 shadow-xs shadow-indigo-600/30"
-                  : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
-                  " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center",
-                onClick: () => setPriorityFilter(prio)
-              },
-              prio
-            )
-          )
-        ),
-        React.createElement(
-          "div",
-          { className: "flex items-center gap-1.5 flex-wrap" },
-          React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "PR:"),
-          [
-            { id: "all", label: "All" },
-            { id: "has_pr", label: "Has PR" }
-          ].map((item) =>
-            React.createElement(
-              "button",
-              {
-                key: item.id,
-                type: "button",
-                className: (prFilter === item.id
-                  ? "bg-purple-600 text-white border-purple-500 shadow-xs shadow-purple-600/30"
-                  : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
-                  " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center inline-flex items-center gap-1.5",
-                onClick: () => setPrFilter(item.id)
-              },
-              item.id === "has_pr" && renderPrIcon("w-3 h-3 shrink-0"),
-              item.label,
-              item.id === "has_pr" && stats && stats.pr_count > 0 &&
+                "⏰ Cron Config",
                 React.createElement(
                   "span",
-                  { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" },
-                  stats.pr_count
+                  {
+                    className:
+                      "px-1.5 py-0.5 rounded-full text-[10px] font-bold " +
+                      (!cronSchedulerEnabled
+                        ? "bg-rose-950/90 text-rose-300 border border-rose-800/80 shadow-xs"
+                        : cronJobs.some((j) => j.enabled)
+                          ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                          : "bg-slate-800 text-slate-400")
+                  },
+                  !cronSchedulerEnabled
+                    ? "PAUSED"
+                    : cronJobs.length > 0
+                      ? cronJobs.filter((j) => j.enabled).length + "/" + cronJobs.length
+                      : "CRON"
                 )
-            )
-          )
-        ),
-        React.createElement(
-          "label",
-          { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" },
-          React.createElement("input", {
-            type: "checkbox",
-            className: "rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-            checked: autoRefresh,
-            onChange: (e) => setAutoRefresh(e.target.checked)
-          }),
-          "Live 10s Poll"
-        )
-      ),
-
-      // Main Kanban Board Grid (Single Row locked across all screens)
-      React.createElement(
-        "div",
-        { className: "overflow-x-auto pb-4 -mx-1 px-1 zfk-scrollbar" },
-        React.createElement(
-          "div",
-          {
-            className: "grid grid-cols-5 gap-3.5 items-start min-w-[1100px] w-full",
-            style: { display: "grid", gridTemplateColumns: "repeat(5, minmax(220px, 1fr))" }
-          },
-          COLUMNS.map((col) => {
-          const colTasks = tasksByColumn[col.id] || [];
-          const isOver = dragOverCol === col.id;
-
-          return React.createElement(
-            "div",
-            {
-              key: col.id,
-              className: "flex flex-col gap-2.5 bg-slate-900/50 backdrop-blur-md border rounded-xl p-2.5 min-h-[520px] transition-all duration-150 " + (isOver ? "border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/30" : "border-slate-800/80"),
-              onDragOver: (e) => handleDragOver(e, col.id),
-              onDragLeave: handleDragLeave,
-              onDrop: (e) => handleDrop(e, col.id)
-            },
-            React.createElement(
-              "div",
-              { className: "flex items-center justify-between px-1.5 py-1 select-none" },
-              React.createElement(
-                "div",
-                { className: "flex items-center gap-2 min-w-0" },
-                React.createElement("div", { className: "w-2.5 h-2.5 rounded-full shrink-0 shadow-xs", style: { backgroundColor: col.dotColor, boxShadow: "0 0 6px " + col.dotColor + "88" } }),
-                React.createElement("h3", { className: "text-xs font-semibold uppercase tracking-wider text-slate-300 truncate m-0" }, col.title)
-              ),
-              React.createElement("span", { className: "text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/60 text-slate-400 font-mono" }, colTasks.length)
-            ),
-
-            React.createElement(
-              "div",
-              { className: "flex flex-col gap-2.5 flex-1 min-h-[120px]" },
-              colTasks.length === 0
-                ? React.createElement(
-                    "div",
-                    { className: "flex flex-col items-center justify-center p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800/80 rounded-lg bg-slate-900/20 my-auto select-none" },
-                    "No " + col.title + " tasks",
-                    React.createElement("br", null),
-                    React.createElement("span", { className: "text-[0.6875rem] opacity-60 mt-1" }, "Drop tasks here")
-                  )
-                : colTasks.map((t) => {
-                    const isRunning = t.status === "running";
-                    const prioClass = t.priority === "P0"
-                      ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
-                      : t.priority === "P1"
-                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
-                      : t.priority === "P3"
-                      ? "bg-slate-700/40 text-slate-400 border-slate-600/30"
-                      : "bg-sky-500/15 text-sky-300 border-sky-500/30";
-
-                    const roleClass = t.assignee === "zf-builder"
-                      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                      : t.assignee === "zf-reviewer"
-                      ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
-                      : t.assignee === "zf-orchestrator"
-                      ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
-                      : "bg-slate-700/30 text-slate-400 border-slate-700/40";
-
-                    return React.createElement(
-                      "div",
-                      {
-                        key: t.id,
-                        className: "group bg-slate-800/70 hover:bg-slate-800/95 border rounded-lg p-3 space-y-2.5 shadow-xs hover:shadow-md transition-all duration-150 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 " + (isRunning ? "border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]" : "border-slate-700/60 hover:border-slate-600"),
-                        draggable: true,
-                        onDragStart: (e) => handleDragStart(e, t),
-                        onClick: () => loadTaskDetails(t.id)
-                      },
-                      React.createElement(
-                        "div",
-                        { className: "flex items-center justify-between gap-2" },
-                        React.createElement("span", { className: "font-mono text-[0.6875rem] font-semibold text-slate-400 tracking-wider" }, t.id),
-                        React.createElement(
-                          "div",
-                          { className: "flex items-center gap-1.5 flex-wrap" },
-                          React.createElement(
-                            "span",
-                            { className: "text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border " + prioClass },
-                            t.priority || "P2"
-                          ),
-                          React.createElement(
-                            "span",
-                            { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass },
-                            t.assignee || "unassigned"
-                          )
-                        )
-                      ),
-                      React.createElement("h4", { className: "text-xs font-semibold text-slate-200 leading-snug line-clamp-2 m-0 group-hover:text-white" }, t.title),
-                      React.createElement(
-                        "div",
-                        { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" },
-                        selectedBoard === "all" && t.board_slug && React.createElement("span", { className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[0.625rem] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📋 " + t.board_slug),
-                        t.tenant && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant),
-                        t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name),
-                        t.pr_url &&
-                          React.createElement(
-                            "a",
-                            {
-                              href: t.pr_url,
-                              target: "_blank",
-                              rel: "noopener noreferrer",
-                              onClick: (e) => e.stopPropagation(),
-                              className: "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] font-mono font-semibold bg-purple-500/15 hover:bg-purple-500/30 text-purple-300 hover:text-purple-100 border border-purple-500/30 transition-all duration-150 truncate max-w-[140px] shadow-xs cursor-pointer",
-                              title: "Pull Request: " + t.pr_url
-                            },
-                            renderPrIcon("w-2.5 h-2.5 shrink-0 text-purple-400"),
-                            formatPrLabel(t.pr_url)
-                          ),
-                        t.blocking_parent_count > 0 &&
-                          React.createElement(
-                            "span",
-                            { className: "text-[0.625rem] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20" },
-                            "⏳ " + t.blocking_parent_count + " blocker"
-                          )
-                      ),
-                      (t.status === "running" || (t.session_progress && (t.session_progress.has_session || (t.session_progress.sessions && t.session_progress.sessions.length > 0)))) &&
-                        (() => {
-                          const tSessions = (t.session_progress && t.session_progress.sessions) || [];
-                          const ongoingSess = tSessions.find(s => s.status === "ongoing" || s.is_active) || (t.status === "running" ? t.session_progress : null);
-                          const isRunning = t.status === "running" || Boolean(ongoingSess && (ongoingSess.status === "ongoing" || ongoingSess.is_active));
-                          const activeAgent = (ongoingSess && ongoingSess.agent) || t.assignee;
-                          const agentIcon = activeAgent === "zf-reviewer" ? "🔍" : activeAgent === "zf-orchestrator" ? "🧭" : "🔨";
-                          const agentLabel = activeAgent === "zf-reviewer" ? "Reviewing PR" : activeAgent === "zf-orchestrator" ? "Orchestrating" : "Implementing";
-
-                          if (isRunning) {
-                            return React.createElement(
-                              "div",
-                              { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border text-xs " + (activeAgent === "zf-reviewer" ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-300" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300") },
-                              React.createElement(
-                                "div",
-                                { className: "flex items-center gap-1.5 min-w-0" },
-                                React.createElement("span", {
-                                  className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? (activeAgent === "zf-reviewer" ? "bg-cyan-400 zfk-pulse-active" : "bg-emerald-400 zfk-pulse-active") : "bg-slate-500")
-                                }),
-                                React.createElement(
-                                  "span",
-                                  { className: "text-[0.6875rem] truncate font-medium" },
-                                  agentIcon + " " + agentLabel +
-                                  (t.session_progress && t.session_progress.turn_count ? " • " + t.session_progress.turn_count + " turns" : "") +
-                                  (t.session_progress && t.session_progress.last_action ? " • " + t.session_progress.last_action : "")
-                                )
-                              ),
-                              tSessions.length > 1 &&
-                                React.createElement("span", { className: "text-[0.625rem] font-mono px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-300 shrink-0 border border-slate-700/60" }, tSessions.length + " sess")
-                            );
-                          }
-
-                          // Completed sessions on non-running task
-                          if (tSessions.length > 0) {
-                            const uniqueAgents = Array.from(new Set(tSessions.map(s => s.agent || t.assignee)));
-                            const iconMap = { "zf-reviewer": "🔍", "zf-orchestrator": "🧭", "zf-builder": "🔨" };
-                            const iconsStr = uniqueAgents.map(a => iconMap[a] || "🤖").join(" ");
-                            return React.createElement(
-                              "div",
-                              { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border border-slate-800/80 bg-slate-900/50 text-slate-400 text-xs" },
-                              React.createElement(
-                                "span",
-                                { className: "text-[0.6875rem] truncate font-medium flex items-center gap-1 text-slate-300" },
-                                React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" }),
-                                tSessions.length + " AI session" + (tSessions.length > 1 ? "s" : "") + ": " + iconsStr
-                              ),
-                              t.session_progress && t.session_progress.turn_count ?
-                                React.createElement("span", { className: "text-[0.625rem] text-slate-500 font-mono shrink-0" }, t.session_progress.turn_count + "t") : null
-                            );
-                          }
-                          return null;
-                        })(),
-                      t.status === "blocked" &&
-                        React.createElement(
-                          "div",
-                          {
-                            className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (
-                              (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
-                                ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                                : (t.title && t.title.includes("[Human Review]"))
-                                ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
-                                : t.blocking_parent_count > 0
-                                ? "bg-slate-800 border-slate-700 text-slate-300"
-                                : "bg-rose-500/15 border-rose-500/30 text-rose-300"
-                            )
-                          },
-                          React.createElement("span", {
-                            className: "w-2 h-2 rounded-full shrink-0 " + (
-                              (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
-                                ? "bg-amber-400"
-                                : (t.title && t.title.includes("[Human Review]"))
-                                ? "bg-teal-400"
-                                : t.blocking_parent_count > 0
-                                ? "bg-slate-400"
-                                : "bg-rose-400"
-                            )
-                          }),
-                          React.createElement(
-                            "span",
-                            { className: "text-[0.6875rem] truncate font-medium" },
-                            (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
-                              ? "🟠 Merge Conflict"
-                              : (t.title && t.title.includes("[Human Review]"))
-                              ? "🟢 Awaiting Human Merge"
-                              : t.blocking_parent_count > 0
-                              ? "⏳ Blocked by Parent Task"
-                              : "🛑 Action Required / Stuck"
-                          )
-                        ),
-                      React.createElement(
-                        "div",
-                        { className: "flex items-center justify-between pt-1 border-t border-slate-700/40 text-[0.6875rem] text-slate-400" },
-                        React.createElement(
-                          "span",
-                          { className: "text-[0.6875rem] text-slate-500" },
-                          timeAgo(t.updated_at || t.created_at)
-                        ),
-                        React.createElement(
-                          "div",
-                          { className: "flex items-center gap-1.5" },
-                          t.comment_count > 0 &&
-                            React.createElement(
-                              "span",
-                              { className: "inline-flex items-center px-1.5 py-0.5 rounded text-[0.6875rem] bg-slate-700/50 text-slate-300 hover:text-white cursor-pointer", title: t.comment_count + " comments" },
-                              "💬 " + t.comment_count
-                            ),
-                          React.createElement(
-                            "button",
-                            {
-                              type: "button",
-                              className: "inline-flex items-center justify-center w-5 h-5 rounded bg-slate-700/60 hover:bg-indigo-600 text-slate-300 hover:text-white transition-colors cursor-pointer text-xs leading-none font-bold",
-                              onClick: (e) => handleAdvanceTask(t, e),
-                              title: "Move to next column"
-                            },
-                            "→"
-                          )
-                        )
-                      )
-                    );
-                  })
-            )
-          );
-        })
-      )
-    )
-    ),
-
-      // Task Details Modal / Drawer
-      selectedTask &&
-        React.createElement(
-          "div",
-          { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setSelectedTask(null) },
-          React.createElement(
-            "div",
-            { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
-            React.createElement(
-              "div",
-              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-              React.createElement(
-                "div",
-                { className: "flex items-center gap-3 min-w-0" },
-                React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id),
-                React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)
               ),
               React.createElement(
                 "button",
                 {
-                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                  onClick: () => setSelectedTask(null)
+                  className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
+                  onClick: () => {
+                    loadSettings();
+                    setShowSettingsModal(true);
+                  },
+                  title: "Global Zero Factory configuration (WIP limits, worker caps)"
                 },
-                "✕"
+                "⚙️ Settings"
+              ),
+              React.createElement(
+                "button",
+                {
+                  className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
+                  onClick: handleRunDispatcher,
+                  disabled: isDispatching || boards.length === 0,
+                  title: boards.length === 0 ? "Create a board first" : "Trigger Zero Factory Dispatcher Cycle"
+                },
+                isDispatching
+                  ? React.createElement("span", { className: "zfk-spinning" }, "⏳")
+                  : "⚡",
+                isDispatching ? " Dispatching..." : " Dispatch"
+              ),
+              React.createElement(
+                "button",
+                {
+                  className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                  onClick: () => {
+                    if (boards.length === 0) {
+                      handleOpenNewBoardModal();
+                    } else {
+                      setNewTaskForm(prev => ({
+                        ...prev,
+                        board_slug: (selectedBoard && selectedBoard !== "all") ? selectedBoard : (boards[0] ? boards[0].slug : "")
+                      }));
+                      setShowNewTaskModal(true);
+                    }
+                  },
+                  disabled: boards.length === 0,
+                  title: boards.length === 0 ? "Create a board first" : "Create New Task"
+                },
+                "+ New Task"
+              ),
+              React.createElement(
+                "button",
+                {
+                  className: "inline-flex items-center justify-center p-2 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
+                  onClick: () => {
+                    loadBoards();
+                    loadTasksAndStats();
+                  },
+                  title: "Refresh Board"
+                },
+                "🔄"
               )
-            ),
+            )
+          ),
+
+          // Main Body: Activities View OR Instructions View OR Sessions View OR Empty Boards State OR Kanban Grid
+          activeView === "activities"
+            ? renderActivities()
+            : activeView === "instructions"
+              ? renderInstructions()
+              : (activeView === "sessions" || activeView === "agents")
+                ? renderSessions()
+                : boards.length === 0
+                  ? renderEmptyBoardState()
+                  : React.createElement(
+                    "div",
+                    { className: "space-y-6" },
+                    // Metrics Banner
+                    stats &&
+                    React.createElement(
+                      "div",
+                      { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1" },
+                      React.createElement(
+                        "div",
+                        { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+                        React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-indigo-500/15 text-indigo-400" }, "📊"),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-col min-w-0" },
+                          React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.total || 0),
+                          React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Total Tasks")
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+                        React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-amber-500/15 text-amber-400" }, "⚡"),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-col min-w-0" },
+                          React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.running) || 0),
+                          React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Active In Progress")
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+                        React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-rose-500/15 text-rose-400" }, "🛑"),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-col min-w-0" },
+                          React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.blocked) || 0),
+                          React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Blocked / Action")
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+                        React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, "✅"),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-col min-w-0" },
+                          React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.done) || 0),
+                          React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Completed")
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
+                        React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-emerald-500/15 text-emerald-400" }, "🌿"),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-col min-w-0" },
+                          React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.active_worktrees || 0),
+                          React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Git Worktrees")
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        {
+                          className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150 cursor-pointer " + (prFilter === "has_pr" ? "ring-1 ring-purple-500/50 bg-purple-950/20" : ""),
+                          onClick: () => setPrFilter(prFilter === "has_pr" ? "all" : "has_pr"),
+                          title: "Filter by tasks with Pull Requests"
+                        },
+                        React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, renderPrIcon("w-4 h-4 text-purple-400")),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-col min-w-0" },
+                          React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.pr_count || 0),
+                          React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Pull Requests")
+                        )
+                      )
+                    ),
+
+                    // Toolbar (Search & Filter)
+                    React.createElement(
+                      "div",
+                      { className: "flex flex-wrap items-center justify-between gap-3 bg-slate-900/40 backdrop-blur-sm border border-slate-800/70 p-3 rounded-xl" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2 bg-slate-950/60 border border-slate-800 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 rounded-lg px-3 py-1.5 min-w-[240px] md:w-80 transition-all" },
+                        React.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, "🔍"),
+                        React.createElement("input", {
+                          type: "text",
+                          className: "bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none w-full",
+                          placeholder: "Search tasks by title, description, ID or PR...",
+                          value: searchQuery,
+                          onChange: (e) => setSearchQuery(e.target.value)
+                        })
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-1.5 flex-wrap" },
+                        React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "Role:"),
+                        [
+                          { id: "all", label: "All" },
+                          { id: "zf-builder", label: "ZF Builder" },
+                          { id: "zf-reviewer", label: "ZF Reviewer" },
+                          { id: "zf-orchestrator", label: "ZF Orchestrator" },
+                          { id: "unassigned", label: "Unassigned" }
+                        ].map((roleObj) =>
+                          React.createElement(
+                            "button",
+                            {
+                              key: roleObj.id,
+                              type: "button",
+                              className: (assigneeFilter === roleObj.id
+                                ? "bg-indigo-600 text-white border-indigo-500 shadow-xs shadow-indigo-600/30"
+                                : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
+                                " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center",
+                              onClick: () => setAssigneeFilter(roleObj.id)
+                            },
+                            roleObj.label
+                          )
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-1.5 flex-wrap" },
+                        React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "Prio:"),
+                        ["all", "P0", "P1", "P2", "P3"].map((prio) =>
+                          React.createElement(
+                            "button",
+                            {
+                              key: prio,
+                              type: "button",
+                              className: (priorityFilter === prio
+                                ? "bg-indigo-600 text-white border-indigo-500 shadow-xs shadow-indigo-600/30"
+                                : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
+                                " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center",
+                              onClick: () => setPriorityFilter(prio)
+                            },
+                            prio
+                          )
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-1.5 flex-wrap" },
+                        React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "PR:"),
+                        [
+                          { id: "all", label: "All" },
+                          { id: "has_pr", label: "Has PR" }
+                        ].map((item) =>
+                          React.createElement(
+                            "button",
+                            {
+                              key: item.id,
+                              type: "button",
+                              className: (prFilter === item.id
+                                ? "bg-purple-600 text-white border-purple-500 shadow-xs shadow-purple-600/30"
+                                : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") +
+                                " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center inline-flex items-center gap-1.5",
+                              onClick: () => setPrFilter(item.id)
+                            },
+                            item.id === "has_pr" && renderPrIcon("w-3 h-3 shrink-0"),
+                            item.label,
+                            item.id === "has_pr" && stats && stats.pr_count > 0 &&
+                            React.createElement(
+                              "span",
+                              { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" },
+                              stats.pr_count
+                            )
+                          )
+                        )
+                      ),
+                      React.createElement(
+                        "label",
+                        { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" },
+                        React.createElement("input", {
+                          type: "checkbox",
+                          className: "rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                          checked: autoRefresh,
+                          onChange: (e) => setAutoRefresh(e.target.checked)
+                        }),
+                        "Live 10s Poll"
+                      )
+                    ),
+
+                    // Main Kanban Board Grid (Single Row locked across all screens)
+                    React.createElement(
+                      "div",
+                      { className: "overflow-x-auto pb-4 -mx-1 px-1 zfk-scrollbar" },
+                      React.createElement(
+                        "div",
+                        {
+                          className: "grid grid-cols-5 gap-3.5 items-start min-w-[1100px] w-full",
+                          style: { display: "grid", gridTemplateColumns: "repeat(5, minmax(220px, 1fr))" }
+                        },
+                        COLUMNS.map((col) => {
+                          const colTasks = tasksByColumn[col.id] || [];
+                          const isOver = dragOverCol === col.id;
+
+                          return React.createElement(
+                            "div",
+                            {
+                              key: col.id,
+                              className: "flex flex-col gap-2.5 bg-slate-900/50 backdrop-blur-md border rounded-xl p-2.5 min-h-[520px] transition-all duration-150 " + (isOver ? "border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/30" : "border-slate-800/80"),
+                              onDragOver: (e) => handleDragOver(e, col.id),
+                              onDragLeave: handleDragLeave,
+                              onDrop: (e) => handleDrop(e, col.id)
+                            },
+                            React.createElement(
+                              "div",
+                              { className: "flex items-center justify-between px-1.5 py-1 select-none" },
+                              React.createElement(
+                                "div",
+                                { className: "flex items-center gap-2 min-w-0" },
+                                React.createElement("div", { className: "w-2.5 h-2.5 rounded-full shrink-0 shadow-xs", style: { backgroundColor: col.dotColor, boxShadow: "0 0 6px " + col.dotColor + "88" } }),
+                                React.createElement("h3", { className: "text-xs font-semibold uppercase tracking-wider text-slate-300 truncate m-0" }, col.title)
+                              ),
+                              React.createElement("span", { className: "text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/60 text-slate-400 font-mono" }, colTasks.length)
+                            ),
+
+                            React.createElement(
+                              "div",
+                              { className: "flex flex-col gap-2.5 flex-1 min-h-[120px]" },
+                              colTasks.length === 0
+                                ? React.createElement(
+                                  "div",
+                                  { className: "flex flex-col items-center justify-center p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800/80 rounded-lg bg-slate-900/20 my-auto select-none" },
+                                  "No " + col.title + " tasks",
+                                  React.createElement("br", null),
+                                  React.createElement("span", { className: "text-[0.6875rem] opacity-60 mt-1" }, "Drop tasks here")
+                                )
+                                : colTasks.map((t) => {
+                                  const isRunning = t.status === "running";
+                                  const prioClass = t.priority === "P0"
+                                    ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+                                    : t.priority === "P1"
+                                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                                      : t.priority === "P3"
+                                        ? "bg-slate-700/40 text-slate-400 border-slate-600/30"
+                                        : "bg-sky-500/15 text-sky-300 border-sky-500/30";
+
+                                  const roleClass = t.assignee === "zf-builder"
+                                    ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                    : t.assignee === "zf-reviewer"
+                                      ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                                      : t.assignee === "zf-orchestrator"
+                                        ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                                        : "bg-slate-700/30 text-slate-400 border-slate-700/40";
+
+                                  return React.createElement(
+                                    "div",
+                                    {
+                                      key: t.id,
+                                      className: "group bg-slate-800/70 hover:bg-slate-800/95 border rounded-lg p-3 space-y-2.5 shadow-xs hover:shadow-md transition-all duration-150 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 " + (isRunning ? "border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]" : "border-slate-700/60 hover:border-slate-600"),
+                                      draggable: true,
+                                      onDragStart: (e) => handleDragStart(e, t),
+                                      onClick: () => loadTaskDetails(t.id)
+                                    },
+                                    React.createElement(
+                                      "div",
+                                      { className: "flex items-center justify-between gap-2" },
+                                      React.createElement("span", { className: "font-mono text-[0.6875rem] font-semibold text-slate-400 tracking-wider" }, t.id),
+                                      React.createElement(
+                                        "div",
+                                        { className: "flex items-center gap-1.5 flex-wrap" },
+                                        React.createElement(
+                                          "span",
+                                          { className: "text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border " + prioClass },
+                                          t.priority || "P2"
+                                        ),
+                                        React.createElement(
+                                          "span",
+                                          { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass },
+                                          t.assignee || "unassigned"
+                                        )
+                                      )
+                                    ),
+                                    React.createElement("h4", { className: "text-xs font-semibold text-slate-200 leading-snug line-clamp-2 m-0 group-hover:text-white" }, t.title),
+                                    React.createElement(
+                                      "div",
+                                      { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" },
+                                      selectedBoard === "all" && t.board_slug && React.createElement("span", { className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[0.625rem] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📋 " + t.board_slug),
+                                      t.tenant && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant),
+                                      t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name),
+                                      t.pr_url &&
+                                      React.createElement(
+                                        "a",
+                                        {
+                                          href: t.pr_url,
+                                          target: "_blank",
+                                          rel: "noopener noreferrer",
+                                          onClick: (e) => e.stopPropagation(),
+                                          className: "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] font-mono font-semibold bg-purple-500/15 hover:bg-purple-500/30 text-purple-300 hover:text-purple-100 border border-purple-500/30 transition-all duration-150 truncate max-w-[140px] shadow-xs cursor-pointer",
+                                          title: "Pull Request: " + t.pr_url
+                                        },
+                                        renderPrIcon("w-2.5 h-2.5 shrink-0 text-purple-400"),
+                                        formatPrLabel(t.pr_url)
+                                      ),
+                                      t.blocking_parent_count > 0 &&
+                                      React.createElement(
+                                        "span",
+                                        { className: "text-[0.625rem] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20" },
+                                        "⏳ " + t.blocking_parent_count + " blocker"
+                                      )
+                                    ),
+                                    (t.status === "running" || (t.session_progress && (t.session_progress.has_session || (t.session_progress.sessions && t.session_progress.sessions.length > 0)))) &&
+                                    (() => {
+                                      const tSessions = (t.session_progress && t.session_progress.sessions) || [];
+                                      const ongoingSess = tSessions.find(s => s.status === "ongoing" || s.is_active) || (t.status === "running" ? t.session_progress : null);
+                                      const isRunning = t.status === "running" || Boolean(ongoingSess && (ongoingSess.status === "ongoing" || ongoingSess.is_active));
+                                      const activeAgent = (ongoingSess && ongoingSess.agent) || t.assignee;
+                                      const agentIcon = activeAgent === "zf-reviewer" ? "🔍" : activeAgent === "zf-orchestrator" ? "🧭" : "🔨";
+                                      const agentLabel = activeAgent === "zf-reviewer" ? "Reviewing PR" : activeAgent === "zf-orchestrator" ? "Orchestrating" : "Implementing";
+
+                                      if (isRunning) {
+                                        return React.createElement(
+                                          "div",
+                                          { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border text-xs " + (activeAgent === "zf-reviewer" ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-300" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300") },
+                                          React.createElement(
+                                            "div",
+                                            { className: "flex items-center gap-1.5 min-w-0" },
+                                            React.createElement("span", {
+                                              className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? (activeAgent === "zf-reviewer" ? "bg-cyan-400 zfk-pulse-active" : "bg-emerald-400 zfk-pulse-active") : "bg-slate-500")
+                                            }),
+                                            React.createElement(
+                                              "span",
+                                              { className: "text-[0.6875rem] truncate font-medium" },
+                                              agentIcon + " " + agentLabel +
+                                              (t.session_progress && t.session_progress.turn_count ? " • " + t.session_progress.turn_count + " turns" : "") +
+                                              (t.session_progress && t.session_progress.last_action ? " • " + t.session_progress.last_action : "")
+                                            )
+                                          ),
+                                          tSessions.length > 1 &&
+                                          React.createElement("span", { className: "text-[0.625rem] font-mono px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-300 shrink-0 border border-slate-700/60" }, tSessions.length + " sess")
+                                        );
+                                      }
+
+                                      // Completed sessions on non-running task
+                                      if (tSessions.length > 0) {
+                                        const uniqueAgents = Array.from(new Set(tSessions.map(s => s.agent || t.assignee)));
+                                        const iconMap = { "zf-reviewer": "🔍", "zf-orchestrator": "🧭", "zf-builder": "🔨" };
+                                        const iconsStr = uniqueAgents.map(a => iconMap[a] || "🤖").join(" ");
+                                        return React.createElement(
+                                          "div",
+                                          { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border border-slate-800/80 bg-slate-900/50 text-slate-400 text-xs" },
+                                          React.createElement(
+                                            "span",
+                                            { className: "text-[0.6875rem] truncate font-medium flex items-center gap-1 text-slate-300" },
+                                            React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" }),
+                                            tSessions.length + " AI session" + (tSessions.length > 1 ? "s" : "") + ": " + iconsStr
+                                          ),
+                                          t.session_progress && t.session_progress.turn_count ?
+                                            React.createElement("span", { className: "text-[0.625rem] text-slate-500 font-mono shrink-0" }, t.session_progress.turn_count + "t") : null
+                                        );
+                                      }
+                                      return null;
+                                    })(),
+                                    t.status === "blocked" &&
+                                    React.createElement(
+                                      "div",
+                                      {
+                                        className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (
+                                          (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                                            ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                                            : (t.title && t.title.includes("[Human Review]"))
+                                              ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
+                                              : t.blocking_parent_count > 0
+                                                ? "bg-slate-800 border-slate-700 text-slate-300"
+                                                : "bg-rose-500/15 border-rose-500/30 text-rose-300"
+                                        )
+                                      },
+                                      React.createElement("span", {
+                                        className: "w-2 h-2 rounded-full shrink-0 " + (
+                                          (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                                            ? "bg-amber-400"
+                                            : (t.title && t.title.includes("[Human Review]"))
+                                              ? "bg-teal-400"
+                                              : t.blocking_parent_count > 0
+                                                ? "bg-slate-400"
+                                                : "bg-rose-400"
+                                        )
+                                      }),
+                                      React.createElement(
+                                        "span",
+                                        { className: "text-[0.6875rem] truncate font-medium" },
+                                        (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                                          ? "🟠 Merge Conflict"
+                                          : (t.title && t.title.includes("[Human Review]"))
+                                            ? "🟢 Awaiting Human Merge"
+                                            : t.blocking_parent_count > 0
+                                              ? "⏳ Blocked by Parent Task"
+                                              : "🛑 Action Required / Stuck"
+                                      )
+                                    ),
+                                    React.createElement(
+                                      "div",
+                                      { className: "flex items-center justify-between pt-1 border-t border-slate-700/40 text-[0.6875rem] text-slate-400" },
+                                      React.createElement(
+                                        "span",
+                                        { className: "text-[0.6875rem] text-slate-500" },
+                                        timeAgo(t.updated_at || t.created_at)
+                                      ),
+                                      React.createElement(
+                                        "div",
+                                        { className: "flex items-center gap-1.5" },
+                                        t.comment_count > 0 &&
+                                        React.createElement(
+                                          "span",
+                                          { className: "inline-flex items-center px-1.5 py-0.5 rounded text-[0.6875rem] bg-slate-700/50 text-slate-300 hover:text-white cursor-pointer", title: t.comment_count + " comments" },
+                                          "💬 " + t.comment_count
+                                        ),
+                                        React.createElement(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            className: "inline-flex items-center justify-center w-5 h-5 rounded bg-slate-700/60 hover:bg-indigo-600 text-slate-300 hover:text-white transition-colors cursor-pointer text-xs leading-none font-bold",
+                                            onClick: (e) => handleAdvanceTask(t, e),
+                                            title: "Move to next column"
+                                          },
+                                          "→"
+                                        )
+                                      )
+                                    )
+                                  );
+                                })
+                            )
+                          );
+                        })
+                      )
+                    )
+                  ),
+
+          // Task Details Modal / Drawer
+          selectedTask &&
+          React.createElement(
+            "div",
+            { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setSelectedTask(null) },
             React.createElement(
               "div",
-              { className: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1" },
-
-              // Status & Controls Row
+              { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
               React.createElement(
                 "div",
-                { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
+                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
                 React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"),
-                  React.createElement(
-                    "select",
-                    {
-                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                      value: selectedTask.status,
-                      onChange: async (e) => {
-                        const newStatus = e.target.value;
-                        await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/move", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ status: newStatus })
-                        });
-                        loadTaskDetails(selectedTask.id);
-                        loadTasksAndStats();
-                      }
-                    },
-                    COLUMNS.map((c) => React.createElement("option", { key: c.id, value: c.id }, c.title))
-                  )
+                  { className: "flex items-center gap-3 min-w-0" },
+                  React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id),
+                  React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)
                 ),
                 React.createElement(
+                  "button",
+                  {
+                    className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                    onClick: () => setSelectedTask(null)
+                  },
+                  "✕"
+                )
+              ),
+              React.createElement(
+                "div",
+                { className: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1" },
+
+                // Status & Controls Row
+                React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"),
+                  { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                   React.createElement(
-                    "select",
-                    {
-                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                      value: selectedTask.assignee || "unassigned",
-                      onChange: async (e) => {
-                        const newAssignee = e.target.value;
-                        await fetchJSON(API_BASE + "/tasks/" + selectedTask.id, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ assignee: newAssignee })
-                        });
-                        loadTaskDetails(selectedTask.id);
-                        loadTasksAndStats();
-                      }
-                    },
-                    [
-                      { id: "unassigned", label: "Unassigned" },
-                      { id: "zf-builder", label: "ZF Builder" },
-                      { id: "zf-reviewer", label: "ZF Reviewer" },
-                      { id: "zf-orchestrator", label: "ZF Orchestrator" }
-                    ].map((r) =>
-                      React.createElement("option", { key: r.id, value: r.id }, r.label)
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"),
+                    React.createElement(
+                      "select",
+                      {
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
+                        value: selectedTask.status,
+                        onChange: async (e) => {
+                          const newStatus = e.target.value;
+                          await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/move", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ status: newStatus })
+                          });
+                          loadTaskDetails(selectedTask.id);
+                          loadTasksAndStats();
+                        }
+                      },
+                      COLUMNS.map((c) => React.createElement("option", { key: c.id, value: c.id }, c.title))
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"),
+                    React.createElement(
+                      "select",
+                      {
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
+                        value: selectedTask.assignee || "unassigned",
+                        onChange: async (e) => {
+                          const newAssignee = e.target.value;
+                          await fetchJSON(API_BASE + "/tasks/" + selectedTask.id, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ assignee: newAssignee })
+                          });
+                          loadTaskDetails(selectedTask.id);
+                          loadTasksAndStats();
+                        }
+                      },
+                      [
+                        { id: "unassigned", label: "Unassigned" },
+                        { id: "zf-builder", label: "ZF Builder" },
+                        { id: "zf-reviewer", label: "ZF Reviewer" },
+                        { id: "zf-orchestrator", label: "ZF Orchestrator" }
+                      ].map((r) =>
+                        React.createElement("option", { key: r.id, value: r.id }, r.label)
+                      )
                     )
                   )
-                )
-              ),
+                ),
 
-              React.createElement(
-                "div",
-                { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                 React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Priority"),
+                  { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                   React.createElement(
-                    "select",
-                    {
-                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                      value: selectedTask.priority || "P2",
-                      onChange: async (e) => {
-                        const newPrio = e.target.value;
-                        await fetchJSON(API_BASE + "/tasks/" + selectedTask.id, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ priority: newPrio })
-                        });
-                        loadTaskDetails(selectedTask.id);
-                        loadTasksAndStats();
-                      }
-                    },
-                    ["P0", "P1", "P2", "P3"].map((p) => React.createElement("option", { key: p, value: p }, p))
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Priority"),
+                    React.createElement(
+                      "select",
+                      {
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
+                        value: selectedTask.priority || "P2",
+                        onChange: async (e) => {
+                          const newPrio = e.target.value;
+                          await fetchJSON(API_BASE + "/tasks/" + selectedTask.id, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ priority: newPrio })
+                          });
+                          loadTaskDetails(selectedTask.id);
+                          loadTasksAndStats();
+                        }
+                      },
+                      ["P0", "P1", "P2", "P3"].map((p) => React.createElement("option", { key: p, value: p }, p))
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Project / Tenant"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none opacity-80 cursor-default",
+                      value: selectedTask.tenant || "",
+                      placeholder: "e.g. ~/git/hotcode-dev/zerofactory",
+                      readOnly: true
+                    })
                   )
                 ),
+
+                // Pull Request URL Row
                 React.createElement(
                   "div",
                   { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Project / Tenant"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none opacity-80 cursor-default",
-                    value: selectedTask.tenant || "",
-                    placeholder: "e.g. ~/git/hotcode-dev/zerofactory",
-                    readOnly: true
-                  })
-                )
-              ),
-
-              // Pull Request URL Row
-              React.createElement(
-                "div",
-                { className: "space-y-1.5" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center justify-between" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL"),
-                  selectedTask.pr_url &&
+                  React.createElement(
+                    "div",
+                    { className: "flex items-center justify-between" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL"),
+                    selectedTask.pr_url &&
                     React.createElement(
                       "a",
                       {
@@ -4315,57 +4392,57 @@
                       renderPrIcon("w-2.5 h-2.5 shrink-0"),
                       "Open Link ↗"
                     )
-                ),
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-2" },
-                  React.createElement("input", {
-                    key: selectedTask.id + (selectedTask.pr_url || ""),
-                    defaultValue: selectedTask.pr_url || "",
-                    placeholder: "e.g. https://github.com/owner/repo/pull/123",
-                    className: "flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors font-mono",
-                    onBlur: async (e) => {
-                      const newPr = e.target.value.trim();
-                      if (newPr !== (selectedTask.pr_url || "")) {
-                        try {
-                          await fetchJSON(API_BASE + "/tasks/" + selectedTask.id, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ pr_url: newPr || null })
-                          });
-                          loadTaskDetails(selectedTask.id);
-                          loadTasksAndStats();
-                          showToast("Updated Pull Request URL", "success");
-                        } catch (err) {
-                          showToast("Failed to update PR URL: " + err.message, "error");
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "flex items-center gap-2" },
+                    React.createElement("input", {
+                      key: selectedTask.id + (selectedTask.pr_url || ""),
+                      defaultValue: selectedTask.pr_url || "",
+                      placeholder: "e.g. https://github.com/owner/repo/pull/123",
+                      className: "flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors font-mono",
+                      onBlur: async (e) => {
+                        const newPr = e.target.value.trim();
+                        if (newPr !== (selectedTask.pr_url || "")) {
+                          try {
+                            await fetchJSON(API_BASE + "/tasks/" + selectedTask.id, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ pr_url: newPr || null })
+                            });
+                            loadTaskDetails(selectedTask.id);
+                            loadTasksAndStats();
+                            showToast("Updated Pull Request URL", "success");
+                          } catch (err) {
+                            showToast("Failed to update PR URL: " + err.message, "error");
+                          }
+                        }
+                      },
+                      onKeyDown: (e) => {
+                        if (e.key === "Enter") {
+                          e.target.blur();
                         }
                       }
-                    },
-                    onKeyDown: (e) => {
-                      if (e.key === "Enter") {
-                        e.target.blur();
-                      }
-                    }
-                  })
-                )
-              ),
+                    })
+                  )
+                ),
 
-              // Description
-              React.createElement(
-                "div",
-                { className: "space-y-1.5" },
-                React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"),
+                // Description
                 React.createElement(
                   "div",
-                  {
-                    className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap"
-                  },
-                  selectedTask.description || "(No description provided)"
-                )
-              ),
+                  { className: "space-y-1.5" },
+                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"),
+                  React.createElement(
+                    "div",
+                    {
+                      className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap"
+                    },
+                    selectedTask.description || "(No description provided)"
+                  )
+                ),
 
-              // Worktree & Branch Info
-              selectedTask.workspace_path &&
+                // Worktree & Branch Info
+                selectedTask.workspace_path &&
                 React.createElement(
                   "div",
                   {
@@ -4374,11 +4451,11 @@
                   React.createElement("strong", { className: "text-emerald-400 font-semibold" }, "Git Worktree Active: "),
                   React.createElement("code", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path),
                   selectedTask.branch_name &&
-                    React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)
+                  React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)
                 ),
 
-              // Pull Request Banner
-              selectedTask.pr_url &&
+                // Pull Request Banner
+                selectedTask.pr_url &&
                 React.createElement(
                   "div",
                   {
@@ -4440,38 +4517,38 @@
                   )
                 ),
 
-              // Multi-Agent Execution Sessions Panel
-              (() => {
-                const prog = selectedTask.session_progress;
-                const rawSessions = (prog && prog.sessions && prog.sessions.length > 0)
-                  ? prog.sessions
-                  : (prog && prog.has_session ? [prog] : []);
+                // Multi-Agent Execution Sessions Panel
+                (() => {
+                  const prog = selectedTask.session_progress;
+                  const rawSessions = (prog && prog.sessions && prog.sessions.length > 0)
+                    ? prog.sessions
+                    : (prog && prog.has_session ? [prog] : []);
 
-                if (rawSessions.length === 0 && selectedTask.status !== "running") return null;
+                  if (rawSessions.length === 0 && selectedTask.status !== "running") return null;
 
-                // Reorder backward (latest session first)
-                const taskSessions = rawSessions.slice().reverse();
+                  // Reorder backward (latest session first)
+                  const taskSessions = rawSessions.slice().reverse();
 
-                const activeIdx = (selectedSessionIdx >= 0 && selectedSessionIdx < taskSessions.length)
-                  ? selectedSessionIdx
-                  : 0;
-                const currentSession = taskSessions[activeIdx] || prog || {};
-                const isOngoing = currentSession.status === "ongoing" || currentSession.is_active || (prog && prog.is_alive && (currentSession.session_id ? currentSession.session_id === prog.session_id : activeIdx === 0));
-                const agentRole = currentSession.agent || selectedTask.assignee || "zf-builder";
-                const agentIcon = currentSession.agent_icon || (agentRole === "zf-reviewer" ? "🔍" : agentRole === "zf-orchestrator" ? "🧭" : "🔨");
-                const agentLabel = currentSession.agent_label || (agentRole === "zf-reviewer" ? "Reviewer" : agentRole === "zf-orchestrator" ? "Orchestrator" : "Builder");
+                  const activeIdx = (selectedSessionIdx >= 0 && selectedSessionIdx < taskSessions.length)
+                    ? selectedSessionIdx
+                    : 0;
+                  const currentSession = taskSessions[activeIdx] || prog || {};
+                  const isOngoing = currentSession.status === "ongoing" || currentSession.is_active || (prog && prog.is_alive && (currentSession.session_id ? currentSession.session_id === prog.session_id : activeIdx === 0));
+                  const agentRole = currentSession.agent || selectedTask.assignee || "zf-builder";
+                  const agentIcon = currentSession.agent_icon || (agentRole === "zf-reviewer" ? "🔍" : agentRole === "zf-orchestrator" ? "🧭" : "🔨");
+                  const agentLabel = currentSession.agent_label || (agentRole === "zf-reviewer" ? "Reviewer" : agentRole === "zf-orchestrator" ? "Orchestrator" : "Builder");
 
-                const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
-                  ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
-                  : "";
-                const curSid = currentSession.session_id || (prog && prog.session_id);
-                const chatUrl = curSid ? (basePath + "/chat?resume=" + encodeURIComponent(curSid) + (agentRole ? "&profile=" + encodeURIComponent(agentRole) : "")) : null;
+                  const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
+                    ? ("/" + String(window.__HERMES_BASE_PATH__).replace(/^\/|\/$/g, ""))
+                    : "";
+                  const curSid = currentSession.session_id || (prog && prog.session_id);
+                  const chatUrl = curSid ? (basePath + "/chat?resume=" + encodeURIComponent(curSid) + (agentRole ? "&profile=" + encodeURIComponent(agentRole) : "")) : null;
 
-                return React.createElement(
-                  "div",
-                  { className: "bg-slate-950/80 border border-indigo-500/30 rounded-xl p-4 space-y-3.5 shadow-sm" },
-                  // Multi-Session Pill Tabs
-                  taskSessions.length > 1 &&
+                  return React.createElement(
+                    "div",
+                    { className: "bg-slate-950/80 border border-indigo-500/30 rounded-xl p-4 space-y-3.5 shadow-sm" },
+                    // Multi-Session Pill Tabs
+                    taskSessions.length > 1 &&
                     React.createElement(
                       "div",
                       { className: "space-y-1.5 pb-3 border-b border-slate-800/80" },
@@ -4509,30 +4586,30 @@
                       )
                     ),
 
-                  // Session Header
-                  React.createElement(
-                    "div",
-                    { className: "flex flex-wrap items-center justify-between gap-2 pb-2" },
+                    // Session Header
                     React.createElement(
                       "div",
-                      { className: "flex items-center gap-2 flex-wrap" },
-                      React.createElement("span", {
-                        className: "w-2.5 h-2.5 rounded-full shrink-0 " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
-                      }),
+                      { className: "flex flex-wrap items-center justify-between gap-2 pb-2" },
                       React.createElement(
-                        "span",
-                        { className: "font-semibold text-xs text-white flex items-center gap-1.5" },
-                        agentIcon,
-                        agentLabel,
-                        React.createElement("span", { className: "font-normal text-slate-400" }, isOngoing ? "• Ongoing Execution" : "• Finished Session")
-                      ),
-                      prog && prog.worker_pid && isOngoing &&
+                        "div",
+                        { className: "flex items-center gap-2 flex-wrap" },
+                        React.createElement("span", {
+                          className: "w-2.5 h-2.5 rounded-full shrink-0 " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
+                        }),
+                        React.createElement(
+                          "span",
+                          { className: "font-semibold text-xs text-white flex items-center gap-1.5" },
+                          agentIcon,
+                          agentLabel,
+                          React.createElement("span", { className: "font-normal text-slate-400" }, isOngoing ? "• Ongoing Execution" : "• Finished Session")
+                        ),
+                        prog && prog.worker_pid && isOngoing &&
                         React.createElement("span", { className: "text-[0.625rem] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60" }, "PID: " + prog.worker_pid)
-                    ),
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center gap-2" },
-                      chatUrl &&
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2" },
+                        chatUrl &&
                         React.createElement(
                           "a",
                           {
@@ -4544,61 +4621,61 @@
                           },
                           "Open Chat ↗"
                         ),
-                      React.createElement(
-                        "button",
-                        {
-                          type: "button",
-                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer",
-                          onClick: () => refreshSessionProgress(selectedTask.id),
-                          title: "Refresh session status"
-                        },
-                        "🔄 Refresh"
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors cursor-pointer",
+                            onClick: () => refreshSessionProgress(selectedTask.id),
+                            title: "Refresh session status"
+                          },
+                          "🔄 Refresh"
+                        )
                       )
-                    )
-                  ),
+                    ),
 
-                  // Session Stats Summary Grid
-                  React.createElement(
-                    "div",
-                    { className: "grid grid-cols-2 sm:grid-cols-4 gap-2.5" },
+                    // Session Stats Summary Grid
                     React.createElement(
                       "div",
-                      { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                      React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Session ID"),
-                      React.createElement("code", { className: "text-xs font-medium text-indigo-300 font-mono truncate", title: curSid }, curSid || "Detecting...")
-                    ),
-                    React.createElement(
-                      "div",
-                      { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                      React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Model"),
-                      React.createElement("span", { className: "text-xs font-medium text-slate-200 truncate" }, currentSession.model || (prog && prog.model) || "Default")
-                    ),
-                    React.createElement(
-                      "div",
-                      { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                      React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Turns / Msgs"),
+                      { className: "grid grid-cols-2 sm:grid-cols-4 gap-2.5" },
                       React.createElement(
-                        "span",
-                        { className: "text-xs font-semibold text-emerald-400 truncate" },
-                        (currentSession.turn_count || 0) + " turns (" + (currentSession.message_count || 0) + " msgs)"
+                        "div",
+                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Session ID"),
+                        React.createElement("code", { className: "text-xs font-medium text-indigo-300 font-mono truncate", title: curSid }, curSid || "Detecting...")
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Model"),
+                        React.createElement("span", { className: "text-xs font-medium text-slate-200 truncate" }, currentSession.model || (prog && prog.model) || "Default")
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Turns / Msgs"),
+                        React.createElement(
+                          "span",
+                          { className: "text-xs font-semibold text-emerald-400 truncate" },
+                          (currentSession.turn_count || 0) + " turns (" + (currentSession.message_count || 0) + " msgs)"
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Duration / Time"),
+                        React.createElement(
+                          "span",
+                          { className: "text-xs font-medium text-slate-200 truncate" },
+                          currentSession.duration_seconds
+                            ? `${Math.floor(currentSession.duration_seconds / 60)}m ${currentSession.duration_seconds % 60}s`
+                            : timeAgo(currentSession.ended_at || currentSession.started_at || (prog && prog.last_active)) || "Just now"
+                        )
                       )
                     ),
-                    React.createElement(
-                      "div",
-                      { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                      React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Duration / Time"),
-                      React.createElement(
-                        "span",
-                        { className: "text-xs font-medium text-slate-200 truncate" },
-                        currentSession.duration_seconds
-                          ? `${Math.floor(currentSession.duration_seconds / 60)}m ${currentSession.duration_seconds % 60}s`
-                          : timeAgo(currentSession.ended_at || currentSession.started_at || (prog && prog.last_active)) || "Just now"
-                      )
-                    )
-                  ),
 
-                  // Recent Agent Execution Steps
-                  currentSession.recent_steps && currentSession.recent_steps.length > 0 &&
+                    // Recent Agent Execution Steps
+                    currentSession.recent_steps && currentSession.recent_steps.length > 0 &&
                     React.createElement(
                       "div",
                       { className: "mt-3 space-y-2" },
@@ -4634,8 +4711,8 @@
                       )
                     ),
 
-                  // Worker Log Tail (Collapsible)
-                  prog && prog.log_tail && isOngoing &&
+                    // Worker Log Tail (Collapsible)
+                    prog && prog.log_tail && isOngoing &&
                     React.createElement(
                       "details",
                       { className: "mt-3 text-xs" },
@@ -4650,11 +4727,11 @@
                         prog.log_tail
                       )
                     )
-                );
-              })(),
+                  );
+                })(),
 
-              // Dependencies List
-              selectedTask.parents &&
+                // Dependencies List
+                selectedTask.parents &&
                 selectedTask.parents.length > 0 &&
                 React.createElement(
                   "div",
@@ -4677,21 +4754,21 @@
                   )
                 ),
 
-              // Comments Section
-              React.createElement(
-                "div",
-                { className: "space-y-2" },
-                React.createElement(
-                  "label",
-                  { className: "block text-xs font-semibold text-slate-400 tracking-wide" },
-                  "Discussion & Activity (" + ((selectedTask.comments && selectedTask.comments.length) || 0) + ")"
-                ),
+                // Comments Section
                 React.createElement(
                   "div",
-                  { className: "space-y-2 max-h-52 overflow-y-auto zfk-scrollbar pr-1" },
-                  (!selectedTask.comments || selectedTask.comments.length === 0)
-                    ? React.createElement("div", { className: "text-xs text-slate-500 italic py-2" }, "No comments yet.")
-                    : selectedTask.comments.map((c) =>
+                  { className: "space-y-2" },
+                  React.createElement(
+                    "label",
+                    { className: "block text-xs font-semibold text-slate-400 tracking-wide" },
+                    "Discussion & Activity (" + ((selectedTask.comments && selectedTask.comments.length) || 0) + ")"
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-2 max-h-52 overflow-y-auto zfk-scrollbar pr-1" },
+                    (!selectedTask.comments || selectedTask.comments.length === 0)
+                      ? React.createElement("div", { className: "text-xs text-slate-500 italic py-2" }, "No comments yet.")
+                      : selectedTask.comments.map((c) =>
                         React.createElement(
                           "div",
                           { key: c.id, className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3 space-y-1.5" },
@@ -4704,86 +4781,86 @@
                           React.createElement("div", { className: "text-xs text-slate-300 whitespace-pre-wrap leading-relaxed" }, c.body)
                         )
                       )
-                ),
-                React.createElement(
-                  "form",
-                  { onSubmit: handleAddCommentSubmit, className: "flex gap-2 mt-2" },
-                  React.createElement("input", {
-                    className: "flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "Write a note or comment...",
-                    value: newCommentText,
-                    onChange: (e) => setNewCommentText(e.target.value)
-                  }),
-                  React.createElement("button", { type: "submit", className: "px-3.5 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-colors cursor-pointer" }, "Post")
+                  ),
+                  React.createElement(
+                    "form",
+                    { onSubmit: handleAddCommentSubmit, className: "flex gap-2 mt-2" },
+                    React.createElement("input", {
+                      className: "flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "Write a note or comment...",
+                      value: newCommentText,
+                      onChange: (e) => setNewCommentText(e.target.value)
+                    }),
+                    React.createElement("button", { type: "submit", className: "px-3.5 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-colors cursor-pointer" }, "Post")
+                  )
                 )
-              )
-            ),
-
-            React.createElement(
-              "div",
-              { className: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
-                  onClick: () => handleDeleteTask(selectedTask.id)
-                },
-                "Delete Task"
               ),
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
-                  onClick: () => handleAdvanceTask(selectedTask)
-                },
-                "Advance Stage →"
-              )
-            )
-          )
-        ),
 
-      // New Task Modal
-      showNewTaskModal &&
-        React.createElement(
-          "div",
-          { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowNewTaskModal(false) },
-          React.createElement(
-            "div",
-            { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
-            React.createElement(
-              "div",
-              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-              React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Create New Zero Factory Task"),
-              React.createElement(
-                "button",
-                {
-                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                  onClick: () => setShowNewTaskModal(false)
-                },
-                "✕"
-              )
-            ),
-            React.createElement(
-              "form",
-              { onSubmit: handleCreateTaskSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
               React.createElement(
                 "div",
-                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+                { className: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
+                    onClick: () => handleDeleteTask(selectedTask.id)
+                  },
+                  "Delete Task"
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
+                    onClick: () => handleAdvanceTask(selectedTask)
+                  },
+                  "Advance Stage →"
+                )
+              )
+            )
+          ),
+
+          // New Task Modal
+          showNewTaskModal &&
+          React.createElement(
+            "div",
+            { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowNewTaskModal(false) },
+            React.createElement(
+              "div",
+              { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
+              React.createElement(
+                "div",
+                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+                React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Create New Zero Factory Task"),
+                React.createElement(
+                  "button",
+                  {
+                    className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                    onClick: () => setShowNewTaskModal(false)
+                  },
+                  "✕"
+                )
+              ),
+              React.createElement(
+                "form",
+                { onSubmit: handleCreateTaskSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
                 React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Task Title *"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    required: true,
-                    placeholder: "e.g. Implement caching layer for Redis",
-                    value: newTaskForm.title,
-                    onChange: (e) => setNewTaskForm({ ...newTaskForm, title: e.target.value })
-                  })
-                ),
-                boards.length > 0 &&
+                  { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Task Title *"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      required: true,
+                      placeholder: "e.g. Implement caching layer for Redis",
+                      value: newTaskForm.title,
+                      onChange: (e) => setNewTaskForm({ ...newTaskForm, title: e.target.value })
+                    })
+                  ),
+                  boards.length > 0 &&
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
@@ -4798,287 +4875,302 @@
                       boards.map(b => React.createElement("option", { key: b.slug, value: b.slug }, b.slug))
                     )
                   ),
-                React.createElement(
-                  "div",
-                  { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                   React.createElement(
                     "div",
-                    { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"),
+                    { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
                     React.createElement(
-                      "select",
-                      {
-                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                        value: newTaskForm.assignee,
-                        onChange: (e) => setNewTaskForm({ ...newTaskForm, assignee: e.target.value })
-                      },
-                      React.createElement("option", { value: "unassigned" }, "Unassigned (Auto-Assign)"),
-                      React.createElement("option", { value: "zf-builder" }, "ZF Builder"),
-                      React.createElement("option", { value: "zf-reviewer" }, "ZF Reviewer"),
-                      React.createElement("option", { value: "zf-orchestrator" }, "ZF Orchestrator")
+                      "div",
+                      { className: "space-y-1.5" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"),
+                      React.createElement(
+                        "select",
+                        {
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
+                          value: newTaskForm.assignee,
+                          onChange: (e) => setNewTaskForm({ ...newTaskForm, assignee: e.target.value })
+                        },
+                        React.createElement("option", { value: "unassigned" }, "Unassigned (Auto-Assign)"),
+                        React.createElement("option", { value: "zf-builder" }, "ZF Builder"),
+                        React.createElement("option", { value: "zf-reviewer" }, "ZF Reviewer"),
+                        React.createElement("option", { value: "zf-orchestrator" }, "ZF Orchestrator")
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1.5" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Priority"),
+                      React.createElement(
+                        "select",
+                        {
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
+                          value: newTaskForm.priority,
+                          onChange: (e) => setNewTaskForm({ ...newTaskForm, priority: e.target.value })
+                        },
+                        React.createElement("option", { value: "P0" }, "P0 - Critical / Blocker"),
+                        React.createElement("option", { value: "P1" }, "P1 - High"),
+                        React.createElement("option", { value: "P2" }, "P2 - Normal"),
+                        React.createElement("option", { value: "P3" }, "P3 - Low")
+                      )
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1.5" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Initial Column"),
+                      React.createElement(
+                        "select",
+                        {
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
+                          value: newTaskForm.status,
+                          onChange: (e) => setNewTaskForm({ ...newTaskForm, status: e.target.value })
+                        },
+                        COLUMNS.map((c) => React.createElement("option", { key: c.id, value: c.id }, c.title))
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1.5" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Repository / Tenant"),
+                      React.createElement("input", {
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                        placeholder: "e.g. zerofactory or git repo path",
+                        value: newTaskForm.tenant,
+                        onChange: (e) => setNewTaskForm({ ...newTaskForm, tenant: e.target.value })
+                      })
                     )
                   ),
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Priority"),
-                    React.createElement(
-                      "select",
-                      {
-                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                        value: newTaskForm.priority,
-                        onChange: (e) => setNewTaskForm({ ...newTaskForm, priority: e.target.value })
-                      },
-                      React.createElement("option", { value: "P0" }, "P0 - Critical / Blocker"),
-                      React.createElement("option", { value: "P1" }, "P1 - High"),
-                      React.createElement("option", { value: "P2" }, "P2 - Normal"),
-                      React.createElement("option", { value: "P3" }, "P3 - Low")
-                    )
-                  )
-                ),
-                React.createElement(
-                  "div",
-                  { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Initial Column"),
-                    React.createElement(
-                      "select",
-                      {
-                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                        value: newTaskForm.status,
-                        onChange: (e) => setNewTaskForm({ ...newTaskForm, status: e.target.value })
-                      },
-                      COLUMNS.map((c) => React.createElement("option", { key: c.id, value: c.id }, c.title))
-                    )
-                  ),
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Repository / Tenant"),
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL (Optional)"),
                     React.createElement("input", {
-                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                      placeholder: "e.g. zerofactory or git repo path",
-                      value: newTaskForm.tenant,
-                      onChange: (e) => setNewTaskForm({ ...newTaskForm, tenant: e.target.value })
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+                      placeholder: "e.g. https://github.com/owner/repo/pull/123",
+                      value: newTaskForm.pr_url || "",
+                      onChange: (e) => setNewTaskForm({ ...newTaskForm, pr_url: e.target.value })
+                    })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description & Acceptance Criteria"),
+                    React.createElement("textarea", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors min-h-[100px] resize-y leading-relaxed",
+                      placeholder: "Provide context, requirements, edge cases, and steps for the agent...",
+                      value: newTaskForm.description,
+                      onChange: (e) => setNewTaskForm({ ...newTaskForm, description: e.target.value })
                     })
                   )
                 ),
                 React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL (Optional)"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
-                    placeholder: "e.g. https://github.com/owner/repo/pull/123",
-                    value: newTaskForm.pr_url || "",
-                    onChange: (e) => setNewTaskForm({ ...newTaskForm, pr_url: e.target.value })
-                  })
-                ),
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description & Acceptance Criteria"),
-                  React.createElement("textarea", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors min-h-[100px] resize-y leading-relaxed",
-                    placeholder: "Provide context, requirements, edge cases, and steps for the agent...",
-                    value: newTaskForm.description,
-                    onChange: (e) => setNewTaskForm({ ...newTaskForm, description: e.target.value })
-                  })
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
-                    onClick: () => setShowNewTaskModal(false)
-                  },
-                  "Cancel"
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    type: "submit",
-                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
-                  },
-                  "Create Task"
+                  { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                      onClick: () => setShowNewTaskModal(false)
+                    },
+                    "Cancel"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      type: "submit",
+                      className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
+                    },
+                    "Create Task"
+                  )
                 )
               )
             )
-          )
-        ),
+          ),
 
-      // Record Memory Modal
-      showAddMemoryModal &&
-        React.createElement(
-          "div",
-          {
-            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-            onClick: () => setShowAddMemoryModal(false)
-          },
+          // Record Memory Modal
+          showAddMemoryModal &&
           React.createElement(
             "div",
             {
-              className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100 animate-fade-in",
-              onClick: (e) => e.stopPropagation()
+              className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
+              onClick: () => setShowAddMemoryModal(false)
             },
             React.createElement(
               "div",
-              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+              {
+                className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100 animate-fade-in",
+                onClick: (e) => e.stopPropagation()
+              },
               React.createElement(
                 "div",
-                null,
-                React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "🧠 Record Repository Memory"),
-                React.createElement("p", { className: "text-xs text-slate-400 font-normal m-0 mt-0.5" }, "Persist decisions, conventions, and gotchas for " + (selectedBoard || "board"))
-              ),
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                  onClick: () => setShowAddMemoryModal(false)
-                },
-                "✕"
-              )
-            ),
-            React.createElement(
-              "form",
-              { onSubmit: handleCreateMemorySubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
-              React.createElement(
-                "div",
-                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
-                // Category
+                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
                 React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Category"),
-                  React.createElement(
-                    "select",
-                    {
-                      className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
-                      value: newMemoryForm.category,
-                      onChange: (e) => setNewMemoryForm({ ...newMemoryForm, category: e.target.value })
-                    },
-                    React.createElement("option", { value: "convention" }, "📐 Convention (Architecture / Style / Code Rules)"),
-                    React.createElement("option", { value: "gotcha" }, "⚠️ Gotcha (Pitfall / Bug to Avoid)"),
-                    React.createElement("option", { value: "decision" }, "💡 Decision (Key Architectural Decision)"),
-                    React.createElement("option", { value: "rejected_path" }, "🚫 Rejected Path (Alternative Tried & Discarded)"),
-                    React.createElement("option", { value: "general" }, "📝 General Knowledge")
-                  )
+                  null,
+                  React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "🧠 Record Repository Memory"),
+                  React.createElement("p", { className: "text-xs text-slate-400 font-normal m-0 mt-0.5" }, "Persist decisions, conventions, and gotchas for " + (selectedBoard === "all" ? "all boards" : (selectedBoard || "board")))
                 ),
-                // Content
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Memory / Knowledge Content *"),
-                  React.createElement("textarea", {
-                    required: true,
-                    rows: 4,
-                    placeholder: "e.g. Always run 'python3 -m unittest test_plugin.py' before marking tasks done, as SQLite cascade triggers are verified there.",
-                    className: "w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none font-sans",
-                    value: newMemoryForm.content,
-                    onChange: (e) => setNewMemoryForm({ ...newMemoryForm, content: e.target.value })
-                  })
-                ),
-                // Tags
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Tags (comma-separated)"),
-                  React.createElement("input", {
-                    type: "text",
-                    placeholder: "sqlite, tests, git, caching",
-                    className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
-                    value: newMemoryForm.tags,
-                    onChange: (e) => setNewMemoryForm({ ...newMemoryForm, tags: e.target.value })
-                  })
-                ),
-                // Author & Task ID
-                React.createElement(
-                  "div",
-                  { className: "grid grid-cols-2 gap-3" },
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Author"),
-                    React.createElement("input", {
-                      type: "text",
-                      placeholder: "user",
-                      className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
-                      value: newMemoryForm.author,
-                      onChange: (e) => setNewMemoryForm({ ...newMemoryForm, author: e.target.value })
-                    })
-                  ),
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Related Task ID (Optional)"),
-                    React.createElement("input", {
-                      type: "text",
-                      placeholder: "zf-xxxxxxxx",
-                      className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono",
-                      value: newMemoryForm.task_id || "",
-                      onChange: (e) => setNewMemoryForm({ ...newMemoryForm, task_id: e.target.value })
-                    })
-                  )
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0" },
                 React.createElement(
                   "button",
                   {
                     type: "button",
-                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
+                    className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
                     onClick: () => setShowAddMemoryModal(false)
                   },
-                  "Cancel"
+                  "✕"
+                )
+              ),
+              React.createElement(
+                "form",
+                { onSubmit: handleCreateMemorySubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
+                React.createElement(
+                  "div",
+                  { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+                  (selectedBoard === "all" || !selectedBoard) && boards.length > 0 &&
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Target Board *"),
+                    React.createElement(
+                      "select",
+                      {
+                        className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
+                        value: newMemoryForm.board_slug || (boards[0] ? boards[0].slug : ""),
+                        onChange: (e) => setNewMemoryForm({ ...newMemoryForm, board_slug: e.target.value })
+                      },
+                      boards.map((b) => React.createElement("option", { key: b.slug, value: b.slug }, b.slug))
+                    )
+                  ),
+                  // Category
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Category"),
+                    React.createElement(
+                      "select",
+                      {
+                        className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
+                        value: newMemoryForm.category,
+                        onChange: (e) => setNewMemoryForm({ ...newMemoryForm, category: e.target.value })
+                      },
+                      React.createElement("option", { value: "convention" }, "📐 Convention (Architecture / Style / Code Rules)"),
+                      React.createElement("option", { value: "gotcha" }, "⚠️ Gotcha (Pitfall / Bug to Avoid)"),
+                      React.createElement("option", { value: "decision" }, "💡 Decision (Key Architectural Decision)"),
+                      React.createElement("option", { value: "rejected_path" }, "🚫 Rejected Path (Alternative Tried & Discarded)"),
+                      React.createElement("option", { value: "general" }, "📝 General Knowledge")
+                    )
+                  ),
+                  // Content
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Memory / Knowledge Content *"),
+                    React.createElement("textarea", {
+                      required: true,
+                      rows: 4,
+                      placeholder: "e.g. Always run 'python3 -m unittest test_plugin.py' before marking tasks done, as SQLite cascade triggers are verified there.",
+                      className: "w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none font-sans",
+                      value: newMemoryForm.content,
+                      onChange: (e) => setNewMemoryForm({ ...newMemoryForm, content: e.target.value })
+                    })
+                  ),
+                  // Tags
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Tags (comma-separated)"),
+                    React.createElement("input", {
+                      type: "text",
+                      placeholder: "sqlite, tests, git, caching",
+                      className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
+                      value: newMemoryForm.tags,
+                      onChange: (e) => setNewMemoryForm({ ...newMemoryForm, tags: e.target.value })
+                    })
+                  ),
+                  // Author & Task ID
+                  React.createElement(
+                    "div",
+                    { className: "grid grid-cols-2 gap-3" },
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1.5" },
+                      React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Author"),
+                      React.createElement("input", {
+                        type: "text",
+                        placeholder: "user",
+                        className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
+                        value: newMemoryForm.author,
+                        onChange: (e) => setNewMemoryForm({ ...newMemoryForm, author: e.target.value })
+                      })
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "space-y-1.5" },
+                      React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Related Task ID (Optional)"),
+                      React.createElement("input", {
+                        type: "text",
+                        placeholder: "zf-xxxxxxxx",
+                        className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono",
+                        value: newMemoryForm.task_id || "",
+                        onChange: (e) => setNewMemoryForm({ ...newMemoryForm, task_id: e.target.value })
+                      })
+                    )
+                  )
                 ),
                 React.createElement(
-                  "button",
-                  {
-                    type: "submit",
-                    disabled: submittingMemory,
-                    className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
-                  },
-                  submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"),
-                  "Save Memory"
+                  "div",
+                  { className: "px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0" },
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
+                      onClick: () => setShowAddMemoryModal(false)
+                    },
+                    "Cancel"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      type: "submit",
+                      disabled: submittingMemory,
+                      className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+                    },
+                    submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"),
+                    "Save Memory"
+                  )
                 )
               )
             )
-          )
-        ),
+          ),
 
-      // New Board Modal
-      showNewBoardModal &&
-        React.createElement(
-          "div",
-          {
-            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-            onClick: () => {
-              if (boards.length > 0) setShowNewBoardModal(false);
-            }
-          },
+          // New Board Modal
+          showNewBoardModal &&
           React.createElement(
             "div",
-            { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
+            {
+              className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
+              onClick: () => {
+                if (boards.length > 0) setShowNewBoardModal(false);
+              }
+            },
             React.createElement(
               "div",
-              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+              { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
               React.createElement(
                 "div",
-                null,
-                React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, boards.length === 0 ? "Create First Project Board (Required)" : "Create New Project Board"),
-                boards.length === 0 &&
+                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+                React.createElement(
+                  "div",
+                  null,
+                  React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, boards.length === 0 ? "Create First Project Board (Required)" : "Create New Project Board"),
+                  boards.length === 0 &&
                   React.createElement("p", { className: "text-xs text-indigo-400 font-normal m-0 mt-0.5" }, "A project board is required to use Zero Factory Kanban")
-              ),
-              boards.length > 0 &&
+                ),
+                boards.length > 0 &&
                 React.createElement(
                   "button",
                   {
@@ -5087,7 +5179,7 @@
                   },
                   "✕"
                 )
-            ),
+              ),
               React.createElement(
                 "form",
                 { onSubmit: handleCreateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
@@ -5095,29 +5187,29 @@
                   "div",
                   { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
                   boards.length === 0 &&
+                  React.createElement(
+                    "div",
+                    { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" },
+                    React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"),
                     React.createElement(
                       "div",
-                      { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" },
-                      React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"),
-                      React.createElement(
-                        "div",
-                        null,
-                        React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"),
-                        React.createElement("p", { className: "text-indigo-200/90" }, "Please register a project board for your codebase to begin creating tickets, assigning autonomous agents, and orchestrating Git worktrees. You can also explore the ", React.createElement("button", { type: "button", className: "underline text-indigo-300 hover:text-white font-medium cursor-pointer", onClick: () => { setShowNewBoardModal(false); setActiveView("instructions"); } }, "Zero Factory Instructions"), ".")
-                      )
-                    ),
+                      null,
+                      React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"),
+                      React.createElement("p", { className: "text-indigo-200/90" }, "Please register a project board for your codebase to begin creating tickets, assigning autonomous agents, and orchestrating Git worktrees. You can also explore the ", React.createElement("button", { type: "button", className: "underline text-indigo-300 hover:text-white font-medium cursor-pointer", onClick: () => { setShowNewBoardModal(false); setActiveView("instructions"); } }, "Zero Factory Instructions"), ".")
+                    )
+                  ),
                   createBoardError &&
+                  React.createElement(
+                    "div",
+                    { className: "p-3 rounded-lg bg-rose-950/90 border border-rose-500/60 text-xs text-rose-200 leading-relaxed flex items-start gap-2.5 shadow-sm" },
+                    React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "⚠️"),
                     React.createElement(
                       "div",
-                      { className: "p-3 rounded-lg bg-rose-950/90 border border-rose-500/60 text-xs text-rose-200 leading-relaxed flex items-start gap-2.5 shadow-sm" },
-                      React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "⚠️"),
-                      React.createElement(
-                        "div",
-                        null,
-                        React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Could Not Create Board"),
-                        React.createElement("p", { className: "text-rose-200/90 m-0" }, createBoardError)
-                      )
-                    ),
+                      null,
+                      React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Could Not Create Board"),
+                      React.createElement("p", { className: "text-rose-200/90 m-0" }, createBoardError)
+                    )
+                  ),
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
@@ -5147,14 +5239,14 @@
                             React.createElement("span", { className: "px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 font-medium" }, autoSlug)
                           ),
                           exists &&
-                            React.createElement(
-                              "div",
-                              { className: "text-[11px] text-amber-400 flex items-center gap-1.5 font-sans" },
-                              React.createElement("span", null, "⚠️"),
-                              "A board with slug '",
-                              React.createElement("span", { className: "font-mono font-bold text-amber-300" }, autoSlug),
-                              "' already exists."
-                            )
+                          React.createElement(
+                            "div",
+                            { className: "text-[11px] text-amber-400 flex items-center gap-1.5 font-sans" },
+                            React.createElement("span", null, "⚠️"),
+                            "A board with slug '",
+                            React.createElement("span", { className: "font-mono font-bold text-amber-300" }, autoSlug),
+                            "' already exists."
+                          )
                         );
                       }
                       return null;
@@ -5219,15 +5311,15 @@
                   "div",
                   { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
                   boards.length > 0 &&
-                    React.createElement(
-                      "button",
-                      {
-                        type: "button",
-                        className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
-                        onClick: () => setShowNewBoardModal(false)
-                      },
-                      "Cancel"
-                    ),
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                      onClick: () => setShowNewBoardModal(false)
+                    },
+                    "Cancel"
+                  ),
                   React.createElement(
                     "button",
                     {
@@ -5241,850 +5333,849 @@
                   )
                 )
               )
-          )
-        ),
-
-      // Edit Board Modal
-      showEditBoardModal &&
-        React.createElement(
-          "div",
-          { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowEditBoardModal(false) },
-          React.createElement(
-            "div",
-            { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
-            React.createElement(
-              "div",
-              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-              React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Edit Board: " + editBoardForm.slug),
-              React.createElement(
-                "button",
-                {
-                  className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                  onClick: () => setShowEditBoardModal(false)
-                },
-                "✕"
-              )
-            ),
-            React.createElement(
-              "form",
-              { onSubmit: handleUpdateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
-              React.createElement(
-                "div",
-                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Slug (URL identifier)"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950/60 border border-slate-800/60 rounded-lg px-3 py-2 text-xs text-slate-400 cursor-not-allowed opacity-60 outline-none",
-                    disabled: true,
-                    value: editBoardForm.slug
-                  })
-                ),
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "https://github.com/org/repo.git or git@github.com:org/repo.git",
-                    value: editBoardForm.git_url,
-                    onChange: (e) => setEditBoardForm({ ...editBoardForm, git_url: e.target.value })
-                  })
-                ),
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "Short description of this board's scope",
-                    value: editBoardForm.description,
-                    onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
-                  })
-                ),
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers"),
-                  React.createElement("input", {
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "alice, bob (GitHub usernames; optional)",
-                    value: editBoardForm.additional_reviewer_usernames || "",
-                    onChange: (e) => setEditBoardForm({ ...editBoardForm, additional_reviewer_usernames: e.target.value })
-                  }),
-                  React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")
-                ),
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
-                  React.createElement("input", {
-                    type: "number",
-                    min: 1,
-                    step: 1,
-                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                    placeholder: "Max tasks running in parallel on this board (minimum 1)",
-                    value: editBoardForm.max_concurrent_running ?? 1,
-                    onChange: (e) => setEditBoardForm({ ...editBoardForm, max_concurrent_running: e.target.value })
-                  }),
-                  React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once. Other boards keep their own limits.")
-                ),
-                React.createElement(
-                  "div",
-                  { className: "pt-1 flex items-center justify-between" },
-                  React.createElement(
-                    "div",
-                    null,
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🧠 Auto-Record Memory"),
-                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Capture gotchas & conventions automatically from reviewer feedback.")
-                  ),
-                  React.createElement("input", {
-                    type: "checkbox",
-                    className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-                    checked: Boolean(editBoardForm.auto_record_memory !== false),
-                    onChange: (e) => setEditBoardForm({ ...editBoardForm, auto_record_memory: e.target.checked })
-                  })
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "mr-auto px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
-                    onClick: handleDeleteBoard,
-                    title: "Delete this board and its scheduled scanner job"
-                  },
-                  "🗑️ Remove Board"
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
-                    onClick: () => setShowEditBoardModal(false)
-                  },
-                  "Cancel"
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    type: "submit",
-                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
-                  },
-                  "Save Changes"
-                )
-              )
             )
-          )
-        ),
+          ),
 
-      // Global Settings Modal
-      showSettingsModal &&
-        React.createElement(
-          "div",
-          {
-            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-            onClick: () => setShowSettingsModal(false)
-          },
+          // Edit Board Modal
+          showEditBoardModal &&
           React.createElement(
             "div",
-            {
-              className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
-              onClick: (e) => e.stopPropagation()
-            },
+            { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowEditBoardModal(false) },
             React.createElement(
               "div",
-              { className: "flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/50 shrink-0" },
+              { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
               React.createElement(
                 "div",
-                { className: "flex items-center gap-2.5" },
-                React.createElement("span", { className: "text-lg" }, "⚙️"),
-                React.createElement(
-                  "div",
-                  null,
-                  React.createElement("h3", { className: "text-sm font-semibold text-white tracking-tight" }, "Zero Factory Global Settings"),
-                  React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "System-wide orchestration limits and defaults")
-                )
-              ),
-              React.createElement(
-                "button",
-                {
-                  className: "text-slate-400 hover:text-slate-200 transition-colors cursor-pointer",
-                  onClick: () => setShowSettingsModal(false)
-                },
-                "✕"
-              )
-            ),
-            React.createElement(
-              "form",
-              { onSubmit: handleSaveSettings, className: "flex flex-col flex-1 overflow-hidden m-0" },
-              React.createElement(
-                "div",
-                { className: "p-5 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1" },
-                React.createElement(
-                  "div",
-                  { className: "space-y-1.5" },
-                React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Max Active Tasks (WIP Limit)"),
-                React.createElement("input", {
-                  type: "number",
-                  min: 1,
-                  step: 1,
-                  className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                  value: settingsForm.max_active_tasks ?? 10,
-                  onChange: (e) => setSettingsForm({ ...settingsForm, max_active_tasks: e.target.value })
-                }),
-                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps total tasks allowed in 'running' across all boards combined. Controls how many git worktrees are prepared from 'todo' to prevent queue and disk flooding. Default: 10.")
-              ),
-              React.createElement(
-                "div",
-                { className: "space-y-1.5" },
-                React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Global Max Concurrent LLM Workers"),
-                React.createElement("input", {
-                  type: "number",
-                  min: 1,
-                  step: 1,
-                  className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-                  value: settingsForm.max_concurrent_llm_workers ?? 10,
-                  onChange: (e) => setSettingsForm({ ...settingsForm, max_concurrent_llm_workers: e.target.value })
-                }),
-                React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")
-              ),
-              React.createElement(
-                "div",
-                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center justify-between" },
-                  React.createElement(
-                    "div",
-                    null,
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Capacity-Driven Idle Improvement Scanning"),
-                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Autonomously scan codebases when running agent workers drop below threshold.")
-                  ),
-                  React.createElement(
-                    "input",
-                    {
-                      type: "checkbox",
-                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-                      checked: Boolean(settingsForm.scan_on_idle),
-                      onChange: (e) => setSettingsForm({ ...settingsForm, scan_on_idle: e.target.checked })
-                    }
-                  )
-                ),
-                settingsForm.scan_on_idle && React.createElement(
-                  "div",
-                  { className: "grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1" },
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1" },
-                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Active Threshold (< N)"),
-                    React.createElement("input", {
-                      type: "number",
-                      min: 1,
-                      step: 1,
-                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
-                      value: settingsForm.idle_scan_active_threshold ?? 2,
-                      onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_active_threshold: e.target.value })
-                    }),
-                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Triggers when running workers < this (e.g. 1 or 2).")
-                  ),
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1" },
-                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Cooldown (Minutes)"),
-                    React.createElement("input", {
-                      type: "number",
-                      min: 1,
-                      step: 1,
-                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
-                      value: settingsForm.idle_scan_cooldown_minutes ?? 15,
-                      onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_cooldown_minutes: e.target.value })
-                    }),
-                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Minimum interval between scans per board.")
-                  ),
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1" },
-                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Max Todo Limit"),
-                    React.createElement("input", {
-                      type: "number",
-                      min: 0,
-                      step: 1,
-                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
-                      value: settingsForm.idle_scan_max_todo ?? 2,
-                      onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_max_todo: e.target.value })
-                    }),
-                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Suppresses scan if todo backlog >= this.")
-                  )
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center justify-between" },
-                  React.createElement(
-                    "div",
-                    null,
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center gap-1.5" },
-                      React.createElement("span", { className: "text-sm" }, "🧠"),
-                      React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")
-                    ),
-                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules from reviewer feedback and rejections.")
-                  ),
-                  React.createElement(
-                    "input",
-                    {
-                      type: "checkbox",
-                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-                      checked: Boolean(settingsForm.auto_record_memory !== false),
-                      onChange: (e) => setSettingsForm({ ...settingsForm, auto_record_memory: e.target.checked })
-                    }
-                  )
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "pt-2 border-t border-slate-800/80 space-y-3" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center justify-between" },
-                  React.createElement(
-                    "div",
-                    null,
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center gap-1.5" },
-                      React.createElement("span", { className: "text-sm" }, "🔭"),
-                      React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Langfuse Observability & Tracing")
-                    ),
-                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Trace LLM calls, tool executions, latencies, and token costs across all agent profiles.")
-                  ),
-                  React.createElement(
-                    "input",
-                    {
-                      type: "checkbox",
-                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-                      checked: Boolean(settingsForm.langfuse_enabled),
-                      onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_enabled: e.target.checked })
-                    }
-                  )
-                ),
-                settingsForm.langfuse_enabled && React.createElement(
-                  "div",
-                  { className: "space-y-3 pt-1 bg-slate-950/60 p-3 rounded-lg border border-slate-800/70" },
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1" },
-                    React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Langfuse Host / Base URL"),
-                    React.createElement("input", {
-                      type: "text",
-                      placeholder: "https://cloud.langfuse.com",
-                      className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
-                      value: settingsForm.langfuse_base_url ?? "https://cloud.langfuse.com",
-                      onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_base_url: e.target.value })
-                    }),
-                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Cloud instance (https://cloud.langfuse.com) or self-hosted URL (e.g. http://localhost:3000).")
-                  ),
-                  React.createElement(
-                    "div",
-                    { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5" },
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" },
-                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Public Key"),
-                      React.createElement("input", {
-                        type: "text",
-                        placeholder: "pk-lf-...",
-                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
-                        value: settingsForm.langfuse_public_key ?? "",
-                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_public_key: e.target.value })
-                      })
-                    ),
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" },
-                      React.createElement(
-                        "div",
-                        { className: "flex items-center justify-between" },
-                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Secret Key"),
-                        React.createElement(
-                          "button",
-                          {
-                            type: "button",
-                            className: "text-[10px] text-slate-400 hover:text-slate-200 cursor-pointer",
-                            onClick: () => setShowLangfuseSecret(!showLangfuseSecret)
-                          },
-                          showLangfuseSecret ? "Hide" : "Show"
-                        )
-                      ),
-                      React.createElement("input", {
-                        type: showLangfuseSecret ? "text" : "password",
-                        placeholder: "sk-lf-...",
-                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
-                        value: settingsForm.langfuse_secret_key ?? "",
-                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_secret_key: e.target.value })
-                      })
-                    )
-                  ),
-                  React.createElement(
-                    "div",
-                    { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5" },
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" },
-                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Environment Tag"),
-                      React.createElement("input", {
-                        type: "text",
-                        placeholder: "zerofactory",
-                        className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 font-mono",
-                        value: settingsForm.langfuse_env ?? "zerofactory",
-                        onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_env: e.target.value })
-                      })
-                    ),
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" },
-                      React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Content Capture Mode"),
-                      React.createElement(
-                        "select",
-                        {
-                          className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer",
-                          value: settingsForm.langfuse_capture_mode ?? "sanitized",
-                          onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_capture_mode: e.target.value })
-                        },
-                        React.createElement("option", { value: "sanitized" }, "Sanitized (Redact secrets & truncate)"),
-                        React.createElement("option", { value: "metadata" }, "Metadata Only (No prompts/outputs)"),
-                        React.createElement("option", { value: "full" }, "Full Content (Raw payloads)")
-                      )
-                    )
-                  ),
-                  React.createElement(
-                    "div",
-                    { className: "pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-t border-slate-800/60" },
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center gap-1.5 text-[11px]" },
-                      React.createElement("span", { className: "text-emerald-400" }, "✓"),
-                      React.createElement("span", { className: "text-slate-400" }, "Syncs to zf-orchestrator, zf-builder, zf-reviewer & root")
-                    ),
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center gap-2" },
-                      React.createElement(
-                        "button",
-                        {
-                          type: "button",
-                          disabled: isTestingLangfuse,
-                          onClick: handleTestLangfuse,
-                          className: "px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
-                        },
-                        isTestingLangfuse ? "Testing..." : "Test Connection"
-                      )
-                    )
-                  ),
-                  langfuseTestResult && React.createElement(
-                    "div",
-                    {
-                      className: `text-[11px] px-2.5 py-1.5 rounded border ${
-                        langfuseTestResult.ok
-                          ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
-                          : "bg-rose-950/40 border-rose-800/60 text-rose-300"
-                      }`
-                    },
-                    (langfuseTestResult.ok ? "✓ " : "✕ ") + langfuseTestResult.message
-                  )
-                )
-              ),
-              ),
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-end gap-2.5 px-5 py-3 border-t border-slate-800 bg-slate-900/50 shrink-0" },
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
-                    onClick: () => setShowSettingsModal(false)
-                  },
-                  "Cancel"
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    type: "submit",
-                    disabled: isSavingSettings,
-                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
-                  },
-                  isSavingSettings ? "Saving..." : "Save Settings"
-                )
-              )
-            )
-          )
-        ),
-
-      // Cron Configuration Modal
-      showCronModal &&
-        React.createElement(
-          "div",
-          {
-            className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto",
-            onClick: () => setShowCronModal(false)
-          },
-          React.createElement(
-            "div",
-            {
-              className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden text-slate-100",
-              onClick: (e) => e.stopPropagation()
-            },
-            // Modal Header
-            React.createElement(
-              "div",
-              { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0 bg-slate-900/60" },
-              React.createElement(
-                "div",
-                { className: "flex items-center gap-3" },
-                React.createElement("div", { className: "w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-base shrink-0" }, "⏰"),
-                React.createElement(
-                  "div",
-                  null,
-                  React.createElement("h2", { className: "text-base font-bold text-white m-0 flex items-center gap-2" }, "Zero Factory Cron Automation"),
-                  React.createElement("p", { className: "text-xs text-slate-400 font-medium m-0" }, "Manage periodic health checks, daily metrics, and per-board improvement scanners")
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "flex items-center gap-2" },
-                React.createElement(
-                  "button",
-                  {
-                    className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
-                    onClick: handleSyncAllCron,
-                    title: "Synchronize all built-in jobs across active profiles"
-                  },
-                  "🔄 Sync All"
-                ),
+                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
+                React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Edit Board: " + editBoardForm.slug),
                 React.createElement(
                   "button",
                   {
                     className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                    onClick: () => setShowCronModal(false)
+                    onClick: () => setShowEditBoardModal(false)
                   },
                   "✕"
                 )
-              )
-            ),
-            // Master Scheduler Engine Control Banner
-            React.createElement(
-              "div",
-              { className: "px-6 py-3.5 bg-slate-950/70 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0" },
+              ),
               React.createElement(
-                "div",
-                { className: "flex items-center gap-3" },
+                "form",
+                { onSubmit: handleUpdateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
                 React.createElement(
                   "div",
-                  { className: "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold " + (cronSchedulerEnabled ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30") },
-                  cronSchedulerEnabled ? "⚡" : "⏸"
-                ),
-                React.createElement(
-                  "div",
-                  null,
+                  { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
                   React.createElement(
                     "div",
-                    { className: "flex items-center gap-2" },
-                    React.createElement("span", { className: "text-xs font-bold text-white tracking-wide" }, "Periodic Cron Scheduler Engine"),
-                    React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-bold " + (cronSchedulerEnabled ? "bg-emerald-950 text-emerald-300 border border-emerald-800/60" : "bg-rose-950 text-rose-300 border border-rose-800/60") }, cronSchedulerEnabled ? "Running (15s Ticks)" : "Disabled / Paused")
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Slug (URL identifier)"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950/60 border border-slate-800/60 rounded-lg px-3 py-2 text-xs text-slate-400 cursor-not-allowed opacity-60 outline-none",
+                      disabled: true,
+                      value: editBoardForm.slug
+                    })
                   ),
-                  React.createElement("p", { className: "text-[11px] text-slate-400 m-0 mt-0.5" },
-                    cronSchedulerEnabled
-                      ? "Background daemon actively ticks due jobs and spawns idle improvement scanners."
-                      : "Master cron scheduler is disabled. All background ticking and autonomous scans are halted."
-                  )
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" },
-                React.createElement("span", { className: "text-xs font-semibold " + (cronSchedulerEnabled ? "text-emerald-400" : "text-slate-500") }, cronSchedulerEnabled ? "Active" : "Disabled"),
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    role: "switch",
-                    "aria-checked": cronSchedulerEnabled,
-                    onClick: () => handleToggleCronScheduler(cronSchedulerEnabled),
-                    className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (cronSchedulerEnabled ? "bg-emerald-600" : "bg-slate-700")
-                  },
-                  React.createElement("span", {
-                    className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (cronSchedulerEnabled ? "translate-x-4" : "translate-x-0")
-                  })
-                )
-              )
-            ),
-            // Filter Tabs & Search Bar
-            React.createElement(
-              "div",
-              { className: "px-6 py-3 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0" },
-              React.createElement(
-                "div",
-                { className: "flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs" },
-                React.createElement(
-                  "button",
-                  {
-                    className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "all" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-                    onClick: () => setCronFilterTab("all")
-                  },
-                  "All (" + cronJobs.length + ")"
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "core" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-                    onClick: () => setCronFilterTab("core")
-                  },
-                  "Core (" + cronJobs.filter(j => !j.id.startsWith("zero-factory-improvement-scanner-")).length + ")"
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "scanners" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-                    onClick: () => setCronFilterTab("scanners")
-                  },
-                  "Scanners (" + cronJobs.filter(j => j.id.startsWith("zero-factory-improvement-scanner-")).length + ")"
-                )
-              ),
-              React.createElement(
-                "input",
-                {
-                  className: "w-full sm:w-64 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors",
-                  placeholder: "Search jobs by name or ID...",
-                  value: cronSearchQuery,
-                  onChange: (e) => setCronSearchQuery(e.target.value)
-                }
-              )
-            ),
-            // Job Cards List
-            React.createElement(
-              "div",
-              { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1 bg-slate-950/20" },
-              loadingCron && React.createElement("div", { className: "text-center py-12 text-slate-400 text-xs" }, React.createElement("span", { className: "zfk-spinning inline-block mr-2" }, "⏳"), "Loading cron schedules..."),
-              !loadingCron && filteredCronJobs.length === 0 && React.createElement("div", { className: "text-center py-12 text-slate-500 text-xs" }, "No cron jobs match the selected filter."),
-              !loadingCron && filteredCronJobs.map(job => {
-                const isEditing = editingCronId === job.id;
-                const form = cronEditForms[job.id] || {};
-                const isScanner = job.id.startsWith("zero-factory-improvement-scanner-");
-                const boardSlug = isScanner ? job.id.replace("zero-factory-improvement-scanner-", "") : null;
-                const isRunning = runningCronId === job.id;
-
-                return React.createElement(
-                  "div",
-                  {
-                    key: job.id,
-                    className: "bg-slate-900/90 border " + (job.enabled ? "border-slate-700/80 shadow-sm" : "border-slate-800/50 opacity-75") + " rounded-xl p-4 transition-all duration-150"
-                  },
-                  // Card Header Row
                   React.createElement(
                     "div",
-                    { className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80" },
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "https://github.com/org/repo.git or git@github.com:org/repo.git",
+                      value: editBoardForm.git_url,
+                      onChange: (e) => setEditBoardForm({ ...editBoardForm, git_url: e.target.value })
+                    })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "Short description of this board's scope",
+                      value: editBoardForm.description,
+                      onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
+                    })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "alice, bob (GitHub usernames; optional)",
+                      value: editBoardForm.additional_reviewer_usernames || "",
+                      onChange: (e) => setEditBoardForm({ ...editBoardForm, additional_reviewer_usernames: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 1,
+                      step: 1,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      placeholder: "Max tasks running in parallel on this board (minimum 1)",
+                      value: editBoardForm.max_concurrent_running ?? 1,
+                      onChange: (e) => setEditBoardForm({ ...editBoardForm, max_concurrent_running: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once. Other boards keep their own limits.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-1 flex items-center justify-between" },
                     React.createElement(
                       "div",
-                      { className: "flex items-start gap-2.5" },
-                      React.createElement(
-                        "span",
-                        { className: "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0 mt-0.5 " + (isScanner ? "bg-purple-950/80 text-purple-300 border border-purple-800/60" : "bg-indigo-950/80 text-indigo-300 border border-indigo-800/60") },
-                        isScanner ? "Scanner" : "Core"
-                      ),
+                      null,
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🧠 Auto-Record Memory"),
+                      React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Capture gotchas & conventions automatically from reviewer feedback.")
+                    ),
+                    React.createElement("input", {
+                      type: "checkbox",
+                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                      checked: Boolean(editBoardForm.auto_record_memory !== false),
+                      onChange: (e) => setEditBoardForm({ ...editBoardForm, auto_record_memory: e.target.checked })
+                    })
+                  )
+                ),
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "mr-auto px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
+                      onClick: handleDeleteBoard,
+                      title: "Delete this board and its scheduled scanner job"
+                    },
+                    "🗑️ Remove Board"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                      onClick: () => setShowEditBoardModal(false)
+                    },
+                    "Cancel"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      type: "submit",
+                      className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
+                    },
+                    "Save Changes"
+                  )
+                )
+              )
+            )
+          ),
+
+          // Global Settings Modal
+          showSettingsModal &&
+          React.createElement(
+            "div",
+            {
+              className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
+              onClick: () => setShowSettingsModal(false)
+            },
+            React.createElement(
+              "div",
+              {
+                className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
+                onClick: (e) => e.stopPropagation()
+              },
+              React.createElement(
+                "div",
+                { className: "flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/50 shrink-0" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-2.5" },
+                  React.createElement("span", { className: "text-lg" }, "⚙️"),
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement("h3", { className: "text-sm font-semibold text-white tracking-tight" }, "Zero Factory Global Settings"),
+                    React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "System-wide orchestration limits and defaults")
+                  )
+                ),
+                React.createElement(
+                  "button",
+                  {
+                    className: "text-slate-400 hover:text-slate-200 transition-colors cursor-pointer",
+                    onClick: () => setShowSettingsModal(false)
+                  },
+                  "✕"
+                )
+              ),
+              React.createElement(
+                "form",
+                { onSubmit: handleSaveSettings, className: "flex flex-col flex-1 overflow-hidden m-0" },
+                React.createElement(
+                  "div",
+                  { className: "p-5 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1" },
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Max Active Tasks (WIP Limit)"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 1,
+                      step: 1,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      value: settingsForm.max_active_tasks ?? 10,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, max_active_tasks: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps total tasks allowed in 'running' across all boards combined. Controls how many git worktrees are prepared from 'todo' to prevent queue and disk flooding. Default: 10.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Global Max Concurrent LLM Workers"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 1,
+                      step: 1,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      value: settingsForm.max_concurrent_llm_workers ?? 10,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, max_concurrent_llm_workers: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between" },
                       React.createElement(
                         "div",
                         null,
-                        React.createElement("h3", { className: "text-sm font-semibold text-white m-0" }, job.name),
+                        React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Capacity-Driven Idle Improvement Scanning"),
+                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Autonomously scan codebases when running agent workers drop below threshold.")
+                      ),
+                      React.createElement(
+                        "input",
+                        {
+                          type: "checkbox",
+                          className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                          checked: Boolean(settingsForm.scan_on_idle),
+                          onChange: (e) => setSettingsForm({ ...settingsForm, scan_on_idle: e.target.checked })
+                        }
+                      )
+                    ),
+                    settingsForm.scan_on_idle && React.createElement(
+                      "div",
+                      { className: "grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1" },
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Active Threshold (< N)"),
+                        React.createElement("input", {
+                          type: "number",
+                          min: 1,
+                          step: 1,
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                          value: settingsForm.idle_scan_active_threshold ?? 2,
+                          onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_active_threshold: e.target.value })
+                        }),
+                        React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Triggers when running workers < this (e.g. 1 or 2).")
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Cooldown (Minutes)"),
+                        React.createElement("input", {
+                          type: "number",
+                          min: 1,
+                          step: 1,
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                          value: settingsForm.idle_scan_cooldown_minutes ?? 15,
+                          onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_cooldown_minutes: e.target.value })
+                        }),
+                        React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Minimum interval between scans per board.")
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Max Todo Limit"),
+                        React.createElement("input", {
+                          type: "number",
+                          min: 0,
+                          step: 1,
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                          value: settingsForm.idle_scan_max_todo ?? 2,
+                          onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_max_todo: e.target.value })
+                        }),
+                        React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Suppresses scan if todo backlog >= this.")
+                      )
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between" },
+                      React.createElement(
+                        "div",
+                        null,
                         React.createElement(
                           "div",
-                          { className: "flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-400" },
-                          React.createElement("code", { className: "text-[10px] text-slate-400 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800" }, job.id),
-                          boardSlug && React.createElement("span", { className: "text-amber-400/90 font-medium" }, "Board: " + boardSlug),
-                          job.workdir && React.createElement("span", { className: "truncate max-w-xs text-slate-400 font-mono text-[10px]" }, "📁 " + job.workdir)
+                          { className: "flex items-center gap-1.5" },
+                          React.createElement("span", { className: "text-sm" }, "🧠"),
+                          React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")
+                        ),
+                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules from reviewer feedback and rejections.")
+                      ),
+                      React.createElement(
+                        "input",
+                        {
+                          type: "checkbox",
+                          className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                          checked: Boolean(settingsForm.auto_record_memory !== false),
+                          onChange: (e) => setSettingsForm({ ...settingsForm, auto_record_memory: e.target.checked })
+                        }
+                      )
+                    )
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between" },
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-1.5" },
+                          React.createElement("span", { className: "text-sm" }, "🔭"),
+                          React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Langfuse Observability & Tracing")
+                        ),
+                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Trace LLM calls, tool executions, latencies, and token costs across all agent profiles.")
+                      ),
+                      React.createElement(
+                        "input",
+                        {
+                          type: "checkbox",
+                          className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                          checked: Boolean(settingsForm.langfuse_enabled),
+                          onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_enabled: e.target.checked })
+                        }
+                      )
+                    ),
+                    settingsForm.langfuse_enabled && React.createElement(
+                      "div",
+                      { className: "space-y-3 pt-1 bg-slate-950/60 p-3 rounded-lg border border-slate-800/70" },
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1" },
+                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Langfuse Host / Base URL"),
+                        React.createElement("input", {
+                          type: "text",
+                          placeholder: "https://cloud.langfuse.com",
+                          className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                          value: settingsForm.langfuse_base_url ?? "https://cloud.langfuse.com",
+                          onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_base_url: e.target.value })
+                        }),
+                        React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Cloud instance (https://cloud.langfuse.com) or self-hosted URL (e.g. http://localhost:3000).")
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5" },
+                        React.createElement(
+                          "div",
+                          { className: "space-y-1" },
+                          React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Public Key"),
+                          React.createElement("input", {
+                            type: "text",
+                            placeholder: "pk-lf-...",
+                            className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                            value: settingsForm.langfuse_public_key ?? "",
+                            onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_public_key: e.target.value })
+                          })
+                        ),
+                        React.createElement(
+                          "div",
+                          { className: "space-y-1" },
+                          React.createElement(
+                            "div",
+                            { className: "flex items-center justify-between" },
+                            React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Secret Key"),
+                            React.createElement(
+                              "button",
+                              {
+                                type: "button",
+                                className: "text-[10px] text-slate-400 hover:text-slate-200 cursor-pointer",
+                                onClick: () => setShowLangfuseSecret(!showLangfuseSecret)
+                              },
+                              showLangfuseSecret ? "Hide" : "Show"
+                            )
+                          ),
+                          React.createElement("input", {
+                            type: showLangfuseSecret ? "text" : "password",
+                            placeholder: "sk-lf-...",
+                            className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                            value: settingsForm.langfuse_secret_key ?? "",
+                            onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_secret_key: e.target.value })
+                          })
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5" },
+                        React.createElement(
+                          "div",
+                          { className: "space-y-1" },
+                          React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Environment Tag"),
+                          React.createElement("input", {
+                            type: "text",
+                            placeholder: "zerofactory",
+                            className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 font-mono",
+                            value: settingsForm.langfuse_env ?? "zerofactory",
+                            onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_env: e.target.value })
+                          })
+                        ),
+                        React.createElement(
+                          "div",
+                          { className: "space-y-1" },
+                          React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Content Capture Mode"),
+                          React.createElement(
+                            "select",
+                            {
+                              className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer",
+                              value: settingsForm.langfuse_capture_mode ?? "sanitized",
+                              onChange: (e) => setSettingsForm({ ...settingsForm, langfuse_capture_mode: e.target.value })
+                            },
+                            React.createElement("option", { value: "sanitized" }, "Sanitized (Redact secrets & truncate)"),
+                            React.createElement("option", { value: "metadata" }, "Metadata Only (No prompts/outputs)"),
+                            React.createElement("option", { value: "full" }, "Full Content (Raw payloads)")
+                          )
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-t border-slate-800/60" },
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-1.5 text-[11px]" },
+                          React.createElement("span", { className: "text-emerald-400" }, "✓"),
+                          React.createElement("span", { className: "text-slate-400" }, "Syncs to zf-orchestrator, zf-builder, zf-reviewer & root")
+                        ),
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-2" },
+                          React.createElement(
+                            "button",
+                            {
+                              type: "button",
+                              disabled: isTestingLangfuse,
+                              onClick: handleTestLangfuse,
+                              className: "px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
+                            },
+                            isTestingLangfuse ? "Testing..." : "Test Connection"
+                          )
+                        )
+                      ),
+                      langfuseTestResult && React.createElement(
+                        "div",
+                        {
+                          className: `text-[11px] px-2.5 py-1.5 rounded border ${langfuseTestResult.ok
+                              ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                              : "bg-rose-950/40 border-rose-800/60 text-rose-300"
+                            }`
+                        },
+                        (langfuseTestResult.ok ? "✓ " : "✕ ") + langfuseTestResult.message
+                      )
+                    )
+                  ),
+                ),
+                React.createElement(
+                  "div",
+                  { className: "flex items-center justify-end gap-2.5 px-5 py-3 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+                      onClick: () => setShowSettingsModal(false)
+                    },
+                    "Cancel"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      type: "submit",
+                      disabled: isSavingSettings,
+                      className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+                    },
+                    isSavingSettings ? "Saving..." : "Save Settings"
+                  )
+                )
+              )
+            )
+          ),
+
+          // Cron Configuration Modal
+          showCronModal &&
+          React.createElement(
+            "div",
+            {
+              className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto",
+              onClick: () => setShowCronModal(false)
+            },
+            React.createElement(
+              "div",
+              {
+                className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden text-slate-100",
+                onClick: (e) => e.stopPropagation()
+              },
+              // Modal Header
+              React.createElement(
+                "div",
+                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0 bg-slate-900/60" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-3" },
+                  React.createElement("div", { className: "w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-base shrink-0" }, "⏰"),
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement("h2", { className: "text-base font-bold text-white m-0 flex items-center gap-2" }, "Zero Factory Cron Automation"),
+                    React.createElement("p", { className: "text-xs text-slate-400 font-medium m-0" }, "Manage periodic health checks, daily metrics, and per-board improvement scanners")
+                  )
+                ),
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-2" },
+                  React.createElement(
+                    "button",
+                    {
+                      className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
+                      onClick: handleSyncAllCron,
+                      title: "Synchronize all built-in jobs across active profiles"
+                    },
+                    "🔄 Sync All"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                      onClick: () => setShowCronModal(false)
+                    },
+                    "✕"
+                  )
+                )
+              ),
+              // Master Scheduler Engine Control Banner
+              React.createElement(
+                "div",
+                { className: "px-6 py-3.5 bg-slate-950/70 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-3" },
+                  React.createElement(
+                    "div",
+                    { className: "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold " + (cronSchedulerEnabled ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30") },
+                    cronSchedulerEnabled ? "⚡" : "⏸"
+                  ),
+                  React.createElement(
+                    "div",
+                    null,
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-2" },
+                      React.createElement("span", { className: "text-xs font-bold text-white tracking-wide" }, "Periodic Cron Scheduler Engine"),
+                      React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-bold " + (cronSchedulerEnabled ? "bg-emerald-950 text-emerald-300 border border-emerald-800/60" : "bg-rose-950 text-rose-300 border border-rose-800/60") }, cronSchedulerEnabled ? "Running (15s Ticks)" : "Disabled / Paused")
+                    ),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 mt-0.5" },
+                      cronSchedulerEnabled
+                        ? "Background daemon actively ticks due jobs and spawns idle improvement scanners."
+                        : "Master cron scheduler is disabled. All background ticking and autonomous scans are halted."
+                    )
+                  )
+                ),
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" },
+                  React.createElement("span", { className: "text-xs font-semibold " + (cronSchedulerEnabled ? "text-emerald-400" : "text-slate-500") }, cronSchedulerEnabled ? "Active" : "Disabled"),
+                  React.createElement(
+                    "button",
+                    {
+                      type: "button",
+                      role: "switch",
+                      "aria-checked": cronSchedulerEnabled,
+                      onClick: () => handleToggleCronScheduler(cronSchedulerEnabled),
+                      className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (cronSchedulerEnabled ? "bg-emerald-600" : "bg-slate-700")
+                    },
+                    React.createElement("span", {
+                      className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (cronSchedulerEnabled ? "translate-x-4" : "translate-x-0")
+                    })
+                  )
+                )
+              ),
+              // Filter Tabs & Search Bar
+              React.createElement(
+                "div",
+                { className: "px-6 py-3 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs" },
+                  React.createElement(
+                    "button",
+                    {
+                      className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "all" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                      onClick: () => setCronFilterTab("all")
+                    },
+                    "All (" + cronJobs.length + ")"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "core" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                      onClick: () => setCronFilterTab("core")
+                    },
+                    "Core (" + cronJobs.filter(j => !j.id.startsWith("zero-factory-improvement-scanner-")).length + ")"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "scanners" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                      onClick: () => setCronFilterTab("scanners")
+                    },
+                    "Scanners (" + cronJobs.filter(j => j.id.startsWith("zero-factory-improvement-scanner-")).length + ")"
+                  )
+                ),
+                React.createElement(
+                  "input",
+                  {
+                    className: "w-full sm:w-64 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors",
+                    placeholder: "Search jobs by name or ID...",
+                    value: cronSearchQuery,
+                    onChange: (e) => setCronSearchQuery(e.target.value)
+                  }
+                )
+              ),
+              // Job Cards List
+              React.createElement(
+                "div",
+                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1 bg-slate-950/20" },
+                loadingCron && React.createElement("div", { className: "text-center py-12 text-slate-400 text-xs" }, React.createElement("span", { className: "zfk-spinning inline-block mr-2" }, "⏳"), "Loading cron schedules..."),
+                !loadingCron && filteredCronJobs.length === 0 && React.createElement("div", { className: "text-center py-12 text-slate-500 text-xs" }, "No cron jobs match the selected filter."),
+                !loadingCron && filteredCronJobs.map(job => {
+                  const isEditing = editingCronId === job.id;
+                  const form = cronEditForms[job.id] || {};
+                  const isScanner = job.id.startsWith("zero-factory-improvement-scanner-");
+                  const boardSlug = isScanner ? job.id.replace("zero-factory-improvement-scanner-", "") : null;
+                  const isRunning = runningCronId === job.id;
+
+                  return React.createElement(
+                    "div",
+                    {
+                      key: job.id,
+                      className: "bg-slate-900/90 border " + (job.enabled ? "border-slate-700/80 shadow-sm" : "border-slate-800/50 opacity-75") + " rounded-xl p-4 transition-all duration-150"
+                    },
+                    // Card Header Row
+                    React.createElement(
+                      "div",
+                      { className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-start gap-2.5" },
+                        React.createElement(
+                          "span",
+                          { className: "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0 mt-0.5 " + (isScanner ? "bg-purple-950/80 text-purple-300 border border-purple-800/60" : "bg-indigo-950/80 text-indigo-300 border border-indigo-800/60") },
+                          isScanner ? "Scanner" : "Core"
+                        ),
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement("h3", { className: "text-sm font-semibold text-white m-0" }, job.name),
+                          React.createElement(
+                            "div",
+                            { className: "flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-400" },
+                            React.createElement("code", { className: "text-[10px] text-slate-400 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800" }, job.id),
+                            boardSlug && React.createElement("span", { className: "text-amber-400/90 font-medium" }, "Board: " + boardSlug),
+                            job.workdir && React.createElement("span", { className: "truncate max-w-xs text-slate-400 font-mono text-[10px]" }, "📁 " + job.workdir)
+                          )
+                        )
+                      ),
+                      // Toggle Active / Paused switch
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" },
+                        React.createElement("span", { className: "text-xs font-semibold " + (job.enabled ? "text-emerald-400" : "text-slate-500") }, job.enabled ? "Active" : "Paused"),
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            role: "switch",
+                            "aria-checked": job.enabled,
+                            onClick: () => handleToggleCronJob(job.id, job.enabled),
+                            className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (job.enabled ? "bg-emerald-600" : "bg-slate-700")
+                          },
+                          React.createElement("span", {
+                            className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (job.enabled ? "translate-x-4" : "translate-x-0")
+                          })
                         )
                       )
                     ),
-                    // Toggle Active / Paused switch
+                    // Metadata / Runtime Status Row
                     React.createElement(
                       "div",
-                      { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" },
-                      React.createElement("span", { className: "text-xs font-semibold " + (job.enabled ? "text-emerald-400" : "text-slate-500") }, job.enabled ? "Active" : "Paused"),
-                      React.createElement(
-                        "button",
-                        {
-                          type: "button",
-                          role: "switch",
-                          "aria-checked": job.enabled,
-                          onClick: () => handleToggleCronJob(job.id, job.enabled),
-                          className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (job.enabled ? "bg-emerald-600" : "bg-slate-700")
-                        },
-                        React.createElement("span", {
-                          className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (job.enabled ? "translate-x-4" : "translate-x-0")
-                        })
-                      )
-                    )
-                  ),
-                  // Metadata / Runtime Status Row
-                  React.createElement(
-                    "div",
-                    { className: "flex flex-wrap items-center justify-between gap-2 pt-3 text-xs" },
-                    React.createElement(
-                      "div",
-                      { className: "flex flex-wrap items-center gap-2" },
-                      // Schedule badge
-                      React.createElement(
-                        "span",
-                        { className: "px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 font-mono text-[11px] text-indigo-300 font-medium" },
-                        "⏱️ " + (job.schedule_display || "On Idle")
-                      ),
-                      // Status pill
-                      React.createElement(
-                        "span",
-                        {
-                          className: "px-2 py-0.5 rounded-md text-[11px] font-medium border " +
-                            (!job.enabled ? "bg-amber-950/60 text-amber-300 border-amber-800/60"
-                            : job.last_status === "ok" ? "bg-emerald-950/60 text-emerald-300 border-emerald-800/60"
-                            : job.last_status === "error" ? "bg-rose-950/60 text-rose-300 border-rose-800/60"
-                            : "bg-slate-950 text-slate-300 border-slate-800")
-                        },
-                        !job.enabled ? "⏸ Paused" : job.last_status === "ok" ? "✓ OK" : job.last_status === "error" ? "✕ Failed" : "⏳ Scheduled"
-                      ),
-                      // Last Run
-                      job.last_run_at && React.createElement("span", { className: "text-slate-400 text-[11px]" }, "Last: " + timeAgo(new Date(job.last_run_at).getTime() / 1000)),
-                      // Customized badge
-                      job.custom_config && React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-950 text-sky-300 border border-sky-800/60" }, "Customized")
-                    ),
-                    // Action Buttons
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center gap-2 shrink-0 ml-auto" },
-                      React.createElement(
-                        "button",
-                        {
-                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-600 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50",
-                          disabled: isRunning,
-                          onClick: () => handleRunCronJob(job.id),
-                          title: "Run this job immediately"
-                        },
-                        isRunning ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "▶",
-                        isRunning ? " Running..." : " Run Now"
-                      ),
-                      React.createElement(
-                        "button",
-                        {
-                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold " +
-                            (job.enabled
-                              ? "bg-slate-800 hover:bg-rose-950/50 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800/60"
-                              : "bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/80") +
-                            " transition-colors cursor-pointer",
-                          onClick: () => handleToggleCronJob(job.id, job.enabled),
-                          title: job.enabled ? "Pause scheduled automation for this job" : "Resume scheduled automation for this job"
-                        },
-                        job.enabled ? "⏸ Pause" : "▶ Resume"
-                      ),
-                      React.createElement(
-                        "button",
-                        {
-                          className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
-                          onClick: () => setEditingCronId(isEditing ? null : job.id),
-                          title: isEditing ? "Close configuration editor" : "Edit schedule and parameters"
-                        },
-                        isEditing ? "▲ Close" : "⚙ Edit"
-                      ),
-                      job.custom_config && React.createElement(
-                        "button",
-                        {
-                          className: "inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-400 hover:text-amber-300 hover:bg-amber-950/30 border border-transparent hover:border-amber-800/40 transition-colors cursor-pointer",
-                          onClick: () => handleResetCronJob(job.id),
-                          title: "Reset schedule and settings to built-in default"
-                        },
-                        "↺ Reset"
-                      )
-                    )
-                  ),
-                  // Last Error Box if failed
-                  job.last_error && React.createElement(
-                    "div",
-                    { className: "mt-2.5 p-2 rounded-lg bg-rose-950/40 border border-rose-900/60 text-xs text-rose-300 font-mono break-all" },
-                    "⚠️ " + job.last_error
-                  ),
-                  // Inline Edit Drawer
-                  isEditing && React.createElement(
-                    "div",
-                    { className: "mt-3.5 pt-3.5 border-t border-slate-800/80 space-y-3.5 bg-slate-950/40 -mx-4 -mb-4 p-4 rounded-b-xl" },
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1.5" },
-                      React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "Schedule Presets"),
+                      { className: "flex flex-wrap items-center justify-between gap-2 pt-3 text-xs" },
                       React.createElement(
                         "div",
-                        { className: "flex flex-wrap gap-1.5" },
-                        [
-                          { label: "Every 15m", kind: "interval", minutes: 15 },
-                          { label: "Every 30m", kind: "interval", minutes: 30 },
-                          { label: "Every 60m", kind: "interval", minutes: 60 },
-                          { label: "Every 120m", kind: "interval", minutes: 120 },
-                          { label: "Daily 09:00", kind: "cron", expr: "0 9 * * *" },
-                          { label: "Custom Interval", kind: "interval", custom: true },
-                          { label: "Custom Cron", kind: "cron", custom: true },
-                          { label: form.enabled === false ? "⏸ Paused (Selected)" : "⏸ Pause Schedule", kind: "pause_toggle" }
-                        ].map((preset, pIdx) => {
-                          const isSel = preset.kind === "pause_toggle"
-                            ? form.enabled === false
-                            : form.enabled !== false && (preset.custom
-                              ? form.schedule_kind === preset.kind && form.is_custom_mode === preset.kind
-                              : form.schedule_kind === preset.kind && (preset.kind === "interval" ? parseInt(form.minutes, 10) === preset.minutes : form.cron_expr === preset.expr));
-                          return React.createElement(
-                            "button",
-                            {
-                              key: pIdx,
-                              type: "button",
-                              className: "px-2.5 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer " +
-                                (isSel
-                                  ? (preset.kind === "pause_toggle" ? "bg-rose-600 text-white border-rose-500 shadow-xs" : "bg-indigo-600 text-white border-indigo-500 shadow-xs")
-                                  : (preset.kind === "pause_toggle" ? "bg-rose-950/40 text-rose-300 border-rose-900/60 hover:bg-rose-900/60" : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800")),
-                              onClick: () => {
-                                if (preset.kind === "pause_toggle") {
-                                  setCronEditForms({
-                                    ...cronEditForms,
-                                    [job.id]: { ...form, enabled: form.enabled === false }
-                                  });
-                                } else if (preset.custom) {
-                                  setCronEditForms({
-                                    ...cronEditForms,
-                                    [job.id]: { ...form, schedule_kind: preset.kind, is_custom_mode: preset.kind, enabled: true }
-                                  });
-                                } else if (preset.kind === "interval") {
-                                  setCronEditForms({
-                                    ...cronEditForms,
-                                    [job.id]: { ...form, schedule_kind: "interval", minutes: preset.minutes, is_custom_mode: null, enabled: true }
-                                  });
-                                } else {
-                                  setCronEditForms({
-                                    ...cronEditForms,
-                                    [job.id]: { ...form, schedule_kind: "cron", cron_expr: preset.expr, is_custom_mode: null, enabled: true }
-                                  });
-                                }
-                              }
-                            },
-                            preset.label
-                          );
-                        })
+                        { className: "flex flex-wrap items-center gap-2" },
+                        // Schedule badge
+                        React.createElement(
+                          "span",
+                          { className: "px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 font-mono text-[11px] text-indigo-300 font-medium" },
+                          "⏱️ " + (job.schedule_display || "On Idle")
+                        ),
+                        // Status pill
+                        React.createElement(
+                          "span",
+                          {
+                            className: "px-2 py-0.5 rounded-md text-[11px] font-medium border " +
+                              (!job.enabled ? "bg-amber-950/60 text-amber-300 border-amber-800/60"
+                                : job.last_status === "ok" ? "bg-emerald-950/60 text-emerald-300 border-emerald-800/60"
+                                  : job.last_status === "error" ? "bg-rose-950/60 text-rose-300 border-rose-800/60"
+                                    : "bg-slate-950 text-slate-300 border-slate-800")
+                          },
+                          !job.enabled ? "⏸ Paused" : job.last_status === "ok" ? "✓ OK" : job.last_status === "error" ? "✕ Failed" : "⏳ Scheduled"
+                        ),
+                        // Last Run
+                        job.last_run_at && React.createElement("span", { className: "text-slate-400 text-[11px]" }, "Last: " + timeAgo(new Date(job.last_run_at).getTime() / 1000)),
+                        // Customized badge
+                        job.custom_config && React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-950 text-sky-300 border border-sky-800/60" }, "Customized")
+                      ),
+                      // Action Buttons
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2 shrink-0 ml-auto" },
+                        React.createElement(
+                          "button",
+                          {
+                            className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-600 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50",
+                            disabled: isRunning,
+                            onClick: () => handleRunCronJob(job.id),
+                            title: "Run this job immediately"
+                          },
+                          isRunning ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "▶",
+                          isRunning ? " Running..." : " Run Now"
+                        ),
+                        React.createElement(
+                          "button",
+                          {
+                            className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold " +
+                              (job.enabled
+                                ? "bg-slate-800 hover:bg-rose-950/50 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800/60"
+                                : "bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/80") +
+                              " transition-colors cursor-pointer",
+                            onClick: () => handleToggleCronJob(job.id, job.enabled),
+                            title: job.enabled ? "Pause scheduled automation for this job" : "Resume scheduled automation for this job"
+                          },
+                          job.enabled ? "⏸ Pause" : "▶ Resume"
+                        ),
+                        React.createElement(
+                          "button",
+                          {
+                            className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
+                            onClick: () => setEditingCronId(isEditing ? null : job.id),
+                            title: isEditing ? "Close configuration editor" : "Edit schedule and parameters"
+                          },
+                          isEditing ? "▲ Close" : "⚙ Edit"
+                        ),
+                        job.custom_config && React.createElement(
+                          "button",
+                          {
+                            className: "inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-400 hover:text-amber-300 hover:bg-amber-950/30 border border-transparent hover:border-amber-800/40 transition-colors cursor-pointer",
+                            onClick: () => handleResetCronJob(job.id),
+                            title: "Reset schedule and settings to built-in default"
+                          },
+                          "↺ Reset"
+                        )
                       )
                     ),
-                    // Specific schedule inputs
-                    form.schedule_kind === "interval"
-                      ? React.createElement(
+                    // Last Error Box if failed
+                    job.last_error && React.createElement(
+                      "div",
+                      { className: "mt-2.5 p-2 rounded-lg bg-rose-950/40 border border-rose-900/60 text-xs text-rose-300 font-mono break-all" },
+                      "⚠️ " + job.last_error
+                    ),
+                    // Inline Edit Drawer
+                    isEditing && React.createElement(
+                      "div",
+                      { className: "mt-3.5 pt-3.5 border-t border-slate-800/80 space-y-3.5 bg-slate-950/40 -mx-4 -mb-4 p-4 rounded-b-xl" },
+                      React.createElement(
+                        "div",
+                        { className: "space-y-1.5" },
+                        React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "Schedule Presets"),
+                        React.createElement(
+                          "div",
+                          { className: "flex flex-wrap gap-1.5" },
+                          [
+                            { label: "Every 15m", kind: "interval", minutes: 15 },
+                            { label: "Every 30m", kind: "interval", minutes: 30 },
+                            { label: "Every 60m", kind: "interval", minutes: 60 },
+                            { label: "Every 120m", kind: "interval", minutes: 120 },
+                            { label: "Daily 09:00", kind: "cron", expr: "0 9 * * *" },
+                            { label: "Custom Interval", kind: "interval", custom: true },
+                            { label: "Custom Cron", kind: "cron", custom: true },
+                            { label: form.enabled === false ? "⏸ Paused (Selected)" : "⏸ Pause Schedule", kind: "pause_toggle" }
+                          ].map((preset, pIdx) => {
+                            const isSel = preset.kind === "pause_toggle"
+                              ? form.enabled === false
+                              : form.enabled !== false && (preset.custom
+                                ? form.schedule_kind === preset.kind && form.is_custom_mode === preset.kind
+                                : form.schedule_kind === preset.kind && (preset.kind === "interval" ? parseInt(form.minutes, 10) === preset.minutes : form.cron_expr === preset.expr));
+                            return React.createElement(
+                              "button",
+                              {
+                                key: pIdx,
+                                type: "button",
+                                className: "px-2.5 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer " +
+                                  (isSel
+                                    ? (preset.kind === "pause_toggle" ? "bg-rose-600 text-white border-rose-500 shadow-xs" : "bg-indigo-600 text-white border-indigo-500 shadow-xs")
+                                    : (preset.kind === "pause_toggle" ? "bg-rose-950/40 text-rose-300 border-rose-900/60 hover:bg-rose-900/60" : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800")),
+                                onClick: () => {
+                                  if (preset.kind === "pause_toggle") {
+                                    setCronEditForms({
+                                      ...cronEditForms,
+                                      [job.id]: { ...form, enabled: form.enabled === false }
+                                    });
+                                  } else if (preset.custom) {
+                                    setCronEditForms({
+                                      ...cronEditForms,
+                                      [job.id]: { ...form, schedule_kind: preset.kind, is_custom_mode: preset.kind, enabled: true }
+                                    });
+                                  } else if (preset.kind === "interval") {
+                                    setCronEditForms({
+                                      ...cronEditForms,
+                                      [job.id]: { ...form, schedule_kind: "interval", minutes: preset.minutes, is_custom_mode: null, enabled: true }
+                                    });
+                                  } else {
+                                    setCronEditForms({
+                                      ...cronEditForms,
+                                      [job.id]: { ...form, schedule_kind: "cron", cron_expr: preset.expr, is_custom_mode: null, enabled: true }
+                                    });
+                                  }
+                                }
+                              },
+                              preset.label
+                            );
+                          })
+                        )
+                      ),
+                      // Specific schedule inputs
+                      form.schedule_kind === "interval"
+                        ? React.createElement(
                           "div",
                           { className: "space-y-1" },
                           React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Interval (Minutes)"),
@@ -6100,7 +6191,7 @@
                             })
                           })
                         )
-                      : React.createElement(
+                        : React.createElement(
                           "div",
                           { className: "space-y-1" },
                           React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Standard Cron Expression (minute hour dom month dow)"),
@@ -6115,115 +6206,115 @@
                             })
                           })
                         ),
-                    // Model override & Workdir
-                    React.createElement(
-                      "div",
-                      { className: "grid grid-cols-1 sm:grid-cols-2 gap-3" },
+                      // Model override & Workdir
+                      React.createElement(
+                        "div",
+                        { className: "grid grid-cols-1 sm:grid-cols-2 gap-3" },
+                        React.createElement(
+                          "div",
+                          { className: "space-y-1" },
+                          React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Model Override (optional)"),
+                          React.createElement("input", {
+                            type: "text",
+                            placeholder: "Inherit environment default",
+                            className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                            value: form.model || "",
+                            onChange: (e) => setCronEditForms({
+                              ...cronEditForms,
+                              [job.id]: { ...form, model: e.target.value }
+                            })
+                          })
+                        ),
+                        React.createElement(
+                          "div",
+                          { className: "space-y-1" },
+                          React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Working Directory (Worktree Root)"),
+                          React.createElement("input", {
+                            type: "text",
+                            placeholder: "/path/to/workspace",
+                            className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500",
+                            value: form.workdir || "",
+                            onChange: (e) => setCronEditForms({
+                              ...cronEditForms,
+                              [job.id]: { ...form, workdir: e.target.value }
+                            })
+                          })
+                        )
+                      ),
+                      // Schedule Status control in Edit Drawer
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between p-3 rounded-xl bg-slate-900/90 border border-slate-800" },
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement("span", { className: "text-xs font-semibold text-white block" }, "Schedule Status"),
+                          React.createElement("span", { className: "text-[11px] text-slate-400 block mt-0.5" }, form.enabled !== false ? "Job runs periodically according to schedule." : "Schedule is paused — job will not trigger automatically.")
+                        ),
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border " +
+                              (form.enabled !== false
+                                ? "bg-emerald-950 text-emerald-300 border-emerald-700/80 hover:bg-emerald-900"
+                                : "bg-rose-950 text-rose-300 border-rose-700/80 hover:bg-rose-900"),
+                            onClick: () => setCronEditForms({
+                              ...cronEditForms,
+                              [job.id]: { ...form, enabled: form.enabled === false }
+                            })
+                          },
+                          form.enabled !== false ? "✓ Scheduled (Active)" : "⏸ Paused (Disabled)"
+                        )
+                      ),
+                      // Prompt Editor
                       React.createElement(
                         "div",
                         { className: "space-y-1" },
-                        React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Model Override (optional)"),
-                        React.createElement("input", {
-                          type: "text",
-                          placeholder: "Inherit environment default",
-                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
-                          value: form.model || "",
+                        React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Task Prompt Instructions"),
+                        React.createElement("textarea", {
+                          rows: 5,
+                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-[11px] font-mono text-slate-300 outline-none focus:border-indigo-500 zfk-scrollbar leading-relaxed",
+                          value: form.prompt || "",
                           onChange: (e) => setCronEditForms({
                             ...cronEditForms,
-                            [job.id]: { ...form, model: e.target.value }
+                            [job.id]: { ...form, prompt: e.target.value }
                           })
                         })
                       ),
+                      // Drawer Action Buttons
                       React.createElement(
                         "div",
-                        { className: "space-y-1" },
-                        React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Working Directory (Worktree Root)"),
-                        React.createElement("input", {
-                          type: "text",
-                          placeholder: "/path/to/workspace",
-                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500",
-                          value: form.workdir || "",
-                          onChange: (e) => setCronEditForms({
-                            ...cronEditForms,
-                            [job.id]: { ...form, workdir: e.target.value }
-                          })
-                        })
-                      )
-                    ),
-                    // Schedule Status control in Edit Drawer
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center justify-between p-3 rounded-xl bg-slate-900/90 border border-slate-800" },
-                      React.createElement(
-                        "div",
-                        null,
-                        React.createElement("span", { className: "text-xs font-semibold text-white block" }, "Schedule Status"),
-                        React.createElement("span", { className: "text-[11px] text-slate-400 block mt-0.5" }, form.enabled !== false ? "Job runs periodically according to schedule." : "Schedule is paused — job will not trigger automatically.")
-                      ),
-                      React.createElement(
-                        "button",
-                        {
-                          type: "button",
-                          className: "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border " +
-                            (form.enabled !== false
-                              ? "bg-emerald-950 text-emerald-300 border-emerald-700/80 hover:bg-emerald-900"
-                              : "bg-rose-950 text-rose-300 border-rose-700/80 hover:bg-rose-900"),
-                          onClick: () => setCronEditForms({
-                            ...cronEditForms,
-                            [job.id]: { ...form, enabled: form.enabled === false }
-                          })
-                        },
-                        form.enabled !== false ? "✓ Scheduled (Active)" : "⏸ Paused (Disabled)"
-                      )
-                    ),
-                    // Prompt Editor
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" },
-                      React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Task Prompt Instructions"),
-                      React.createElement("textarea", {
-                        rows: 5,
-                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-[11px] font-mono text-slate-300 outline-none focus:border-indigo-500 zfk-scrollbar leading-relaxed",
-                        value: form.prompt || "",
-                        onChange: (e) => setCronEditForms({
-                          ...cronEditForms,
-                          [job.id]: { ...form, prompt: e.target.value }
-                        })
-                      })
-                    ),
-                    // Drawer Action Buttons
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center justify-end gap-2 pt-2" },
-                      React.createElement(
-                        "button",
-                        {
-                          type: "button",
-                          className: "px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer",
-                          onClick: () => setEditingCronId(null)
-                        },
-                        "Cancel"
-                      ),
-                      React.createElement(
-                        "button",
-                        {
-                          type: "button",
-                          className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-xs transition-colors cursor-pointer",
-                          onClick: () => handleSaveCronJob(job.id)
-                        },
-                        "💾 Save Configuration"
+                        { className: "flex items-center justify-end gap-2 pt-2" },
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer",
+                            onClick: () => setEditingCronId(null)
+                          },
+                          "Cancel"
+                        ),
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-xs transition-colors cursor-pointer",
+                            onClick: () => handleSaveCronJob(job.id)
+                          },
+                          "💾 Save Configuration"
+                        )
                       )
                     )
-                  )
-                );
-              })
+                  );
+                })
+              )
             )
           )
-        )
-      ),
+        ),
 
-      // Floating Toast Notification with zIndex 999999 so it is always on top of modals
-      toast &&
+        // Floating Toast Notification with zIndex 999999 so it is always on top of modals
+        toast &&
         React.createElement(
           "div",
           {
@@ -6232,8 +6323,8 @@
               (toast.type === "error"
                 ? "bg-rose-950/95 text-rose-200 border-rose-700 shadow-rose-950/80"
                 : toast.type === "success"
-                ? "bg-emerald-950/95 text-emerald-200 border-emerald-700 shadow-emerald-950/80"
-                : "bg-indigo-950/95 text-indigo-200 border-indigo-700 shadow-indigo-950/80")
+                  ? "bg-emerald-950/95 text-emerald-200 border-emerald-700 shadow-emerald-950/80"
+                  : "bg-indigo-950/95 text-indigo-200 border-indigo-700 shadow-indigo-950/80")
           },
           toast.message
         )
