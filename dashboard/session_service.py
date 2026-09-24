@@ -338,6 +338,8 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                 s_status = s.get("status") or "finished"
                 if is_alive and s_id == active_sess_id and task_status == "running":
                     s_status = "ongoing"
+                elif task_status != "running":
+                    s_status = "finished"
                 sessions_found.append({
                     "session_id": s_id,
                     "agent": s_agent,

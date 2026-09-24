@@ -54,18 +54,22 @@ PROFILE_MAP = {
 #: Sentinel assignee meaning "no agent is responsible for this task".
 UNASSIGNED = "unassigned"
 
-#: Full set of valid assignee values (the sentinel plus every specialist
+#: Sentinel assignee meaning a human developer/reviewer is responsible for this task.
+HUMAN = "human"
+
+#: Full set of valid assignee values (the sentinels plus every specialist
 #: profile). This is the single source of truth for the dashboard's
 #: ``VALID_ASSIGNEES`` guard; the dispatcher's ``VALID_PROFILES`` tuple is the
 #: profiles-only view (``tuple(PROFILE_MAP)``) and intentionally excludes the
-#: sentinel.
-VALID_ASSIGNEES = {UNASSIGNED, *PROFILE_MAP}
+#: sentinels.
+VALID_ASSIGNEES = {UNASSIGNED, HUMAN, *PROFILE_MAP}
 
 
 def normalize_assignee(assignee: Optional[str]) -> str:
-    """Normalize an assignee onto a canonical ``zf-*`` profile or ``"unassigned"``.
+    """Normalize an assignee onto a canonical ``zf-*`` profile, ``"human"``, or ``"unassigned"``.
 
     * empty / ``None`` / ``"unassigned"`` -> ``"unassigned"``
+    * ``"human"`` -> ``"human"``
     * a recognized profile (or an alias that maps to one) -> its canonical name
     * any other value -> ``"unassigned"`` (unknown assignees are not valid
       specialist profiles and are treated as unassigned rather than passed
@@ -73,6 +77,8 @@ def normalize_assignee(assignee: Optional[str]) -> str:
     """
     if not assignee or assignee == UNASSIGNED:
         return UNASSIGNED
+    if assignee == HUMAN:
+        return HUMAN
     return PROFILE_MAP.get(assignee, UNASSIGNED)
 
 

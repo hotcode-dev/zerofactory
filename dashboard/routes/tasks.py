@@ -180,13 +180,21 @@ def list_tasks(
                         "sessions": prog.get("sessions", [])
                     }
                 elif meta_sessions:
+                    clean_sessions = []
+                    for s in meta_sessions:
+                        if isinstance(s, dict):
+                            s_copy = dict(s)
+                            if s_copy.get("status") == "ongoing":
+                                s_copy["status"] = "finished"
+                            s_copy["is_active"] = False
+                            clean_sessions.append(s_copy)
                     t["session_progress"] = {
                         "has_session": True,
                         "session_id": meta_obj.get("session_id"),
                         "is_alive": False,
-                        "turn_count": sum(s.get("turn_count", 0) for s in meta_sessions if isinstance(s, dict)),
-                        "message_count": sum(s.get("message_count", 0) for s in meta_sessions if isinstance(s, dict)),
-                        "sessions": meta_sessions
+                        "turn_count": sum(s.get("turn_count", 0) for s in clean_sessions),
+                        "message_count": sum(s.get("message_count", 0) for s in clean_sessions),
+                        "sessions": clean_sessions
                     }
 
         return {"ok": True, "tasks": tasks, "count": len(tasks)}
@@ -387,6 +395,114 @@ def get_task_sessions(task_id: str):
         return {"ok": True, "sessions": prog.get("sessions", []), "session_progress": prog}
 
 
+@router.post("/tasks/{task_id}/stop")
+def stop_task_session(task_id: str, to_status: Optional[str] = "blocked"):
+    """Safely terminate any running AI session / worker for the task and update status."""
+    init_db()
+    now = int(time.time())
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(task_row)
+
+        raw_meta = task.get("metadata") or "{}"
+        try:
+            meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta)
+        except Exception:
+            meta = {}
+
+        # Safely terminate active worker process group via dispatcher
+        try:
+            from ...dispatcher import stop_task_worker, _mark_task_session_ended
+        except Exception:
+            try:
+                from dispatcher import stop_task_worker, _mark_task_session_ended  # type: ignore
+            except Exception:
+                stop_task_worker = None
+                _mark_task_session_ended = None
+
+        if stop_task_worker is not None:
+            try:
+                stop_task_worker(task_id, cursor=cursor)
+            except Exception as e:
+                _log.warning("stop_task_worker failed for %s: %s", task_id, e)
+        else:
+            wpid = meta.get("worker_pid")
+            if wpid:
+                try:
+                    os.killpg(int(wpid), 15)
+                except Exception:
+                    try:
+                        os.kill(int(wpid), 15)
+                    except Exception:
+                        pass
+
+        # Finalize ongoing sessions in metadata
+        if _mark_task_session_ended is not None:
+            meta = _mark_task_session_ended(meta, now, "aborted")
+        else:
+            sessions = meta.get("sessions")
+            if isinstance(sessions, list):
+                for s in sessions:
+                    if isinstance(s, dict) and s.get("status") == "ongoing":
+                        s["status"] = "aborted"
+                        if not s.get("ended_at"):
+                            s["ended_at"] = now
+
+        active_sid = meta.get("session_id")
+        meta["blocked_reason"] = "AI session stopped by user"
+        meta.pop("worker_pid", None)
+
+        target_status = to_status if to_status in ["blocked", "todo"] else "blocked"
+        cursor.execute(
+            "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
+            (target_status, json.dumps(meta), now, task_id)
+        )
+
+        cursor.execute(
+            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'user', 'session_aborted', 'AI session stopped by user', ?)",
+            (task_id, now)
+        )
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'user', '⏹ AI session manually stopped by user.', ?)",
+            (task_id, now)
+        )
+
+        # Mark ended_at in profile state.db if session_id is active
+        if active_sid:
+            for prof in ["zf-builder", "zf-reviewer", "zf-orchestrator"]:
+                try:
+                    from ...paths import resolve_profile_state_db
+                except Exception:
+                    try:
+                        from paths import resolve_profile_state_db  # type: ignore
+                    except Exception:
+                        resolve_profile_state_db = None
+                if resolve_profile_state_db:
+                    sdb = resolve_profile_state_db(prof)
+                    if sdb and sdb.exists():
+                        try:
+                            import sqlite3 as _sqlite3
+                            with _sqlite3.connect(str(sdb), timeout=2.0) as pconn:
+                                pcur = pconn.cursor()
+                                pcur.execute("UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL", (now, active_sid))
+                                pconn.commit()
+                        except Exception:
+                            pass
+
+        conn.commit()
+        return {
+            "ok": True,
+            "stopped": True,
+            "task_id": task_id,
+            "status": target_status,
+            "message": f"AI session for task {task_id} successfully stopped."
+        }
+
+
 @router.patch("/tasks/{task_id}")
 def update_task(task_id: str, req: TaskUpdate):
     """Update task fields."""
@@ -505,8 +621,15 @@ def move_task(task_id: str, req: TaskMove):
                     meta.pop("blocked_reason", None)
                     meta_updated = True
 
-        if prev_status != req.status or meta_updated:
-            cursor.execute("UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?", (req.status, json.dumps(meta), now, task_id))
+        new_assignee = None
+        if req.status == "blocked" and req.reason and ("human review" in req.reason.lower() or "human merge" in req.reason.lower()):
+            new_assignee = "human"
+
+        if prev_status != req.status or meta_updated or new_assignee:
+            if new_assignee:
+                cursor.execute("UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?", (req.status, new_assignee, json.dumps(meta), now, task_id))
+            else:
+                cursor.execute("UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?", (req.status, json.dumps(meta), now, task_id))
             if prev_status != req.status:
                 move_actor = req.actor or "user"
                 log_activity(conn, task_id, move_actor, "move", f"Moved from {prev_status} to {req.status}")

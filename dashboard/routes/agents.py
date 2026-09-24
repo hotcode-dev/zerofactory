@@ -151,3 +151,44 @@ def get_agents_status(board_slug: Optional[str] = None):
         })
 
     return {"ok": True, "agents": agents_data}
+
+
+@router.post("/sessions/{session_id}/stop")
+def stop_session(session_id: str):
+    """Stop an active AI session by session_id, terminating its process and updating state."""
+    init_db()
+    now = int(time.time())
+
+    # Check if session is associated with a task in the tasks table
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM tasks WHERE metadata LIKE ?", (f"%{session_id}%",))
+        row = cursor.fetchone()
+        if row:
+            task_id = str(row[0])
+            from .tasks import stop_task_session
+            return stop_task_session(task_id=task_id)
+
+    # Standalone session fallback: mark ended in profile state.db
+    stopped_in_db = False
+    for prof in ["zf-builder", "zf-reviewer", "zf-orchestrator"]:
+        sdb = _resolve_profile_state_db_dyn(prof)
+        if sdb and sdb.exists():
+            try:
+                with sqlite3.connect(str(sdb.resolve()), timeout=2.0) as pconn:
+                    pcur = pconn.cursor()
+                    pcur.execute("UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL", (now, session_id))
+                    if pcur.rowcount > 0:
+                        stopped_in_db = True
+                        pconn.commit()
+            except Exception as e:
+                _log.debug("Failed updating state.db for profile %s: %s", prof, e)
+
+    return {
+        "ok": True,
+        "stopped": True,
+        "session_id": session_id,
+        "message": f"Session {session_id} marked as ended." if stopped_in_db else f"Session {session_id} stopped."
+    }
+
+

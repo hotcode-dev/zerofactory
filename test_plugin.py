@@ -876,6 +876,7 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(normalize_assignee("zf-builder"), "zf-builder")
         self.assertEqual(normalize_assignee("zf-reviewer"), "zf-reviewer")
         self.assertEqual(normalize_assignee("zf-orchestrator"), "zf-orchestrator")
+        self.assertEqual(normalize_assignee("human"), "human")
         self.assertEqual(normalize_assignee("unassigned"), "unassigned")
         self.assertEqual(normalize_assignee(None), "unassigned")
 
@@ -7361,6 +7362,7 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         self.assertEqual(P.normalize_assignee("zf-builder"), "zf-builder")
         self.assertEqual(P.normalize_assignee("zf-reviewer"), "zf-reviewer")
         self.assertEqual(P.normalize_assignee("zf-orchestrator"), "zf-orchestrator")
+        self.assertEqual(P.normalize_assignee("human"), "human")
         self.assertEqual(P.normalize_assignee("unassigned"), "unassigned")
         self.assertEqual(P.normalize_assignee(None), "unassigned")
         self.assertEqual(P.normalize_assignee(""), "unassigned")
@@ -7412,13 +7414,14 @@ class TestSharedProfilePathResolution(unittest.TestCase):
         self.assertIs(PA_VALID_ASSIGNEES, P.VALID_ASSIGNEES)
         self.assertCountEqual(
             PA_VALID_ASSIGNEES,
-            {"unassigned", "zf-builder", "zf-reviewer", "zf-orchestrator"},
+            {"unassigned", "human", "zf-builder", "zf-reviewer", "zf-orchestrator"},
         )
         self.assertCountEqual(
             D.VALID_PROFILES,
             {"zf-builder", "zf-reviewer", "zf-orchestrator"},
         )
         self.assertNotIn("unassigned", D.VALID_PROFILES)
+        self.assertNotIn("human", D.VALID_PROFILES)
 
     def test_81_cron_scheduler_disabled_in_config(self):
         """Verify that the cron scheduler can be disabled via config.yaml, settings table, and env."""
@@ -9467,6 +9470,76 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
         self.assertTrue(all_memories["ok"])
         self.assertGreaterEqual(all_memories["total"], 2)
 
+    def test_93_stop_task_and_session(self):
+        """Verify POST /tasks/{id}/stop and POST /sessions/{id}/stop safely terminate worker and update state."""
+        from dashboard.routes.boards import create_board
+        from dashboard.routes.tasks import stop_task_session, create_task, get_task
+        from dashboard.routes.agents import stop_session
+        from dashboard.models import BoardCreate, TaskCreate
+        from dispatcher import _active_workers
+        from unittest.mock import MagicMock, patch
+
+        b_res = create_board(BoardCreate(git_url="https://github.com/test-org/stop-service.git"))
+        self.assertTrue(b_res["ok"])
+        t_res = create_task(TaskCreate(title="Stop Test Task", status="running", assignee="zf-builder", board_slug=b_res["slug"]))
+        self.assertTrue(t_res["ok"])
+        tid = t_res["id"]
+
+        # Simulate active worker process
+        mock_proc = MagicMock()
+        mock_proc.pid = 99991
+        _active_workers[tid] = mock_proc
+
+        # Update metadata to include session
+        import json, time
+        from dashboard.db import get_db_conn
+        now = int(time.time())
+        with get_db_conn() as conn:
+            conn.cursor().execute(
+                "UPDATE tasks SET metadata = ? WHERE id = ?",
+                (json.dumps({"worker_pid": 99991, "session_id": "sess-test-stop-123", "sessions": [{"session_id": "sess-test-stop-123", "status": "ongoing", "started_at": now}]}), tid)
+            )
+            conn.commit()
+
+        with patch("dispatcher.terminate_worker_process") as mock_term:
+            res = stop_task_session(tid)
+            self.assertTrue(res["ok"])
+            self.assertTrue(res["stopped"])
+            self.assertEqual(res["status"], "blocked")
+            self.assertNotIn(tid, _active_workers)
+            mock_term.assert_called()
+
+        # Check task state is now blocked and session is aborted
+        t_data = get_task(tid)["task"]
+        self.assertEqual(t_data["status"], "blocked")
+        meta = t_data["metadata"] if isinstance(t_data["metadata"], dict) else json.loads(t_data["metadata"])
+        self.assertNotIn("worker_pid", meta)
+        self.assertEqual(meta["blocked_reason"], "AI session stopped by user")
+        self.assertEqual(meta["sessions"][0]["status"], "aborted")
+
+        # Now test stopping via session_id
+        # Re-set session to ongoing
+        with get_db_conn() as conn:
+            conn.cursor().execute(
+                "UPDATE tasks SET status = 'running', metadata = ? WHERE id = ?",
+                (json.dumps({"worker_pid": 99992, "session_id": "sess-by-id-999", "sessions": [{"session_id": "sess-by-id-999", "status": "ongoing", "started_at": now}]}), tid)
+            )
+            conn.commit()
+
+        mock_proc2 = MagicMock()
+        mock_proc2.pid = 99992
+        _active_workers[tid] = mock_proc2
+
+        with patch("dispatcher.terminate_worker_process") as mock_term2:
+            s_res = stop_session("sess-by-id-999")
+            self.assertTrue(s_res["ok"])
+            self.assertTrue(s_res["stopped"])
+            mock_term2.assert_called()
+
+        t_data2 = get_task(tid)["task"]
+        self.assertEqual(t_data2["status"], "blocked")
+
 
 if __name__ == "__main__":
     unittest.main()
+

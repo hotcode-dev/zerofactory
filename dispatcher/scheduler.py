@@ -149,6 +149,8 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             break
                         task_id = str(row["id"])
                         assignee = normalize_assignee(row["assignee"] or "zf-builder")
+                        if assignee == "human":
+                            continue
                         title = row["title"] or ""
                         description = row["description"] or ""
                         priority = row["priority"] or "P2"
@@ -354,7 +356,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     if meta.get("permanently_blocked") or row["status"] == "running":
                                         continue
 
-                                    if assignee != "zf-reviewer" and row["status"] in ("done", "blocked"):
+                                    if assignee not in ("zf-reviewer", "human") and row["status"] in ("done", "blocked"):
                                         pass
                                     elif mergeable == "CONFLICTING":
                                         task_meta = {}
@@ -485,18 +487,18 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                             _disp._remove_worktree(workspace_path, repo_path)
                                             new_title = title if "[Human Review]" in title else f"{title} [Human Review]"
                                             cursor.execute(
-                                                "UPDATE tasks SET title = ?, status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                                "UPDATE tasks SET title = ?, assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
                                                 (new_title, json.dumps(task_meta), now, task_id)
                                             )
                                             cursor.execute(
-                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved PR; task blocked awaiting human merge', ?)",
+                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved PR; task assigned to human awaiting merge', ?)",
                                                 (task_id, now)
                                             )
                                             continue
                             except Exception as e:
                                 _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
 
-                        if assignee != "zf-reviewer" and (not row["pr_url"] or row["status"] in ("done", "blocked")):
+                        if assignee not in ("zf-reviewer", "human") and (not row["pr_url"] or row["status"] in ("done", "blocked")):
                             if meta.get("permanently_blocked") or meta.get("last_worker_failure"):
                                 continue
 

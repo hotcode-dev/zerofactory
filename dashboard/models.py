@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 try:
     from ..paths import (  # type: ignore
+        HUMAN,
         PROFILE_MAP,
         UNASSIGNED,
         VALID_ASSIGNEES,
@@ -22,6 +23,7 @@ try:
     )
 except (ImportError, ValueError):
     from paths import (  # type: ignore
+        HUMAN,
         PROFILE_MAP,
         UNASSIGNED,
         VALID_ASSIGNEES,

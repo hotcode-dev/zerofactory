@@ -392,6 +392,8 @@ def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = No
                         except Exception:
                             _meta = {}
                     _meta["blocked_reason"] = reason
+                    _meta = _d()._mark_task_session_ended(_meta, now, "aborted" if task_id else "timed_out")
+                    _meta.pop("worker_pid", None)
                     cursor.execute(
                         "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                         (json.dumps(_meta), now, t_id)

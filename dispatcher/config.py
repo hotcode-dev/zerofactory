@@ -50,6 +50,7 @@ except (ImportError, ValueError):
 
 try:
     from ..paths import (  # type: ignore
+        HUMAN,
         PROFILE_MAP,
         UNASSIGNED,
         normalize_assignee,
@@ -58,6 +59,7 @@ try:
 except (ImportError, ValueError):
     try:
         from .paths import (  # type: ignore
+            HUMAN,
             PROFILE_MAP,
             UNASSIGNED,
             normalize_assignee,
@@ -65,6 +67,7 @@ except (ImportError, ValueError):
         )
     except (ImportError, ValueError):
         from paths import (  # type: ignore
+            HUMAN,
             PROFILE_MAP,
             UNASSIGNED,
             normalize_assignee,

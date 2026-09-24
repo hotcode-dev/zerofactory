@@ -97,7 +97,7 @@ def spawn_agent_worker(
             f"   - In your review comment or summary, include a line: `GOTCHA: <rule>` or `CONVENTION: <rule>` (the system will auto-record it).\n"
             f"   - Or run: `hermes zerofactory memory add --board {board_slug or 'default'} \"<rule>\" --category <gotcha|convention>`.\n"
             f"5. When finished:\n"
-            f"   - If approved: run `hermes zerofactory block {task_id} --reason 'Human Review & Merge'` (the dispatcher will automatically move the task to 'done' once the PR is merged on GitHub; DO NOT mark done yourself).\n"
+            f"   - If approved: run `hermes zerofactory block {task_id} --reason 'Human Review & Merge'` (the task will be assigned to human for review/merge, and the dispatcher will automatically move the task to 'done' once merged on GitHub; DO NOT mark done yourself).\n"
             f"   - If changes are requested: run `hermes zerofactory block {task_id} --reason 'changes-requested'` (the dispatcher will route it back to the builder).\n"
             f"6. Provide a clear review summary.\n"
         )

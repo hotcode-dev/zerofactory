@@ -124,6 +124,7 @@
     const [sessionsAgentFilter, setSessionsAgentFilter] = useState("all");
     const [sessionsStatusFilter, setSessionsStatusFilter] = useState("all");
     const [sessionsSearchQuery, setSessionsSearchQuery] = useState("");
+    const [stoppingSessionId, setStoppingSessionId] = useState(null);
 
     // Agents & Memory View State
     const [agentsList, setAgentsList] = useState([]);
@@ -1284,6 +1285,39 @@
         loadTasksAndStats();
       } catch (err) {
         showToast("Failed to delete task: " + err.message, "error");
+      }
+    };
+
+    // Stop / Abort AI Session
+    const handleStopTaskSession = async (taskId, sessionId) => {
+      const targetLabel = taskId ? ("Task " + taskId) : ("Session " + (sessionId ? sessionId.slice(0, 8) + "..." : ""));
+      if (!window.confirm("Are you sure you want to stop this running AI session for " + targetLabel + "? The active worker process group will be safely terminated.")) {
+        return;
+      }
+      const stopKey = sessionId || taskId;
+      setStoppingSessionId(stopKey);
+      try {
+        let res;
+        if (taskId) {
+          res = await fetchJSON(API_BASE + "/tasks/" + encodeURIComponent(taskId) + "/stop", { method: "POST" });
+        } else if (sessionId) {
+          res = await fetchJSON(API_BASE + "/sessions/" + encodeURIComponent(sessionId) + "/stop", { method: "POST" });
+        }
+        showToast(res?.message || "AI session stopped successfully", "info");
+        loadTasksAndStats();
+        if (activeView === "sessions") {
+          loadSessions();
+        }
+        if (activeView === "agents") {
+          loadAgents();
+        }
+        if (selectedTask && (!taskId || selectedTask.id === taskId)) {
+          loadTaskDetails(selectedTask.id);
+        }
+      } catch (err) {
+        showToast("Failed to stop session: " + err.message, "error");
+      } finally {
+        setStoppingSessionId(null);
       }
     };
 
@@ -2858,17 +2892,36 @@
                     )
                   ),
                   React.createElement(
-                    "span",
-                    {
-                      className: "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border " +
-                        (isAgentActive
-                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                          : "bg-slate-800/80 text-slate-400 border-slate-700/60")
-                    },
-                    React.createElement("span", {
-                      className: "w-1.5 h-1.5 rounded-full " + (isAgentActive ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
-                    }),
-                    isAgentActive ? "Active" : "Idle"
+                    "div",
+                    { className: "flex items-center gap-1.5" },
+                    React.createElement(
+                      "span",
+                      {
+                        className: "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border " +
+                          (isAgentActive
+                            ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                            : "bg-slate-800/80 text-slate-400 border-slate-700/60")
+                      },
+                      React.createElement("span", {
+                        className: "w-1.5 h-1.5 rounded-full " + (isAgentActive ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500")
+                      }),
+                      isAgentActive ? "Active" : "Idle"
+                    ),
+                    isAgentActive && (currentTask || activeSession) && React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        disabled: stoppingSessionId === ((activeSession && activeSession.session_id) || (currentTask && currentTask.id)),
+                        className: "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/80 hover:border-rose-800/60 transition-colors shadow-xs cursor-pointer disabled:opacity-50",
+                        title: "Stop running AI session for this agent",
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          handleStopTaskSession(currentTask && currentTask.id, activeSession && activeSession.session_id);
+                        }
+                      },
+                      React.createElement("span", { className: "text-[9px]" }, "⏹"),
+                      React.createElement("span", null, stoppingSessionId === ((activeSession && activeSession.session_id) || (currentTask && currentTask.id)) ? "Stopping..." : "Stop")
+                    )
                   )
                 ),
                 // Role description
@@ -3167,6 +3220,21 @@
                             { className: "inline-flex items-center gap-1 text-[11px] font-medium " + (isOngoing ? "text-emerald-400" : "text-slate-400") },
                             React.createElement("span", { className: "w-2 h-2 rounded-full " + (isOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-500") }),
                             isOngoing ? "Ongoing" : "Finished"
+                          ),
+                          isOngoing && React.createElement(
+                            "button",
+                            {
+                              type: "button",
+                              disabled: stoppingSessionId === (s.session_id || matchedTaskId),
+                              className: "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/80 hover:border-rose-800/60 transition-colors shadow-xs cursor-pointer disabled:opacity-50",
+                              title: "Kill / Stop running AI session",
+                              onClick: (e) => {
+                                e.stopPropagation();
+                                handleStopTaskSession(matchedTaskId, s.session_id);
+                              }
+                            },
+                            React.createElement("span", { className: "text-[9px]" }, "⏹"),
+                            React.createElement("span", null, stoppingSessionId === (s.session_id || matchedTaskId) ? "Stopping..." : "Stop")
                           )
                         ),
                         React.createElement(
@@ -3973,6 +4041,7 @@
                           { id: "zf-builder", label: "ZF Builder" },
                           { id: "zf-reviewer", label: "ZF Reviewer" },
                           { id: "zf-orchestrator", label: "ZF Orchestrator" },
+                          { id: "human", label: "👤 Human" },
                           { id: "unassigned", label: "Unassigned" }
                         ].map((roleObj) =>
                           React.createElement(
@@ -4115,7 +4184,9 @@
                                       ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
                                       : t.assignee === "zf-orchestrator"
                                         ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
-                                        : "bg-slate-700/30 text-slate-400 border-slate-700/40";
+                                        : t.assignee === "human"
+                                          ? "bg-violet-500/15 text-violet-300 border-violet-500/30 font-semibold"
+                                          : "bg-slate-700/30 text-slate-400 border-slate-700/40";
 
                                   return React.createElement(
                                     "div",
@@ -4141,7 +4212,7 @@
                                         React.createElement(
                                           "span",
                                           { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass },
-                                          t.assignee || "unassigned"
+                                          t.assignee === "human" ? "👤 human" : (t.assignee || "unassigned")
                                         )
                                       )
                                     ),
@@ -4176,9 +4247,11 @@
                                     (t.status === "running" || (t.session_progress && (t.session_progress.has_session || (t.session_progress.sessions && t.session_progress.sessions.length > 0)))) &&
                                     (() => {
                                       const tSessions = (t.session_progress && t.session_progress.sessions) || [];
-                                      const ongoingSess = tSessions.find(s => s.status === "ongoing" || s.is_active) || (t.status === "running" ? t.session_progress : null);
-                                      const isRunning = t.status === "running" || Boolean(ongoingSess && (ongoingSess.status === "ongoing" || ongoingSess.is_active));
-                                      const activeAgent = (ongoingSess && ongoingSess.agent) || t.assignee;
+                                      const isRunning = t.status === "running";
+                                      const ongoingSess = isRunning
+                                        ? (tSessions.find(s => s.status === "ongoing" || s.is_active) || t.session_progress)
+                                        : null;
+                                      const activeAgent = t.assignee || (ongoingSess && ongoingSess.agent) || "zf-builder";
                                       const agentIcon = activeAgent === "zf-reviewer" ? "🔍" : activeAgent === "zf-orchestrator" ? "🧭" : "🔨";
                                       const agentLabel = activeAgent === "zf-reviewer" ? "Reviewing PR" : activeAgent === "zf-orchestrator" ? "Orchestrating" : "Implementing";
 
@@ -4200,8 +4273,26 @@
                                               (t.session_progress && t.session_progress.last_action ? " • " + t.session_progress.last_action : "")
                                             )
                                           ),
-                                          tSessions.length > 1 &&
-                                          React.createElement("span", { className: "text-[0.625rem] font-mono px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-300 shrink-0 border border-slate-700/60" }, tSessions.length + " sess")
+                                          React.createElement(
+                                            "div",
+                                            { className: "flex items-center gap-1 shrink-0" },
+                                            tSessions.length > 1 &&
+                                            React.createElement("span", { className: "text-[0.625rem] font-mono px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-300 border border-slate-700/60" }, tSessions.length + " sess"),
+                                            React.createElement(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                disabled: stoppingSessionId === ((ongoingSess && ongoingSess.session_id) || t.id),
+                                                className: "p-0.5 px-1 rounded text-[10px] font-semibold bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 hover:border-rose-800/60 transition-colors cursor-pointer shadow-xs disabled:opacity-50",
+                                                title: "Stop running AI session",
+                                                onClick: (e) => {
+                                                  e.stopPropagation();
+                                                  handleStopTaskSession(t.id, ongoingSess && ongoingSess.session_id);
+                                                }
+                                              },
+                                              stoppingSessionId === ((ongoingSess && ongoingSess.session_id) || t.id) ? "..." : "⏹"
+                                            )
+                                          )
                                         );
                                       }
 
@@ -4379,6 +4470,7 @@
                       },
                       [
                         { id: "unassigned", label: "Unassigned" },
+                        { id: "human", label: "👤 Human" },
                         { id: "zf-builder", label: "ZF Builder" },
                         { id: "zf-reviewer", label: "ZF Reviewer" },
                         { id: "zf-orchestrator", label: "ZF Orchestrator" }
@@ -4674,6 +4766,18 @@
                       React.createElement(
                         "div",
                         { className: "flex items-center gap-2" },
+                        isOngoing && React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            disabled: stoppingSessionId === (curSid || selectedTask.id),
+                            className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/80 hover:border-rose-800/60 transition-colors cursor-pointer shadow-xs disabled:opacity-50",
+                            onClick: () => handleStopTaskSession(selectedTask.id, curSid),
+                            title: "Safely terminate worker process group and stop session"
+                          },
+                          React.createElement("span", null, "⏹"),
+                          React.createElement("span", null, stoppingSessionId === (curSid || selectedTask.id) ? "Stopping..." : "Stop Session")
+                        ),
                         chatUrl &&
                         React.createElement(
                           "a",
@@ -4955,6 +5059,7 @@
                           onChange: (e) => setNewTaskForm({ ...newTaskForm, assignee: e.target.value })
                         },
                         React.createElement("option", { value: "unassigned" }, "Unassigned (Auto-Assign)"),
+                        React.createElement("option", { value: "human" }, "👤 Human (Manual Action)"),
                         React.createElement("option", { value: "zf-builder" }, "ZF Builder"),
                         React.createElement("option", { value: "zf-reviewer" }, "ZF Reviewer"),
                         React.createElement("option", { value: "zf-orchestrator" }, "ZF Orchestrator")
