@@ -16,7 +16,6 @@ if _PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, _PLUGIN_ROOT)
 
 from .config import (
-    DAILY_REPORT_PROMPT,
     DEFAULT_CRON_BASE_URL,
     DEFAULT_CRON_MODEL,
     DEFAULT_CRON_PROVIDER,
@@ -206,34 +205,6 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
             "display": "every 120m"
         },
         "schedule_display": "every 120m",
-        "enabled": True,
-        "state": "scheduled",
-        "paused_at": None,
-        "paused_reason": None,
-        "deliver": None,
-        "origin": "zerofactory",
-        "enabled_toolsets": ["terminal", "file"],
-        "workdir": None,
-        "profile": "zf-orchestrator"
-    },
-    "zero-factory-daily-report": {
-        "id": "zero-factory-daily-report",
-        "name": "Zero Factory daily report",
-        "prompt": DAILY_REPORT_PROMPT,
-        "skills": [],
-        "skill": None,
-        "model": DEFAULT_CRON_MODEL,
-        "provider": DEFAULT_CRON_PROVIDER,
-        "base_url": DEFAULT_CRON_BASE_URL,
-        "script": "zf_daily_stats.py",
-        "no_agent": False,
-        "context_from": ["zero-factory-task-queue-check"],
-        "schedule": {
-            "kind": "cron",
-            "expr": "0 9 * * *",
-            "display": "0 9 * * *"
-        },
-        "schedule_display": "0 9 * * *",
         "enabled": True,
         "state": "scheduled",
         "paused_at": None,

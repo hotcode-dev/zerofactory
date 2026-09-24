@@ -34,7 +34,7 @@ def _running_cron_llm_jobs() -> int:
     try:
         from cron.scheduler import get_running_job_ids  # type: ignore
         return sum(
-            job_id == "zero-factory-daily-report" or job_id.startswith("zero-factory-improvement-scanner-")
+            job_id.startswith("zero-factory-improvement-scanner-")
             for job_id in get_running_job_ids()
         )
     except (ImportError, RuntimeError):

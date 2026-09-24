@@ -272,7 +272,6 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         # Cron list
         out_cron = self._run_cli(["cron", "list"])
         self.assertIn("zero-factory-task-queue-check", out_cron)
-        self.assertIn("zero-factory-daily-report", out_cron)
 
         # Cron sync
         out_sync = self._run_cli(["cron", "sync"])

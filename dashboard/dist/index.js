@@ -1727,14 +1727,6 @@
           badge: "No-Agent Mode"
         },
         {
-          id: "zero-factory-daily-report",
-          title: "Daily Executive Briefing",
-          interval: "09:00 AM Daily (0 9 * * *)",
-          tokens: "Single-Turn Synthesis",
-          desc: "Pre-computes 24h task velocity, cycle time, blockers, and column distributions via scripts/zf_daily_stats.py. Injects metrics directly into prompt context, completing comprehensive reporting in a single turn without redundant tool queries.",
-          badge: "Single-Turn"
-        },
-        {
           id: "zero-factory-improvement-scanner-{slug}",
           title: "Codebase Improvement Scanner (zf-orchestrator)",
           interval: "On Idle (Active < 2)",

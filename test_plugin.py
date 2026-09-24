@@ -242,7 +242,6 @@ class TestZeroFactory(unittest.TestCase):
         self.assertTrue(data["ok"])
         job_ids = [j["id"] for j in data["jobs"]]
         self.assertIn("zero-factory-task-queue-check", job_ids)
-        self.assertIn("zero-factory-daily-report", job_ids)
         self.assertIn("zero-factory-improvement-scanner-hotcode-dev-zerofactory", job_ids)
         self.assertTrue(any(j.startswith("zero-factory-improvement-scanner") for j in job_ids))
 
@@ -993,13 +992,7 @@ class TestZeroFactory(unittest.TestCase):
         self.assertEqual(queue_job["script"], "zf_queue_watchdog.py")
         self.assertIsNone(queue_job["context_from"])
 
-        # 2. Daily report: Chained LLM Job
-        daily_job = CORE_CRON_JOBS["zero-factory-daily-report"]
-        self.assertFalse(daily_job["no_agent"])
-        self.assertEqual(daily_job["script"], "zf_daily_stats.py")
-        self.assertEqual(daily_job["context_from"], ["zero-factory-task-queue-check"])
-
-        # 3. Dynamic board scanner: Wake-gate + stateless (continuity=False to prevent context bloating)
+        # 2. Dynamic board scanner: Wake-gate + stateless (continuity=False to prevent context bloating)
         all_jobs = get_all_builtin_cron_jobs()
         scanner_jobs = [j for jid, j in all_jobs.items() if jid.startswith("zero-factory-improvement-scanner-")]
         self.assertGreater(len(scanner_jobs), 0)
@@ -2233,7 +2226,6 @@ class TestZeroFactory(unittest.TestCase):
                 scanner_jobs = [jid for jid in jobs if jid.startswith("zero-factory-improvement-scanner-")]
                 self.assertEqual(scanner_jobs, [])
                 self.assertIn("zero-factory-task-queue-check", jobs)
-                self.assertIn("zero-factory-daily-report", jobs)
             finally:
                 builtin_cron.get_db_path = orig_get_db_path
 
@@ -5099,7 +5091,9 @@ class TestZeroFactory(unittest.TestCase):
             db_file = Path(td) / "cron_capacity.db"
             with sqlite3.connect(db_file) as conn:
                 conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER)")
+                conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT, git_url TEXT, created_at INTEGER, updated_at INTEGER)")
                 conn.execute("CREATE TABLE tasks (id TEXT, status TEXT)")
+                conn.execute("INSERT INTO boards VALUES ('b1', '', '', 1, 1)")
                 conn.execute("INSERT INTO settings VALUES ('max_concurrent_llm_workers', '3', 1)")
                 for i in range(3):
                     conn.execute("INSERT INTO tasks VALUES (?, 'running')", (str(i),))
@@ -5108,7 +5102,7 @@ class TestZeroFactory(unittest.TestCase):
                  patch("builtin_cron.ensure_builtin_cron_jobs"), \
                  patch("builtin_cron.subprocess.Popen") as popen:
                 self.assertEqual(builtin_cron.tick_builtin_cron(), 0)
-                result = builtin_cron.trigger_builtin_job("zero-factory-daily-report")
+                result = builtin_cron.trigger_builtin_job("zero-factory-improvement-scanner-b1")
                 self.assertFalse(result["ok"])
                 self.assertIn("limit", result["error"].lower())
                 popen.assert_not_called()
@@ -5180,7 +5174,7 @@ class TestZeroFactory(unittest.TestCase):
             probe.close()
 
             jobs = {
-                "zero-factory-daily-report": {"no_agent": False, "profile": "zf-orchestrator"},
+                "zero-factory-improvement-scanner-b1": {"no_agent": False, "profile": "zf-orchestrator"},
                 "zero-factory-task-queue-check": {"no_agent": True, "profile": "zf-orchestrator"},
             }
             proc = MagicMock()
@@ -5196,7 +5190,7 @@ class TestZeroFactory(unittest.TestCase):
                 # LLM job while the dispatch cycle holds the lock: must return
                 # quickly (< 2s) with a clean success result, not stall ~3s.
                 started = time.monotonic()
-                result = builtin_cron.trigger_builtin_job("zero-factory-daily-report")
+                result = builtin_cron.trigger_builtin_job("zero-factory-improvement-scanner-b1")
                 elapsed = time.monotonic() - started
                 self.assertTrue(result["ok"], f"unexpected trigger result: {result}")
                 self.assertLess(
@@ -7754,9 +7748,9 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             self.assertFalse(j.get("custom_config"))
 
             # context_from: str is normalized to a single-element list
-            res = update_builtin_job(job_id, {"context_from": "zero-factory-daily-report"})
+            res = update_builtin_job(job_id, {"context_from": "upstream-job"})
             j = load_jobs_from_file(existing_target)[0]
-            self.assertEqual(j["context_from"], ["zero-factory-daily-report"])
+            self.assertEqual(j["context_from"], ["upstream-job"])
             self.assertTrue(j["custom_config"])
 
             # context_from: list passthrough with strip and empty-drop
@@ -7857,7 +7851,7 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             save_jobs_to_file(new_job_target, [])  # exists, but job absent
             res = update_builtin_job(job_id, {
                 "minutes": 30,
-                "context_from": "zero-factory-daily-report",
+                "context_from": "upstream-job",
                 "model": "new-model",
                 "enabled": False,
             })
@@ -7870,7 +7864,7 @@ class TestSharedProfilePathResolution(unittest.TestCase):
             # Same semantics as the existing-job branch
             self.assertEqual(j["schedule"], {"kind": "interval", "minutes": 30, "display": "every 30m"})
             self.assertEqual(j["schedule_display"], "every 30m")
-            self.assertEqual(j["context_from"], ["zero-factory-daily-report"])
+            self.assertEqual(j["context_from"], ["upstream-job"])
             self.assertEqual(j["model"], "new-model")
             self.assertFalse(j["enabled"])
             self.assertEqual(j["state"], "paused")

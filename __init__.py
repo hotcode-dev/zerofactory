@@ -141,7 +141,7 @@ def register(ctx: Any):
         cron_subs.add_parser("list", help="List built-in Zero Factory cron jobs and status")
         cron_subs.add_parser("sync", help="Synchronize built-in cron jobs with Hermes cron storage")
         p_cron_run = cron_subs.add_parser("run", help="Trigger immediate execution of a built-in cron job")
-        p_cron_run.add_argument("job_id", help="Job ID (e.g. zero-factory-task-queue-check, zero-factory-daily-report, zero-factory-improvement-scanner)")
+        p_cron_run.add_argument("job_id", help="Job ID (e.g. zero-factory-task-queue-check, zero-factory-improvement-scanner)")
 
         # board
         p_board = subparsers.add_parser("board", help="Manage Zero Factory Kanban boards")
