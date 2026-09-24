@@ -489,7 +489,13 @@ class TestZeroFactory(unittest.TestCase):
             ]
             save_jobs_to_file(test_jobs_path, initial_jobs)
 
+            import sqlite3
             import builtin_cron
+            conn = sqlite3.connect(str(builtin_cron.get_db_path()))
+            conn.execute("INSERT OR IGNORE INTO boards (slug, description, git_url, created_at, updated_at) VALUES ('hotcode-dev-zerofactory', 'Main', '', 1, 1)")
+            conn.commit()
+            conn.close()
+
             orig_targets = builtin_cron.get_target_jobs_files
             builtin_cron.get_target_jobs_files = lambda: [test_jobs_path]
             orig_cron_override = os.environ.get("ZEROFACTORY_CRON_JOBS_FILE")
@@ -2034,6 +2040,142 @@ class TestZeroFactory(unittest.TestCase):
                     os.environ.pop("ZEROFACTORY_SCANNER_STATE", None)
                 else:
                     os.environ["ZEROFACTORY_SCANNER_STATE"] = old_env
+
+    def test_25h_scanner_gate_capacity_driven_idle_scanning(self):
+        """Verify that when scan_on_idle is enabled, the scanner gate wakes the agent
+        on unchanged commits when active running workers < threshold and cooldown elapsed,
+        suppresses when pipeline is busy, and honors ZEROFACTORY_IDLE_SCAN.
+        """
+        import contextlib
+        import importlib.util
+        import io
+        import json
+        import sqlite3
+        import subprocess
+        import time
+
+        gate_path = (Path(__file__).resolve().parent / "scripts" / "zf_scanner_gate.py").resolve()
+
+        def git(repo, *args):
+            subprocess.run(
+                ["git", *args], cwd=str(repo), check=True,
+                capture_output=True, text=True,
+                env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+            )
+
+        def load_gate():
+            spec = importlib.util.spec_from_file_location("zf_scanner_gate_idle_test", gate_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            slug = "gate-idle-capacity-test"
+
+            repo = td / "repo"
+            repo.mkdir()
+            git(repo, "init", "-q")
+            git(repo, "config", "user.email", "scan@test.local")
+            git(repo, "config", "user.name", "Scan Test")
+            (repo / "main.py").write_text("x = 1\n", encoding="utf-8")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "initial commit")
+
+            db_path = td / "gate.db"
+            conn = sqlite3.connect(str(db_path))
+            conn.executescript(
+                "CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT DEFAULT '', git_url TEXT DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'triage', assignee TEXT NOT NULL DEFAULT 'unassigned', priority TEXT NOT NULL DEFAULT 'P2', workspace_path TEXT, workspace_kind TEXT DEFAULT 'worktree', branch_name TEXT, pr_url TEXT, tenant TEXT DEFAULT '', skills TEXT DEFAULT '[]', tags TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
+                "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);"
+                "INSERT INTO boards (slug, created_at, updated_at) VALUES ('gate-idle-capacity-test', 1, 1);"
+                "INSERT INTO settings (key, value, updated_at) VALUES ('scan_on_idle', 'true', 1);"
+                "INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', '2', 1);"
+                "INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', '15', 1);"
+                "INSERT INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', '2', 1);"
+            )
+            conn.commit()
+            conn.close()
+
+            state_path = td / "scanner_state.json"
+
+            def run_gate(extra_env=None):
+                mod = load_gate()
+                mod.STATE_FILE = state_path
+                old_argv, old_cwd = sys.argv, os.getcwd()
+                old_db = os.environ.get("ZEROFACTORY_DB")
+                old_state = os.environ.get("ZEROFACTORY_SCANNER_STATE")
+                sys.argv = [gate_path.name, slug]
+                os.chdir(str(repo))
+                os.environ["ZEROFACTORY_DB"] = str(db_path)
+                os.environ["ZEROFACTORY_SCANNER_STATE"] = str(state_path)
+                os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                os.environ.pop("ZEROFACTORY_IDLE_SCAN", None)
+                if extra_env:
+                    for k, v in extra_env.items():
+                        os.environ[k] = str(v)
+                buf = io.StringIO()
+                try:
+                    with contextlib.redirect_stdout(buf):
+                        rc = mod.run_scanner_gate()
+                finally:
+                    sys.argv = old_argv
+                    os.chdir(old_cwd)
+                    if old_db is None:
+                        os.environ.pop("ZEROFACTORY_DB", None)
+                    else:
+                        os.environ["ZEROFACTORY_DB"] = old_db
+                    if old_state is None:
+                        os.environ.pop("ZEROFACTORY_SCANNER_STATE", None)
+                    else:
+                        os.environ["ZEROFACTORY_SCANNER_STATE"] = old_state
+                    os.environ.pop("ZEROFACTORY_FORCE_SCAN", None)
+                    os.environ.pop("ZEROFACTORY_IDLE_SCAN", None)
+                    if extra_env:
+                        for k in extra_env:
+                            os.environ.pop(k, None)
+                out = buf.getvalue()
+                wake = json.loads(out.strip().splitlines()[-1])
+                return rc, wake.get("wakeAgent"), out
+
+            # 1. Baseline scan fires
+            rc1, wake1, out1 = run_gate()
+            self.assertEqual(rc1, 0)
+            self.assertTrue(wake1, "baseline scan must wake agent")
+
+            # 2. Advance time past 15m cooldown, simulate task_created=True on unchanged commit
+            st = json.loads(state_path.read_text(encoding="utf-8"))
+            st[slug]["last_scan_at"] = int(time.time()) - 1000
+            st[slug]["task_created"] = True
+            state_path.write_text(json.dumps(st), encoding="utf-8")
+
+            # Capacity-driven idle scan should wake agent because running=0 < 2 and todo=0 < 2
+            rc2, wake2, out2 = run_gate()
+            self.assertEqual(rc2, 0)
+            self.assertTrue(wake2, "capacity-driven idle scan must wake agent on unchanged commit when idle")
+            self.assertIn("CAPACITY_DRIVEN_SCAN_TRIGGERED", out2)
+
+            # 3. Running task count at or above threshold (2 >= 2) suppresses
+            conn = sqlite3.connect(str(db_path))
+            conn.execute("INSERT INTO tasks (id, board_slug, title, status, created_at, updated_at) VALUES ('t1', 'gate-idle-capacity-test', 'Task 1', 'running', 1, 1)")
+            conn.execute("INSERT INTO tasks (id, board_slug, title, status, created_at, updated_at) VALUES ('t2', 'gate-idle-capacity-test', 'Task 2', 'running', 1, 1)")
+            conn.commit()
+            conn.close()
+
+            st = json.loads(state_path.read_text(encoding="utf-8"))
+            st[slug]["last_scan_at"] = int(time.time()) - 1000
+            state_path.write_text(json.dumps(st), encoding="utf-8")
+
+            rc3, wake3, out3 = run_gate()
+            self.assertEqual(rc3, 0)
+            self.assertFalse(wake3, "busy pipeline must suppress idle scan")
+            self.assertIn("pipeline busy", out3)
+
+            # 4. Dispatcher-invoked scan with ZEROFACTORY_IDLE_SCAN=1 wakes agent
+            rc4, wake4, out4 = run_gate(extra_env={"ZEROFACTORY_IDLE_SCAN": "1"})
+            self.assertEqual(rc4, 0)
+            self.assertTrue(wake4, "dispatcher-authorized idle scan must wake agent")
+            self.assertIn("Dispatcher authorized idle scan", out4)
 
     def test_26_task_pr_url_and_stats(self):
         """Verify task pr_url persistence, update, and get_stats pr_count metric."""

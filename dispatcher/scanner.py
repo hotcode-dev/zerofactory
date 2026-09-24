@@ -119,6 +119,7 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
     if profile_home.exists():
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
+    env["ZEROFACTORY_IDLE_SCAN"] = "1"
     _d()._inject_langfuse_env(env)
 
     workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()

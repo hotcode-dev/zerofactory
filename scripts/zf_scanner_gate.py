@@ -272,6 +272,61 @@ def get_active_pipeline_task_count(board_slug: str) -> int:
         return 0
 
 
+def get_board_pipeline_capacity(board_slug: str) -> Dict[str, Any]:
+    """Get active pipeline task counts and capacity-driven idle scan settings."""
+    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    res = {
+        "running": 0,
+        "todo": 0,
+        "scan_on_idle": False,
+        "idle_scan_active_threshold": 2,
+        "idle_scan_cooldown_minutes": 15,
+        "idle_scan_max_todo": 2,
+    }
+    if not db_path.exists():
+        return res
+    try:
+        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT status, COUNT(*) FROM tasks WHERE board_slug = ? AND status IN ('running', 'todo') GROUP BY status",
+                (board_slug,)
+            )
+            for row in cursor.fetchall():
+                if row[0] == "running":
+                    res["running"] = int(row[1])
+                elif row[0] == "todo":
+                    res["todo"] = int(row[1])
+
+            try:
+                cursor.execute(
+                    "SELECT key, value FROM settings WHERE key IN ('scan_on_idle', 'idle_scan_active_threshold', 'idle_scan_cooldown_minutes', 'idle_scan_max_todo')"
+                )
+                for key, val in cursor.fetchall():
+                    if key == "scan_on_idle":
+                        res["scan_on_idle"] = str(val).strip().lower() in ("true", "1", "yes")
+                    elif key == "idle_scan_active_threshold":
+                        try:
+                            res["idle_scan_active_threshold"] = max(1, int(val))
+                        except ValueError:
+                            pass
+                    elif key == "idle_scan_cooldown_minutes":
+                        try:
+                            res["idle_scan_cooldown_minutes"] = max(1, int(val))
+                        except ValueError:
+                            pass
+                    elif key == "idle_scan_max_todo":
+                        try:
+                            res["idle_scan_max_todo"] = max(0, int(val))
+                        except ValueError:
+                            pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return res
+
+
 def get_existing_task_titles(board_slug: str) -> List[str]:
     db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
     if not db_path.exists():
@@ -377,10 +432,17 @@ def run_scanner_gate() -> int:
     # Fetch existing task titles to prevent duplicate suggestions
     existing_tasks = get_existing_task_titles(board_slug)
 
-    # Check for forced scan
+    # Fetch capacity-driven idle scan settings and task breakdown
+    capacity = get_board_pipeline_capacity(board_slug)
+
+    # Check for forced or idle scan
     force_scan = (
         "--force" in sys.argv
         or os.environ.get("ZEROFACTORY_FORCE_SCAN", "").lower() in ("1", "true", "yes")
+    )
+    is_idle_scan = (
+        "--idle" in sys.argv
+        or os.environ.get("ZEROFACTORY_IDLE_SCAN", "").lower() in ("1", "true", "yes")
     )
 
     state = load_state()
@@ -399,45 +461,81 @@ def run_scanner_gate() -> int:
     # Check for unchanged steady state
     if is_same_commit and is_same_status and not force_scan:
         if last_sha is not None:
-            # 1. If active in-flight tasks exist in the pipeline, definitely suppress (pipeline busy)
-            if active_in_flight > 0:
-                print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; active pipeline tasks ({active_in_flight}) on board '{board_slug}'.")
-                print(json.dumps({"wakeAgent": False}))
-                return 0
+            # Check for capacity-driven idle scanning
+            scan_on_idle = capacity.get("scan_on_idle", False)
+            running_count = capacity.get("running", 0)
+            todo_count = capacity.get("todo", 0)
+            idle_threshold = capacity.get("idle_scan_active_threshold", 2)
+            max_todo = capacity.get("idle_scan_max_todo", 2)
+            idle_cooldown = capacity.get("idle_scan_cooldown_minutes", 15) * 60
 
-            # 2. If no active tasks exist, check if a task was ever created for this commit
-            commit_time_str = _run_cmd(["git", "log", "-1", "--format=%ct", head_sha], cwd=repo_dir)
-            commit_time = int(commit_time_str) if commit_time_str.isdigit() else 0
-            has_tasks = board_state.get("task_created") or has_task_on_or_after_commit(board_slug, commit_time)
-
-            if has_tasks:
-                # Successfully produced tasks for this commit (which are now completed/closed)
-                print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; board '{board_slug}' already scanned.")
-                print(json.dumps({"wakeAgent": False}))
-                return 0
-
-            # 3. No tasks were produced on this commit (potential premature suppression due to failed scan).
-            # Enforce retry cooldown and max attempts before giving up.
-            last_scan_at = int(board_state.get("last_scan_at", 0))
-            attempts = int(board_state.get("scan_attempts", 1))
-
-            if (now_ts - last_scan_at) < retry_cooldown:
-                print(f"SCAN_COOLDOWN_ACTIVE: Scan on commit {head_sha[:8]} recently attempted ({now_ts - last_scan_at}s ago < {retry_cooldown}s); waiting for cooldown.")
-                print(json.dumps({"wakeAgent": False}))
-                return 0
-
-            if attempts >= max_attempts:
-                if (now_ts - last_scan_at) >= reset_cooldown:
-                    # Outage recovery: after reset_cooldown (default 2h), reset attempts and retry
-                    attempts = 0
-                    board_state["scan_attempts"] = 0
-                else:
-                    print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged after {attempts} scan attempts without tasks; suppressing.")
+            if is_idle_scan:
+                print(f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Dispatcher authorized idle scan for board '{board_slug}' (active running={running_count} < {idle_threshold}).")
+            elif scan_on_idle:
+                # Capacity-driven idle scanning is enabled in settings
+                if running_count >= idle_threshold or todo_count >= max_todo:
+                    print(
+                        f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged; "
+                        f"pipeline busy on board '{board_slug}' (running={running_count}/{idle_threshold}, todo={todo_count}/{max_todo})."
+                    )
                     print(json.dumps({"wakeAgent": False}))
                     return 0
 
-            # Allow retry! Fall through to wake the agent
-            print(f"RETRY_SCAN_TRIGGERED: Previous scan on {head_sha[:8]} produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan.")
+                last_scan_at = int(board_state.get("last_scan_at", 0))
+                if (now_ts - last_scan_at) < idle_cooldown:
+                    print(
+                        f"SCAN_COOLDOWN_ACTIVE: Board '{board_slug}' is idle (running={running_count} < {idle_threshold}), "
+                        f"but cooldown active ({now_ts - last_scan_at}s < {idle_cooldown}s); waiting."
+                    )
+                    print(json.dumps({"wakeAgent": False}))
+                    return 0
+
+                print(
+                    f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Board '{board_slug}' is idle "
+                    f"(running={running_count} < {idle_threshold}, todo={todo_count} < {max_todo}); "
+                    f"cooldown elapsed ({now_ts - last_scan_at}s >= {idle_cooldown}s). Initiating idle improvement scan."
+                )
+            else:
+                # Idle scanning disabled — fall back to strict commit-change suppression
+                # 1. If active in-flight tasks exist in the pipeline, definitely suppress (pipeline busy)
+                if active_in_flight > 0:
+                    print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; active pipeline tasks ({active_in_flight}) on board '{board_slug}'.")
+                    print(json.dumps({"wakeAgent": False}))
+                    return 0
+
+                # 2. If no active tasks exist, check if a task was ever created for this commit
+                commit_time_str = _run_cmd(["git", "log", "-1", "--format=%ct", head_sha], cwd=repo_dir)
+                commit_time = int(commit_time_str) if commit_time_str.isdigit() else 0
+                has_tasks = board_state.get("task_created") or has_task_on_or_after_commit(board_slug, commit_time)
+
+                if has_tasks:
+                    # Successfully produced tasks for this commit (which are now completed/closed)
+                    print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; board '{board_slug}' already scanned.")
+                    print(json.dumps({"wakeAgent": False}))
+                    return 0
+
+                # 3. No tasks were produced on this commit (potential premature suppression due to failed scan).
+                # Enforce retry cooldown and max attempts before giving up.
+                last_scan_at = int(board_state.get("last_scan_at", 0))
+                attempts = int(board_state.get("scan_attempts", 1))
+
+                if (now_ts - last_scan_at) < retry_cooldown:
+                    print(f"SCAN_COOLDOWN_ACTIVE: Scan on commit {head_sha[:8]} recently attempted ({now_ts - last_scan_at}s ago < {retry_cooldown}s); waiting for cooldown.")
+                    print(json.dumps({"wakeAgent": False}))
+                    return 0
+
+                if attempts >= max_attempts:
+                    if (now_ts - last_scan_at) >= reset_cooldown:
+                        # Outage recovery: after reset_cooldown (default 2h), reset attempts and retry
+                        attempts = 0
+                        board_state["scan_attempts"] = 0
+                    else:
+                        print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged after {attempts} scan attempts without tasks; suppressing.")
+                        print(json.dumps({"wakeAgent": False}))
+                        return 0
+
+                # Allow retry! Fall through to wake the agent
+                print(f"RETRY_SCAN_TRIGGERED: Previous scan on {head_sha[:8]} produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan.")
         else:
             print(f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has never been scanned. Initiating baseline codebase inspection.")
 
