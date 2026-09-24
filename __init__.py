@@ -172,6 +172,10 @@ def register(ctx: Any):
         p_mdel = mem_subs.add_parser("delete", help="Delete a memory by ID")
         p_mdel.add_argument("memory_id", help="Memory ID")
 
+        # migrate
+        p_mig = subparsers.add_parser("migrate", help="Run or inspect SQLite database migrations")
+        p_mig.add_argument("--status", action="store_true", help="Show migration status without applying")
+
     def cmd_run(args: argparse.Namespace):
         init_db()
         action = getattr(args, "action", "list")
@@ -438,6 +442,32 @@ def register(ctx: Any):
             elif m_act == "delete":
                 res = _delete_memory(args.memory_id)
                 print(f"✓ Deleted memory '{args.memory_id}'.")
+
+        elif action == "migrate":
+            try:
+                from .migrations.runner import get_migration_status, run_migrations
+            except Exception:
+                from migrations.runner import get_migration_status, run_migrations
+
+            if getattr(args, "status", False):
+                statuses = get_migration_status()
+                print("\nZero Factory Migration Status:")
+                print(f"  {'Version':<35} {'Status':<12} {'Applied At'}")
+                print("  " + "-" * 65)
+                for s in statuses:
+                    st = "Applied" if s["applied"] else "Pending"
+                    applied_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(s["applied_at"])) if s["applied_at"] else "-"
+                    print(f"  {s['version']:<35} {st:<12} {applied_str}")
+                print()
+            else:
+                applied = run_migrations()
+                if applied:
+                    print(f"\nSuccessfully applied {len(applied)} migration(s):")
+                    for m in applied:
+                        print(f"  ✓ {m}")
+                    print()
+                else:
+                    print("Database is up to date (no pending migrations).")
 
     if hasattr(ctx, "register_cli_command"):
         ctx.register_cli_command(

@@ -9539,6 +9539,68 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
         t_data2 = get_task(tid)["task"]
         self.assertEqual(t_data2["status"], "blocked")
 
+    def test_82_migrations_runner_lifecycle(self):
+        """Verify versioned SQLite migrations discovery, execution, status, and idempotency."""
+        import sqlite3
+        from migrations.runner import get_migration_status, run_migrations
+        with tempfile.TemporaryDirectory(prefix="zf-test-mig-") as td:
+            db_file = Path(td) / "test_lifecycle.db"
+
+            # 1. Before running migrations, all migrations should be reported as pending
+            statuses = get_migration_status(db_path=db_file)
+            self.assertGreaterEqual(len(statuses), 2)
+            self.assertTrue(all(not s["applied"] for s in statuses))
+
+            # 2. Run migrations
+            applied = run_migrations(db=db_file)
+            self.assertIn("0001_initial_schema", applied)
+            self.assertIn("0002_add_board_settings", applied)
+
+            # 3. Status should now report applied
+            statuses_after = get_migration_status(db_path=db_file)
+            self.assertTrue(all(s["applied"] for s in statuses_after))
+
+            # 4. Verify tables exist in DB
+            conn = sqlite3.connect(str(db_file))
+            tbls = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+            conn.close()
+            self.assertIn("boards", tbls)
+            self.assertIn("tasks", tbls)
+            self.assertIn("schema_migrations", tbls)
+
+            # 5. Subsequent run is idempotent
+            applied_again = run_migrations(db=db_file)
+            self.assertEqual(applied_again, [])
+
+    def test_83_migrations_custom_file_and_python_migration(self):
+        """Verify custom SQL and Python migrations with up() hook."""
+        import sqlite3
+        from migrations.runner import get_migration_status, run_migrations
+        with tempfile.TemporaryDirectory(prefix="zf-test-mig-custom-") as td:
+            td_path = Path(td)
+            db_file = td_path / "custom.db"
+            mig_dir = td_path / "mig_scripts"
+            mig_dir.mkdir()
+
+            (mig_dir / "0001_test_table.sql").write_text(
+                "CREATE TABLE test_items (id TEXT PRIMARY KEY, value INTEGER NOT NULL);",
+                encoding="utf-8"
+            )
+            (mig_dir / "0002_test_python.py").write_text(
+                "def up(conn):\n    conn.execute(\"INSERT INTO test_items (id, value) VALUES ('py1', 42)\")\n",
+                encoding="utf-8"
+            )
+
+            # Run migrations on custom dir
+            applied = run_migrations(db=db_file, migrations_dir=mig_dir)
+            self.assertEqual(applied, ["0001_test_table", "0002_test_python"])
+
+            # Verify python script executed
+            conn = sqlite3.connect(str(db_file))
+            row = conn.execute("SELECT id, value FROM test_items WHERE id = 'py1'").fetchone()
+            conn.close()
+            self.assertEqual(row, ("py1", 42))
+
 
 if __name__ == "__main__":
     unittest.main()
