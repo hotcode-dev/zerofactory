@@ -9141,6 +9141,8 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
     def _dispatcher_tree(cls):
         import ast
         src_path = Path(__file__).resolve().parent / "dispatcher.py"
+        if not src_path.exists():
+            src_path = Path(__file__).resolve().parent / "dispatcher" / "scheduler.py"
         return ast.parse(src_path.read_text(), filename=str(src_path))
 
     @staticmethod
@@ -9184,7 +9186,10 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
         "zf-reviewer"``) legitimately keeps that message; this asserts the
         commit/PR block no longer carries the orphaned copy.
         """
-        src = (Path(__file__).resolve().parent / "dispatcher.py").read_text()
+        src_path = Path(__file__).resolve().parent / "dispatcher.py"
+        if not src_path.exists():
+            src_path = Path(__file__).resolve().parent / "dispatcher" / "scheduler.py"
+        src = src_path.read_text()
         lines = src.splitlines()
 
         # Locate the author commit/PR block: the try whose generic handler
