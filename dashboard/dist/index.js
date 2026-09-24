@@ -3015,6 +3015,10 @@
                         ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
                         : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
 
+                      const lastUpdateTs = s.last_activity_at || s.last_updated_at || s.ended_at || s.started_at;
+                      const lastUpdateStr = lastUpdateTs ? timeAgo(lastUpdateTs) : null;
+                      const lastUpdateFull = lastUpdateTs ? new Date(lastUpdateTs * 1000).toLocaleString() : null;
+
                       // Extract task ID if present in cwd or title
                       let matchedTaskId = null;
                       const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
@@ -3057,9 +3061,26 @@
                               )
                             ),
                             React.createElement(
-                              "span",
-                              { className: "text-[11px] text-slate-400 font-mono" },
-                              s.duration_seconds ? `${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s` : timeAgo(s.ended_at || s.started_at)
+                              "div",
+                              { className: "flex flex-col shrink-0", style: { alignItems: "flex-end", textAlign: "right" } },
+                              lastUpdateStr
+                                ? React.createElement(
+                                    "span",
+                                    {
+                                      className: "text-[11px] text-slate-300 font-mono flex items-center gap-1",
+                                      title: lastUpdateFull ? ("Last updated: " + lastUpdateFull) : undefined
+                                    },
+                                    React.createElement("span", { className: "text-slate-500 text-[10px]" }, "Updated"),
+                                    lastUpdateStr
+                                  )
+                                : React.createElement("span", { className: "text-[11px] text-slate-400 font-mono" }, "No activity"),
+                              s.duration_seconds != null && s.duration_seconds > 0
+                                ? React.createElement(
+                                    "span",
+                                    { className: "text-[10px] text-slate-500 font-mono" },
+                                    `${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s duration`
+                                  )
+                                : null
                             )
                           ),
 
@@ -3125,9 +3146,22 @@
                           "div",
                           { className: "pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2" },
                           React.createElement(
-                            "code",
-                            { className: "text-[10px] text-slate-500 font-mono truncate max-w-[140px]", title: s.session_id },
-                            s.session_id
+                            "div",
+                            { className: "flex items-center gap-1.5 min-w-0" },
+                            React.createElement(
+                              "code",
+                              { className: "text-[10px] text-slate-500 font-mono truncate max-w-[120px]", title: s.session_id },
+                              s.session_id
+                            ),
+                            lastUpdateStr &&
+                              React.createElement(
+                                "span",
+                                {
+                                  className: "text-[10px] text-slate-500 font-mono shrink-0 flex items-center gap-1",
+                                  title: lastUpdateFull ? ("Last updated: " + lastUpdateFull) : undefined
+                                },
+                                "• updated " + lastUpdateStr
+                              )
                           ),
                           React.createElement(
                             "a",
@@ -3135,7 +3169,7 @@
                               href: chatUrl,
                               target: "_blank",
                               rel: "noreferrer",
-                              className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600/90 hover:bg-indigo-600 text-white transition-colors cursor-pointer shadow-xs"
+                              className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-600/90 hover:bg-indigo-600 text-white transition-colors cursor-pointer shadow-xs shrink-0"
                             },
                             "Open Chat ↗"
                           )
