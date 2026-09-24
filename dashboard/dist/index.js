@@ -4421,17 +4421,20 @@
               // Multi-Agent Execution Sessions Panel
               (() => {
                 const prog = selectedTask.session_progress;
-                const taskSessions = (prog && prog.sessions && prog.sessions.length > 0)
+                const rawSessions = (prog && prog.sessions && prog.sessions.length > 0)
                   ? prog.sessions
                   : (prog && prog.has_session ? [prog] : []);
 
-                if (taskSessions.length === 0 && selectedTask.status !== "running") return null;
+                if (rawSessions.length === 0 && selectedTask.status !== "running") return null;
+
+                // Reorder backward (latest session first)
+                const taskSessions = rawSessions.slice().reverse();
 
                 const activeIdx = (selectedSessionIdx >= 0 && selectedSessionIdx < taskSessions.length)
                   ? selectedSessionIdx
-                  : Math.max(0, taskSessions.findIndex(s => s.status === "ongoing" || s.is_active));
+                  : 0;
                 const currentSession = taskSessions[activeIdx] || prog || {};
-                const isOngoing = currentSession.status === "ongoing" || currentSession.is_active || (prog && prog.is_alive && activeIdx === taskSessions.length - 1);
+                const isOngoing = currentSession.status === "ongoing" || currentSession.is_active || (prog && prog.is_alive && (currentSession.session_id ? currentSession.session_id === prog.session_id : activeIdx === 0));
                 const agentRole = currentSession.agent || selectedTask.assignee || "zf-builder";
                 const agentIcon = currentSession.agent_icon || (agentRole === "zf-reviewer" ? "🔍" : agentRole === "zf-orchestrator" ? "🧭" : "🔨");
                 const agentLabel = currentSession.agent_label || (agentRole === "zf-reviewer" ? "Reviewer" : agentRole === "zf-orchestrator" ? "Orchestrator" : "Builder");
@@ -4458,9 +4461,10 @@
                         "div",
                         { className: "flex items-center gap-1.5 overflow-x-auto pb-1 zfk-scrollbar" },
                         taskSessions.map((s, sIdx) => {
-                          const sIsOngoing = s.status === "ongoing" || s.is_active;
+                          const sIsOngoing = s.status === "ongoing" || s.is_active || (prog && prog.is_alive && (s.session_id ? s.session_id === prog.session_id : sIdx === 0));
                           const sIcon = s.agent_icon || (s.agent === "zf-reviewer" ? "🔍" : s.agent === "zf-orchestrator" ? "🧭" : "🔨");
                           const sLabel = s.agent_label || (s.agent === "zf-reviewer" ? "Reviewer" : s.agent === "zf-orchestrator" ? "Orchestrator" : "Builder");
+                          const sNum = taskSessions.length - sIdx;
                           return React.createElement(
                             "button",
                             {
@@ -4473,7 +4477,7 @@
                               onClick: () => setSelectedSessionIdx(sIdx)
                             },
                             React.createElement("span", null, sIcon),
-                            React.createElement("span", null, sLabel + " #" + (sIdx + 1)),
+                            React.createElement("span", null, sLabel + " #" + sNum),
                             React.createElement("span", {
                               className: "w-2 h-2 rounded-full " + (sIsOngoing ? "bg-emerald-400 zfk-pulse-active" : "bg-slate-600")
                             }),
