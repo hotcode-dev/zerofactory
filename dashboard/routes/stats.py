@@ -42,7 +42,7 @@ def get_stats(board: Optional[str] = None):
         cursor = conn.cursor()
         base_filter = " WHERE 1=1"
         params: List[Any] = []
-        if board:
+        if board and board != "all":
             base_filter += " AND board_slug = ?"
             params.append(board)
 

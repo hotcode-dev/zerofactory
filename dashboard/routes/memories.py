@@ -43,12 +43,17 @@ def list_board_memories(
     init_db()
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT slug FROM boards WHERE slug = ?", (slug,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
+        if slug != "all":
+            cursor.execute("SELECT slug FROM boards WHERE slug = ?", (slug,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
 
-        query = "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE board_slug = ?"
-        params: List[Any] = [slug]
+        if slug == "all":
+            query = "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE 1=1"
+            params: List[Any] = []
+        else:
+            query = "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE board_slug = ?"
+            params: List[Any] = [slug]
 
         if category and category != "all":
             query += " AND category = ?"
@@ -108,9 +113,16 @@ def create_board_memory(slug: str, req: MemoryCreate):
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT slug FROM boards WHERE slug = ?", (slug,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
+        if slug == "all":
+            cursor.execute("SELECT slug FROM boards ORDER BY created_at ASC LIMIT 1")
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=400, detail="No board available to associate memory")
+            slug = row[0]
+        else:
+            cursor.execute("SELECT slug FROM boards WHERE slug = ?", (slug,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
 
         cursor.execute(
             """

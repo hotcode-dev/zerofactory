@@ -103,7 +103,7 @@ def list_tasks(
     query = "SELECT * FROM tasks WHERE 1=1"
     params: List[Any] = []
 
-    if board:
+    if board and board != "all":
         query += " AND board_slug = ?"
         params.append(board)
     if status:
@@ -206,10 +206,12 @@ def create_task(req: TaskCreate):
     with get_db_conn() as conn:
         cursor = conn.cursor()
         board_slug = req.board_slug
-        if board_slug:
+        if board_slug and board_slug != "all":
             cursor.execute("SELECT slug FROM boards WHERE slug = ?", (board_slug,))
             if not cursor.fetchone():
                 board_slug = None
+        else:
+            board_slug = None
         if not board_slug:
             cursor.execute("SELECT slug FROM boards ORDER BY created_at ASC LIMIT 1")
             row = cursor.fetchone()

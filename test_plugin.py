@@ -9389,6 +9389,8 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
         self.assertEqual(derive_board_code("hotcode-dev-zerofactory"), "hdz")
         self.assertEqual(derive_board_code("example-zerohub"), "ez")
         self.assertEqual(derive_board_code("zerofactory"), "z")
+        self.assertEqual(derive_board_code("my-team-project-service"), "tps")  # last 3 of mtps
+        self.assertEqual(derive_board_code("a-b-c-d-e"), "cde")                # last 3 of abcde
         self.assertEqual(derive_board_code(""), "")
         self.assertEqual(derive_board_code(None), "")
 
@@ -9412,6 +9414,44 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
         ))
         self.assertTrue(t_res["ok"])
         self.assertTrue(t_res["id"].startswith(f"zf-{derive_board_code(b_res['slug'])}-"))
+
+    def test_all_board_selection_routes(self):
+        """Verify that passing board='all' or slug='all' lists tasks, stats, and memories across all boards."""
+        from dashboard.routes.boards import create_board
+        from dashboard.routes.tasks import create_task, list_tasks
+        from dashboard.routes.stats import get_stats
+        from dashboard.routes.memories import list_board_memories, create_board_memory
+        from dashboard.models import BoardCreate, TaskCreate, MemoryCreate
+
+        # Setup two distinct boards
+        b1 = create_board(BoardCreate(git_url="https://github.com/org1/alpha-service.git"))
+        b2 = create_board(BoardCreate(git_url="https://github.com/org2/beta-service.git"))
+        self.assertTrue(b1["ok"])
+        self.assertTrue(b2["ok"])
+
+        # Create tasks on each board
+        t1 = create_task(TaskCreate(title="Alpha Task 1", board_slug=b1["slug"]))
+        t2 = create_task(TaskCreate(title="Beta Task 1", board_slug=b2["slug"]))
+        self.assertTrue(t1["ok"])
+        self.assertTrue(t2["ok"])
+
+        # Query tasks with board='all'
+        all_tasks_res = list_tasks(board="all")
+        self.assertTrue(all_tasks_res["ok"])
+        task_ids = [t["id"] for t in all_tasks_res["tasks"]]
+        self.assertIn(t1["id"], task_ids)
+        self.assertIn(t2["id"], task_ids)
+
+        # Query stats with board='all'
+        all_stats = get_stats(board="all")
+        self.assertGreaterEqual(all_stats["total"], 2)
+
+        # Query memories with slug='all'
+        create_board_memory(b1["slug"], MemoryCreate(content="Alpha memory rule", category="convention"))
+        create_board_memory(b2["slug"], MemoryCreate(content="Beta memory rule", category="gotcha"))
+        all_memories = list_board_memories(slug="all")
+        self.assertTrue(all_memories["ok"])
+        self.assertGreaterEqual(all_memories["total"], 2)
 
 
 if __name__ == "__main__":

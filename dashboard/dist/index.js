@@ -62,7 +62,7 @@
 
   function ZeroFactoryKanbanApp() {
     const [boards, setBoards] = useState([]);
-    const [selectedBoard, setSelectedBoard] = useState("");
+    const [selectedBoard, setSelectedBoard] = useState("all");
     const [tasks, setTasks] = useState([]);
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -304,8 +304,9 @@
           setBoards(data.boards);
           if (data.boards.length > 0) {
             setSelectedBoard(prev => {
+              if (prev === "all") return "all";
               if (prev && data.boards.some(b => b.slug === prev)) return prev;
-              return data.boards[0].slug;
+              return "all";
             });
           } else {
             setSelectedBoard("");
@@ -328,9 +329,10 @@
         return;
       }
       try {
+        const bParam = (boardSlug && boardSlug !== "all") ? ("?board=" + encodeURIComponent(boardSlug)) : "";
         const [tasksData, statsData] = await Promise.all([
-          fetchJSON(API_BASE + "/tasks?board=" + encodeURIComponent(boardSlug)),
-          fetchJSON(API_BASE + "/stats?board=" + encodeURIComponent(boardSlug))
+          fetchJSON(API_BASE + "/tasks" + bParam),
+          fetchJSON(API_BASE + "/stats" + bParam)
         ]);
 
         if (tasksData && tasksData.tasks) {
@@ -577,7 +579,11 @@
     // Load Board Memories
     const loadMemories = useCallback(async (slug) => {
       const bSlug = slug || selectedBoard;
-      if (!bSlug) return;
+      if (!bSlug || bSlug === "all") {
+        setBoardMemories([]);
+        setMemoriesTotal(0);
+        return;
+      }
       try {
         setMemoriesLoading(true);
         const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/memories?limit=100");
@@ -988,10 +994,15 @@
       if (!newTaskForm.title.trim()) return;
 
       try {
+        const chosenBoard = (newTaskForm.board_slug && newTaskForm.board_slug !== "all")
+          ? newTaskForm.board_slug
+          : (selectedBoard && selectedBoard !== "all"
+            ? selectedBoard
+            : (boards[0] ? boards[0].slug : ""));
         const payload = {
           ...newTaskForm,
           pr_url: newTaskForm.pr_url && newTaskForm.pr_url.trim() ? newTaskForm.pr_url.trim() : null,
-          board_slug: selectedBoard
+          board_slug: chosenBoard
         };
         const res = await fetchJSON(API_BASE + "/tasks", {
           method: "POST",
@@ -1007,7 +1018,8 @@
           priority: "P2",
           assignee: "unassigned",
           tenant: "",
-          pr_url: ""
+          pr_url: "",
+          board_slug: ""
         });
         loadTasksAndStats();
       } catch (err) {
@@ -1140,7 +1152,7 @@
 
     // Delete Board
     const handleDeleteBoard = async () => {
-      if (!selectedBoard) return;
+      if (!selectedBoard || selectedBoard === "all") return;
       if (
         !window.confirm(
           "Are you sure you want to delete board \"" + selectedBoard + "\"?\n\nThis will permanently remove the board, all its tasks, and clear its scheduled improvement scanner job."
@@ -1153,11 +1165,11 @@
         await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(selectedBoard), {
           method: "DELETE"
         });
-        showToast("Board '" + name + "' deleted and scanner cron cleared", "info");
+        showToast("Board '" + selectedBoard + "' deleted and scanner cron cleared", "info");
         setShowEditBoardModal(false);
         const remaining = boards.filter((b) => b.slug !== selectedBoard);
         setBoards(remaining);
-        const nextSlug = remaining.length > 0 ? remaining[0].slug : "";
+        const nextSlug = remaining.length > 0 ? "all" : "";
         setSelectedBoard(nextSlug);
         if (remaining.length === 0) {
           setTasks([]);
@@ -3584,6 +3596,11 @@
                     value: selectedBoard,
                     onChange: (e) => setSelectedBoard(e.target.value)
                   },
+                  React.createElement(
+                    "option",
+                    { key: "all", value: "all" },
+                    "All Boards (" + boards.reduce((acc, b) => acc + (b.task_count || 0), 0) + ")"
+                  ),
                   boards.map((b) =>
                     React.createElement(
                       "option",
@@ -3610,7 +3627,7 @@
               },
               "+ Board"
             ),
-            selectedBoard &&
+            selectedBoard && selectedBoard !== "all" &&
               React.createElement(
                 "button",
                 {
@@ -3682,6 +3699,10 @@
                   if (boards.length === 0) {
                     handleOpenNewBoardModal();
                   } else {
+                    setNewTaskForm(prev => ({
+                      ...prev,
+                      board_slug: (selectedBoard && selectedBoard !== "all") ? selectedBoard : (boards[0] ? boards[0].slug : "")
+                    }));
                     setShowNewTaskModal(true);
                   }
                 },
@@ -3995,6 +4016,7 @@
                       React.createElement(
                         "div",
                         { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" },
+                        selectedBoard === "all" && t.board_slug && React.createElement("span", { className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[0.625rem] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📋 " + t.board_slug),
                         t.tenant && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant),
                         t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name),
                         t.pr_url &&
@@ -4761,6 +4783,21 @@
                     onChange: (e) => setNewTaskForm({ ...newTaskForm, title: e.target.value })
                   })
                 ),
+                boards.length > 0 &&
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Board *"),
+                    React.createElement(
+                      "select",
+                      {
+                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
+                        value: newTaskForm.board_slug || (selectedBoard && selectedBoard !== "all" ? selectedBoard : (boards[0] ? boards[0].slug : "")),
+                        onChange: (e) => setNewTaskForm({ ...newTaskForm, board_slug: e.target.value })
+                      },
+                      boards.map(b => React.createElement("option", { key: b.slug, value: b.slug }, b.slug))
+                    )
+                  ),
                 React.createElement(
                   "div",
                   { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" },
