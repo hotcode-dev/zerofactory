@@ -5352,12 +5352,12 @@
           React.createElement(
             "div",
             {
-              className: "bg-slate-900 border border-slate-800 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden text-slate-100",
+              className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
               onClick: (e) => e.stopPropagation()
             },
             React.createElement(
               "div",
-              { className: "flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/50" },
+              { className: "flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/50 shrink-0" },
               React.createElement(
                 "div",
                 { className: "flex items-center gap-2.5" },
@@ -5380,10 +5380,13 @@
             ),
             React.createElement(
               "form",
-              { onSubmit: handleSaveSettings, className: "p-5 space-y-4 text-xs" },
+              { onSubmit: handleSaveSettings, className: "flex flex-col flex-1 overflow-hidden m-0" },
               React.createElement(
                 "div",
-                { className: "space-y-1.5" },
+                { className: "p-5 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1" },
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
                 React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Max Active Tasks (WIP Limit)"),
                 React.createElement("input", {
                   type: "number",
@@ -5659,9 +5662,10 @@
                   )
                 )
               ),
+              ),
               React.createElement(
                 "div",
-                { className: "flex justify-end gap-2.5 pt-3 border-t border-slate-800/80" },
+                { className: "flex items-center justify-end gap-2.5 px-5 py-3 border-t border-slate-800 bg-slate-900/50 shrink-0" },
                 React.createElement(
                   "button",
                   {
