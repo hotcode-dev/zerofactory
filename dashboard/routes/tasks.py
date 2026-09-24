@@ -197,15 +197,11 @@ def create_task(req: TaskCreate):
     """Create a new task."""
     init_db()
     now = int(time.time())
-    task_id = generate_task_id()
-
     status_val = req.status if req.status in VALID_STATUSES else "triage"
     priority_val = req.priority if req.priority in VALID_PRIORITIES else "P2"
     assignee_val = normalize_assignee(req.assignee) if req.assignee in VALID_ASSIGNEES else "unassigned"
     tags_json = json.dumps(req.tags or [])
     metadata_json = "{}"
-
-    branch_name = req.branch_name or f"task/{task_id}"
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -218,6 +214,9 @@ def create_task(req: TaskCreate):
             cursor.execute("SELECT slug FROM boards ORDER BY created_at ASC LIMIT 1")
             row = cursor.fetchone()
             board_slug = row[0] if row else ""
+
+        task_id = generate_task_id(board_slug)
+        branch_name = req.branch_name or f"task/{task_id}"
 
         dedup_key = req.dedup_key or compute_dedup_key(req.files, req.category)
         cursor.execute("""

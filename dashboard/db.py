@@ -377,8 +377,21 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return d
 
 
-def generate_task_id() -> str:
+def derive_board_code(board_slug: Optional[str]) -> str:
+    """Extract all first characters of the board slug (e.g. ntsd-sdp-compact -> nsc)."""
+    if not board_slug:
+        return ""
+    cleaned = board_slug.strip().lower()
+    parts = [p for p in re.split(r"[-_.\s]+", cleaned) if p]
+    code = "".join(p[0] for p in parts if p[0].isalnum())
+    return code
+
+
+def generate_task_id(board_slug: Optional[str] = None) -> str:
     token = secrets.token_hex(4)
+    code = derive_board_code(board_slug)
+    if code:
+        return f"zf-{code}-{token}"
     return f"zf-{token}"
 
 

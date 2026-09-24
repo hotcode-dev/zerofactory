@@ -9380,6 +9380,39 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
             "try-block (regression from PR #42 code move)",
         )
 
+    def test_board_code_task_id_generation(self):
+        """Verify task ID generation incorporates the initials of the board slug (e.g. ntsd-sdp-compact -> zf-nsc-...)."""
+        from dashboard.db import derive_board_code, generate_task_id
+
+        # 1. Verify derive_board_code
+        self.assertEqual(derive_board_code("ntsd-sdp-compact"), "nsc")
+        self.assertEqual(derive_board_code("hotcode-dev-zerofactory"), "hdz")
+        self.assertEqual(derive_board_code("example-zerohub"), "ez")
+        self.assertEqual(derive_board_code("zerofactory"), "z")
+        self.assertEqual(derive_board_code(""), "")
+        self.assertEqual(derive_board_code(None), "")
+
+        # 2. Verify generate_task_id
+        tid_nsc = generate_task_id("ntsd-sdp-compact")
+        self.assertTrue(tid_nsc.startswith("zf-nsc-"))
+        self.assertEqual(len(tid_nsc.split("-")), 3)
+
+        tid_hdz = generate_task_id("hotcode-dev-zerofactory")
+        self.assertTrue(tid_hdz.startswith("zf-hdz-"))
+
+        tid_none = generate_task_id(None)
+        self.assertTrue(tid_none.startswith("zf-"))
+
+        # 3. Verify create_task with board_slug produces board-coded ID
+        b_res = create_board(BoardCreate(git_url="https://github.com/ntsd/sdp-compact.git"))
+        self.assertTrue(b_res["ok"])
+        t_res = create_task(TaskCreate(
+            title="Board code task ID test",
+            board_slug=b_res["slug"]
+        ))
+        self.assertTrue(t_res["ok"])
+        self.assertTrue(t_res["id"].startswith(f"zf-{derive_board_code(b_res['slug'])}-"))
+
 
 if __name__ == "__main__":
     unittest.main()
