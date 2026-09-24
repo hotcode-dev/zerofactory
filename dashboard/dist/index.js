@@ -552,10 +552,12 @@
     }, [fetchJSON, activityLimit, activityPage, activityActorFilter, activityActionFilter, activityBoardFilter, activitySearchQuery]);
 
     // Load AI Agent Sessions
-    const loadSessions = useCallback(async () => {
+    const loadSessions = useCallback(async (boardSlug) => {
+      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
       try {
         setSessionsLoading(true);
-        const res = await fetchJSON(API_BASE + "/sessions?limit=100");
+        const query = (bSlug && bSlug !== "all") ? ("?limit=100&board_slug=" + encodeURIComponent(bSlug)) : "?limit=100";
+        const res = await fetchJSON(API_BASE + "/sessions" + query);
         if (res && res.ok && res.sessions) {
           setSessionsList(res.sessions);
         }
@@ -567,10 +569,12 @@
     }, [fetchJSON]);
 
     // Load 3 Specialist Agents Status
-    const loadAgents = useCallback(async () => {
+    const loadAgents = useCallback(async (boardSlug) => {
+      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
       try {
         setAgentsLoading(true);
-        const res = await fetchJSON(API_BASE + "/agents");
+        const query = (bSlug && bSlug !== "all") ? ("?board_slug=" + encodeURIComponent(bSlug)) : "";
+        const res = await fetchJSON(API_BASE + "/agents" + query);
         if (res && res.ok && res.agents) {
           setAgentsList(res.agents);
         }
@@ -715,7 +719,7 @@
       loadMemories("all");
     }, [loadBoards, loadTasksAndStats, loadCronJobs, loadSettings, loadActivities, loadSessions, loadAgents, loadMemories]);
 
-    // On selectedBoard change: reload board-specific data (tasks, stats, memories)
+    // On selectedBoard change: reload board-specific data (tasks, stats, memories, sessions, agents)
     const prevSelectedBoard = useRef(selectedBoard);
     useEffect(() => {
       if (prevSelectedBoard.current === selectedBoard) return;
@@ -723,20 +727,22 @@
       if (selectedBoard) {
         loadTasksAndStats(selectedBoard);
         loadMemories(selectedBoard);
+        loadSessions(selectedBoard);
+        loadAgents(selectedBoard);
       }
-    }, [selectedBoard, loadTasksAndStats, loadMemories]);
+    }, [selectedBoard, loadTasksAndStats, loadMemories, loadSessions, loadAgents]);
 
     // Fetch activities on view switch or filter changes
     useEffect(() => {
       if (activeView === "activities") {
         loadActivities();
       } else if (activeView === "sessions" || activeView === "agents") {
-        loadSessions();
-        loadAgents();
+        loadSessions(selectedBoard);
+        loadAgents(selectedBoard);
         loadMemories(selectedBoard);
         const sTimer = setInterval(() => {
-          loadSessions();
-          loadAgents();
+          loadSessions(selectedBoard);
+          loadAgents(selectedBoard);
         }, 3500);
         return () => clearInterval(sTimer);
       }
@@ -749,8 +755,8 @@
         if (activeView === "activities") {
           loadActivities();
         } else if (activeView === "sessions" || activeView === "agents") {
-          loadSessions();
-          loadAgents();
+          loadSessions(selectedBoard);
+          loadAgents(selectedBoard);
         } else {
           loadTasksAndStats(selectedBoard);
         }
@@ -1508,13 +1514,13 @@
                 "p",
                 { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" },
                 "When ",
-                React.createElement("code", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-reviewer"),
+                React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-reviewer"),
                 " requests changes during rounds 1-3 in ",
-                React.createElement("code", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "Running"),
+                React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "Running"),
                 ", the dispatcher routes the ticket back to ",
-                React.createElement("code", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"),
+                React.createElement("span", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"),
                 " assigned to ",
-                React.createElement("code", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "zf-builder"),
+                React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "zf-builder"),
                 ". The builder updates code and tests on the same branch, triggering automatic re-review."
               )
             ),
@@ -1528,11 +1534,11 @@
                 { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" },
                 React.createElement("strong", { className: "text-amber-200 font-bold" }, "Gate 1 (Plan Review): "),
                 "Humans can reprioritize or edit tickets in ",
-                React.createElement("code", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"),
+                React.createElement("span", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"),
                 " before dispatch. ",
                 React.createElement("strong", { className: "text-amber-200 font-bold" }, "Gate 2 (PR Merge): "),
                 "Agents NEVER auto-merge to main. Approved tasks pause in ",
-                React.createElement("code", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"),
+                React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"),
                 " until a human merges the PR on GitHub."
               )
             )
@@ -1620,7 +1626,7 @@
               "div",
               { className: "pt-3 text-xs font-mono text-slate-300 border-t border-slate-700/70 flex items-center justify-between gap-2" },
               React.createElement("span", { className: "font-semibold text-slate-300" }, "Profile Path:"),
-              React.createElement("code", { className: "text-indigo-200 bg-slate-950 px-2 py-1 rounded-md border border-slate-700 font-bold select-all" }, agent.dir)
+              React.createElement("span", { className: "text-indigo-200 bg-slate-950 px-2 py-1 rounded-md border border-slate-700 font-bold select-all" }, agent.dir)
             )
           )
         )
@@ -1680,7 +1686,7 @@
             "p",
             { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" },
             "Tasks with active GitHub Pull Requests display an interactive PR link badge directly on the Kanban card. You can click the badge to jump straight to the GitHub review interface. Use the toolbar's ",
-            React.createElement("code", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold text-xs" }, "Has PR"),
+            React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold text-xs" }, "Has PR"),
             " filter button to instantly isolate all tickets currently under active Pull Request review."
           )
         )
@@ -1785,7 +1791,7 @@
                 React.createElement(
                   "div",
                   { key: cIdx, className: "flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-slate-950 border border-slate-800 rounded-xl hover:border-slate-700 transition-colors shadow-xs" },
-                  React.createElement("code", { className: "text-xs font-mono text-emerald-300 font-bold bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 break-all select-all shadow-xs" }, item.cmd),
+                  React.createElement("span", { className: "text-xs font-mono text-emerald-300 font-bold bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 break-all select-all shadow-xs" }, item.cmd),
                   React.createElement("span", { className: "text-xs text-slate-200 font-medium shrink-0" }, item.desc)
                 )
               )
@@ -1829,7 +1835,7 @@
                 "div",
                 { className: "space-y-1.5" },
                 React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, job.title),
-                React.createElement("code", { className: "text-xs font-mono text-indigo-200 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-700 font-bold select-all inline-block" }, job.id)
+                React.createElement("span", { className: "text-xs font-mono text-indigo-200 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-700 font-bold select-all inline-block" }, job.id)
               ),
               React.createElement(
                 "div",
@@ -2690,8 +2696,25 @@
 
     // Render AI Agent Sessions Page
     const renderSessions = () => {
-      // Filter sessions
-      const effectiveSessions = sessionsList.filter((s) => {
+      // Filter sessions by selected board first (if not 'all')
+      const boardFilteredSessions = sessionsList.filter((s) => {
+        if (!selectedBoard || selectedBoard === "all") return true;
+        if (s.board_slug) return s.board_slug === selectedBoard;
+        const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
+        const taskMatch = cwdOrTitle.match(/zf-[a-z0-9_-]+/i) || cwdOrTitle.match(/task-[a-z0-9_-]+/i);
+        if (taskMatch) {
+          const tid = taskMatch[0].toLowerCase();
+          const matchedTask = tasks.find(t => t.id && t.id.toLowerCase() === tid);
+          if (matchedTask) {
+            return matchedTask.board_slug === selectedBoard;
+          }
+        }
+        if (s.cwd && (s.cwd.includes(selectedBoard) || s.cwd.includes(selectedBoard.replace(/-/g, "/")))) return true;
+        return false;
+      });
+
+      // Filter effective sessions by agent role, status, and search query
+      const effectiveSessions = boardFilteredSessions.filter((s) => {
         if (sessionsAgentFilter !== "all" && s.agent !== sessionsAgentFilter) return false;
         if (sessionsStatusFilter !== "all" && s.status !== sessionsStatusFilter) return false;
         if (sessionsSearchQuery.trim()) {
@@ -2701,7 +2724,8 @@
           const matchModel = (s.model || "").toLowerCase().includes(q);
           const matchAgent = (s.agent || "").toLowerCase().includes(q);
           const matchCwd = (s.cwd || "").toLowerCase().includes(q);
-          if (!matchTitle && !matchId && !matchModel && !matchAgent && !matchCwd) return false;
+          const matchBoard = (s.board_slug || "").toLowerCase().includes(q);
+          if (!matchTitle && !matchId && !matchModel && !matchAgent && !matchCwd && !matchBoard) return false;
         }
         return true;
       });
@@ -2720,16 +2744,16 @@
         return true;
       });
 
-      const totalCount = sessionsList.length;
-      const ongoingCount = sessionsList.filter(s => s.status === "ongoing" || s.is_active).length;
-      const finishedCount = sessionsList.filter(s => s.status === "finished" && !s.is_active).length;
-      const totalTurns = sessionsList.reduce((acc, s) => acc + (s.turn_count || 0), 0);
+      const totalCount = boardFilteredSessions.length;
+      const ongoingCount = boardFilteredSessions.filter(s => s.status === "ongoing" || s.is_active).length;
+      const finishedCount = boardFilteredSessions.filter(s => s.status === "finished" && !s.is_active).length;
+      const totalTurns = boardFilteredSessions.reduce((acc, s) => acc + (s.turn_count || 0), 0);
 
       const agentTabs = [
         { id: "all", label: "All Agents", count: totalCount },
-        { id: "zf-orchestrator", label: "🧭 Orchestrator", count: sessionsList.filter(s => s.agent === "zf-orchestrator").length },
-        { id: "zf-builder", label: "🔨 Builder", count: sessionsList.filter(s => s.agent === "zf-builder").length },
-        { id: "zf-reviewer", label: "🔍 Reviewer", count: sessionsList.filter(s => s.agent === "zf-reviewer").length },
+        { id: "zf-orchestrator", label: "🧭 Orchestrator", count: boardFilteredSessions.filter(s => s.agent === "zf-orchestrator").length },
+        { id: "zf-builder", label: "🔨 Builder", count: boardFilteredSessions.filter(s => s.agent === "zf-builder").length },
+        { id: "zf-reviewer", label: "🔍 Reviewer", count: boardFilteredSessions.filter(s => s.agent === "zf-reviewer").length },
       ];
 
       const memoryCategories = [
@@ -2781,8 +2805,8 @@
                 type: "button",
                 className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 shadow-sm transition-all cursor-pointer",
                 onClick: () => {
-                  loadSessions();
-                  loadAgents();
+                  loadSessions(selectedBoard);
+                  loadAgents(selectedBoard);
                   loadMemories(selectedBoard);
                 },
                 disabled: sessionsLoading || agentsLoading || memoriesLoading
@@ -2799,10 +2823,10 @@
           { className: "grid grid-cols-1 md:grid-cols-3 gap-4" },
           agentMetas.map((meta) => {
             const agentInfo = agentsList.find(a => a.name === meta.id) || {};
-            const isAgentActive = agentInfo.is_active || (agentInfo.status === "active") || sessionsList.some(s => s.agent === meta.id && (s.status === "ongoing" || s.is_active));
+            const agentSessions = boardFilteredSessions.filter(s => s.agent === meta.id);
+            const isAgentActive = agentInfo.is_active || (agentInfo.status === "active") || agentSessions.some(s => s.status === "ongoing" || s.is_active);
             const currentTask = agentInfo.current_task;
-            const activeSession = agentInfo.active_session || sessionsList.find(s => s.agent === meta.id && (s.status === "ongoing" || s.is_active));
-            const agentSessions = sessionsList.filter(s => s.agent === meta.id);
+            const activeSession = agentInfo.active_session || agentSessions.find(s => s.status === "ongoing" || s.is_active);
             const totalAgentTurns = agentSessions.reduce((acc, s) => acc + (s.turn_count || 0), 0);
 
             return React.createElement(
@@ -2924,13 +2948,16 @@
                 (agentsSubTab === "sessions"
                   ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
                   : "bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800/80"),
-              onClick: () => setAgentsSubTab("sessions")
+              onClick: () => {
+                setAgentsSubTab("sessions");
+                loadSessions(selectedBoard);
+              }
             },
             "💬 AI Sessions",
             React.createElement("span", {
               className: "px-2 py-0.5 rounded-full text-[10px] " +
                 (agentsSubTab === "sessions" ? "bg-indigo-700 text-indigo-100" : "bg-slate-800 text-slate-400")
-            }, sessionsList.length)
+            }, boardFilteredSessions.length)
           ),
           React.createElement(
             "button",
@@ -3071,7 +3098,9 @@
                 React.createElement("p", { className: "text-xs text-slate-500 mt-1 max-w-sm mx-auto" },
                   sessionsSearchQuery || sessionsAgentFilter !== "all" || sessionsStatusFilter !== "all"
                     ? "No sessions match your filter criteria. Try resetting the filters."
-                    : "AI agent sessions will appear here as Orchestrator, Builder, and Reviewer execute tasks."
+                    : (selectedBoard && selectedBoard !== "all")
+                      ? "No AI agent sessions recorded yet for board '" + selectedBoard + "'. Sessions will appear as tasks run on this board."
+                      : "AI agent sessions will appear here as Orchestrator, Builder, and Reviewer execute tasks."
                 )
               )
               : React.createElement(
@@ -3090,12 +3119,21 @@
                   const lastUpdateStr = lastUpdateTs ? timeAgo(lastUpdateTs) : null;
                   const lastUpdateFull = lastUpdateTs ? new Date(lastUpdateTs * 1000).toLocaleString() : null;
 
-                  // Extract task ID if present in cwd or title
-                  let matchedTaskId = null;
-                  const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
-                  const taskMatch = cwdOrTitle.match(/zf-[a-f0-9]{8}/i) || cwdOrTitle.match(/task-[a-z0-9_-]+/i);
-                  if (taskMatch) {
-                    matchedTaskId = taskMatch[0];
+                  // Extract task ID and board slug
+                  let matchedTaskId = s.task_id || null;
+                  let matchedBoardSlug = s.board_slug || null;
+                  if (!matchedTaskId) {
+                    const cwdOrTitle = (s.cwd || "") + " " + (s.title || "");
+                    const taskMatch = cwdOrTitle.match(/zf-[a-z0-9_-]+/i) || cwdOrTitle.match(/task-[a-z0-9_-]+/i);
+                    if (taskMatch) {
+                      matchedTaskId = taskMatch[0];
+                    }
+                  }
+                  if (!matchedBoardSlug && matchedTaskId) {
+                    const matchedTask = tasks.find(t => t.id && t.id.toLowerCase() === matchedTaskId.toLowerCase());
+                    if (matchedTask && matchedTask.board_slug) {
+                      matchedBoardSlug = matchedTask.board_slug;
+                    }
                   }
 
                   const basePath = (typeof window !== "undefined" && window.__HERMES_BASE_PATH__)
@@ -3164,18 +3202,31 @@
                           { className: "text-xs font-semibold text-white line-clamp-1", title: s.title },
                           s.title || "Autonomous Agent Execution"
                         ),
-                        matchedTaskId &&
                         React.createElement(
-                          "button",
-                          {
-                            type: "button",
-                            className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
-                            onClick: () => {
-                              setActiveView("board");
-                              loadTaskDetails(matchedTaskId);
-                            }
-                          },
-                          "📋 Task " + matchedTaskId + " ↗"
+                          "div",
+                          { className: "flex flex-wrap items-center gap-2 pt-0.5" },
+                          matchedTaskId &&
+                          React.createElement(
+                            "button",
+                            {
+                              type: "button",
+                              className: "inline-flex items-center gap-1 text-[11px] font-mono text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer",
+                              onClick: () => {
+                                setActiveView("board");
+                                loadTaskDetails(matchedTaskId);
+                              }
+                            },
+                            "📋 Task " + matchedTaskId + " ↗"
+                          ),
+                          (selectedBoard === "all" && matchedBoardSlug) &&
+                          React.createElement(
+                            "span",
+                            {
+                              className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[10px] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[150px]",
+                              title: "Board: " + matchedBoardSlug
+                            },
+                            "🏷️ " + matchedBoardSlug
+                          )
                         )
                       ),
 
@@ -3220,8 +3271,11 @@
                         "div",
                         { className: "flex items-center gap-1.5 min-w-0" },
                         React.createElement(
-                          "code",
-                          { className: "text-[10px] text-slate-500 font-mono truncate max-w-[120px]", title: s.session_id },
+                          "span",
+                          {
+                            className: "text-xs font-mono font-medium text-purple-300 truncate max-w-[160px]",
+                            title: "Session ID: " + s.session_id
+                          },
                           s.session_id
                         ),
                         lastUpdateStr &&
@@ -3671,6 +3725,8 @@
                       setSelectedBoard(val);
                       loadTasksAndStats(val);
                       loadMemories(val);
+                      loadSessions(val);
+                      loadAgents(val);
                     }
                   },
                   React.createElement(
@@ -4449,7 +4505,7 @@
                     className: "p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs space-y-1"
                   },
                   React.createElement("strong", { className: "text-emerald-400 font-semibold" }, "Git Worktree Active: "),
-                  React.createElement("code", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path),
+                  React.createElement("span", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path),
                   selectedTask.branch_name &&
                   React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)
                 ),
@@ -4604,7 +4660,16 @@
                           React.createElement("span", { className: "font-normal text-slate-400" }, isOngoing ? "• Ongoing Execution" : "• Finished Session")
                         ),
                         prog && prog.worker_pid && isOngoing &&
-                        React.createElement("span", { className: "text-[0.625rem] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60" }, "PID: " + prog.worker_pid)
+                        React.createElement("span", { className: "text-[0.625rem] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60" }, "PID: " + prog.worker_pid),
+                        curSid &&
+                        React.createElement(
+                          "span",
+                          {
+                            className: "text-xs font-mono font-medium text-purple-300 truncate max-w-[160px]",
+                            title: "Session ID: " + curSid
+                          },
+                          curSid
+                        )
                       ),
                       React.createElement(
                         "div",
@@ -4641,8 +4706,8 @@
                       React.createElement(
                         "div",
                         { className: "bg-slate-900/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col gap-1" },
-                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-slate-400" }, "Session ID"),
-                        React.createElement("code", { className: "text-xs font-medium text-indigo-300 font-mono truncate", title: curSid }, curSid || "Detecting...")
+                        React.createElement("span", { className: "text-[0.625rem] font-semibold uppercase tracking-wider text-purple-400/90" }, "Session ID"),
+                        React.createElement("span", { className: "text-xs font-medium text-purple-300 font-mono truncate", title: curSid }, curSid || "Detecting...")
                       ),
                       React.createElement(
                         "div",
@@ -5786,8 +5851,8 @@
                         "div",
                         {
                           className: `text-[11px] px-2.5 py-1.5 rounded border ${langfuseTestResult.ok
-                              ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
-                              : "bg-rose-950/40 border-rose-800/60 text-rose-300"
+                            ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                            : "bg-rose-950/40 border-rose-800/60 text-rose-300"
                             }`
                         },
                         (langfuseTestResult.ok ? "✓ " : "✕ ") + langfuseTestResult.message
@@ -5999,7 +6064,7 @@
                           React.createElement(
                             "div",
                             { className: "flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-400" },
-                            React.createElement("code", { className: "text-[10px] text-slate-400 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800" }, job.id),
+                            React.createElement("span", { className: "text-[10px] text-slate-400 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800" }, job.id),
                             boardSlug && React.createElement("span", { className: "text-amber-400/90 font-medium" }, "Board: " + boardSlug),
                             job.workdir && React.createElement("span", { className: "truncate max-w-xs text-slate-400 font-mono text-[10px]" }, "📁 " + job.workdir)
                           )

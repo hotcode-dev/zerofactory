@@ -42,13 +42,18 @@ router = APIRouter()
 
 
 @router.get("/sessions")
-def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, limit: int = 50):
+def list_all_sessions(
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+    board_slug: Optional[str] = None,
+    limit: int = 50
+):
     """List recent and active AI agent sessions across Orchestrator, Builder, and Reviewer."""
-    return _list_all_sessions(role=role, status=status, limit=limit)
+    return _list_all_sessions(role=role, status=status, board_slug=board_slug, limit=limit)
 
 
 @router.get("/agents")
-def get_agents_status():
+def get_agents_status(board_slug: Optional[str] = None):
     """Retrieve real-time status and telemetry for the 3 Zero Factory specialist agents."""
     init_db()
     profiles = ["zf-orchestrator", "zf-builder", "zf-reviewer"]
@@ -61,7 +66,12 @@ def get_agents_status():
     running_tasks_by_assignee = {}
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, title, board_slug, assignee, workspace_path, updated_at FROM tasks WHERE status = 'running'")
+        query = "SELECT id, title, board_slug, assignee, workspace_path, updated_at FROM tasks WHERE status = 'running'"
+        params = []
+        if board_slug and board_slug != "all":
+            query += " AND board_slug = ?"
+            params.append(board_slug)
+        cursor.execute(query, params)
         for row in cursor.fetchall():
             asgn = row[3]
             if asgn:

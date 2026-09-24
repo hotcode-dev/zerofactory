@@ -410,6 +410,20 @@ class TestZeroFactory(unittest.TestCase):
         resolved = resolve_task_all_sessions(task, backfill=False)
         self.assertTrue(all(s.get("agent") != "dispatcher" for s in resolved))
 
+        # 4. Verify /sessions and /agents support board_slug parameter
+        res_all = client.get("/api/plugins/zerofactory/sessions?board_slug=all")
+        self.assertEqual(res_all.status_code, 200)
+        self.assertTrue(res_all.json()["ok"])
+
+        res_filtered = client.get("/api/plugins/zerofactory/sessions?board_slug=nonexistent-board-slug")
+        self.assertEqual(res_filtered.status_code, 200)
+        self.assertTrue(res_filtered.json()["ok"])
+        self.assertEqual(len(res_filtered.json()["sessions"]), 0)
+
+        res_agents = client.get("/api/plugins/zerofactory/agents?board_slug=nonexistent-board-slug")
+        self.assertEqual(res_agents.status_code, 200)
+        self.assertTrue(res_agents.json()["ok"])
+
     def test_10_multi_file_fingerprint_deduplication(self):
         # 1. Create task with multiple files in random order
         t1 = create_task(TaskCreate(

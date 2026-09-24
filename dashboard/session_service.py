@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -473,14 +474,58 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
     }
 
 
-def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, limit: int = 50) -> Dict[str, Any]:
+def _load_task_board_map() -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], set[str]]:
+    """Loads a mapping of task_id -> task info, session_id -> task info, and known board_slugs."""
+    task_map: Dict[str, Dict[str, Any]] = {}
+    session_to_task: Dict[str, Dict[str, Any]] = {}
+    board_slugs: set[str] = set()
+    try:
+        with get_db_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, board_slug, title, workspace_path, metadata FROM tasks")
+            for row in cur.fetchall():
+                tid = str(row[0])
+                bslug = str(row[1] or "")
+                task_info = {
+                    "id": tid,
+                    "board_slug": bslug,
+                    "title": row[2] or "",
+                    "workspace_path": row[3] or "",
+                }
+                task_map[tid.lower()] = task_info
+                if bslug:
+                    board_slugs.add(bslug)
+                meta_raw = row[4]
+                if meta_raw:
+                    try:
+                        mdict = json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
+                        if isinstance(mdict, dict):
+                            msid = mdict.get("session_id")
+                            if msid:
+                                session_to_task[str(msid)] = task_info
+                    except Exception:
+                        pass
+    except Exception as e:
+        _log.debug("Error querying tasks for session-board mapping: %s", e)
+    return task_map, session_to_task, board_slugs
+
+
+def list_all_sessions(
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+    board_slug: Optional[str] = None,
+    limit: int = 50
+) -> Dict[str, Any]:
     """List recent and active AI agent sessions across Orchestrator, Builder, and Reviewer."""
     profiles = ["zf-builder", "zf-reviewer", "zf-orchestrator"]
     if role and role in profiles:
         profiles = [role]
 
+    task_map, session_to_task, known_board_slugs = _load_task_board_map()
+
     all_sessions = []
     seen = set()
+    fetch_limit = limit * 3 if (board_slug and board_slug != "all") else limit
     for prof in profiles:
         sdb = _resolve_profile_state_db_dyn(prof)
         if not sdb or not sdb.exists():
@@ -496,7 +541,7 @@ def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, 
                     FROM sessions
                     ORDER BY started_at DESC
                     LIMIT ?
-                """, (limit,)).fetchall()
+                """, (fetch_limit,)).fetchall()
                 for r in rows:
                     sid = str(r["id"])
                     if sid in seen:
@@ -507,8 +552,47 @@ def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, 
                     sess_status = "ongoing" if is_ongoing else "finished"
                     if status and sess_status != status:
                         continue
+
+                    # Correlate session with task and board
+                    matched_task_id = None
+                    matched_board_slug = None
+                    if sid in session_to_task:
+                        matched_task_id = session_to_task[sid]["id"]
+                        matched_board_slug = session_to_task[sid]["board_slug"]
+                    else:
+                        cwd_or_title = f"{r['cwd'] or ''} {r['title'] or ''}"
+                        m_task = re.search(r"\b(zf-[a-z0-9_-]+|task-[a-z0-9_-]+)\b", cwd_or_title, re.I)
+                        if m_task:
+                            tid_candidate = m_task.group(1).lower()
+                            if tid_candidate in task_map:
+                                matched_task_id = task_map[tid_candidate]["id"]
+                                matched_board_slug = task_map[tid_candidate]["board_slug"]
+                            else:
+                                matched_task_id = m_task.group(1)
+                        if not matched_board_slug:
+                            for b in known_board_slugs:
+                                if b in cwd_or_title or b.replace("-", "/") in cwd_or_title:
+                                    matched_board_slug = b
+                                    break
+
+                    if board_slug and board_slug != "all":
+                        if matched_board_slug != board_slug:
+                            continue
+
                     started = r["started_at"]
                     duration = max(0, int(ended - started)) if (started and ended) else (max(0, int(time.time() - started)) if (started and is_ongoing) else None)
+
+                    # Compute turn count if possible
+                    turn_cnt = r["tool_call_count"] or 0
+                    try:
+                        cur2 = conn.cursor()
+                        cur2.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'assistant'", (sid,))
+                        m_res = cur2.fetchone()
+                        if m_res and m_res[0]:
+                            turn_cnt = m_res[0]
+                    except Exception:
+                        pass
+
                     all_sessions.append({
                         "session_id": sid,
                         "agent": prof,
@@ -522,10 +606,13 @@ def list_all_sessions(role: Optional[str] = None, status: Optional[str] = None, 
                         "last_activity_at": r["last_activity_at"],
                         "duration_seconds": duration,
                         "message_count": r["message_count"] or 0,
+                        "turn_count": turn_cnt,
                         "tool_calls_count": r["tool_call_count"] or 0,
                         "title": r["title"],
                         "last_action": r["last_activity_description"] or "Active",
-                        "cwd": r["cwd"]
+                        "cwd": r["cwd"],
+                        "task_id": matched_task_id,
+                        "board_slug": matched_board_slug
                     })
         except Exception as e:
             _log.debug("Error reading sessions for profile %s: %s", prof, e)
