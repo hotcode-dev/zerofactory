@@ -1604,6 +1604,81 @@ def stop_task_worker(task_id: str, cursor: Optional[sqlite3.Cursor] = None) -> N
     terminate_worker_process(proc, pid)
 
 
+def _worker_log_path(task_id: str) -> Path:
+    """Return the canonical worker log path for a task."""
+    return Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
+
+
+def _compute_stuck_state(
+    now: int,
+    started_at: Any,
+    log_path: Path,
+    task_timeout: int,
+    inactivity_timeout: int,
+    is_dead: Optional[bool] = None,
+    pid: Optional[int] = None,
+) -> tuple:
+    """Compute (is_stuck, stuck_reason, idle_seconds) for a running task.
+
+    Single source of truth for stuck-worker semantics, shared by
+    ``reap_active_workers()`` (the only path that kills processes) and
+    ``check_stuck_tasks()`` (the reporting/manual-reap detector) so the two
+    gates can no longer drift apart.
+
+    The inactivity gate is a double gate: the task must have been running
+    longer than ``inactivity_timeout`` AND the idle time derived from the
+    worker log's mtime must also exceed it. A log mtime at or below
+    ``started_at`` is stale evidence (a log reused from a previous run, or a
+    spawn-time utime that the worker never wrote past), so it carries no
+    inactivity evidence at all and must not be converted into
+    ``idle_time = running_time`` — doing so would let a live, working worker
+    be killed purely from its running time.
+    """
+    running_seconds = max(0, now - int(started_at))
+
+    idle_seconds: Optional[int] = None
+    if log_path.exists():
+        try:
+            mtime = int(log_path.stat().st_mtime)
+            if mtime > int(started_at):
+                # Fresh mtime: authoritative evidence of the last write.
+                idle_seconds = max(0, now - mtime)
+        except Exception:
+            idle_seconds = None
+    # No fresh mtime (stale/absent log) -> no inactivity evidence; idle is
+    # left unmeasured and the inactivity gate below cannot fire.
+
+    is_stuck = False
+    stuck_reason = None
+
+    if is_dead is None and pid:
+        try:
+            os.kill(int(pid), 0)
+            is_dead = False
+        except (OSError, ValueError):
+            is_dead = True
+
+    if is_dead:
+        is_stuck = True
+        stuck_reason = f"Worker process PID {pid} is dead/not found"
+    elif running_seconds > task_timeout:
+        is_stuck = True
+        stuck_reason = f"Exceeded running timeout ({running_seconds}s > {task_timeout}s)"
+    elif (
+        running_seconds > inactivity_timeout
+        and idle_seconds is not None
+        and idle_seconds > inactivity_timeout
+    ):
+        is_stuck = True
+        stuck_reason = f"Worker inactive with no updates for {idle_seconds}s (limit {inactivity_timeout}s)"
+
+    # Report a display-safe int: a stale/absent log has no inactivity evidence,
+    # so surface the running time (not a None that would break CLI rendering),
+    # but the inactivity gate above has already refused to fire on it.
+    reported_idle = running_seconds if idle_seconds is None else idle_seconds
+    return is_stuck, stuck_reason, reported_idle
+
+
 def _mark_task_session_ended(meta: Dict[str, Any], now: int, final_status: str = "finished") -> Dict[str, Any]:
     """Helper to finalize the ongoing session entry in task metadata."""
     sessions = meta.get("sessions")
@@ -1754,29 +1829,21 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 reaped += 1
                 continue
 
-        # Check if running task exceeded overall timeout or inactivity threshold
+        # Check if running task exceeded overall timeout or inactivity threshold.
+        # Liveness was already established by the branches above (a dead/lost
+        # worker was reaped and `continue`d), so pass is_dead=False and let the
+        # shared helper apply the identical timeout + inactivity double-gate.
+        # This is the only path that kills processes, so a stale/absent log
+        # mtime must never alone convert running time into a stuck verdict.
         started_at = meta.get("started_at") or row["updated_at"] or row["created_at"] or now
-        running_time = max(0, now - int(started_at))
-
-        is_stuck = False
-        stuck_reason = ""
-
-        if running_time > task_timeout:
-            is_stuck = True
-            stuck_reason = f"Worker exceeded running timeout ({running_time}s > {task_timeout}s)"
-        elif running_time > inactivity_timeout:
-            idle_time = running_time
-            log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
-            if log_path.exists():
-                try:
-                    mtime = int(log_path.stat().st_mtime)
-                    if mtime > int(started_at):
-                        idle_time = max(0, now - mtime)
-                except Exception:
-                    pass
-            if idle_time > inactivity_timeout:
-                is_stuck = True
-                stuck_reason = f"Worker inactive with no updates for {idle_time}s (limit {inactivity_timeout}s)"
+        is_stuck, stuck_reason, _idle = _compute_stuck_state(
+            now=now,
+            started_at=started_at,
+            log_path=_worker_log_path(task_id),
+            task_timeout=task_timeout,
+            inactivity_timeout=inactivity_timeout,
+            is_dead=False,
+        )
 
         if is_stuck:
             terminate_worker_process(proc, pid)
@@ -1996,28 +2063,21 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
             started_at = meta.get("started_at") or row["updated_at"] or row["created_at"] or now
             running_seconds = max(0, now - int(started_at))
 
-            idle_seconds = running_seconds
-            log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
-            if log_path.exists():
-                try:
-                    mtime = int(log_path.stat().st_mtime)
-                    if mtime > int(started_at):
-                        idle_seconds = max(0, now - mtime)
-                except Exception:
-                    pass
-
-            is_stuck = False
-            stuck_reason = None
-
-            if not is_alive and pid:
-                is_stuck = True
-                stuck_reason = f"Worker process PID {pid} is dead/not found"
-            elif running_seconds > task_timeout:
-                is_stuck = True
-                stuck_reason = f"Exceeded running timeout ({running_seconds}s > {task_timeout}s)"
-            elif running_seconds > inactivity_timeout and idle_seconds > inactivity_timeout:
-                is_stuck = True
-                stuck_reason = f"Worker inactive with no updates for {idle_seconds}s (limit {inactivity_timeout}s)"
+            # Shared stuck-state helper: identical timeout + inactivity
+            # double-gate as reap_active_workers, so the reporting path and the
+            # process-killing path can no longer drift apart. Reuse the
+            # already-computed liveness (is_alive) — dead only when a pid is
+            # present and not alive, matching the original gate.
+            is_dead = (not is_alive) and bool(pid)
+            is_stuck, stuck_reason, idle_seconds = _compute_stuck_state(
+                now=now,
+                started_at=started_at,
+                log_path=_worker_log_path(task_id),
+                task_timeout=task_timeout,
+                inactivity_timeout=inactivity_timeout,
+                is_dead=is_dead,
+                pid=pid,
+            )
 
             results.append({
                 "id": task_id,
