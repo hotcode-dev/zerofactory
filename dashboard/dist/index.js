@@ -4041,7 +4041,7 @@
                           { id: "zf-builder", label: "ZF Builder" },
                           { id: "zf-reviewer", label: "ZF Reviewer" },
                           { id: "zf-orchestrator", label: "ZF Orchestrator" },
-                          { id: "human", label: "👤 Human" },
+                          { id: "human", label: "Human" },
                           { id: "unassigned", label: "Unassigned" }
                         ].map((roleObj) =>
                           React.createElement(
@@ -4212,7 +4212,7 @@
                                         React.createElement(
                                           "span",
                                           { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass },
-                                          t.assignee === "human" ? "👤 human" : (t.assignee || "unassigned")
+                                          t.assignee || "unassigned"
                                         )
                                       )
                                     ),
@@ -4470,7 +4470,7 @@
                       },
                       [
                         { id: "unassigned", label: "Unassigned" },
-                        { id: "human", label: "👤 Human" },
+                        { id: "human", label: "Human" },
                         { id: "zf-builder", label: "ZF Builder" },
                         { id: "zf-reviewer", label: "ZF Reviewer" },
                         { id: "zf-orchestrator", label: "ZF Orchestrator" }
@@ -5059,7 +5059,7 @@
                           onChange: (e) => setNewTaskForm({ ...newTaskForm, assignee: e.target.value })
                         },
                         React.createElement("option", { value: "unassigned" }, "Unassigned (Auto-Assign)"),
-                        React.createElement("option", { value: "human" }, "👤 Human (Manual Action)"),
+                        React.createElement("option", { value: "human" }, "Human (Manual Action)"),
                         React.createElement("option", { value: "zf-builder" }, "ZF Builder"),
                         React.createElement("option", { value: "zf-reviewer" }, "ZF Reviewer"),
                         React.createElement("option", { value: "zf-orchestrator" }, "ZF Orchestrator")
