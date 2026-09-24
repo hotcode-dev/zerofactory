@@ -3015,7 +3015,7 @@
                         ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
                         : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
 
-                      const lastUpdateTs = s.last_activity_at || s.last_updated_at || s.ended_at || s.started_at;
+                      const lastUpdateTs = s.last_activity_at || s.ended_at || s.started_at;
                       const lastUpdateStr = lastUpdateTs ? timeAgo(lastUpdateTs) : null;
                       const lastUpdateFull = lastUpdateTs ? new Date(lastUpdateTs * 1000).toLocaleString() : null;
 
