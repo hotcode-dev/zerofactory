@@ -1894,16 +1894,16 @@
           id: "zero-factory-task-queue-check",
           title: "Queue Health & Worker Watchdog",
           interval: "Every 120 minutes",
-          tokens: "0 Tokens on Idle",
-          desc: "Runs in Hermes No-Agent Mode using scripts/zf_queue_watchdog.py. Audits running tasks, reaps hung subprocesses, and automatically triggers run_dispatch_cycle(). When healthy, emits {'wakeAgent': false} to exit silently without calling any LLM.",
+          tokens: "0 Tokens (No-Agent Mode)",
+          desc: "Runs purely in Python using Hermes No-Agent Mode via scripts/zf_queue_watchdog.py (0 LLM tokens). Audits running tasks, reaps hung worker subprocesses, and automatically triggers run_dispatch_cycle().",
           badge: "No-Agent Mode"
         },
         {
           id: "zero-factory-improvement-scanner-{slug}",
           title: "Codebase Improvement Scanner (zf-orchestrator)",
           interval: "On Idle (Active < 2)",
-          tokens: "0 Tokens on Unchanged Codebase",
-          desc: "Executed autonomously by zf-orchestrator inside the codebase workdir using wake-gate change detection (scripts/zf_scanner_gate.py) with independent sessions (continuity: false). Compares Git HEAD against ~/.hermes/scanner_state.json. If unchanged, emits {'wakeAgent': false} (0 tokens). When changes, tech debt, or missing tests exist, zf-orchestrator analyzes the project and creates at most 1 actionable TODO task directly on the board assigned to zf-builder.",
+          tokens: "0 Tokens when Busy / Cooldown",
+          desc: "Executed autonomously by zf-orchestrator inside the codebase workdir with wake-gate change detection (scripts/zf_scanner_gate.py) and independent sessions (continuity: false). When the pipeline is busy (running >= 2 or todo >= 2) or during the 15-minute cooldown, it emits {'wakeAgent': false} (0 tokens). When the board is idle, it wakes zf-orchestrator to audit the codebase for tech debt, refactoring, or missing tests, creating at most 1 actionable TODO task on the board assigned to zf-builder.",
           badge: "Wake-Gate • zf-orchestrator"
         }
       ];

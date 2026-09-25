@@ -228,16 +228,15 @@ Zero Factory automatically captures repository insights during developer and age
 
 Zero Factory is architected to drastically minimize LLM token consumption (up to 95% token savings) across periodic automation cycles using Hermes Agent's **No-Agent Mode (`no_agent: true`)**, **Wake-Gate Change Detection (`{"wakeAgent": false}`)**, and **Chained LLM Jobs (`context_from`)**:
 
-- **`zero-factory-task-queue-check`** (every 120m, **0 Tokens**):
+- **`zero-factory-task-queue-check`** (every 120m, **0 Tokens - No-Agent Mode**):
   - Operates in Hermes **No-Agent Mode** via `scripts/zf_queue_watchdog.py`.
-  - Audits running workers, reaps stuck subprocesses, and runs `run_dispatch_cycle()`.
+  - Runs purely in Python (consuming 0 LLM tokens). Audits running workers, reaps stuck subprocesses, and triggers `run_dispatch_cycle()`.
   - When the queue is healthy, emits `{"wakeAgent": false}` to silently exit without invoking any LLM.
   - When bottlenecks occur, outputs a human-readable alert delivered to the operator.
-- **`zero-factory-improvement-scanner-{board_slug}`** (on idle when active workers < 2, **0 Tokens on Idle**):
+- **`zero-factory-improvement-scanner-{board_slug}`** (on idle when active workers < 2, **0 Tokens when Busy / Cooldown**):
   - Executed by **`zf-orchestrator`** inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py` with independent sessions (`continuity: false`).
-  - Compares Git HEAD and working tree changes against `~/.hermes/scanner_state.json`.
-  - Suppresses unchanged runs with `{"wakeAgent": false}` (0 LLM tokens).
-  - When new commits or changes exist, pre-digests git log, diffstat, truncated diffs, and existing open board tasks, waking `zf-orchestrator` to analyze the project and file at most 1 actionable `Todo` task assigned to `zf-builder`.
+  - Guards token consumption: when the board is busy (`running >= 2` or `todo >= 2`) or during the 15-minute cooldown, suppresses execution with `{"wakeAgent": false}` (0 LLM tokens).
+  - When the board has spare capacity, wakes `zf-orchestrator` with pre-digested git context, diffstat, and open board tasks to analyze the project for tech debt, refactoring, or missing tests and file at most 1 actionable `Todo` task assigned to `zf-builder`.
 
 ---
 
