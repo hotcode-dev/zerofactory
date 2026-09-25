@@ -1418,7 +1418,7 @@
         { className: "space-y-6" },
         React.createElement(
           "div",
-          { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" },
+          { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4" },
           [
             {
               icon: "🏭",
@@ -1433,12 +1433,17 @@
             {
               icon: "🔍",
               title: "3-Round Thematic Review",
-              desc: "Layered code review capping at 3 focused rounds (Correctness ➔ Performance ➔ Clean Code) before human merge."
+              desc: "Layered code review capping at 3 focused rounds (Correctness ➔ Performance ➔ Clean Code / Ponytail) before human merge."
             },
             {
               icon: "⚡",
               title: "Zero-Token Idle Watchdogs",
               desc: "Hermes No-Agent Mode and Wake-Gate suppress LLM queries when repositories are idle, saving up to 95% token usage."
+            },
+            {
+              icon: "🧠",
+              title: "Native Repository Memory",
+              desc: "Durable SQLite knowledge substrate (kanban.db) persisting conventions, gotchas, and architectural decisions."
             }
           ].map((card, idx) =>
             React.createElement(
@@ -1457,10 +1462,10 @@
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
             React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0 flex items-center gap-2" }, "🏗️ High-Level Architecture & Workflow"),
-            React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "6 Kanban States • 3 Specialist Agents • 2 HITL Gates")
+            React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "5 Kanban States • 3 Specialist Agents • HITL Merge Gate")
           ),
 
-          // 1. The 6 Kanban Status Columns
+          // 1. The 5 Kanban Status Columns
           React.createElement(
             "div",
             { className: "space-y-3" },
@@ -1512,31 +1517,31 @@
                 },
                 {
                   num: "3",
-                  title: "Worktree Setup",
-                  badge: "Ready",
-                  bcolor: "text-amber-100 bg-amber-900/90 border-amber-500/70",
-                  desc: "Dispatcher verifies WIP limits, allocates isolated Git worktree (~/git/<repo>-worktrees/<id>), and moves task to Ready."
+                  title: "Worktree & Launch",
+                  badge: "Running",
+                  bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
+                  desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/git/<repo>-worktrees/<task_id>), and spawns zf-builder in Running."
                 },
                 {
                   num: "4",
                   title: "Code & Tests",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "Dispatcher spawns zf-builder in Running. Agent implements features and writes automated tests in the dedicated worktree."
+                  desc: "zf-builder writes code and automated tests applying the Ponytail Ladder of Laziness (surgical diffs, stdlib-first, zero bloat)."
                 },
                 {
                   num: "5",
                   title: "PR Handoff",
-                  badge: "Ready",
-                  bcolor: "text-purple-100 bg-purple-900/90 border-purple-500/70",
-                  desc: "Dispatcher commits changes, opens GitHub PR via gh pr create, pre-digests git diff and commit log into reviewer context, and routes ticket to Ready assigned to zf-reviewer."
+                  badge: "Running",
+                  bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
+                  desc: "Dispatcher commits changes, opens GitHub PR via gh pr create, pre-digests git diff and commit log into reviewer context, and routes ticket to Running assigned to zf-reviewer."
                 },
                 {
                   num: "6",
                   title: "3-Round Review",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "zf-reviewer runs in Running across 3 rounds (Correctness ➔ Performance ➔ Clean Code). Requests changes or approves."
+                  desc: "zf-reviewer runs in Running across 3 rounds (Correctness ➔ Performance ➔ Ponytail / Clean Code). Requests changes or approves."
                 },
                 {
                   num: "7",
@@ -1597,14 +1602,14 @@
               React.createElement(
                 "p",
                 { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" },
-                React.createElement("strong", { className: "text-amber-200 font-bold" }, "Gate 1 (Plan Review): "),
-                "Humans can reprioritize or edit tickets in ",
-                React.createElement("span", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"),
-                " before dispatch. ",
-                React.createElement("strong", { className: "text-amber-200 font-bold" }, "Gate 2 (PR Merge): "),
-                "Agents NEVER auto-merge to main. Approved tasks pause in ",
+                React.createElement("strong", { className: "text-amber-200 font-bold" }, "PR Merge Gate: "),
+                "Agents NEVER auto-merge to main. Every task produces an isolated PR; approved tasks pause in ",
                 React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"),
-                " until a human merges the PR on GitHub."
+                " until a human reviews and merges on GitHub. ",
+                React.createElement("strong", { className: "text-amber-200 font-bold" }, "Escalation Gate: "),
+                "Crashed workers, timeouts, or unresolvable merge conflicts route directly to ",
+                React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"),
+                " for operator resolution."
               )
             )
           )
@@ -1621,7 +1626,8 @@
           badge: "Indigo Profile (Pipeline Overseer)",
           desc: "Supervises the Kanban board, decomposes user epics into atomic tickets, schedules task execution, and detects stuck or hung worker processes.",
           responsibilities: [
-            "Autonomously scans projects via Codebase Improvement Scanner to create actionable TODO tasks",
+            "Autonomously scans projects via Codebase Improvement Scanner using the Ponytail ladder of laziness to create actionable TODO tasks",
+            "Audits repository for dead code (Rung 1), stdlib reuse (Rungs 2-3), and anti-overengineering (Rung 6)",
             "Decomposes high-level goals into structured sub-tasks using kanban_decomposer",
             "Manages ticket handoffs between zf-builder and zf-reviewer",
             "Escalates unresolvable blockers and human reviews",
@@ -1634,10 +1640,11 @@
           title: "Senior Software Engineer",
           color: "border-emerald-500/70 bg-emerald-950/40 text-emerald-100",
           badge: "Emerald Profile (Senior Engineer)",
-          desc: "Takes tickets from Ready into Running, operating in an isolated Git worktree. Writes high-quality application code, adds comprehensive tests, and opens PRs.",
+          desc: "Takes tickets from Todo into Running, operating in an isolated Git worktree. Writes clean code and tests applying the Ponytail Ladder of Laziness.",
           responsibilities: [
             "Operates inside dedicated Git worktrees (~/git/<repo>-worktrees/<task_id>)",
             "Never touches or modifies the repository main branch directly",
+            "Applies the 7-rung Ladder of Laziness: stdlib-first, surgical diffs, and zero package bloat",
             "Writes production code alongside automated unit and integration tests",
             "Verifies test suites pass cleanly before committing and opening PRs"
           ],
@@ -1648,11 +1655,11 @@
           title: "Quality Gatekeeper",
           color: "border-purple-500/70 bg-purple-950/40 text-purple-100",
           badge: "Purple Profile (Quality Gatekeeper)",
-          desc: "Conducts thematic code reviews on open Pull Requests. Capped strictly at 3 progressive rounds to eliminate infinite agent review loops.",
+          desc: "Conducts thematic code reviews on open Pull Requests. Capped strictly at 3 progressive rounds (Correctness ➔ Performance ➔ Ponytail / Clean Code) to eliminate infinite loops.",
           responsibilities: [
             "Round 1: Testing coverage, edge cases, and functional correctness",
             "Round 2: Performance, memory overhead, and algorithmic efficiency",
-            "Round 3: Clean code, DRY principles, and architectural polish",
+            "Round 3: Clean code & Ponytail anti-overengineering review (vetoing dependency bloat, diff creep, and premature abstractions)",
             "Pre-digested git diff and commit history provided directly in prompt context to minimize redundant exploration",
             "Approves PR and moves task to Blocked [Human Review] for merge"
           ],
@@ -1778,8 +1785,8 @@
             React.createElement("div", { className: "text-white font-bold" }, "~/git/"),
             React.createElement("div", { className: "pl-4 text-slate-300" }, "├── my-repo/                    # Main repository (untouched by workers)"),
             React.createElement("div", { className: "pl-4 text-emerald-300 font-bold" }, "└── my-repo-worktrees/"),
-            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "├── zf-9a4f210b/            # Isolated worktree for Task 1"),
-            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "└── zf-b72e189c/            # Isolated worktree for Task 2")
+            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "├── zf-dev-9a4f210b/        # Isolated worktree for Task 1 (board code prefix)"),
+            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "└── zf-dev-b72e189c/        # Isolated worktree for Task 2 (board code prefix)")
           ),
           React.createElement(
             "div",
@@ -1827,16 +1834,26 @@
             { cmd: "hermes zerofactory board list", desc: "List all registered project boards" },
             { cmd: "hermes zerofactory board create <git_url>", desc: "Register a new codebase board from Remote Git URL" },
             { cmd: "hermes zerofactory board delete <slug>", desc: "Delete a board and clear its scheduled scanner job" },
+            { cmd: "hermes zerofactory stats", desc: "Show Kanban metrics, throughput, and worker states" },
             { cmd: "hermes zerofactory dispatch", desc: "Trigger an immediate autonomous dispatch cycle" },
             { cmd: "hermes zerofactory check-stuck", desc: "Audit and reap long-running or hung worker processes" }
           ]
         },
         {
-          group: "Cron Automation",
+          group: "Memory & Repository Knowledge",
+          cmds: [
+            { cmd: "hermes zerofactory memory list --board <slug>", desc: "List persistent repository memories and conventions" },
+            { cmd: "hermes zerofactory memory add --board <slug> \"<content>\" --category convention", desc: "Record a new repository memory or gotcha" },
+            { cmd: "hermes zerofactory memory delete <memory_id>", desc: "Delete a repository memory by ID" }
+          ]
+        },
+        {
+          group: "Cron Automation & Migrations",
           cmds: [
             { cmd: "hermes zerofactory cron list", desc: "View active periodic health & scanner jobs" },
             { cmd: "hermes zerofactory cron sync", desc: "Sync cron definitions with Hermes scheduler" },
-            { cmd: "hermes zerofactory cron run <job_id>", desc: "Execute a scheduled scanner or watchdog immediately" }
+            { cmd: "hermes zerofactory cron run <job_id>", desc: "Execute a scheduled scanner or watchdog immediately" },
+            { cmd: "hermes zerofactory migrate [--status]", desc: "Inspect or execute pending SQLite database migrations" }
           ]
         }
       ];
