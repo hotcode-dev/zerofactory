@@ -24,6 +24,7 @@ try:
         _mark_scanner_task_created,
         generate_task_id,
         get_db_conn,
+        get_db_path,
         init_db,
         log_activity,
         row_to_dict,
@@ -50,6 +51,7 @@ except (ImportError, ValueError):
         _mark_scanner_task_created,
         generate_task_id,
         get_db_conn,
+        get_db_path,
         init_db,
         log_activity,
         row_to_dict,
@@ -455,8 +457,13 @@ def stop_task_session(task_id: str, to_status: Optional[str] = "blocked"):
         active_sid = meta.get("session_id")
         meta["blocked_reason"] = "AI session stopped by user"
         meta.pop("worker_pid", None)
+        meta.pop("session_id", None)
+        meta.pop("started_at", None)
 
         target_status = to_status if to_status in ["blocked", "todo"] else "blocked"
+        if target_status == "todo":
+            meta.pop("blocked_reason", None)
+
         cursor.execute(
             "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
             (target_status, json.dumps(meta), now, task_id)
@@ -494,6 +501,18 @@ def stop_task_session(task_id: str, to_status: Optional[str] = "blocked"):
                             pass
 
         conn.commit()
+
+        if target_status == "todo" and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"):
+            try:
+                import threading
+                try:
+                    from ...dispatcher import run_dispatch_cycle
+                except Exception:
+                    from dispatcher import run_dispatch_cycle  # type: ignore
+                threading.Thread(target=run_dispatch_cycle, args=(get_db_path(),), daemon=True).start()
+            except Exception as _disp_err:
+                _log.debug("Async dispatch trigger after stop_task_session failed: %s", _disp_err)
+
         return {
             "ok": True,
             "stopped": True,
@@ -620,6 +639,32 @@ def move_task(task_id: str, req: TaskMove):
                 if "blocked_reason" in meta:
                     meta.pop("blocked_reason", None)
                     meta_updated = True
+            if req.status in ("todo", "ready"):
+                if "worker_pid" in meta or "session_id" in meta or "started_at" in meta:
+                    meta.pop("worker_pid", None)
+                    meta.pop("session_id", None)
+                    meta.pop("started_at", None)
+                    meta_updated = True
+                sessions = meta.get("sessions")
+                if isinstance(sessions, list):
+                    for s in sessions:
+                        if isinstance(s, dict) and s.get("status") == "ongoing":
+                            s["status"] = "aborted"
+                            if not s.get("ended_at"):
+                                s["ended_at"] = now
+                            meta_updated = True
+                try:
+                    from ...dispatcher import stop_task_worker
+                except Exception:
+                    try:
+                        from dispatcher import stop_task_worker  # type: ignore
+                    except Exception:
+                        stop_task_worker = None
+                if stop_task_worker is not None:
+                    try:
+                        stop_task_worker(task_id, cursor=cursor)
+                    except Exception as _stw_err:
+                        _log.debug("stop_task_worker in move_task failed for %s: %s", task_id, _stw_err)
 
         new_assignee = None
         if req.status == "blocked" and req.reason and ("human review" in req.reason.lower() or "human merge" in req.reason.lower()):
@@ -658,6 +703,17 @@ def move_task(task_id: str, req: TaskMove):
                     _log.debug("Auto-record memory from move_task reason failed: %s", _mem_err)
 
         conn.commit()
+
+        if req.status in ("todo", "ready") and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"):
+            try:
+                import threading
+                try:
+                    from ...dispatcher import run_dispatch_cycle
+                except Exception:
+                    from dispatcher import run_dispatch_cycle  # type: ignore
+                threading.Thread(target=run_dispatch_cycle, args=(get_db_path(),), daemon=True).start()
+            except Exception as _disp_err:
+                _log.debug("Async dispatch trigger after move_task failed: %s", _disp_err)
 
     return {"ok": True, "id": task_id, "status": req.status, "prev_status": prev_status, "reason": req.reason}
 

@@ -92,7 +92,7 @@ DISPATCH_INTERVAL_SECONDS = 30
 _dispatcher_thread: Optional[threading.Thread] = None
 
 # Global re-entrant lock ensuring only one dispatch cycle executes at any given time.
-_dispatcher_lock = threading.Lock()
+_dispatcher_lock = threading.RLock()
 
 # Registry tracking active worker subprocesses keyed by task_id: {task_id: subprocess.Popen}
 _active_workers: Dict[str, subprocess.Popen] = {}

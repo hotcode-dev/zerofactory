@@ -154,10 +154,20 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
     is_alive = False
     if worker_pid:
         try:
-            os.kill(int(worker_pid), 0)
-            is_alive = True
-        except (OSError, ValueError):
-            is_alive = False
+            from ..dispatcher import is_pid_alive
+        except Exception:
+            try:
+                from dispatcher import is_pid_alive  # type: ignore
+            except Exception:
+                is_pid_alive = None
+        if is_pid_alive is not None:
+            is_alive = is_pid_alive(int(worker_pid))
+        else:
+            try:
+                os.kill(int(worker_pid), 0)
+                is_alive = True
+            except (OSError, ValueError):
+                is_alive = False
 
     recorded_ids = set()
     if isinstance(recorded_sessions, list):

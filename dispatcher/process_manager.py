@@ -8,9 +8,41 @@ import signal
 import sqlite3
 import subprocess
 import time
+from pathlib import Path
 from typing import Optional
 
 from .config import _active_workers, _d, _log
+
+
+def is_pid_alive(pid: Optional[int]) -> bool:
+    """Check if a process exists and is actively running (not a zombie/defunct)."""
+    if not pid or not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, OSError, ValueError):
+        return False
+
+    # If it is a direct child of the current process, non-blocking waitpid can also reap it
+    try:
+        res_pid, _ = os.waitpid(pid, os.WNOHANG)
+        if res_pid == pid:
+            return False
+    except (ChildProcessError, OSError):
+        pass
+
+    # On Linux, inspect /proc/<pid>/status to ensure the process is not a zombie (defunct)
+    try:
+        status_path = Path(f"/proc/{pid}/status")
+        if status_path.exists():
+            for line in status_path.read_text().splitlines():
+                if line.startswith("State:"):
+                    # 'Z' indicates zombie state (e.g. "State:\tZ (zombie)")
+                    return "Z" not in line and "zombie" not in line.lower()
+    except Exception:
+        pass
+
+    return True
 
 
 def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int], grace: float = 2.0) -> None:
@@ -62,15 +94,21 @@ def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int]
     except ProcessLookupError:
         # Not a process group leader (e.g. spawned without start_new_session) or already dead.
         if pid:
-            try:
-                _os.kill(pid, 0)
-            except (ProcessLookupError, OSError):
+            if not _d().is_pid_alive(pid):
+                try:
+                    _os.waitpid(pid, os.WNOHANG)
+                except (ChildProcessError, OSError):
+                    pass
                 return
             try:
                 _os.kill(pid, signal.SIGTERM)
                 _time.sleep(min(grace, 0.5))
                 _os.kill(pid, signal.SIGKILL)
             except OSError:
+                pass
+            try:
+                _os.waitpid(pid, os.WNOHANG)
+            except (ChildProcessError, OSError):
                 pass
         return
     except OSError as e:
@@ -103,6 +141,11 @@ def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int]
         try:
             proc.wait(timeout=5)
         except Exception:
+            pass
+    elif pid and isinstance(pid, int):
+        try:
+            _os.waitpid(pid, os.WNOHANG)
+        except (ChildProcessError, OSError):
             pass
 
 

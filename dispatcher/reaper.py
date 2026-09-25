@@ -58,11 +58,7 @@ def _compute_stuck_state(
     stuck_reason = None
 
     if is_dead is None and pid:
-        try:
-            os.kill(int(pid), 0)
-            is_dead = False
-        except (OSError, ValueError):
-            is_dead = True
+        is_dead = not _d().is_pid_alive(int(pid))
 
     if is_dead:
         is_stuck = True
@@ -179,9 +175,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 reaped += 1
                 continue
         elif pid:
-            try:
-                os.kill(pid, 0)
-            except OSError:
+            if not _d().is_pid_alive(int(pid)):
                 meta = _d()._mark_task_session_ended(meta, now, "lost")
                 fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
                 meta["worker_failure_retries"] = fail_retries
@@ -313,11 +307,7 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
             if proc is not None:
                 is_alive = proc.poll() is None
             elif pid:
-                try:
-                    os.kill(int(pid), 0)
-                    is_alive = True
-                except (OSError, ValueError):
-                    is_alive = False
+                is_alive = _d().is_pid_alive(int(pid))
 
             started_at = meta.get("started_at") or row["updated_at"] or row["created_at"] or now
             running_seconds = max(0, now - int(started_at))

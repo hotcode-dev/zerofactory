@@ -59,8 +59,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
         lock_path = _disp.get_dispatcher_lock_path()
         lock_fd: Optional[int] = None
         try:
-            lock_path.parent.mkdir(parents=True, exist_ok=True)
-            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o666)
+            lock_flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_CLOEXEC"):
+                lock_flags |= os.O_CLOEXEC
+            lock_fd = os.open(str(lock_path), lock_flags, 0o666)
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (BlockingIOError, OSError):
             if lock_fd is not None:

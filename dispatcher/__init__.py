@@ -115,6 +115,7 @@ from .github_pr import (
     is_reviewer_approval_comment,
 )
 from .process_manager import (
+    is_pid_alive,
     stop_task_worker,
     terminate_process_group,
     terminate_worker_process,
@@ -210,6 +211,7 @@ __all__ = [
     "format_task_comment_body",
     "is_reviewer_approval_comment",
     # Worker & Process
+    "is_pid_alive",
     "spawn_agent_worker",
     "terminate_process_group",
     "terminate_worker_process",

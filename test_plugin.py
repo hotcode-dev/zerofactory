@@ -9701,6 +9701,89 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
                 self.assertEqual(res_fail.status_code, 400)
                 self.assertIn("fatal: Repository not found", res_fail.json()["detail"])
 
+    def test_98_is_pid_alive_and_move_task_cleanup(self):
+        """Verify is_pid_alive detects zombie processes, _dispatcher_lock is re-entrant,
+        and move_task cleans worker_pid/sessions when moved to todo."""
+        from dispatcher import is_pid_alive, _dispatcher_lock
+        from unittest.mock import patch
+        import json
+        import threading
+        import time
+
+        # 1. Verify _dispatcher_lock is RLock (re-entrant)
+        self.assertIsInstance(_dispatcher_lock, type(threading.RLock()))
+        with _dispatcher_lock:
+            with _dispatcher_lock:
+                pass  # Must not deadlock
+
+        # 2. Verify is_pid_alive edge cases and zombie detection
+        self.assertFalse(is_pid_alive(None))
+        self.assertFalse(is_pid_alive(0))
+        self.assertFalse(is_pid_alive(-5))
+        self.assertFalse(is_pid_alive(9999999))  # Non-existent PID
+        self.assertTrue(is_pid_alive(os.getpid()))  # Current process is alive
+
+        # Mock zombie in /proc/<pid>/status
+        with patch("os.kill", return_value=None):
+            with patch("pathlib.Path.exists", return_value=True):
+                with patch("pathlib.Path.read_text", return_value="Name: hermes\nState:\tZ (zombie)\nTgid:\t12345\n"):
+                    self.assertFalse(is_pid_alive(12345))
+
+        # 3. Test move_task cleans worker_pid, sessions, and triggers dispatch
+        import tempfile
+        import sqlite3
+        from dashboard.routes.tasks import move_task
+        from dashboard.models import TaskMove
+        from dashboard.db import init_db
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            db_path = Path(tf.name)
+
+        try:
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_path)}):
+                init_db(force=True)
+                now = int(time.time())
+                with sqlite3.connect(str(db_path)) as conn:
+                    conn.execute("PRAGMA busy_timeout=5000;")
+                    meta = {
+                        "worker_pid": 12345,
+                        "session_id": "sess_test",
+                        "started_at": now - 100,
+                        "blocked_reason": "previous failure",
+                        "sessions": [
+                            {"session_id": "sess_test", "status": "ongoing", "started_at": now - 100, "ended_at": None}
+                        ]
+                    }
+                    conn.execute("""
+                        INSERT INTO tasks (id, title, status, assignee, priority, metadata, created_at, updated_at)
+                        VALUES ('t-cleanup', 'Test Cleanup', 'blocked', 'zf-builder', 'P1', ?, ?, ?)
+                    """, (json.dumps(meta), now - 100, now - 100))
+                    conn.commit()
+
+                with patch("dashboard.routes.tasks.get_db_path", return_value=db_path), \
+                     patch("dispatcher.process_manager.terminate_process_group"):
+                    req = TaskMove(status="todo", actor="user")
+                    res = move_task("t-cleanup", req)
+                    self.assertTrue(res["ok"])
+
+                with sqlite3.connect(str(db_path)) as conn:
+                    conn.row_factory = sqlite3.Row
+                    row = conn.execute("SELECT status, metadata FROM tasks WHERE id = 't-cleanup'").fetchone()
+                    self.assertEqual(row["status"], "todo")
+                    saved_meta = json.loads(row["metadata"])
+                    self.assertNotIn("worker_pid", saved_meta)
+                    self.assertNotIn("session_id", saved_meta)
+                    self.assertNotIn("started_at", saved_meta)
+                    self.assertNotIn("blocked_reason", saved_meta)
+                    self.assertEqual(saved_meta["sessions"][0]["status"], "aborted")
+                    self.assertIsNotNone(saved_meta["sessions"][0]["ended_at"])
+        finally:
+            if db_path.exists():
+                try:
+                    db_path.unlink()
+                except Exception:
+                    pass
+
 
 if __name__ == "__main__":
     unittest.main()
