@@ -155,15 +155,23 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
     root_model = get_root_model_config()
     res = {"created": [], "updated": [], "existing": []}
 
-    # Ensure orchestration skill is also available in root ~/.hermes/skills/
+    # Ensure all plugin skills are available in root ~/.hermes/skills/
     root_skills = hermes_home / "skills"
-    if skill_src.exists() and root_skills.exists():
-        root_skill_dst = root_skills / "zerofactory-orchestration"
-        if not root_skill_dst.exists() and not root_skill_dst.is_symlink():
-            try:
-                root_skill_dst.symlink_to(skill_src, target_is_directory=True)
-            except Exception:
-                pass
+    skills_dir = plugin_root / "skills"
+    if skills_dir.exists() and root_skills.exists():
+        for skill_dir in skills_dir.iterdir():
+            if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
+                dst = root_skills / skill_dir.name
+                if dst.is_symlink() and not dst.exists():
+                    try:
+                        dst.unlink()
+                    except Exception:
+                        pass
+                if not dst.exists() and not dst.is_symlink():
+                    try:
+                        dst.symlink_to(skill_dir, target_is_directory=True)
+                    except Exception:
+                        pass
 
     for role in ZF_PROFILES:
         target_dir = profiles_dir / role
@@ -209,14 +217,37 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
             except OSError:
                 pass
 
-        # 4. Link or copy orchestration skill
-        if skill_src.exists():
-            dest_skill = target_dir / "skills" / "zerofactory-orchestration"
-            if not dest_skill.exists():
-                try:
-                    dest_skill.symlink_to(skill_src, target_is_directory=True)
-                except Exception:
-                    shutil.copytree(skill_src, dest_skill, dirs_exist_ok=True)
+        # 4. Link or copy skills from plugin_root / "skills"
+        if skills_dir.exists():
+            profile_skills_dir = target_dir / "skills"
+            profile_skills_dir.mkdir(parents=True, exist_ok=True)
+            for skill_dir in skills_dir.iterdir():
+                if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
+                    sname = skill_dir.name
+                    # If a skill has a role prefix (e.g. zf-builder-), only link to that role
+                    if sname.startswith("zf-") and not sname.startswith(f"{role}-"):
+                        old_link = profile_skills_dir / sname
+                        if old_link.exists() or old_link.is_symlink():
+                            try:
+                                if old_link.is_symlink() or old_link.is_file():
+                                    old_link.unlink()
+                                elif old_link.is_dir():
+                                    shutil.rmtree(old_link)
+                            except Exception:
+                                pass
+                        continue
+
+                    dest_skill = profile_skills_dir / sname
+                    if dest_skill.is_symlink() and not dest_skill.exists():
+                        try:
+                            dest_skill.unlink()
+                        except Exception:
+                            pass
+                    if not dest_skill.exists() and not dest_skill.is_symlink():
+                        try:
+                            dest_skill.symlink_to(skill_dir, target_is_directory=True)
+                        except Exception:
+                            shutil.copytree(skill_dir, dest_skill, dirs_exist_ok=True)
 
         # 5. Ensure profile's plugins/ directory and symlinks exist
         prof_plugins = target_dir / "plugins"

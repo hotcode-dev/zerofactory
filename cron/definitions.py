@@ -55,7 +55,7 @@ Run: `hermes zerofactory list --board "{slug}"`
 3. **MISSING TESTS** — functions/classes without coverage that should have them
 4. **PERFORMANCE** — O(n²) patterns, redundant operations, memory leaks, unoptimized queries
 5. **DOCUMENTATION** — undocumented functions, stale README sections, missing inline comments, broken links
-6. **REFACTORING** — extract utility functions, improve naming, reduce cyclomatic complexity, remove dead code
+6. **REFACTORING & SIMPLIFICATION (Ponytail Ladder of Laziness)** — remove dead code/unused exports, eliminate single-caller wrapper layers, replace bespoke reimplementations with standard library functions, flatten nested complexity
 7. **SECURITY** — hardcoded secrets, unsanitized input, missing error handling, unsafe eval/exec usage
 8. **CONFIG** — missing .gitignore files, uncommitted config drift, stale dependencies
 

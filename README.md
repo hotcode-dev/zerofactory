@@ -30,6 +30,7 @@ graph TD
 | Pillar | Description |
 |---|---|
 | **24/7 Autonomous Factory** | Continuous agile iterations with rolling handoffs and parallel execution. |
+| **Anti-Overengineering & Simplicity** | Built-in Ponytail philosophy ("Ladder of Laziness"): favors standard libraries, minimal surgical diffs, dead code elimination, and zero speculative bloat across all roles. |
 | **Plugin-First Architecture** | Self-contained Hermes plugin with zero external Node.js or `hermes-profile-manager` dependencies. |
 | **Isolated Profiles** | Profiles are cleanly namespaced (`zf-orchestrator`, `zf-builder`, `zf-reviewer`) in `~/.hermes/profiles/` and never clash with personal user profiles. |
 | **Isolated Git Worktrees** | Every task runs in its own dedicated Git worktree (`~/git/<repo>-worktrees/<task_id>`). Agents never touch `main` directly. |
@@ -44,9 +45,9 @@ Zero Factory automatically provisions and maintains three specialized agent prof
 
 | Profile | Role | Core Responsibilities |
 |---|---|---|
-| **`zf-orchestrator`** | Pipeline Overseer | Manages the Kanban board, oversees goal decomposition, manages handoffs, and escalates blockers to human review. |
-| **`zf-builder`** | Senior Software Engineer | Writes clean code and tests, operates inside automated Git worktrees, and ships features rapidly. |
-| **`zf-reviewer`** | Quality Gatekeeper | Conducts thematic, capped 3-round code reviews on GitHub Pull Requests, verifying test adequacy, performance, and architecture. |
+| **`zf-orchestrator`** | Pipeline Overseer | Manages the Kanban board, oversees goal decomposition, autonomously scans repositories for tech debt using the Ponytail ladder of laziness, and escalates blockers. |
+| **`zf-builder`** | Senior Software Engineer | Writes clean code and tests using surgical, token-efficient diffs (Ponytail Ladder of Laziness), operates inside automated Git worktrees, and ships features rapidly. |
+| **`zf-reviewer`** | Quality Gatekeeper | Conducts thematic, capped 3-round code reviews on GitHub Pull Requests (Correctness → Performance → Clean Code / Ponytail), verifying test adequacy, performance, and architecture. |
 
 ---
 
@@ -264,7 +265,11 @@ zerofactory/
 │       ├── index.js             # React Kanban UI
 │       └── style.css            # Dark glassmorphic theme (committed build output)
 ├── skills/
-│   └── zerofactory-orchestration/  # Multi-agent coordination skill
+│   ├── zerofactory-orchestration/  # Multi-agent coordination skill
+│   ├── ponytail/                   # Canonical Ladder of Laziness (LADDER.md)
+│   ├── zf-builder-ponytail/        # Code authoring playbook (surgical diffs, stdlib-first)
+│   ├── zf-orchestrator-ponytail/   # Codebase audit playbook (dead code & tech debt scan)
+│   └── zf-reviewer-ponytail/       # PR gatekeeping playbook (diff bloat & dependency veto)
 └── templates/                   # Version-controlled profile templates
     ├── zf-orchestrator/
     ├── zf-builder/
