@@ -355,12 +355,14 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         )
                                         continue
 
-                                    if meta.get("permanently_blocked") or row["status"] == "running":
+                                    if meta.get("permanently_blocked") or row["status"] in ("running", "todo", "ready"):
                                         continue
 
                                     if assignee not in ("zf-reviewer", "human") and row["status"] in ("done", "blocked"):
                                         pass
                                     elif mergeable == "CONFLICTING":
+                                        if row["status"] not in ("blocked", "done") or assignee not in ("zf-reviewer", "human"):
+                                            continue
                                         task_meta = {}
                                         try:
                                             cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))

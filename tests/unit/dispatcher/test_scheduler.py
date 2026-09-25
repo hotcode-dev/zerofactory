@@ -177,3 +177,73 @@ def test_run_dispatch_cycle_promotes_todo_to_running(tmp_path: Path):
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT status FROM tasks WHERE id = 't-todo'").fetchone()
         assert row["status"] == "running"
+
+
+def test_run_dispatch_cycle_skips_pr_conflict_for_queued_or_builder_task(tmp_path: Path):
+    """PR conflict check must not burn retries for tasks already in todo/ready or assigned to builder."""
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+
+    now = 1000
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO tasks VALUES ('t-conf-todo', 'Feature [PR Conflict]', '', 'todo', 'zf-builder', 'P0', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/10', ?, ?)",
+            (str(tmp_path), now, now)
+        )
+        conn.commit()
+
+    lock_file = tmp_path / "dispatcher.lock"
+    import dispatcher
+
+    def fake_run(cmd, *args, **kwargs):
+        if "rev-parse" in cmd:
+            return MagicMock(returncode=0, stdout=str(tmp_path))
+        return MagicMock(returncode=0, stdout=json.dumps({"state": "OPEN", "mergeable": "CONFLICTING", "url": "https://github.com/foo/bar/pull/10"}))
+
+    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
+         patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": ""}), \
+         patch("dispatcher.resolve_task_repo_path", return_value=tmp_path), \
+         patch("dispatcher.scheduler.subprocess.run", side_effect=fake_run), \
+         patch.object(dispatcher, "_handle_pr_conflict_from_github") as mock_handle_conflict:
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+        mock_handle_conflict.assert_not_called()
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT metadata FROM tasks WHERE id = 't-conf-todo'").fetchone()
+        meta = json.loads(row["metadata"])
+        # Conflict retries must not have been incremented
+        assert meta.get("conflict_retries", 1) == 1
+
+
+def test_run_dispatch_cycle_routes_blocked_human_pr_conflict_to_builder(tmp_path: Path):
+    """A conflicting PR awaiting human review is routed to zf-builder for resolution."""
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+
+    now = 1000
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO tasks VALUES ('t-conf-blocked', 'Feature [Human Review]', '', 'blocked', 'human', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/20', ?, ?)",
+            (str(tmp_path), now, now)
+        )
+        conn.commit()
+
+    lock_file = tmp_path / "dispatcher.lock"
+    import dispatcher
+
+    def fake_run(cmd, *args, **kwargs):
+        if "rev-parse" in cmd:
+            return MagicMock(returncode=0, stdout=str(tmp_path))
+        return MagicMock(returncode=0, stdout=json.dumps({"state": "OPEN", "mergeable": "CONFLICTING", "url": "https://github.com/foo/bar/pull/20"}))
+
+    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
+         patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": ""}), \
+         patch("dispatcher.resolve_task_repo_path", return_value=tmp_path), \
+         patch("dispatcher.scheduler.subprocess.run", side_effect=fake_run), \
+         patch.object(dispatcher, "_handle_pr_conflict_from_github") as mock_handle_conflict:
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+        mock_handle_conflict.assert_called_once()
+
