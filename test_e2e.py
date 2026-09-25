@@ -764,7 +764,7 @@ class TestPluginAPIE2E(unittest.TestCase):
         shutil.rmtree(self.td, ignore_errors=True)
 
     def test_01_boards_api_crud_and_limits(self):
-        """Boards REST API: create, read, update max_concurrent_running, delete."""
+        """Boards REST API: create, read, update max_concurrent_running and target_branch, delete."""
         # Create
         res = client.post("/api/plugins/zerofactory/boards", json={
             "git_url": "https://github.com/my-org/api-service.git",
@@ -777,19 +777,23 @@ class TestPluginAPIE2E(unittest.TestCase):
         # List
         res_list = client.get("/api/plugins/zerofactory/boards")
         self.assertEqual(res_list.status_code, 200)
-        self.assertTrue(any(b["slug"] == slug for b in res_list.json()["boards"]))
+        created_b = next(b for b in res_list.json()["boards"] if b["slug"] == slug)
+        self.assertEqual(created_b["target_branch"], "")
 
-        # Patch max_concurrent_running
+        # Patch max_concurrent_running and target_branch
         res_patch = client.patch(f"/api/plugins/zerofactory/boards/{slug}", json={
-            "max_concurrent_running": 5
+            "max_concurrent_running": 5,
+            "target_branch": "develop"
         })
         self.assertEqual(res_patch.status_code, 200)
         self.assertTrue(res_patch.json()["ok"])
+        self.assertEqual(res_patch.json()["board"]["target_branch"], "develop")
 
         # Verify updated board
         boards = client.get("/api/plugins/zerofactory/boards").json()["boards"]
         target = next(b for b in boards if b["slug"] == slug)
         self.assertEqual(target["max_concurrent_running"], 5)
+        self.assertEqual(target["target_branch"], "develop")
 
         # Delete
         res_del = client.delete(f"/api/plugins/zerofactory/boards/{slug}")

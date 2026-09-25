@@ -4695,6 +4695,125 @@ class TestZeroFactory(unittest.TestCase):
             else:
                 os.environ["ZEROFACTORY_DB"] = old_db
 
+    def test_45b_board_target_branch_api_and_dispatcher(self):
+        """The per-board target_branch setting round-trips through create + update API,
+        defaults to '' on fresh boards and legacy rows, and is consumed by worktree
+        setup and scheduler PR creation."""
+        import subprocess
+        import sqlite3
+        import shutil
+        from unittest.mock import patch, MagicMock
+
+        # --- Fresh DB: column present, default '' ---
+        with get_db_conn() as conn:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(boards)").fetchall()]
+        self.assertIn("target_branch", cols, "boards table must expose target_branch")
+
+        # --- Create with an explicit value ---
+        res = create_board(BoardCreate(git_url="https://github.com/tb/explicit.git", target_branch="develop"))
+        self.assertTrue(res["ok"])
+        tb_board = next(b for b in list_boards()["boards"] if b["slug"] == "tb-explicit")
+        self.assertEqual(tb_board["target_branch"], "develop")
+
+        # --- Create with default (no value) -> '' ---
+        create_board(BoardCreate(git_url="https://github.com/tb/default.git"))
+        def_board = next(b for b in list_boards()["boards"] if b["slug"] == "tb-default")
+        self.assertEqual(def_board["target_branch"], "")
+
+        # --- Update via PATCH ---
+        res_up = client.patch("/api/plugins/zerofactory/boards/tb-explicit", json={"target_branch": "release/v1"})
+        self.assertEqual(res_up.status_code, 200)
+        self.assertTrue(res_up.json()["ok"])
+        self.assertEqual(res_up.json()["board"]["target_branch"], "release/v1")
+        after = next(b for b in list_boards()["boards"] if b["slug"] == "tb-explicit")
+        self.assertEqual(after["target_branch"], "release/v1")
+
+        # --- Dispatcher worktree setup & gh pr create base branch flag ---
+        import dispatcher
+        orig_skip_git = os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+        td2 = tempfile.mkdtemp(prefix="zf-tb-dispatch-")
+        try:
+            db_file = Path(td2) / "tb_test.db"
+            repo_dir = Path(td2) / "my_repo"
+            repo_dir.mkdir()
+            # Initialize git repo
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_dir), check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir), check=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_dir), check=True)
+            (repo_dir / "README.md").write_text("# Test Repo")
+            subprocess.run(["git", "add", "."], cwd=str(repo_dir), check=True, capture_output=True)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=str(repo_dir), check=True, capture_output=True)
+            # Create a develop branch
+            subprocess.run(["git", "branch", "develop"], cwd=str(repo_dir), check=True, capture_output=True)
+
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.row_factory = sqlite3.Row
+                from migrations.runner import run_migrations
+                run_migrations(db=db_file)
+                conn.execute(
+                    "INSERT INTO boards (slug, git_url, target_branch, created_at, updated_at) VALUES ('tb-board', ?, 'develop', 1, 1)",
+                    (str(repo_dir),)
+                )
+                conn.execute(
+                    "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) VALUES ('tb-task-1', 'tb-board', 'Test Task', 'todo', 'zf-builder', 'P1', 1, 1)"
+                )
+                conn.commit()
+
+                cur = conn.cursor()
+                # Test setup_worktree picks up develop branch from board
+                wt_path = dispatcher.setup_worktree(cur, "tb-task-1", "Test Task", "zf-builder", "", db_file, repo_path=repo_dir, board_slug="tb-board")
+                self.assertIsNotNone(wt_path)
+                self.assertTrue(Path(wt_path).exists())
+
+                # Test scheduler PR creation uses --base develop
+                conn.execute(
+                    "UPDATE tasks SET status = 'blocked', workspace_path = ? WHERE id = 'tb-task-1'",
+                    (wt_path,)
+                )
+                conn.commit()
+
+            gh_calls = []
+            orig_run = subprocess.run
+            def fake_run(cmd, *args, **kwargs):
+                if isinstance(cmd, list) and len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
+                    r = MagicMock()
+                    r.returncode = 0
+                    return r
+                if isinstance(cmd, list) and len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr":
+                    gh_calls.append(list(cmd))
+                    if cmd[2] == "view":
+                        res = MagicMock()
+                        res.returncode = 1
+                        res.stdout = ""
+                        res.stderr = "no pull requests found"
+                        return res
+                    elif cmd[2] == "create":
+                        res = MagicMock()
+                        res.returncode = 0
+                        res.stdout = "https://github.com/tb/explicit/pull/123\n"
+                        res.stderr = ""
+                        return res
+                return orig_run(cmd, *args, **kwargs)
+
+            with patch.dict(os.environ, {"ZEROFACTORY_LOCK_PATH": str(Path(td2) / "lock")}), \
+                 patch("subprocess.run", side_effect=fake_run), \
+                 patch("dispatcher.process_manager.terminate_worker_process"):
+                dispatcher.run_dispatch_cycle(db_file)
+
+            # Check that gh pr create was called with --base develop
+            pr_create_calls = [c for c in gh_calls if len(c) >= 3 and c[0] == "gh" and c[1] == "pr" and c[2] == "create"]
+            self.assertEqual(len(pr_create_calls), 1, f"Expected 1 gh pr create call, got {gh_calls}")
+            self.assertIn("--base", pr_create_calls[0])
+            base_idx = pr_create_calls[0].index("--base")
+            self.assertEqual(pr_create_calls[0][base_idx + 1], "develop")
+
+        finally:
+            shutil.rmtree(td2, ignore_errors=True)
+            if orig_skip_git is not None:
+                os.environ["ZEROFACTORY_SKIP_GIT"] = orig_skip_git
+            else:
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+
     def test_46_board_max_concurrent_running_dispatch(self):
         """The dispatch cycle caps concurrent 'running' tasks per board at the
         board's max_concurrent_running (default 1). With cap 1 and three todo

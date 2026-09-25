@@ -17,7 +17,8 @@ def digest_reviewer_git_context(
     workspace_path: Path,
     branch_name: Optional[str] = None,
     max_diff_lines: int = 100,
-    max_diff_chars: int = 4000
+    max_diff_chars: int = 4000,
+    target_branch: Optional[str] = None,
 ) -> str:
     """Extract pre-digested commits, diffstat, and code diff for reviewer prompt.
 
@@ -40,7 +41,7 @@ def digest_reviewer_git_context(
     except Exception:
         return ""
 
-    default_branch = _d().get_default_branch(workspace_path)
+    default_branch = (target_branch or "").strip() or _d().get_default_branch(workspace_path)
     base_ref = f"origin/{default_branch}"
     try:
         verify_remote = subprocess.run(

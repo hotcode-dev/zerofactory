@@ -150,6 +150,7 @@ def register(ctx: Any):
         p_bcreate = board_subs.add_parser("create", help="Create a new board from Remote Git URL")
         p_bcreate.add_argument("git_url", help="Remote Git URL (e.g. https://github.com/owner/repo.git)")
         p_bcreate.add_argument("--description", default="", help="Board description")
+        p_bcreate.add_argument("--target-branch", default="", help="Target/base branch to branch off and merge PRs into (e.g. main)")
         p_bdelete = board_subs.add_parser("delete", help="Delete a board and clear its cron scanner job")
         p_bdelete.add_argument("slug", help="Board slug to delete")
 
@@ -384,7 +385,8 @@ def register(ctx: Any):
             elif b_act == "create":
                 req = BoardCreate(
                     git_url=args.git_url,
-                    description=args.description
+                    description=args.description,
+                    target_branch=getattr(args, "target_branch", "") or ""
                 )
                 res = _create_board(req)
                 print(f"✓ Created board: {res.get('slug')}")

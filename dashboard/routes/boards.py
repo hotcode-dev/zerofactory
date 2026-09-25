@@ -85,6 +85,7 @@ def list_boards():
         boards = [dict(row) for row in cursor.fetchall()]
 
         for b in boards:
+            b["target_branch"] = (b.get("target_branch") or "").strip()
             b["auto_record_memory"] = bool(b.get("auto_record_memory", 1))
             try:
                 b["additional_reviewer_usernames"] = json.loads(
@@ -114,6 +115,7 @@ def create_board(req: BoardCreate):
         raise HTTPException(status_code=400, detail="Invalid board slug (could not derive slug from Git URL)")
 
     desc = (req.description or "").strip()
+    target_branch = (req.target_branch or "").strip()
     mcr = max(1, req.max_concurrent_running or 1)
     arm = 1 if (req.auto_record_memory is None or req.auto_record_memory) else 0
     reviewer_usernames = sorted({
@@ -129,8 +131,8 @@ def create_board(req: BoardCreate):
             raise HTTPException(status_code=409, detail=f"Board '{slug}' already exists")
 
         cursor.execute(
-            "INSERT INTO boards (slug, description, git_url, max_concurrent_running, auto_record_memory, additional_reviewer_usernames, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (slug, desc, git_url, mcr, arm, json.dumps(reviewer_usernames), now, now)
+            "INSERT INTO boards (slug, description, git_url, target_branch, max_concurrent_running, auto_record_memory, additional_reviewer_usernames, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (slug, desc, git_url, target_branch, mcr, arm, json.dumps(reviewer_usernames), now, now)
         )
         conn.commit()
 
@@ -242,6 +244,9 @@ def update_board(slug: str, req: BoardUpdate):
         if req.git_url is not None:
             updates.append("git_url = ?")
             params.append(req.git_url.strip())
+        if req.target_branch is not None:
+            updates.append("target_branch = ?")
+            params.append(req.target_branch.strip())
         if req.max_concurrent_running is not None:
             mcr = max(1, int(req.max_concurrent_running))
             updates.append("max_concurrent_running = ?")
@@ -269,6 +274,8 @@ def update_board(slug: str, req: BoardUpdate):
         cursor.execute("SELECT * FROM boards WHERE slug = ?", (slug,))
         row = cursor.fetchone()
         board_data = dict(row) if row else {"slug": slug}
+        if "target_branch" in board_data:
+            board_data["target_branch"] = (board_data.get("target_branch") or "").strip()
         if "auto_record_memory" in board_data:
             board_data["auto_record_memory"] = bool(board_data["auto_record_memory"])
         if "additional_reviewer_usernames" in board_data:

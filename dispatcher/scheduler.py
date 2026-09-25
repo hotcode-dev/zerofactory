@@ -556,7 +556,17 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                         check=True, cwd=workspace_path, capture_output=True, timeout=60
                                     )
 
-                                merged_ok, conflict_files, merge_err = _disp.pull_and_merge_main(Path(workspace_path), repo_path)
+                                target_branch = ""
+                                if board_slug:
+                                    try:
+                                        cursor.execute("SELECT target_branch FROM boards WHERE slug = ?", (board_slug,))
+                                        b_row = cursor.fetchone()
+                                        if b_row and b_row[0]:
+                                            target_branch = str(b_row[0]).strip()
+                                    except Exception:
+                                        pass
+
+                                merged_ok, conflict_files, merge_err = _disp.pull_and_merge_main(Path(workspace_path), repo_path, default_branch=target_branch or None)
                                 if not merged_ok:
                                     _log.warning("Task %s merge conflict with main detected: %s (%s)", task_id, conflict_files, merge_err)
                                     _disp._handle_local_merge_conflict(cursor, task_id, title, workspace_path, conflict_files, now, merge_err)
@@ -596,7 +606,10 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     else:
                                         pr_title = subject
                                         pr_body = f"{commit_body}\n\nAutomated PR for task {task_id}\n\nCompleted by: @{assignee}"
-                                        pr_res = _subprocess.run(["gh", "pr", "create", "--title", pr_title, "--body", pr_body], check=True, cwd=workspace_path, capture_output=True, text=True, timeout=180)
+                                        pr_cmd = ["gh", "pr", "create", "--title", pr_title, "--body", pr_body]
+                                        if target_branch:
+                                            pr_cmd.extend(["--base", target_branch])
+                                        pr_res = _subprocess.run(pr_cmd, check=True, cwd=workspace_path, capture_output=True, text=True, timeout=180)
                                         pr_url = pr_res.stdout.strip()
 
                                 _disp.stop_task_worker(task_id, cursor)

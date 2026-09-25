@@ -52,6 +52,7 @@ ACTIVITY_ACTORS: List[str] = [
 class BoardCreate(BaseModel):
     git_url: str = Field(..., min_length=1, description="Remote Git URL (e.g. https://github.com/owner/repo.git)")
     description: Optional[str] = ""
+    target_branch: Optional[str] = Field(default="", description="Target/base branch to branch off and merge PRs into (e.g. main)")
     max_concurrent_running: Optional[int] = Field(default=1, ge=1, description="Max tasks running in parallel on this board (default 1)")
     auto_record_memory: Optional[bool] = Field(default=True, description="Enable automatic memory recording from reviewer feedback")
     additional_reviewer_usernames: Optional[List[str]] = Field(default_factory=list, description="Additional GitHub usernames whose PR feedback is trusted")
@@ -60,6 +61,7 @@ class BoardCreate(BaseModel):
 class BoardUpdate(BaseModel):
     description: Optional[str] = None
     git_url: Optional[str] = None
+    target_branch: Optional[str] = Field(default=None, description="Target/base branch to branch off and merge PRs into (e.g. main)")
     max_concurrent_running: Optional[int] = Field(default=None, ge=1, description="Max tasks running in parallel on this board")
     auto_record_memory: Optional[bool] = Field(default=None, description="Enable automatic memory recording from reviewer feedback")
     additional_reviewer_usernames: Optional[List[str]] = Field(default=None, description="Additional GitHub usernames whose PR feedback is trusted")

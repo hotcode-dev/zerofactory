@@ -169,6 +169,7 @@
     const [newBoardForm, setNewBoardForm] = useState({
       git_url: "",
       description: "",
+      target_branch: "",
       max_concurrent_running: 1,
       auto_record_memory: true,
       additional_reviewer_usernames: ""
@@ -178,6 +179,7 @@
       slug: "",
       git_url: "",
       description: "",
+      target_branch: "",
       max_concurrent_running: 1,
       auto_record_memory: true,
       additional_reviewer_usernames: ""
@@ -191,7 +193,7 @@
     const handleOpenNewBoardModal = () => {
       setCreateBoardError("");
       setCloneTestResult(null);
-      setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
+      setNewBoardForm({ git_url: "", description: "", target_branch: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
       setShowNewBoardModal(true);
     };
 
@@ -1164,6 +1166,7 @@
           body: JSON.stringify({
             git_url: gitUrl,
             description: (newBoardForm.description || "").trim(),
+            target_branch: (newBoardForm.target_branch || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
             additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
@@ -1172,7 +1175,7 @@
         const createdSlug = (res && res.slug) ? res.slug : autoSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
+        setNewBoardForm({ git_url: "", description: "", target_branch: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
         setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
@@ -1222,6 +1225,7 @@
           slug: curr.slug || "",
           description: curr.description || "",
           git_url: curr.git_url || "",
+          target_branch: curr.target_branch || "",
           max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1,
           auto_record_memory: curr.auto_record_memory !== false,
           additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
@@ -1242,6 +1246,7 @@
           body: JSON.stringify({
             description: (editBoardForm.description || "").trim(),
             git_url: (editBoardForm.git_url || "").trim(),
+            target_branch: (editBoardForm.target_branch || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
             additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
@@ -5512,6 +5517,18 @@
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Branch / PR Base (Optional)"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+                      placeholder: "main (default if empty)",
+                      value: newBoardForm.target_branch || "",
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, target_branch: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "The branch agent will branch off from and create PRs to merge to.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
                     React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers (Optional)"),
                     React.createElement("input", {
                       className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
@@ -5670,6 +5687,18 @@
                       value: editBoardForm.description,
                       onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
                     })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Branch / PR Base (Optional)"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+                      placeholder: "main (default if empty)",
+                      value: editBoardForm.target_branch || "",
+                      onChange: (e) => setEditBoardForm({ ...editBoardForm, target_branch: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "The branch agent will branch off from and create PRs to merge to.")
                   ),
                   React.createElement(
                     "div",

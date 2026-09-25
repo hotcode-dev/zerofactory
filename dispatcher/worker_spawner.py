@@ -76,7 +76,20 @@ def spawn_agent_worker(
     memories_block = f"{memories_digest}\n\n" if memories_digest else ""
 
     if assignee == "zf-reviewer":
-        pre_digested_git = _d().digest_reviewer_git_context(Path(workdir), branch_name)
+        target_branch = ""
+        if board_slug:
+            try:
+                try:
+                    from ..dashboard.plugin_api import get_db_conn
+                except (ImportError, ValueError):
+                    from dashboard.plugin_api import get_db_conn
+                with get_db_conn() as conn:
+                    row = conn.execute("SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)).fetchone()
+                    if row and row[0]:
+                        target_branch = str(row[0]).strip()
+            except Exception:
+                pass
+        pre_digested_git = _d().digest_reviewer_git_context(Path(workdir), branch_name, target_branch=target_branch or None)
         pre_digested_block = f"\n{pre_digested_git}\n\n" if pre_digested_git else "\n"
         prompt = (
             f"Task ID: {task_id}\n"

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS boards (
     slug TEXT PRIMARY KEY,
     description TEXT DEFAULT '',
     git_url TEXT DEFAULT '',
+    target_branch TEXT NOT NULL DEFAULT '',
     max_concurrent_running INTEGER NOT NULL DEFAULT 1,
     auto_record_memory INTEGER NOT NULL DEFAULT 1,
     additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]',

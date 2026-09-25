@@ -122,7 +122,17 @@ def setup_worktree(
 
     branch_name = f"task/{task_id}"
     try:
-        default_branch = _d().sync_repo_main(repo_path)
+        target_branch = ""
+        if cursor and board_slug:
+            try:
+                cursor.execute("SELECT target_branch FROM boards WHERE slug = ?", (board_slug,))
+                b_row = cursor.fetchone()
+                if b_row and b_row[0]:
+                    target_branch = str(b_row[0]).strip()
+            except Exception:
+                pass
+
+        default_branch = _d().sync_repo_main(repo_path, default_branch=target_branch or None)
         base_ref = f"origin/{default_branch}"
         verify_ref = subprocess.run(
             ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{base_ref}"],

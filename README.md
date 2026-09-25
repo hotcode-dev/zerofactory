@@ -94,9 +94,9 @@ hermes zerofactory block <task_id> --reason "..." # Block a task
 hermes zerofactory comment <task_id> "Note..."    # Post a comment to a ticket
 
 # Board operations
-hermes zerofactory board list                     # List all project boards
-hermes zerofactory board create <git_url>         # Add a new codebase board from Remote Git URL
-hermes zerofactory board delete <slug>            # Delete a board and clear its scanner job
+hermes zerofactory board list                                          # List all project boards
+hermes zerofactory board create <git_url> [--target-branch <branch>]   # Add a new codebase board with optional target/base branch
+hermes zerofactory board delete <slug>                                 # Delete a board and clear its scanner job
 
 # Dispatcher & Background Crons
 hermes zerofactory dispatch                       # Trigger an immediate dispatch cycle

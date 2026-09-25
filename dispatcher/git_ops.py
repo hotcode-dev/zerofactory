@@ -48,9 +48,10 @@ def get_default_branch(repo_path: Path) -> str:
     return "main"
 
 
-def sync_repo_main(repo_path: Path) -> str:
+def sync_repo_main(repo_path: Path, default_branch: Optional[str] = None) -> str:
     """Fetch latest changes from origin for repository default branch."""
-    default_branch = _d().get_default_branch(repo_path)
+    if not default_branch:
+        default_branch = _d().get_default_branch(repo_path)
     try:
         subprocess.run(
             ["git", "fetch", "origin", default_branch],
@@ -344,8 +345,7 @@ def pull_and_merge_main(
 
     _d().clean_stale_git_locks(workspace_path)
 
-    if not default_branch:
-        default_branch = _d().sync_repo_main(repo_path)
+    default_branch = _d().sync_repo_main(repo_path, default_branch=default_branch)
 
     # Check if worktree is already in an unmerged / conflict state.
     # Fail-closed: if the worktree cannot be verified clean, do NOT merge.
