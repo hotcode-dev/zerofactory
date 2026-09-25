@@ -1,1 +1,1 @@
-"""Integration tests."""
+"""Integration tests for Zero Factory API endpoints."""

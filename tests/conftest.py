@@ -48,7 +48,7 @@ def initialized_db(test_db_path: Path, isolated_env: dict) -> Path:
     from dashboard.plugin_api import init_db
 
     os.environ["ZEROFACTORY_DB"] = str(test_db_path)
-    init_db(db_path=test_db_path, force=True)
+    init_db(force=True)
     return test_db_path
 
 
@@ -76,3 +76,16 @@ def api_client(initialized_db: Path):
     app = FastAPI()
     app.include_router(router, prefix="/api/plugins/zerofactory")
     return TestClient(app)
+
+
+@pytest.fixture
+def default_board(api_client) -> str:
+    """Ensure a default board exists for tasks that require a valid board foreign key."""
+    res = api_client.post(
+        "/api/plugins/zerofactory/boards",
+        json={
+            "git_url": "https://github.com/hotcode-dev/zerofactory.git",
+            "description": "Default Test Board",
+        },
+    )
+    return res.json()["slug"]

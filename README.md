@@ -246,11 +246,13 @@ Zero Factory is architected to drastically minimize LLM token consumption (up to
 zerofactory/
 ├── plugin.yaml                  # Hermes plugin metadata
 ├── __init__.py                  # Plugin registration & CLI interface
-├── dispatcher.py                # Autonomous dispatch engine & worktree manager
-├── builtin_cron.py              # Periodic scanner & reporting engine
+├── dispatcher/                  # Autonomous dispatch engine & worktree manager
+├── cron/                        # Periodic scanner & reporting engine
 ├── profile_manager.py           # Auto-provisioning for zf-* profiles & scripts
-├── test_plugin.py               # Comprehensive unit & integration test suite (128 tests)
-├── test_e2e.py                  # Hermetic End-to-End test suite across all subsystems (20 tests)
+├── tests/                       # Modular test suite (unit, integration, e2e)
+│   ├── unit/                    # Unit tests for paths, settings, scripts, cron, dispatcher, etc.
+│   ├── integration/             # FastAPI dashboard REST API route integration tests
+│   └── e2e/                     # Hermetic end-to-end workflow & resilience tests (20 tests)
 ├── scripts/                     # No-Agent Mode scripts & LLM context pre-processors
 │   ├── zf_queue_watchdog.py     # Autonomous worker reaper & queue monitor (0 tokens)
 │   ├── zf_scanner_gate.py       # Codebase diff pre-screen & wake-gate
@@ -279,13 +281,15 @@ zerofactory/
 
 ## Testing
 
-Run the automated test suites against your local Hermes environment:
+Run the automated test suites using `pytest`:
 ```bash
-# 1. Run unit & integration test suite
-python3 test_plugin.py
+# 1. Run all test suites
+pytest tests/
 
-# 2. Run hermetic end-to-end (E2E) test suite (20 tests)
-python3 test_e2e.py
+# 2. Run specific test tiers
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/e2e/
 ```
 
 ### Rebuilding the dashboard stylesheet
@@ -298,9 +302,9 @@ the `ZEROFACTORY_TAILWIND_DIR` env override. To regenerate after editing the UI:
 npm install            # if node_modules is not present (fresh clone)
 node dashboard/build_css.mjs
 ```
-`test_plugin.py::test_86_dashboard_css_is_portable_and_in_sync_with_js` guards
-reproducibility and asserts the stylesheet carries selectors for every
-variant-prefixed class the UI references (hover/focus/active/disabled).
+`tests/unit/dashboard/test_dashboard_css.py` guards reproducibility and asserts
+the stylesheet carries selectors for every variant-prefixed class the UI references
+(hover/focus/active/disabled).
 
 ---
 
