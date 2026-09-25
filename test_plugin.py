@@ -7148,6 +7148,7 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
             ACTIVITY_ACTORS,
             log_activity,
             get_db_conn,
+            init_db,
         )
 
         expected_actors = [
@@ -7160,6 +7161,7 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
         ]
         self.assertEqual(ACTIVITY_ACTORS, expected_actors)
 
+        init_db()
         with get_db_conn() as conn:
             # Create a board and task to satisfy FK
             conn.execute("INSERT OR IGNORE INTO boards (slug, description, max_concurrent_running, created_at, updated_at) VALUES ('b-actor-test', 'test', 1, 1, 1)")
@@ -9600,6 +9602,104 @@ class TestDispatcherExceptionHandlerHygiene(unittest.TestCase):
             row = conn.execute("SELECT id, value FROM test_items WHERE id = 'py1'").fetchone()
             conn.close()
             self.assertEqual(row, ("py1", 42))
+
+    def test_147_board_git_repo_resolution_and_clone(self):
+        """Verify that resolve_board_repo_path and resolve_task_repo_path reject directories lacking .git and support auto-clone."""
+        import tempfile
+        from unittest.mock import patch
+        from builtin_cron import resolve_board_repo_path
+        from dispatcher.worktree import resolve_task_repo_path
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            home_git = td_path / "git"
+            home_git.mkdir(parents=True, exist_ok=True)
+
+            # Create owner directory with sub-repos, but NO .git in owner dir itself
+            # (e.g. ~/git/ntsd where owner == repo in ntsd-ntsd)
+            owner_dir = home_git / "ntsd"
+            owner_dir.mkdir(parents=True, exist_ok=True)
+            (owner_dir / "other-project").mkdir()
+
+            board_data = {
+                "slug": "ntsd-ntsd",
+                "git_url": "git@github.com:ntsd/ntsd.git"
+            }
+
+            with patch("pathlib.Path.home", return_value=td_path):
+                # 1. When auto-clone is disabled via ZEROFACTORY_SKIP_CLONE, non-git ~/git/ntsd must NOT be returned
+                with patch.dict(os.environ, {"ZEROFACTORY_SKIP_CLONE": "1"}):
+                    res = resolve_board_repo_path(board_data)
+                    self.assertIsNone(res, "Non-git directory ~/git/ntsd should not be returned as repo path")
+
+                # 2. Verify resolve_task_repo_path also rejects non-git directories
+                task_res = resolve_task_repo_path(None, "ntsd-ntsd", None)
+                self.assertIsNone(task_res, "resolve_task_repo_path must reject directories without .git")
+
+                # 3. When auto-clone runs, verify git clone is called with target inside owner dir
+                fake_target = owner_dir / "ntsd"
+                def fake_run(cmd, *args, **kwargs):
+                    if cmd[:2] == ["git", "clone"]:
+                        fake_target.mkdir(parents=True, exist_ok=True)
+                        (fake_target / ".git").mkdir()
+                        class MockRes:
+                            returncode = 0
+                        return MockRes()
+                    class MockRes:
+                        returncode = 0
+                    return MockRes()
+
+                with patch("subprocess.run", side_effect=fake_run), \
+                     patch.dict(os.environ, {}, clear=False):
+                    os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+                    os.environ.pop("ZEROFACTORY_SKIP_CLONE", None)
+                    cloned = resolve_board_repo_path(board_data)
+                    self.assertIsNotNone(cloned)
+                    self.assertEqual(cloned, fake_target.resolve())
+                    self.assertTrue((cloned / ".git").exists())
+
+    def test_148_board_test_clone_endpoint(self):
+        """Verify POST /api/plugins/zerofactory/boards/test-clone behavior."""
+        from unittest.mock import patch
+        import tempfile
+
+        # 1. Missing git_url returns 422
+        res_empty = client.post("/api/plugins/zerofactory/boards/test-clone", json={"git_url": ""})
+        self.assertIn(res_empty.status_code, (400, 422))
+
+        # 2. Skip git mode
+        with patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": "1"}):
+            res_skip = client.post("/api/plugins/zerofactory/boards/test-clone", json={"git_url": "git@github.com:foo/bar.git"})
+            self.assertEqual(res_skip.status_code, 200)
+            self.assertTrue(res_skip.json()["ok"])
+            self.assertFalse(res_skip.json()["cloned"])
+
+        # 3. Existing local repo
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            (td_path / ".git").mkdir()
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+                with patch("builtin_cron.resolve_board_repo_path", return_value=td_path):
+                    res_exist = client.post("/api/plugins/zerofactory/boards/test-clone", json={"git_url": "git@github.com:foo/bar.git"})
+                    self.assertEqual(res_exist.status_code, 200)
+                    self.assertTrue(res_exist.json()["ok"])
+                    self.assertTrue(res_exist.json()["cloned"])
+                    self.assertIn(str(td_path), res_exist.json()["message"])
+
+        # 4. Failed remote check
+        class FailedRes:
+            returncode = 128
+            stdout = ""
+            stderr = "fatal: Repository not found"
+
+        with patch("subprocess.run", return_value=FailedRes()), \
+             patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ZEROFACTORY_SKIP_GIT", None)
+            with patch("builtin_cron.resolve_board_repo_path", return_value=None):
+                res_fail = client.post("/api/plugins/zerofactory/boards/test-clone", json={"git_url": "git@github.com:foo/nonexistent.git"})
+                self.assertEqual(res_fail.status_code, 400)
+                self.assertIn("fatal: Repository not found", res_fail.json()["detail"])
 
 
 if __name__ == "__main__":

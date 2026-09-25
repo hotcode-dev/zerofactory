@@ -185,9 +185,12 @@
 
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
+    const [isTestingClone, setIsTestingClone] = useState(false);
+    const [cloneTestResult, setCloneTestResult] = useState(null);
 
     const handleOpenNewBoardModal = () => {
       setCreateBoardError("");
+      setCloneTestResult(null);
       setNewBoardForm({ git_url: "", description: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
       setShowNewBoardModal(true);
     };
@@ -1182,11 +1185,39 @@
       }
     };
 
+    // Test Git Clone
+    const handleTestClone = async (gitUrl, slug) => {
+      const url = (gitUrl || "").trim();
+      if (!url) {
+        setCloneTestResult({ ok: false, message: "Please enter a Remote Git URL to test" });
+        return;
+      }
+      setIsTestingClone(true);
+      setCloneTestResult(null);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/test-clone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ git_url: url, slug: slug || undefined })
+        });
+        if (res && res.ok) {
+          setCloneTestResult({ ok: true, message: res.message || "Git clone verified successfully!" });
+        } else {
+          setCloneTestResult({ ok: false, message: (res && (res.detail || res.error || res.message)) || "Git clone test failed" });
+        }
+      } catch (err) {
+        setCloneTestResult({ ok: false, message: (err && (err.detail || err.message)) || String(err) });
+      } finally {
+        setIsTestingClone(false);
+      }
+    };
+
     // Open Edit Board Modal
     const handleOpenEditBoard = () => {
       if (!selectedBoard) return;
       const curr = boards.find((b) => b.slug === selectedBoard);
       if (curr) {
+        setCloneTestResult(null);
         setEditBoardForm({
           slug: curr.slug || "",
           description: curr.description || "",
@@ -5383,7 +5414,21 @@
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Remote Git URL *"),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Remote Git URL *"),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          disabled: isTestingClone || !newBoardForm.git_url,
+                          onClick: () => handleTestClone(newBoardForm.git_url, computeGitSlug(newBoardForm.git_url)),
+                          className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
+                        },
+                        isTestingClone ? "Testing Clone..." : "🧪 Test Clone Git"
+                      )
+                    ),
                     React.createElement("input", {
                       className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
                       required: true,
@@ -5392,9 +5437,23 @@
                       value: newBoardForm.git_url || "",
                       onChange: (e) => {
                         setCreateBoardError("");
+                        setCloneTestResult(null);
                         setNewBoardForm({ ...newBoardForm, git_url: e.target.value });
                       }
                     }),
+                    cloneTestResult &&
+                    React.createElement(
+                      "div",
+                      {
+                        className: `text-[11px] px-2.5 py-1.5 rounded border flex items-start gap-1.5 ${
+                          cloneTestResult.ok
+                            ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                            : "bg-rose-950/40 border-rose-800/60 text-rose-300"
+                        }`
+                      },
+                      React.createElement("span", { className: "shrink-0 font-bold" }, cloneTestResult.ok ? "✓" : "✕"),
+                      React.createElement("span", { className: "break-all" }, cloneTestResult.message)
+                    ),
                     (() => {
                       const autoSlug = computeGitSlug(newBoardForm.git_url || "");
                       if (autoSlug) {
@@ -5546,13 +5605,43 @@
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          disabled: isTestingClone || !editBoardForm.git_url,
+                          onClick: () => handleTestClone(editBoardForm.git_url, editBoardForm.slug),
+                          className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
+                        },
+                        isTestingClone ? "Testing Clone..." : "🧪 Test Clone Git"
+                      )
+                    ),
                     React.createElement("input", {
                       className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
                       placeholder: "https://github.com/org/repo.git or git@github.com:org/repo.git",
                       value: editBoardForm.git_url,
-                      onChange: (e) => setEditBoardForm({ ...editBoardForm, git_url: e.target.value })
-                    })
+                      onChange: (e) => {
+                        setCloneTestResult(null);
+                        setEditBoardForm({ ...editBoardForm, git_url: e.target.value });
+                      }
+                    }),
+                    cloneTestResult &&
+                    React.createElement(
+                      "div",
+                      {
+                        className: `text-[11px] px-2.5 py-1.5 rounded border flex items-start gap-1.5 ${
+                          cloneTestResult.ok
+                            ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                            : "bg-rose-950/40 border-rose-800/60 text-rose-300"
+                        }`
+                      },
+                      React.createElement("span", { className: "shrink-0 font-bold" }, cloneTestResult.ok ? "✓" : "✕"),
+                      React.createElement("span", { className: "break-all" }, cloneTestResult.message)
+                    )
                   ),
                   React.createElement(
                     "div",

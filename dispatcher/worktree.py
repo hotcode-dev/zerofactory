@@ -44,7 +44,7 @@ def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optiona
                 except Exception:
                     from builtin_cron import resolve_board_repo_path  # type: ignore
                 resolved_b = resolve_board_repo_path(b_dict)
-                if resolved_b and resolved_b.exists():
+                if resolved_b and resolved_b.exists() and (resolved_b / ".git").exists():
                     return resolved_b
         except Exception:
             pass
@@ -52,28 +52,28 @@ def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optiona
     # 2. If tenant path is provided
     if tenant:
         t_path = Path(os.path.expanduser(tenant))
-        if t_path.is_absolute() and t_path.exists():
+        if t_path.is_absolute() and t_path.exists() and (t_path / ".git").exists():
             return t_path
         g_tenant = Path.home() / "git" / tenant
-        if g_tenant.exists():
+        if g_tenant.exists() and (g_tenant / ".git").exists():
             return g_tenant
 
     # 3. Check ~/git/<board_slug> if board_slug provided
     if board_slug:
         g_board = Path.home() / "git" / board_slug
-        if g_board.exists():
+        if g_board.exists() and (g_board / ".git").exists():
             return g_board
         if "-" in board_slug:
             # Check ~/git/<owner>/<repo> (e.g. ~/git/hotcode-dev/zerofactory)
             owner_sub = Path.home() / "git" / board_slug.replace("-", "/", 1)
-            if owner_sub.is_dir():
+            if owner_sub.is_dir() and (owner_sub / ".git").exists():
                 return owner_sub
             # Check ~/git/<repo> (e.g. ~/git/zerofactory)
             repo_only = Path.home() / "git" / board_slug.split("-", 1)[1]
-            if repo_only.is_dir():
+            if repo_only.is_dir() and (repo_only / ".git").exists():
                 return repo_only
         for sub in (Path.home() / "git").glob(f"*/{board_slug}"):
-            if sub.is_dir():
+            if sub.is_dir() and (sub / ".git").exists():
                 return sub
 
 

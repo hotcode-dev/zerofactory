@@ -150,35 +150,38 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
     # 4. Check current working directory if matching
     try:
         cwd = Path.cwd()
-        if any(cname in (cwd.name, cwd.name.lower()) for cname in candidate_names):
+        if (cwd / ".git").exists() and any(cname in (cwd.name, cwd.name.lower()) for cname in candidate_names):
             candidates.insert(0, cwd)
     except Exception:
         pass
 
     for cand in candidates:
-        if cand.is_dir():
+        if cand.is_dir() and (cand / ".git").exists():
             return cand.resolve()
 
     # 5. Optional auto-clone
+    auto_clone_enabled = os.environ.get("ZEROFACTORY_AUTO_CLONE", "1").lower() not in ("0", "false", "no")
     if (
         git_url
-        and os.environ.get("ZEROFACTORY_AUTO_CLONE")
+        and auto_clone_enabled
         and not os.environ.get("ZEROFACTORY_SKIP_GIT")
         and not os.environ.get("ZEROFACTORY_SKIP_CLONE")
     ):
         target_clone = home / "git" / (repo or slug)
         if owner and (home / "git" / owner).is_dir():
             target_clone = home / "git" / owner / (repo or slug)
+        elif owner and repo:
+            target_clone = home / "git" / owner / repo
         try:
             target_clone.parent.mkdir(parents=True, exist_ok=True)
             res = subprocess.run(
                 ["git", "clone", git_url, str(target_clone)],
                 capture_output=True,
-                timeout=10,
+                timeout=60,
                 stdin=subprocess.DEVNULL,
                 env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}
             )
-            if res.returncode == 0 and target_clone.is_dir():
+            if res.returncode == 0 and target_clone.is_dir() and (target_clone / ".git").exists():
                 return target_clone.resolve()
         except Exception as e:
             _log.debug("Auto-clone skipped or failed for %s: %s", git_url, e)
@@ -256,7 +259,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
         slug = board.get("slug") or "default"
         job_id = f"zero-factory-improvement-scanner-{slug}"
         repo_path = resolve_board_repo_path(board)
-        workdir = str(repo_path) if repo_path and repo_path.is_dir() else None
+        workdir = str(repo_path) if repo_path and repo_path.is_dir() and (repo_path / ".git").exists() else None
         prompt = build_board_scanner_prompt(board, workdir)
 
         jobs[job_id] = {

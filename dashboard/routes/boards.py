@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -21,10 +22,10 @@ from fastapi import APIRouter, HTTPException
 
 try:
     from ..db import get_db_conn, init_db, parse_git_url
-    from ..models import BoardCreate, BoardUpdate
+    from ..models import BoardCreate, BoardTestClone, BoardUpdate
 except (ImportError, ValueError):
     from db import get_db_conn, init_db, parse_git_url  # type: ignore
-    from models import BoardCreate, BoardUpdate  # type: ignore
+    from models import BoardCreate, BoardTestClone, BoardUpdate  # type: ignore
 
 _log = logging.getLogger(__name__)
 
@@ -133,6 +134,16 @@ def create_board(req: BoardCreate):
         )
         conn.commit()
 
+    # Attempt repository clone / resolution immediately upon board creation
+    try:
+        try:
+            from ...builtin_cron import resolve_board_repo_path
+        except Exception:
+            from builtin_cron import resolve_board_repo_path  # type: ignore
+        resolve_board_repo_path({"slug": slug, "git_url": git_url, "description": desc})
+    except Exception as e:
+        _log.warning("Failed to auto-clone/resolve repo after creating board %s: %s", slug, e)
+
     if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         ensure_cron, *_ = _get_cron_helpers()
         if ensure_cron:
@@ -142,6 +153,73 @@ def create_board(req: BoardCreate):
                 _log.warning("Failed to sync cron jobs after creating board %s: %s", slug, e)
 
     return {"ok": True, "slug": slug}
+
+
+@router.post("/boards/test-clone")
+def test_clone_board(req: BoardTestClone):
+    """Test Git connectivity and clone the repository for a board."""
+    git_url = (req.git_url or "").strip()
+    if not git_url:
+        raise HTTPException(status_code=400, detail="Remote Git URL is required")
+
+    owner, repo, auto_slug = parse_git_url(git_url)
+    slug = (req.slug or "").strip() or auto_slug or "repo"
+
+    # If git operations disabled in test environment
+    if os.environ.get("ZEROFACTORY_SKIP_GIT"):
+        return {
+            "ok": True,
+            "message": "Git operations disabled via ZEROFACTORY_SKIP_GIT",
+            "cloned": False,
+            "path": None,
+        }
+
+    try:
+        try:
+            from ...builtin_cron import resolve_board_repo_path
+        except Exception:
+            from builtin_cron import resolve_board_repo_path  # type: ignore
+
+        # 1. First check if it's already resolved / cloned locally
+        existing_path = resolve_board_repo_path({"slug": slug, "git_url": git_url})
+        if existing_path and existing_path.is_dir() and (existing_path / ".git").exists():
+            return {
+                "ok": True,
+                "message": f"Git repository verified! Already cloned at {existing_path}",
+                "cloned": True,
+                "path": str(existing_path),
+            }
+
+        # 2. Check remote connectivity first via git ls-remote
+        ls_res = subprocess.run(
+            ["git", "ls-remote", "--heads", git_url],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            stdin=subprocess.DEVNULL,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        )
+        if ls_res.returncode != 0:
+            err_msg = ls_res.stderr.strip() or "Could not connect to remote Git repository"
+            raise HTTPException(status_code=400, detail=f"Git remote check failed: {err_msg}")
+
+        # 3. Attempt clone via resolve_board_repo_path
+        cloned_path = resolve_board_repo_path({"slug": slug, "git_url": git_url})
+        if cloned_path and cloned_path.is_dir() and (cloned_path / ".git").exists():
+            return {
+                "ok": True,
+                "message": f"Successfully cloned repository to {cloned_path}!",
+                "cloned": True,
+                "path": str(cloned_path),
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Git clone failed to create a valid repository directory")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        _log.warning("Test clone failed for %s: %s", git_url, e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.patch("/boards/{slug}")
@@ -237,3 +315,4 @@ def delete_board(slug: str):
                 _log.warning("Failed to sync cron jobs after deleting board %s: %s", slug, e)
 
     return {"ok": True, "deleted": slug}
+

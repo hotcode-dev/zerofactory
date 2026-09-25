@@ -113,6 +113,7 @@ try:
         VALID_PRIORITIES,
         VALID_STATUSES,
         BoardCreate,
+        BoardTestClone,
         BoardUpdate,
         CommentCreate,
         CronJobUpdate,
@@ -134,6 +135,7 @@ except (ImportError, ValueError):
         VALID_PRIORITIES,
         VALID_STATUSES,
         BoardCreate,
+        BoardTestClone,
         BoardUpdate,
         CommentCreate,
         CronJobUpdate,
@@ -207,6 +209,7 @@ try:
         create_board,
         delete_board,
         list_boards,
+        test_clone_board,
         update_board,
     )
     from .routes.cron import (
@@ -279,6 +282,7 @@ except (ImportError, ValueError):
         create_board,
         delete_board,
         list_boards,
+        test_clone_board,
         update_board,
     )
     from routes.cron import (  # type: ignore

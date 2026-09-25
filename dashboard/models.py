@@ -65,6 +65,11 @@ class BoardUpdate(BaseModel):
     additional_reviewer_usernames: Optional[List[str]] = Field(default=None, description="Additional GitHub usernames whose PR feedback is trusted")
 
 
+class BoardTestClone(BaseModel):
+    git_url: str = Field(..., min_length=1, description="Remote Git URL to test cloning")
+    slug: Optional[str] = Field(default=None, description="Optional board slug")
+
+
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     description: Optional[str] = ""
