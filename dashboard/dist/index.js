@@ -151,7 +151,7 @@
     const [activityBoardFilter, setActivityBoardFilter] = useState("all");
     const [activitySearchQuery, setActivitySearchQuery] = useState("");
     const [activityPage, setActivityPage] = useState(0);
-    const [activityLimit, setActivityLimit] = useState(50);
+    const [activityLimit, setActivityLimit] = useState(15);
     const [activityViewMode, setActivityViewMode] = useState("timeline"); // "timeline" | "agents"
     const [expandedActivityId, setExpandedActivityId] = useState(null);
 
@@ -560,7 +560,7 @@
       const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
       try {
         setSessionsLoading(true);
-        const query = (bSlug && bSlug !== "all") ? ("?limit=100&board_slug=" + encodeURIComponent(bSlug)) : "?limit=100";
+        const query = (bSlug && bSlug !== "all") ? ("?limit=15&board_slug=" + encodeURIComponent(bSlug)) : "?limit=15";
         const res = await fetchJSON(API_BASE + "/sessions" + query);
         if (res && res.ok && res.sessions) {
           setSessionsList(res.sessions);

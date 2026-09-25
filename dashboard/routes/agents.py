@@ -46,10 +46,11 @@ def list_all_sessions(
     role: Optional[str] = None,
     status: Optional[str] = None,
     board_slug: Optional[str] = None,
-    limit: int = 50
+    limit: int = 15,
+    offset: int = 0
 ):
     """List recent and active AI agent sessions across Orchestrator, Builder, and Reviewer."""
-    return _list_all_sessions(role=role, status=status, board_slug=board_slug, limit=limit)
+    return _list_all_sessions(role=role, status=status, board_slug=board_slug, limit=limit, offset=offset)
 
 
 @router.get("/agents")

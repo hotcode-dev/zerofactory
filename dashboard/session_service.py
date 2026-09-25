@@ -526,7 +526,8 @@ def list_all_sessions(
     role: Optional[str] = None,
     status: Optional[str] = None,
     board_slug: Optional[str] = None,
-    limit: int = 50
+    limit: int = 15,
+    offset: int = 0
 ) -> Dict[str, Any]:
     """List recent and active AI agent sessions across Orchestrator, Builder, and Reviewer."""
     profiles = ["zf-builder", "zf-reviewer", "zf-orchestrator"]
@@ -537,7 +538,7 @@ def list_all_sessions(
 
     all_sessions = []
     seen = set()
-    fetch_limit = limit * 3 if (board_slug and board_slug != "all") else limit
+    fetch_limit = (offset + limit) * 3 if (board_slug and board_slug != "all") else (offset + limit)
     for prof in profiles:
         sdb = _resolve_profile_state_db_dyn(prof)
         if not sdb or not sdb.exists():
@@ -630,4 +631,12 @@ def list_all_sessions(
             _log.debug("Error reading sessions for profile %s: %s", prof, e)
 
     all_sessions.sort(key=lambda s: s.get("started_at") or 0, reverse=True)
-    return {"ok": True, "sessions": all_sessions[:limit]}
+    start_idx = max(0, offset)
+    end_idx = start_idx + max(1, limit)
+    return {
+        "ok": True,
+        "total": len(all_sessions),
+        "limit": limit,
+        "offset": offset,
+        "sessions": all_sessions[start_idx:end_idx]
+    }

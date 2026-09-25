@@ -158,7 +158,7 @@ def count_orchestrator_scans_today(board_slug: Optional[str] = None) -> int:
 
 @router.get("/activities")
 def get_activities(
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(15, ge=1, le=200),
     offset: int = Query(0, ge=0),
     actor: Optional[str] = None,
     assignee: Optional[str] = None,
@@ -245,7 +245,7 @@ def get_activities(
         try:
             actual_limit = int(getattr(limit, "default", limit) if hasattr(limit, "default") else limit)
         except Exception:
-            actual_limit = 50
+            actual_limit = 15
         try:
             actual_offset = int(getattr(offset, "default", offset) if hasattr(offset, "default") else offset)
         except Exception:
