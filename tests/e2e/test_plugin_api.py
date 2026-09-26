@@ -126,6 +126,18 @@ class TestPluginAPIE2E(unittest.TestCase):
         res_unlink = self.client.delete(f"/api/plugins/zerofactory/tasks/{id_b}/dependencies/{id_a}")
         self.assertEqual(res_unlink.status_code, 200)
 
+        # Move task with conflict_retries to todo resets conflict_retries
+        import json
+        with get_db_conn() as conn:
+            conn.execute("UPDATE tasks SET status = 'blocked', metadata = ? WHERE id = ?", (json.dumps({"conflict_retries": 3, "blocked_reason": "conflict"}), id_a))
+            conn.commit()
+        res_move = self.client.post(f"/api/plugins/zerofactory/tasks/{id_a}/move", json={"status": "todo"})
+        self.assertEqual(res_move.status_code, 200)
+        task_a_meta = self.client.get(f"/api/plugins/zerofactory/tasks/{id_a}").json()["task"]["metadata"]
+        self.assertNotIn("conflict_retries", task_a_meta)
+        self.assertNotIn("blocked_reason", task_a_meta)
+
+
     def test_03_activities_api_strict_actors_and_filters(self):
         """Activities API strictly enforces 6 canonical actors and supports filters & search."""
         self.client.post("/api/plugins/zerofactory/boards", json={"git_url": "https://github.com/my-org/act.git"})

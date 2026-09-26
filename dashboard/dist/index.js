@@ -1953,6 +1953,14 @@
             return { label: "Worker Lost", icon: "⚠️", bg: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
           case "pr_conflict":
             return { label: "Git Conflict", icon: "🛑", bg: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+          case "conflict_fixing":
+            return { label: "Fixing Conflict", icon: "🔧", bg: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+          case "conflict_resolved":
+            return { label: "Conflict Resolved", icon: "🛠️", bg: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
+          case "pr_conflict_failed":
+            return { label: "Conflict Failed", icon: "💥", bg: "bg-rose-500/15 text-rose-300 border-rose-500/30" };
+          case "conflict_unverifiable":
+            return { label: "Conflict Unverifiable", icon: "⚠️", bg: "bg-rose-500/15 text-rose-300 border-rose-500/30" };
           case "pr_opened":
             return { label: "PR Opened", icon: "🔍", bg: "bg-blue-500/15 text-blue-300 border-blue-500/30" };
           case "approved":

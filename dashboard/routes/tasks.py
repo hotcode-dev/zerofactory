@@ -639,6 +639,9 @@ def move_task(task_id: str, req: TaskMove):
                 if "blocked_reason" in meta:
                     meta.pop("blocked_reason", None)
                     meta_updated = True
+                if "conflict_retries" in meta:
+                    meta.pop("conflict_retries", None)
+                    meta_updated = True
             if req.status in ("todo", "ready"):
                 if "worker_pid" in meta or "session_id" in meta or "started_at" in meta:
                     meta.pop("worker_pid", None)

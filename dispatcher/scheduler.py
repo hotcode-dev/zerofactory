@@ -172,14 +172,23 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             if wt:
                                 workspace_path = wt
 
+                        meta = {}
+                        try:
+                            meta = json.loads(row["metadata"] or "{}")
+                        except Exception:
+                            pass
+
+                        is_conflict_resolution = (
+                            "[pr conflict]" in title.lower()
+                            or "[merge conflict]" in title.lower()
+                            or int(meta.get("conflict_retries", 0)) > 0
+                        )
+
                         # Guardrail: Always pull git to latest before implement
                         if not os.environ.get("ZEROFACTORY_SKIP_GIT") and assignee == "zf-builder" and workspace_path and Path(workspace_path).exists():
                             _pre_verify_ok, _pre_verify_files, _pre_verify_err = _disp.check_unresolved_conflicts_safe(Path(workspace_path))
-                            is_conflict_resolution = (
-                                "[pr conflict]" in title.lower()
-                                or "[merge conflict]" in title.lower()
-                                or (_pre_verify_ok and bool(_pre_verify_files))
-                            )
+                            if _pre_verify_ok and bool(_pre_verify_files):
+                                is_conflict_resolution = True
                             if not is_conflict_resolution:
                                 if not _pre_verify_ok:
                                     _log.warning(
@@ -214,12 +223,6 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             conn.commit()
                             continue
 
-                        meta = {}
-                        try:
-                            meta = json.loads(row["metadata"] or "{}")
-                        except Exception:
-                            pass
-
                         sessions_list = meta.get("sessions")
                         if not isinstance(sessions_list, list):
                             sessions_list = []
@@ -251,6 +254,12 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', ?, ?)",
                             (task_id, f"Agent {assignee} dispatched to work on task (PID: {pid or 'skipped'}, Session: {session_id or 'auto'})", now)
                         )
+                        if is_conflict_resolution:
+                            retry_count = int(meta.get("conflict_retries", 1))
+                            cursor.execute(
+                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_fixing', ?, ?)",
+                                (task_id, f"Agent {assignee} dispatched to resolve merge conflicts (attempt {retry_count}, PID: {pid or 'skipped'})", now)
+                            )
                         conn.commit()
                         running_per_board[board_key] = board_active + 1
                         active_count += 1
@@ -358,25 +367,25 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     if meta.get("permanently_blocked") or row["status"] in ("running", "todo", "ready"):
                                         continue
 
+                                    if mergeable == "CONFLICTING":
+                                        if row["status"] in ("blocked", "done"):
+                                            task_meta = {}
+                                            try:
+                                                cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                                                m_res = cursor.fetchone()
+                                                if m_res and m_res[0]:
+                                                    task_meta = json.loads(m_res[0])
+                                            except Exception:
+                                                pass
+                                            max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
+                                            if int(task_meta.get("conflict_retries", 0)) > max_conflict_retries:
+                                                _log.debug("Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling", task_id, int(task_meta.get("conflict_retries", 0)), max_conflict_retries)
+                                            else:
+                                                _disp._handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
+                                        continue
+
                                     if assignee not in ("zf-reviewer", "human") and row["status"] in ("done", "blocked"):
                                         pass
-                                    elif mergeable == "CONFLICTING":
-                                        if row["status"] not in ("blocked", "done") or assignee not in ("zf-reviewer", "human"):
-                                            continue
-                                        task_meta = {}
-                                        try:
-                                            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
-                                            m_res = cursor.fetchone()
-                                            if m_res and m_res[0]:
-                                                task_meta = json.loads(m_res[0])
-                                        except Exception:
-                                            pass
-                                        max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
-                                        if row["status"] == "blocked" and int(task_meta.get("conflict_retries", 0)) > max_conflict_retries:
-                                            _log.debug("Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling", task_id, int(task_meta.get("conflict_retries", 0)), max_conflict_retries)
-                                        else:
-                                            _disp._handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
-                                        continue
                                     else:
                                         task_meta = {}
                                         try:
@@ -512,6 +521,7 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 _disp.clean_stale_git_locks(Path(workspace_path))
                                 git_dir = _disp.get_git_dir(Path(workspace_path))
                                 is_merging = bool(git_dir and (git_dir / "MERGE_HEAD").exists())
+                                had_conflict = bool(is_merging or "[PR Conflict]" in title or "[Merge Conflict]" in title)
 
                                 unmerged_files = _disp.get_unmerged_status_files(Path(workspace_path))
                                 if is_merging or unmerged_files:
@@ -643,6 +653,11 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     (new_title, pr_url, json.dumps(meta), now, task_id)
                                 )
                                 _disp.setup_worktree(cursor, task_id, new_title, "zf-reviewer", tenant, db_path, board_slug=board_slug)
+                                if had_conflict:
+                                    cursor.execute(
+                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_resolved', ?, ?)",
+                                        (task_id, f"Merge conflicts resolved and verified cleanly with main branch. PR updated: {pr_url}", now)
+                                    )
                                 cursor.execute(
                                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
                                     (task_id, f"PR synced with main, routed to reviewer: {pr_url}", now)
@@ -655,6 +670,11 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     _disp.stop_task_worker(task_id, cursor)
                                     _disp._remove_worktree(workspace_path, repo_path)
                                     cursor.execute("UPDATE tasks SET workspace_path = NULL, status = 'done', updated_at = ? WHERE id = ?", (now, task_id))
+                                    if had_conflict:
+                                        cursor.execute(
+                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_resolved', 'Merge conflicts resolved cleanly with main branch', ?)",
+                                            (task_id, now)
+                                        )
                                     cursor.execute("INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'completed_no_diff', 'No commits between branch and main; task marked done', ?)", (task_id, now))
                                 else:
                                     _log.warning("Task %s commit/PR command failed: %s", task_id, err_msg)
