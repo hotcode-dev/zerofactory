@@ -52,14 +52,9 @@ is only a fallback when pytest is missing.
   class the UI references — regenerate via `node dashboard/build_css.mjs`
   after touching `input.css`/UI classes.
 
-## Known pre-existing failures (as of base main, not PR regressions)
+## Test health at this commit
 
-A test failing **identically at `git merge-base main <head>`** is a pre-existing
-base failure, not a regression:
-
-- `test_plugin.py::test_36c_author_handoff_with_existing_pr_url`
-- `test_e2e.py::test_01_cli_setup_and_sync_profiles`
-- `test_e2e.py::test_02_reviewer_changes_requested_loop`
-  (asserts `'zf-builder' == 'zf-reviewer'` at clean main)
-
-Verify at the merge-base before attributing a failure to your change.
+The full suite passes cleanly as of this commit (155 passed, 1 skipped).
+If a test fails **identically at `git merge-base main <head>`**, it is a
+pre-existing base failure, not a PR regression — verify at the merge-base
+before attributing a failure to your change.

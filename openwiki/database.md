@@ -34,7 +34,10 @@ re-runs). See `migrations/README.md` for how to add one (new `NNNN_name.sql`).
 
 ### `tasks`
 `id PK` (e.g. `zf-<boardcode>-<hash>`), `board_slug`, `title`, `description`,
-`status` (one of `triage|todo|running|blocked|done`), `assignee` (a
+`status` (one of `triage|todo|running|blocked|done` per `VALID_STATUSES` in
+`dashboard/models.py`; the dispatcher also handles the internal `ready`
+status — `dispatcher/scheduler.py` claims rows with `status IN ('todo',
+'ready')`, so `ready` rows are valid dispatchable tasks, not corrupt data), `assignee` (a
 `zf-*` profile, `human`, or `unassigned`), `priority` (`P0`–`P3`),
 `workspace_path`, `workspace_kind` (default `worktree`), `branch_name`,
 `pr_url`, `tenant`, `skills TEXT '[]'`, `tags TEXT '[]'`,
@@ -91,5 +94,6 @@ Indexes: `idx_memories_board`, `idx_memories_category`,
 Tests never touch the real DB: `tests/conftest.py` provides the hermetic
 `initialized_db` fixture and sets `ZEROFACTORY_DB`/related env to
 `tmp_path` before importing the plugin layer. **Trust the full
-`python3 test_plugin.py` / `pytest tests/` run, not isolated module runs** —
-several e2e cases depend on boards set up by earlier tests in the same process.
+`python3 -m pytest tests/` (or `./.zerofactory/precommit.sh test`) run, not
+isolated module runs** — several e2e cases depend on boards set up by earlier
+tests in the same process.
