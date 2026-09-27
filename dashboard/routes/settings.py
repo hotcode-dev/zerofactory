@@ -216,9 +216,9 @@ def test_langfuse_connection(req: LangfuseTestRequest):
             }
 
         auth_url = f"{base_url}/api/public/projects"
-        auth_header = base64.b64encode(
-            f"{public_key}:{secret_key}".encode()
-        ).decode("ascii")
+        auth_header = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode(
+            "ascii"
+        )
         try:
             auth_req = urllib.request.Request(
                 auth_url,

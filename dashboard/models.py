@@ -268,9 +268,7 @@ class MemoryCreate(BaseModel):
     tags: list[str] | None = Field(
         default_factory=list, description="Tags for categorization"
     )
-    author: str | None = Field(
-        default="user", description="Author: agent name or user"
-    )
+    author: str | None = Field(default="user", description="Author: agent name or user")
     task_id: str | None = Field(
         default=None, description="Related task ID if applicable"
     )

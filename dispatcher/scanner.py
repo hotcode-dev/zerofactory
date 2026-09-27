@@ -68,9 +68,7 @@ def _global_llm_occupancy(running_tasks: int) -> int:
     )
 
 
-def spawn_board_scanner(
-    board_slug: str, repo_path: Path | None = None
-) -> int | None:
+def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int | None:
     """Spawn an improvement scanner agent worker process for a specific board."""
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN") or os.environ.get(
         "ZEROFACTORY_SKIP_SCANNER_SPAWN"

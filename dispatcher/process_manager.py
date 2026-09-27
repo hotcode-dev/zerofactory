@@ -154,9 +154,7 @@ def terminate_process_group(
             pass
 
 
-def terminate_worker_process(
-    proc: subprocess.Popen | None, pid: int | None
-) -> None:
+def terminate_worker_process(proc: subprocess.Popen | None, pid: int | None) -> None:
     """Safely terminate a worker process with SIGTERM then SIGKILL.
 
     Signals the worker's whole process group (session) rather than just the

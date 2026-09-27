@@ -85,9 +85,7 @@ def list_tasks(
     status: str | None = Query(None, description="Status column filter"),
     assignee: str | None = Query(None, description="Assignee filter"),
     priority: str | None = Query(None, description="Priority filter"),
-    search: str | None = Query(
-        None, description="Search term in title or description"
-    ),
+    search: str | None = Query(None, description="Search term in title or description"),
 ):
     """List tasks with flexible filtering."""
     init_db()

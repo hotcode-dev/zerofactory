@@ -232,11 +232,20 @@ def resolve_task_all_sessions(
                     sid = str(r["id"])
                     is_match = False
 
-                    if sid in recorded_ids or task_id and r["cwd"] and task_id in str(r["cwd"]) or task_id and r["title"] and task_id in str(r["title"]) or (
-                        task_title
-                        and len(task_title) > 8
+                    if (
+                        sid in recorded_ids
+                        or task_id
+                        and r["cwd"]
+                        and task_id in str(r["cwd"])
+                        or task_id
                         and r["title"]
-                        and task_title.lower() in str(r["title"]).lower()
+                        and task_id in str(r["title"])
+                        or (
+                            task_title
+                            and len(task_title) > 8
+                            and r["title"]
+                            and task_title.lower() in str(r["title"]).lower()
+                        )
                     ):
                         is_match = True
 
@@ -677,7 +686,9 @@ def list_all_sessions(
                     else:
                         cwd_or_title = f"{r['cwd'] or ''} {r['title'] or ''}"
                         m_task = re.search(
-                            r"\b(zf-[a-z0-9_-]+|task-[a-z0-9_-]+)\b", cwd_or_title, re.IGNORECASE
+                            r"\b(zf-[a-z0-9_-]+|task-[a-z0-9_-]+)\b",
+                            cwd_or_title,
+                            re.IGNORECASE,
                         )
                         if m_task:
                             tid_candidate = m_task.group(1).lower()

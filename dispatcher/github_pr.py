@@ -350,9 +350,7 @@ def format_task_comment_body(comment: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def is_reviewer_approval_comment(
-    comment_body: str, state: str | None = None
-) -> bool:
+def is_reviewer_approval_comment(comment_body: str, state: str | None = None) -> bool:
     """Return True if a PR review comment or review summary represents an approval verdict.
 
     Handles cases where GitHub prevents self-approval (PR author matches reviewer CLI identity)
