@@ -456,3 +456,36 @@ def setup_board_precommit_endpoint(slug: str):
             detail=res.get("error", "Failed to initiate precommit setup task"),
         )
     return res
+
+
+@router.get("/boards/{slug}/openwiki-status")
+def get_board_openwiki_status_endpoint(slug: str):
+    """Get the openwiki documentation and active setup task status for a board."""
+    try:
+        from ..openwiki_service import check_board_openwiki_status
+    except (ImportError, ValueError):
+        from openwiki_service import check_board_openwiki_status  # type: ignore
+
+    res = check_board_openwiki_status(slug)
+    if not res.get("ok"):
+        raise HTTPException(
+            status_code=404, detail=res.get("error", f"Board '{slug}' not found")
+        )
+    return res
+
+
+@router.post("/boards/{slug}/setup-openwiki")
+def setup_board_openwiki_endpoint(slug: str):
+    """Trigger creation of a P0 setup task to generate openwiki/ agent documentation."""
+    try:
+        from ..openwiki_service import create_openwiki_setup_task
+    except (ImportError, ValueError):
+        from openwiki_service import create_openwiki_setup_task  # type: ignore
+
+    res = create_openwiki_setup_task(slug)
+    if not res.get("ok"):
+        raise HTTPException(
+            status_code=400,
+            detail=res.get("error", "Failed to initiate OpenWiki setup task"),
+        )
+    return res

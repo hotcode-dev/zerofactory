@@ -190,6 +190,10 @@
     const [isLoadingPrecommit, setIsLoadingPrecommit] = useState(false);
     const [isSettingUpPrecommit, setIsSettingUpPrecommit] = useState(false);
 
+    const [openwikiStatus, setOpenwikiStatus] = useState(null);
+    const [isLoadingOpenwiki, setIsLoadingOpenwiki] = useState(false);
+    const [isSettingUpOpenwiki, setIsSettingUpOpenwiki] = useState(false);
+
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
     const [isTestingClone, setIsTestingClone] = useState(false);
@@ -378,6 +382,49 @@
       }
     };
 
+    // OpenWiki status loader
+    const loadOpenwikiStatus = useCallback(async (boardSlug) => {
+      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      if (!bSlug || bSlug === "all") {
+        setOpenwikiStatus(null);
+        return;
+      }
+      setIsLoadingOpenwiki(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/openwiki-status");
+        if (res && res.ok) {
+          setOpenwikiStatus(res);
+        } else {
+          setOpenwikiStatus(null);
+        }
+      } catch (err) {
+        setOpenwikiStatus(null);
+      } finally {
+        setIsLoadingOpenwiki(false);
+      }
+    }, [fetchJSON]);
+
+    const handleTriggerOpenwikiSetup = async (boardSlug) => {
+      const bSlug = boardSlug || selectedBoard;
+      if (!bSlug || bSlug === "all") return;
+      setIsSettingUpOpenwiki(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-openwiki", {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          showToast(res.message || "Created setup task for OpenWiki!", "success");
+          await Promise.all([loadOpenwikiStatus(bSlug), loadTasksAndStats(bSlug)]);
+        } else {
+          showToast((res && (res.detail || res.error || res.message)) || "Failed to trigger OpenWiki setup", "error");
+        }
+      } catch (err) {
+        showToast("Error initiating setup: " + (err.message || String(err)), "error");
+      } finally {
+        setIsSettingUpOpenwiki(false);
+      }
+    };
+
     // Load Tasks & Stats
     const loadTasksAndStats = useCallback(async (boardSlug) => {
       const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
@@ -402,15 +449,17 @@
         }
         if (bSlug && bSlug !== "all") {
           loadPrecommitStatus(bSlug);
+          loadOpenwikiStatus(bSlug);
         } else {
           setPrecommitStatus(null);
+          setOpenwikiStatus(null);
         }
       } catch (err) {
         console.error("Failed to load kanban data:", err);
       } finally {
         setLoading(false);
       }
-    }, [fetchJSON, loadPrecommitStatus]);
+    }, [fetchJSON, loadPrecommitStatus, loadOpenwikiStatus]);
 
     // Cron management handlers
     const loadCronJobs = useCallback(async () => {
@@ -1285,6 +1334,7 @@
           additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
         });
         loadPrecommitStatus(curr.slug);
+        loadOpenwikiStatus(curr.slug);
         setShowEditBoardModal(true);
       }
     };
@@ -5917,6 +5967,61 @@
                           : (precommitStatus && precommitStatus.has_precommit
                               ? "🔄 Regenerate Precommit"
                               : "⚡ Setup Repo Precommit")
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between" },
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "📖 OpenWiki Agent Docs"),
+                          React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Machine-readable repository architecture wiki for coding agents (openwiki/).")
+                        ),
+                        React.createElement(
+                          "span",
+                          {
+                            className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " +
+                              (openwikiStatus && openwikiStatus.has_openwiki
+                                ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                                : openwikiStatus && openwikiStatus.pending_task_id
+                                ? "bg-sky-950/80 text-sky-300 border border-sky-800/60"
+                                : "bg-amber-950/80 text-amber-300 border border-amber-800/60")
+                          },
+                          openwikiStatus && openwikiStatus.has_openwiki
+                            ? "Generated ✓"
+                            : openwikiStatus && openwikiStatus.pending_task_id
+                            ? "Setup in Progress ⏳"
+                            : "Not Generated ⚠️"
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between gap-2" },
+                        React.createElement(
+                          "span",
+                          { className: "text-[11px] text-slate-400 font-mono truncate" },
+                          openwikiStatus && openwikiStatus.openwiki_path
+                            ? openwikiStatus.openwiki_path
+                            : "openwiki/"
+                        ),
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            disabled: isSettingUpOpenwiki,
+                            onClick: () => handleTriggerOpenwikiSetup(editBoardForm.slug),
+                            className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                          },
+                          isSettingUpOpenwiki
+                            ? "Initiating..."
+                            : (openwikiStatus && openwikiStatus.has_openwiki
+                                ? "🔄 Regenerate OpenWiki"
+                                : "📖 Setup OpenWiki")
+                        )
                       )
                     )
                   )

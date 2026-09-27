@@ -218,6 +218,26 @@ except (ImportError, ValueError):
         create_precommit_setup_task,
     )
 
+# --- Re-export OpenWiki Service ----------------------------------------------
+try:
+    from .openwiki_service import (
+        OPENWIKI_RELATIVE_DIR,
+        SETUP_OPENWIKI_TASK_DEDUP_KEY,
+        SETUP_OPENWIKI_TASK_TITLE,
+        build_openwiki_setup_task_prompt,
+        check_board_openwiki_status,
+        create_openwiki_setup_task,
+    )
+except (ImportError, ValueError):
+    from openwiki_service import (  # type: ignore
+        OPENWIKI_RELATIVE_DIR,
+        SETUP_OPENWIKI_TASK_DEDUP_KEY,
+        SETUP_OPENWIKI_TASK_TITLE,
+        build_openwiki_setup_task_prompt,
+        check_board_openwiki_status,
+        create_openwiki_setup_task,
+    )
+
 # --- Routes and Master APIRouter ---------------------------------------------
 try:
     from .routes import (

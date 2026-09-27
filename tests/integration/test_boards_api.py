@@ -130,3 +130,42 @@ def test_create_board_with_auto_setup(api_client: TestClient):
     assert data["ok"] is True
     assert "setup_task_id" in data
     assert data["setup_task_id"] is not None
+
+
+def test_board_openwiki_endpoints(api_client: TestClient):
+    """Verify GET openwiki-status and POST setup-openwiki integration."""
+    # Create board
+    create_res = api_client.post(
+        "/api/plugins/zerofactory/boards",
+        json={"git_url": "https://github.com/example/openwiki-demo.git"},
+    )
+    assert create_res.status_code == 200
+    slug = create_res.json()["slug"]
+
+    # Initial openwiki status check
+    status_res = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/openwiki-status"
+    )
+    assert status_res.status_code == 200
+    status_data = status_res.json()
+    assert status_data["ok"] is True
+    assert status_data["has_openwiki"] is False
+    assert status_data["pending_task_id"] is None
+
+    # Trigger setup via API
+    setup_res = api_client.post(
+        f"/api/plugins/zerofactory/boards/{slug}/setup-openwiki"
+    )
+    assert setup_res.status_code == 200
+    setup_data = setup_res.json()
+    assert setup_data["ok"] is True
+    task_id = setup_data["task_id"]
+    assert task_id is not None
+
+    # Status check should now report pending setup task
+    status_res2 = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/openwiki-status"
+    )
+    assert status_res2.status_code == 200
+    status_data2 = status_res2.json()
+    assert status_data2["pending_task_id"] == task_id

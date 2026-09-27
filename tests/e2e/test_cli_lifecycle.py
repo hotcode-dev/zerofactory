@@ -302,6 +302,34 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
             self.assertEqual(row[2], "zf-builder")
             self.assertEqual(row[3], "todo")
 
+    def test_07_cli_setup_openwiki(self):
+        """CLI setup-openwiki command creates P0 setup task."""
+        # Create board first
+        self._run_cli(
+            ["board", "create", "https://github.com/setup-cli/openwiki-cli.git"]
+        )
+
+        # Run setup-openwiki command
+        out = self._run_cli(["setup-openwiki", "--board", "setup-cli-openwiki-cli"])
+        self.assertTrue(
+            "Created P0 OpenWiki setup task" in out
+            or "OpenWiki setup task already active" in out
+        )
+
+        # Verify task in DB
+        with sqlite3.connect(str(self.db_path)) as conn:
+            row = conn.execute(
+                "SELECT title, priority, assignee, status FROM tasks WHERE board_slug = 'setup-cli-openwiki-cli'"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(
+                row[0],
+                "chore(repo): setup OpenWiki machine-readable agent documentation",
+            )
+            self.assertEqual(row[1], "P0")
+            self.assertEqual(row[2], "zf-builder")
+            self.assertEqual(row[3], "todo")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,9 @@ try:
         add_comment as _add_comment,
     )
     from .dashboard.plugin_api import (
+        check_board_openwiki_status as _check_board_openwiki_status,
+    )
+    from .dashboard.plugin_api import (
         check_board_precommit_status as _check_board_precommit_status,
     )
     from .dashboard.plugin_api import (
@@ -37,6 +40,9 @@ try:
     )
     from .dashboard.plugin_api import (
         create_memory as _create_memory,
+    )
+    from .dashboard.plugin_api import (
+        create_openwiki_setup_task as _create_openwiki_setup_task,
     )
     from .dashboard.plugin_api import (
         create_precommit_setup_task as _create_precommit_setup_task,
@@ -93,6 +99,9 @@ except ImportError:
         add_comment as _add_comment,
     )
     from plugin_api import (
+        check_board_openwiki_status as _check_board_openwiki_status,
+    )
+    from plugin_api import (
         check_board_precommit_status as _check_board_precommit_status,
     )
     from plugin_api import (
@@ -100,6 +109,9 @@ except ImportError:
     )
     from plugin_api import (
         create_memory as _create_memory,
+    )
+    from plugin_api import (
+        create_openwiki_setup_task as _create_openwiki_setup_task,
     )
     from plugin_api import (
         create_precommit_setup_task as _create_precommit_setup_task,
@@ -438,6 +450,18 @@ def register(ctx: Any):
         )
         p_setupr.add_argument("--board", required=True, help="Board slug")
         p_setupr.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing setup (defaults to HERMES_PROFILE or 'user')",
+        )
+
+        # setup-openwiki
+        p_setupow = subparsers.add_parser(
+            "setup-openwiki",
+            help="Create P0 setup task to generate OpenWiki architecture documentation for a board",
+        )
+        p_setupow.add_argument("--board", required=True, help="Board slug")
+        p_setupow.add_argument(
             "--actor",
             default=None,
             help="Actor executing setup (defaults to HERMES_PROFILE or 'user')",
@@ -830,6 +854,33 @@ def register(ctx: Any):
                     )
                 else:
                     print(f"✓ Created P0 precommit setup task: {res.get('task_id')}")
+            else:
+                print(f"✗ Failed to initiate setup task: {res.get('error')}")
+
+        elif action == "setup-openwiki":
+            board_slug = getattr(args, "board", None)
+            if not board_slug:
+                print("Error: --board <slug> is required.")
+                return
+            actor_val = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            status_info = _check_board_openwiki_status(board_slug)
+            if status_info.get("has_openwiki"):
+                print(
+                    f"Notice: Board '{board_slug}' already has OpenWiki at {status_info.get('openwiki_path')}."
+                )
+
+            res = _create_openwiki_setup_task(board_slug, actor=actor_val)
+            if res.get("ok"):
+                if res.get("already_exists"):
+                    print(
+                        f"✓ OpenWiki setup task already active: {res.get('task_id')} ({res.get('status')})"
+                    )
+                else:
+                    print(f"✓ Created P0 OpenWiki setup task: {res.get('task_id')}")
             else:
                 print(f"✗ Failed to initiate setup task: {res.get('error')}")
 
