@@ -38,7 +38,6 @@ stuck on a previously resolved value (the same class of bug the sibling
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 # --- Canonical profile identity (source of truth) ---------------------------
 
@@ -65,7 +64,7 @@ HUMAN = "human"
 VALID_ASSIGNEES = {UNASSIGNED, HUMAN, *PROFILE_MAP}
 
 
-def normalize_assignee(assignee: Optional[str]) -> str:
+def normalize_assignee(assignee: str | None) -> str:
     """Normalize an assignee onto a canonical ``zf-*`` profile, ``"human"``, or ``"unassigned"``.
 
     * empty / ``None`` / ``"unassigned"`` -> ``"unassigned"``
@@ -87,7 +86,7 @@ def _hermes_profiles_root() -> Path:
     return Path.home() / ".hermes" / "profiles"
 
 
-def _plugin_profiles_root() -> Optional[Path]:
+def _plugin_profiles_root() -> Path | None:
     """Plugin-relative profiles directory, or ``None`` when not resolvable.
 
     The profiles directory is anchored to a fixed ancestor of this file
@@ -105,7 +104,7 @@ def _plugin_profiles_root() -> Optional[Path]:
     return None
 
 
-def resolve_profile_state_db(assignee: str) -> Optional[Path]:
+def resolve_profile_state_db(assignee: str) -> Path | None:
     """Resolve the ``state.db`` path for an agent profile.
 
     See the module docstring for the full strategy. Accepts either a raw

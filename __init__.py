@@ -12,46 +12,153 @@ from typing import Any, Dict, List, Optional
 # Import the database logic from dashboard.plugin_api
 try:
     from .dashboard.plugin_api import (
-        init_db, get_db_conn, list_tasks as _list_tasks, create_task as _create_task,
-        update_task as _update_task, move_task as _move_task, add_comment as _add_comment,
-        get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
-        list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
-        list_memories as _list_memories, create_memory as _create_memory, delete_memory as _delete_memory,
-        create_precommit_setup_task as _create_precommit_setup_task,
+        ACTIVITY_ACTORS,
+        BoardCreate,
+        CommentCreate,
+        MemoryCreate,
+        TaskCreate,
+        TaskMove,
+        TaskUpdate,
+        get_db_conn,
+        init_db,
+    )
+    from .dashboard.plugin_api import (
+        MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH,
+    )
+    from .dashboard.plugin_api import (
+        add_comment as _add_comment,
+    )
+    from .dashboard.plugin_api import (
         check_board_precommit_status as _check_board_precommit_status,
-        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate, MemoryCreate,
-        ACTIVITY_ACTORS, MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH
+    )
+    from .dashboard.plugin_api import (
+        create_board as _create_board,
+    )
+    from .dashboard.plugin_api import (
+        create_memory as _create_memory,
+    )
+    from .dashboard.plugin_api import (
+        create_precommit_setup_task as _create_precommit_setup_task,
+    )
+    from .dashboard.plugin_api import (
+        create_task as _create_task,
+    )
+    from .dashboard.plugin_api import (
+        delete_board as _delete_board,
+    )
+    from .dashboard.plugin_api import (
+        delete_memory as _delete_memory,
+    )
+    from .dashboard.plugin_api import (
+        get_stats as _get_stats,
+    )
+    from .dashboard.plugin_api import (
+        list_boards as _list_boards,
+    )
+    from .dashboard.plugin_api import (
+        list_memories as _list_memories,
+    )
+    from .dashboard.plugin_api import (
+        list_tasks as _list_tasks,
+    )
+    from .dashboard.plugin_api import (
+        move_task as _move_task,
+    )
+    from .dashboard.plugin_api import (
+        trigger_dispatch as _trigger_dispatch,
+    )
+    from .dashboard.plugin_api import (
+        update_task as _update_task,
     )
 except ImportError:
     current_dir = Path(__file__).parent
     if str(current_dir / "dashboard") not in sys.path:
         sys.path.insert(0, str(current_dir / "dashboard"))
     from plugin_api import (  # type: ignore
-        init_db, get_db_conn, list_tasks as _list_tasks, create_task as _create_task,
-        update_task as _update_task, move_task as _move_task, add_comment as _add_comment,
-        get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
-        list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
-        list_memories as _list_memories, create_memory as _create_memory, delete_memory as _delete_memory,
-        create_precommit_setup_task as _create_precommit_setup_task,
+        ACTIVITY_ACTORS,
+        BoardCreate,
+        CommentCreate,
+        MemoryCreate,
+        TaskCreate,
+        TaskMove,
+        TaskUpdate,
+        get_db_conn,
+        init_db,
+    )
+    from plugin_api import (
+        MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH,
+    )
+    from plugin_api import (
+        add_comment as _add_comment,
+    )
+    from plugin_api import (
         check_board_precommit_status as _check_board_precommit_status,
-        TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate, MemoryCreate,
-        ACTIVITY_ACTORS, MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH
+    )
+    from plugin_api import (
+        create_board as _create_board,
+    )
+    from plugin_api import (
+        create_memory as _create_memory,
+    )
+    from plugin_api import (
+        create_precommit_setup_task as _create_precommit_setup_task,
+    )
+    from plugin_api import (
+        create_task as _create_task,
+    )
+    from plugin_api import (
+        delete_board as _delete_board,
+    )
+    from plugin_api import (
+        delete_memory as _delete_memory,
+    )
+    from plugin_api import (
+        get_stats as _get_stats,
+    )
+    from plugin_api import (
+        list_boards as _list_boards,
+    )
+    from plugin_api import (
+        list_memories as _list_memories,
+    )
+    from plugin_api import (
+        list_tasks as _list_tasks,
+    )
+    from plugin_api import (
+        move_task as _move_task,
+    )
+    from plugin_api import (
+        trigger_dispatch as _trigger_dispatch,
+    )
+    from plugin_api import (
+        update_task as _update_task,
     )
 
 try:
     from .dispatcher import run_dispatch_cycle, start_background_dispatcher
 except ImportError:
-    from dispatcher import run_dispatch_cycle, start_background_dispatcher  # type: ignore
+    from dispatcher import (  # type: ignore
+        run_dispatch_cycle,
+        start_background_dispatcher,
+    )
 
 try:
-    from .builtin_cron import ensure_builtin_cron_jobs, list_builtin_jobs, trigger_builtin_job
+    from .builtin_cron import (
+        ensure_builtin_cron_jobs,
+        list_builtin_jobs,
+        trigger_builtin_job,
+    )
 except ImportError:
-    from builtin_cron import ensure_builtin_cron_jobs, list_builtin_jobs, trigger_builtin_job  # type: ignore
+    from builtin_cron import (
+        ensure_builtin_cron_jobs,
+        list_builtin_jobs,
+        trigger_builtin_job,
+    )  # type: ignore
 
 try:
-    from .profile_manager import ensure_zf_profiles, ZF_PROFILES
+    from .profile_manager import ZF_PROFILES, ensure_zf_profiles
 except ImportError:
-    from profile_manager import ensure_zf_profiles, ZF_PROFILES  # type: ignore
+    from profile_manager import ZF_PROFILES, ensure_zf_profiles  # type: ignore
 
 
 def register(ctx: Any):
@@ -62,7 +169,9 @@ def register(ctx: Any):
         init_db()
         ensure_zf_profiles()
         ensure_builtin_cron_jobs()
-        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"):
+        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get(
+            "ZEROFACTORY_DISABLE_DISPATCHER"
+        ):
             start_background_dispatcher()
     except Exception as e:
         print(f"[zerofactory] Initialization error: {e}")
@@ -70,7 +179,9 @@ def register(ctx: Any):
     # Register tick hook if supported by Hermes
     if hasattr(ctx, "register_hook"):
         try:
-            ctx.register_hook("on_kanban_dispatch_tick", lambda *a, **kw: run_dispatch_cycle())
+            ctx.register_hook(
+                "on_kanban_dispatch_tick", lambda *a, **kw: run_dispatch_cycle()
+            )
         except Exception:
             pass
 
@@ -79,52 +190,116 @@ def register(ctx: Any):
         subparsers = parser.add_subparsers(dest="action", help="Zero Factory actions")
 
         # setup profiles
-        p_setup = subparsers.add_parser("setup", help="Verify and bootstrap Zero Factory agent profiles (zf-orchestrator, zf-builder, zf-reviewer)")
-        p_setup.add_argument("--force", action="store_true", help="Force overwrite existing profiles with templates")
+        p_setup = subparsers.add_parser(
+            "setup",
+            help="Verify and bootstrap Zero Factory agent profiles (zf-orchestrator, zf-builder, zf-reviewer)",
+        )
+        p_setup.add_argument(
+            "--force",
+            action="store_true",
+            help="Force overwrite existing profiles with templates",
+        )
 
         # sync-profiles
-        p_sync_prof = subparsers.add_parser("sync-profiles", help="Update SOUL.md system prompts for zf-* profiles from templates")
-        p_sync_prof.add_argument("--force", action="store_true", help="Also overwrite config.yaml")
+        p_sync_prof = subparsers.add_parser(
+            "sync-profiles",
+            help="Update SOUL.md system prompts for zf-* profiles from templates",
+        )
+        p_sync_prof.add_argument(
+            "--force", action="store_true", help="Also overwrite config.yaml"
+        )
 
         # list
         p_list = subparsers.add_parser("list", help="List kanban tasks")
         p_list.add_argument("--board", default=None, help="Filter by board slug")
-        p_list.add_argument("--status", default=None, help="Filter by status (triage, todo, running, blocked, done)")
+        p_list.add_argument(
+            "--status",
+            default=None,
+            help="Filter by status (triage, todo, running, blocked, done)",
+        )
         p_list.add_argument("--assignee", default=None, help="Filter by assignee")
 
         # create
         p_create = subparsers.add_parser("create", help="Create a new task")
         p_create.add_argument("title", help="Task title")
         p_create.add_argument("--description", default="", help="Task description")
-        p_create.add_argument("--description-file", default=None, help="Path to file containing task description (prevents shell quoting issues)")
+        p_create.add_argument(
+            "--description-file",
+            default=None,
+            help="Path to file containing task description (prevents shell quoting issues)",
+        )
         p_create.add_argument("--status", default="triage", help="Initial status")
-        p_create.add_argument("--priority", default="P2", help="Priority (P0, P1, P2, P3)")
-        p_create.add_argument("--assignee", default="unassigned", help="Assignee (zf-orchestrator, zf-builder, zf-reviewer)")
-        p_create.add_argument("--board", default=None, help="Board slug (defaults to first available board)")
+        p_create.add_argument(
+            "--priority", default="P2", help="Priority (P0, P1, P2, P3)"
+        )
+        p_create.add_argument(
+            "--assignee",
+            default="unassigned",
+            help="Assignee (zf-orchestrator, zf-builder, zf-reviewer)",
+        )
+        p_create.add_argument(
+            "--board",
+            default=None,
+            help="Board slug (defaults to first available board)",
+        )
         p_create.add_argument("--parent", default=None, help="Parent task ID")
-        p_create.add_argument("--files", default=None, help="Affected relative file path(s), comma-separated")
-        p_create.add_argument("--category", default="bug-fix", help="Issue category (e.g. bug-fix, refactoring, performance, test, config)")
-        p_create.add_argument("--dedup-key", default=None, help="Explicit deduplication key override")
-        p_create.add_argument("--actor", default=None, help="Actor creating the task (defaults to HERMES_PROFILE or 'user')")
+        p_create.add_argument(
+            "--files",
+            default=None,
+            help="Affected relative file path(s), comma-separated",
+        )
+        p_create.add_argument(
+            "--category",
+            default="bug-fix",
+            help="Issue category (e.g. bug-fix, refactoring, performance, test, config)",
+        )
+        p_create.add_argument(
+            "--dedup-key", default=None, help="Explicit deduplication key override"
+        )
+        p_create.add_argument(
+            "--actor",
+            default=None,
+            help="Actor creating the task (defaults to HERMES_PROFILE or 'user')",
+        )
 
         # move
         p_move = subparsers.add_parser("move", help="Move a task to a different column")
         p_move.add_argument("task_id", help="Task ID")
-        p_move.add_argument("status", choices=["triage", "todo", "running", "blocked", "done"], help="Target status")
-        p_move.add_argument("--reason", default=None, help="Optional reason; recorded as a comment when moving to 'blocked' (mirrors the 'block' command)")
-        p_move.add_argument("--actor", default=None, help="Actor executing move (defaults to HERMES_PROFILE or 'user')")
+        p_move.add_argument(
+            "status",
+            choices=["triage", "todo", "running", "blocked", "done"],
+            help="Target status",
+        )
+        p_move.add_argument(
+            "--reason",
+            default=None,
+            help="Optional reason; recorded as a comment when moving to 'blocked' (mirrors the 'block' command)",
+        )
+        p_move.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing move (defaults to HERMES_PROFILE or 'user')",
+        )
 
         # block
         p_block = subparsers.add_parser("block", help="Mark a task as blocked")
         p_block.add_argument("task_id", help="Task ID")
         p_block.add_argument("--reason", default="review-required", help="Block reason")
-        p_block.add_argument("--actor", default=None, help="Actor executing block (defaults to HERMES_PROFILE or 'user')")
+        p_block.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing block (defaults to HERMES_PROFILE or 'user')",
+        )
 
         # comment
         p_comment = subparsers.add_parser("comment", help="Add a comment to a task")
         p_comment.add_argument("task_id", help="Task ID")
         p_comment.add_argument("body", help="Comment body")
-        p_comment.add_argument("--author", default=None, help="Author name (defaults to HERMES_PROFILE or 'user')")
+        p_comment.add_argument(
+            "--author",
+            default=None,
+            help="Author name (defaults to HERMES_PROFILE or 'user')",
+        )
 
         # stats
         subparsers.add_parser("stats", help="Show Kanban board statistics")
@@ -133,59 +308,139 @@ def register(ctx: Any):
         subparsers.add_parser("dispatch", help="Trigger dispatch cycle")
 
         # check-stuck
-        p_stuck = subparsers.add_parser("check-stuck", help="Check running tasks for excessive duration or inactivity")
-        p_stuck.add_argument("--timeout", type=int, default=None, help="Override running timeout threshold in seconds")
-        p_stuck.add_argument("--inactivity", type=int, default=None, help="Override inactivity threshold in seconds")
-        p_stuck.add_argument("--reap", action="store_true", help="Automatically terminate and move stuck tasks to blocked")
-        p_stuck.add_argument("--task", default=None, help="Specific task ID to inspect or reap")
+        p_stuck = subparsers.add_parser(
+            "check-stuck",
+            help="Check running tasks for excessive duration or inactivity",
+        )
+        p_stuck.add_argument(
+            "--timeout",
+            type=int,
+            default=None,
+            help="Override running timeout threshold in seconds",
+        )
+        p_stuck.add_argument(
+            "--inactivity",
+            type=int,
+            default=None,
+            help="Override inactivity threshold in seconds",
+        )
+        p_stuck.add_argument(
+            "--reap",
+            action="store_true",
+            help="Automatically terminate and move stuck tasks to blocked",
+        )
+        p_stuck.add_argument(
+            "--task", default=None, help="Specific task ID to inspect or reap"
+        )
 
         # cron
-        p_cron = subparsers.add_parser("cron", help="Manage built-in Zero Factory cron jobs")
+        p_cron = subparsers.add_parser(
+            "cron", help="Manage built-in Zero Factory cron jobs"
+        )
         cron_subs = p_cron.add_subparsers(dest="cron_action", help="Cron actions")
-        cron_subs.add_parser("list", help="List built-in Zero Factory cron jobs and status")
-        cron_subs.add_parser("sync", help="Synchronize built-in cron jobs with Hermes cron storage")
-        p_cron_run = cron_subs.add_parser("run", help="Trigger immediate execution of a built-in cron job")
-        p_cron_run.add_argument("job_id", help="Job ID (e.g. zero-factory-task-queue-check, zero-factory-improvement-scanner)")
+        cron_subs.add_parser(
+            "list", help="List built-in Zero Factory cron jobs and status"
+        )
+        cron_subs.add_parser(
+            "sync", help="Synchronize built-in cron jobs with Hermes cron storage"
+        )
+        p_cron_run = cron_subs.add_parser(
+            "run", help="Trigger immediate execution of a built-in cron job"
+        )
+        p_cron_run.add_argument(
+            "job_id",
+            help="Job ID (e.g. zero-factory-task-queue-check, zero-factory-improvement-scanner)",
+        )
 
         # board
-        p_board = subparsers.add_parser("board", help="Manage Zero Factory Kanban boards")
+        p_board = subparsers.add_parser(
+            "board", help="Manage Zero Factory Kanban boards"
+        )
         board_subs = p_board.add_subparsers(dest="board_action", help="Board actions")
         board_subs.add_parser("list", help="List all boards")
-        p_bcreate = board_subs.add_parser("create", help="Create a new board from Remote Git URL")
-        p_bcreate.add_argument("git_url", help="Remote Git URL (e.g. https://github.com/owner/repo.git)")
+        p_bcreate = board_subs.add_parser(
+            "create", help="Create a new board from Remote Git URL"
+        )
+        p_bcreate.add_argument(
+            "git_url", help="Remote Git URL (e.g. https://github.com/owner/repo.git)"
+        )
         p_bcreate.add_argument("--description", default="", help="Board description")
-        p_bcreate.add_argument("--target-branch", default="", help="Target/base branch to branch off and merge PRs into (e.g. main)")
-        p_bcreate.add_argument("--setup-precommit", action="store_true", help="Automatically trigger setup task for .zerofactory/precommit.sh")
-        p_bdelete = board_subs.add_parser("delete", help="Delete a board and clear its cron scanner job")
+        p_bcreate.add_argument(
+            "--target-branch",
+            default="",
+            help="Target/base branch to branch off and merge PRs into (e.g. main)",
+        )
+        p_bcreate.add_argument(
+            "--setup-precommit",
+            action="store_true",
+            help="Automatically trigger setup task for .zerofactory/precommit.sh",
+        )
+        p_bdelete = board_subs.add_parser(
+            "delete", help="Delete a board and clear its cron scanner job"
+        )
         p_bdelete.add_argument("slug", help="Board slug to delete")
 
         # memory
-        p_mem = subparsers.add_parser("memory", help="Manage native board memories & repository knowledge")
+        p_mem = subparsers.add_parser(
+            "memory", help="Manage native board memories & repository knowledge"
+        )
         mem_subs = p_mem.add_subparsers(dest="memory_action", help="Memory actions")
         p_mlist = mem_subs.add_parser("list", help="List memories for a board")
         p_mlist.add_argument("--board", required=True, help="Board slug")
-        p_mlist.add_argument("--category", default=None, help="Category filter (decision, gotcha, convention, rejected_path, general)")
+        p_mlist.add_argument(
+            "--category",
+            default=None,
+            help="Category filter (decision, gotcha, convention, rejected_path, general)",
+        )
         p_mlist.add_argument("--query", "-q", default=None, help="Keyword search query")
 
-        p_madd = mem_subs.add_parser("add", help=f"Add a new repository memory (max {_MEMORY_CONTENT_MAX_LENGTH} chars)")
+        p_madd = mem_subs.add_parser(
+            "add",
+            help=f"Add a new repository memory (max {_MEMORY_CONTENT_MAX_LENGTH} chars)",
+        )
         p_madd.add_argument("--board", required=True, help="Board slug")
-        p_madd.add_argument("content", help=f"Memory content / finding / convention (max {_MEMORY_CONTENT_MAX_LENGTH} chars)")
-        p_madd.add_argument("--category", default="general", choices=["decision", "gotcha", "convention", "rejected_path", "general"], help="Category")
+        p_madd.add_argument(
+            "content",
+            help=f"Memory content / finding / convention (max {_MEMORY_CONTENT_MAX_LENGTH} chars)",
+        )
+        p_madd.add_argument(
+            "--category",
+            default="general",
+            choices=["decision", "gotcha", "convention", "rejected_path", "general"],
+            help="Category",
+        )
         p_madd.add_argument("--tags", default=None, help="Comma-separated tags")
-        p_madd.add_argument("--author", default=None, help="Author name (defaults to HERMES_PROFILE or 'user')")
+        p_madd.add_argument(
+            "--author",
+            default=None,
+            help="Author name (defaults to HERMES_PROFILE or 'user')",
+        )
         p_madd.add_argument("--task", default=None, help="Associated task ID")
 
         p_mdel = mem_subs.add_parser("delete", help="Delete a memory by ID")
         p_mdel.add_argument("memory_id", help="Memory ID")
 
         # migrate
-        p_mig = subparsers.add_parser("migrate", help="Run or inspect SQLite database migrations")
-        p_mig.add_argument("--status", action="store_true", help="Show migration status without applying")
+        p_mig = subparsers.add_parser(
+            "migrate", help="Run or inspect SQLite database migrations"
+        )
+        p_mig.add_argument(
+            "--status",
+            action="store_true",
+            help="Show migration status without applying",
+        )
 
         # setup-repo
-        p_setupr = subparsers.add_parser("setup-repo", help="Create P0 setup task to generate .zerofactory/precommit.sh for a board")
+        p_setupr = subparsers.add_parser(
+            "setup-repo",
+            help="Create P0 setup task to generate .zerofactory/precommit.sh for a board",
+        )
         p_setupr.add_argument("--board", required=True, help="Board slug")
-        p_setupr.add_argument("--actor", default=None, help="Actor executing setup (defaults to HERMES_PROFILE or 'user')")
+        p_setupr.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing setup (defaults to HERMES_PROFILE or 'user')",
+        )
 
     def cmd_run(args: argparse.Namespace):
         init_db()
@@ -201,7 +456,7 @@ def register(ctx: Any):
                 print(f"  ✓ Updated:  {', '.join(res['updated'])}")
             if res["existing"]:
                 print(f"  ✓ Verified: {', '.join(res['existing'])}")
-            print(f"All Zero Factory profiles are ready in ~/.hermes/profiles/.\n")
+            print("All Zero Factory profiles are ready in ~/.hermes/profiles/.\n")
 
         elif action == "sync-profiles":
             force = getattr(args, "force", False)
@@ -216,7 +471,11 @@ def register(ctx: Any):
             print()
 
         elif action == "list" or not action:
-            res = _list_tasks(board=getattr(args, "board", None), status=getattr(args, "status", None), assignee=getattr(args, "assignee", None))
+            res = _list_tasks(
+                board=getattr(args, "board", None),
+                status=getattr(args, "status", None),
+                assignee=getattr(args, "assignee", None),
+            )
             tasks = res.get("tasks", [])
             print(f"\nZero Factory Kanban ({len(tasks)} tasks):")
             print(f"{'ID':<12} {'PRIO':<6} {'STATUS':<10} {'ASSIGNEE':<16} {'TITLE'}")
@@ -241,8 +500,14 @@ def register(ctx: Any):
                     print(f"Warning: Failed to read --description-file: {e}")
 
             files_arg = getattr(args, "files", None)
-            files_list = [f.strip() for f in files_arg.split(",") if f.strip()] if files_arg else []
-            actor_val = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
+            files_list = (
+                [f.strip() for f in files_arg.split(",") if f.strip()]
+                if files_arg
+                else []
+            )
+            actor_val = (
+                getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
+            )
             req = TaskCreate(
                 title=args.title,
                 description=desc,
@@ -258,12 +523,18 @@ def register(ctx: Any):
             )
             res = _create_task(req)
             if res.get("duplicate"):
-                print(f"[Duplicate Skipped] {res.get('message', 'Task already exists')}")
+                print(
+                    f"[Duplicate Skipped] {res.get('message', 'Task already exists')}"
+                )
             else:
                 print(f"Created task {res['id']}: {args.title}")
 
         elif action == "move":
-            actor = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user"
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
             reason = getattr(args, "reason", None)
             req = TaskMove(status=args.status, actor=actor, reason=reason)
             res = _move_task(args.task_id, req)
@@ -276,13 +547,21 @@ def register(ctx: Any):
             # Delegate to `move_task` with the reason so the single shared
             # code path in dashboard/plugin_api.py records the "Blocked: ..."
             # comment — identical to `move <id> blocked --reason ...`.
-            actor = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user"
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
             req = TaskMove(status="blocked", actor=actor, reason=args.reason)
             _move_task(args.task_id, req)
             print(f"Task {args.task_id} marked as BLOCKED ({args.reason})")
 
         elif action == "comment":
-            author = getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user"
+            author = (
+                getattr(args, "author", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
             _add_comment(args.task_id, CommentCreate(author=author, body=args.body))
             print(f"Added comment to task {args.task_id}")
 
@@ -309,7 +588,9 @@ def register(ctx: Any):
             if getattr(args, "timeout", None):
                 os.environ["ZEROFACTORY_TASK_TIMEOUT_SECONDS"] = str(args.timeout)
             if getattr(args, "inactivity", None):
-                os.environ["ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS"] = str(args.inactivity)
+                os.environ["ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS"] = str(
+                    args.inactivity
+                )
 
             tasks = check_stuck_tasks()
             target_task = getattr(args, "task", None)
@@ -320,7 +601,9 @@ def register(ctx: Any):
             if not tasks:
                 print("  No tasks currently in 'running' state.\n")
             else:
-                print(f"{'ID':<14} {'PID':<8} {'ALIVE':<6} {'RUNNING':<10} {'IDLE':<10} {'STATUS':<10} {'TITLE'}")
+                print(
+                    f"{'ID':<14} {'PID':<8} {'ALIVE':<6} {'RUNNING':<10} {'IDLE':<10} {'STATUS':<10} {'TITLE'}"
+                )
                 print("-" * 85)
                 for t in tasks:
                     t_id = t["id"]
@@ -332,7 +615,9 @@ def register(ctx: Any):
                     title = t.get("title", "")
                     if len(title) > 32:
                         title = title[:29] + "..."
-                    print(f"{t_id:<14} {pid:<8} {alive:<6} {run_str:<10} {idle_str:<10} {stuck_str:<10} {title}")
+                    print(
+                        f"{t_id:<14} {pid:<8} {alive:<6} {run_str:<10} {idle_str:<10} {stuck_str:<10} {title}"
+                    )
                     if t.get("is_stuck") and t.get("stuck_reason"):
                         print(f"   ↳ Reason: {t['stuck_reason']}")
                 print()
@@ -353,7 +638,9 @@ def register(ctx: Any):
             if cron_act == "list":
                 jobs = list_builtin_jobs()
                 print("\nZero Factory Built-in Cron Jobs:")
-                print(f"{'ID':<36} {'SCHEDULE':<14} {'STATE':<10} {'LAST STATUS':<12} {'LAST RUN'}")
+                print(
+                    f"{'ID':<36} {'SCHEDULE':<14} {'STATE':<10} {'LAST STATUS':<12} {'LAST RUN'}"
+                )
                 print("-" * 90)
                 for j in jobs:
                     jid = str(j.get("id") or "-")
@@ -361,7 +648,11 @@ def register(ctx: Any):
                     if not sch:
                         raw_sch = j.get("schedule")
                         if isinstance(raw_sch, dict):
-                            sch = raw_sch.get("cron") or (f"every {raw_sch['minutes']}m" if "minutes" in raw_sch else str(raw_sch))
+                            sch = raw_sch.get("cron") or (
+                                f"every {raw_sch['minutes']}m"
+                                if "minutes" in raw_sch
+                                else str(raw_sch)
+                            )
                         else:
                             sch = str(raw_sch or "-")
                     st = str(j.get("state") or "scheduled")
@@ -371,7 +662,9 @@ def register(ctx: Any):
                 print()
             elif cron_act == "sync":
                 res = ensure_builtin_cron_jobs()
-                print(f"Synced builtin cron jobs: added {res.get('added', 0)}, updated {res.get('updated', 0)} across {len(res.get('synced_targets', []))} targets.")
+                print(
+                    f"Synced builtin cron jobs: added {res.get('added', 0)}, updated {res.get('updated', 0)} across {len(res.get('synced_targets', []))} targets."
+                )
                 for t in res.get("synced_targets", []):
                     print(f"  ✓ {t}")
             elif cron_act == "run":
@@ -387,27 +680,35 @@ def register(ctx: Any):
                 res = _list_boards()
                 boards = res.get("boards", [])
                 print(f"\nZero Factory Boards ({len(boards)}):")
-                print(f"{'SLUG':<32} {'TASKS':<8} {'RUNNING':<8} {'MAX RUN':<8} {'GIT URL'}")
+                print(
+                    f"{'SLUG':<32} {'TASKS':<8} {'RUNNING':<8} {'MAX RUN':<8} {'GIT URL'}"
+                )
                 print("-" * 96)
                 for b in boards:
-                    print(f"{b['slug']:<32} {b.get('task_count', 0):<8} {b.get('running_count', 0):<8} {b.get('max_concurrent_running', 1):<8} {b.get('git_url', '')}")
+                    print(
+                        f"{b['slug']:<32} {b.get('task_count', 0):<8} {b.get('running_count', 0):<8} {b.get('max_concurrent_running', 1):<8} {b.get('git_url', '')}"
+                    )
                 print()
             elif b_act == "create":
                 req = BoardCreate(
                     git_url=args.git_url,
                     description=args.description,
                     target_branch=getattr(args, "target_branch", "") or "",
-                    auto_setup_precommit=getattr(args, "setup_precommit", False)
+                    auto_setup_precommit=getattr(args, "setup_precommit", False),
                 )
                 res = _create_board(req)
                 slug = res.get("slug")
                 if res.get("setup_task_id"):
-                    print(f"✓ Created board '{slug}' and initiated precommit setup task '{res.get('setup_task_id')}'.")
+                    print(
+                        f"✓ Created board '{slug}' and initiated precommit setup task '{res.get('setup_task_id')}'."
+                    )
                 else:
                     print(f"✓ Created board: {slug}")
             elif b_act == "delete":
                 res = _delete_board(args.slug)
-                print(f"✓ Deleted board '{args.slug}' and cleared associated cron scanner job.")
+                print(
+                    f"✓ Deleted board '{args.slug}' and cleared associated cron scanner job."
+                )
 
         elif action == "memory":
             m_act = getattr(args, "memory_action", "list") or "list"
@@ -415,10 +716,12 @@ def register(ctx: Any):
                 res = _list_memories(
                     slug=args.board,
                     category=getattr(args, "category", None),
-                    q=getattr(args, "query", None)
+                    q=getattr(args, "query", None),
                 )
                 memories = res.get("memories", [])
-                print(f"\nRepository Memories for '{args.board}' ({len(memories)} entries):")
+                print(
+                    f"\nRepository Memories for '{args.board}' ({len(memories)} entries):"
+                )
                 print(f"{'ID':<14} {'CATEGORY':<14} {'AUTHOR':<14} {'CONTENT'}")
                 print("-" * 80)
                 for m in memories:
@@ -430,8 +733,16 @@ def register(ctx: Any):
                     print(f"{m['id']:<14} {cat:<14} {author:<14} {content}")
                 print()
             elif m_act == "add":
-                tag_list = [t.strip() for t in args.tags.split(",") if t.strip()] if getattr(args, "tags", None) else []
-                author = getattr(args, "author", None) or os.environ.get("HERMES_PROFILE") or "user"
+                tag_list = (
+                    [t.strip() for t in args.tags.split(",") if t.strip()]
+                    if getattr(args, "tags", None)
+                    else []
+                )
+                author = (
+                    getattr(args, "author", None)
+                    or os.environ.get("HERMES_PROFILE")
+                    or "user"
+                )
                 content = (args.content or "").strip()
                 if len(content) > _MEMORY_CONTENT_MAX_LENGTH:
                     print(
@@ -448,14 +759,16 @@ def register(ctx: Any):
                         content=args.content,
                         tags=tag_list,
                         author=author,
-                        task_id=getattr(args, "task", None)
+                        task_id=getattr(args, "task", None),
                     )
                 except Exception as e:
                     print(f"✗ Invalid memory payload: {e}")
                     return
                 res = _create_memory(args.board, req)
                 mem = res.get("memory", {})
-                print(f"✓ Added memory {mem.get('id')} to board '{args.board}' [{mem.get('category')}].")
+                print(
+                    f"✓ Added memory {mem.get('id')} to board '{args.board}' [{mem.get('category')}]."
+                )
             elif m_act == "delete":
                 res = _delete_memory(args.memory_id)
                 print(f"✓ Deleted memory '{args.memory_id}'.")
@@ -473,7 +786,13 @@ def register(ctx: Any):
                 print("  " + "-" * 65)
                 for s in statuses:
                     st = "Applied" if s["applied"] else "Pending"
-                    applied_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(s["applied_at"])) if s["applied_at"] else "-"
+                    applied_str = (
+                        time.strftime(
+                            "%Y-%m-%d %H:%M:%S", time.localtime(s["applied_at"])
+                        )
+                        if s["applied_at"]
+                        else "-"
+                    )
                     print(f"  {s['version']:<35} {st:<12} {applied_str}")
                 print()
             else:
@@ -491,15 +810,23 @@ def register(ctx: Any):
             if not board_slug:
                 print("Error: --board <slug> is required.")
                 return
-            actor_val = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user"
+            actor_val = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
             status_info = _check_board_precommit_status(board_slug)
             if status_info.get("has_precommit"):
-                print(f"Notice: Board '{board_slug}' already has .zerofactory/precommit.sh at {status_info.get('precommit_path')}.")
+                print(
+                    f"Notice: Board '{board_slug}' already has .zerofactory/precommit.sh at {status_info.get('precommit_path')}."
+                )
 
             res = _create_precommit_setup_task(board_slug, actor=actor_val)
             if res.get("ok"):
                 if res.get("already_exists"):
-                    print(f"✓ Precommit setup task already active: {res.get('task_id')} ({res.get('status')})")
+                    print(
+                        f"✓ Precommit setup task already active: {res.get('task_id')} ({res.get('status')})"
+                    )
                 else:
                     print(f"✓ Created P0 precommit setup task: {res.get('task_id')}")
             else:
@@ -510,5 +837,5 @@ def register(ctx: Any):
             name="zerofactory",
             help="Zero Factory multi-agent software factory & Kanban",
             setup_fn=cmd_setup,
-            handler_fn=cmd_run
+            handler_fn=cmd_run,
         )

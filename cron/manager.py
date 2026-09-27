@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import sqlite3
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .config import _c, _log, get_db_path
 from .definitions import get_all_builtin_cron_jobs
@@ -21,7 +19,7 @@ from .store import (
 )
 
 
-def ensure_builtin_cron_jobs() -> Dict[str, Any]:
+def ensure_builtin_cron_jobs() -> dict[str, Any]:
     """Ensure all builtin Zero Factory cron jobs are registered and up-to-date."""
     disp = _c()
     custom_ensure = getattr(disp, "ensure_builtin_cron_jobs", None)
@@ -34,18 +32,29 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
     # Automatically deploy scripts to ~/.hermes/scripts/ before registering jobs
     try:
         from profile_manager import ensure_script_files
+
         ensure_script_files()
     except Exception as e:
         _log.debug("Script sync in ensure_builtin_cron_jobs skipped: %s", e)
 
     get_db_path_fn = getattr(disp, "get_db_path", get_db_path)
-    get_all_builtin_cron_jobs_fn = getattr(disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs)
-    cleanup_duplicate_root_jobs_fn = getattr(disp, "cleanup_duplicate_root_jobs", cleanup_duplicate_root_jobs)
-    get_target_jobs_files_fn = getattr(disp, "get_target_jobs_files", get_target_jobs_files)
+    get_all_builtin_cron_jobs_fn = getattr(
+        disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs
+    )
+    cleanup_duplicate_root_jobs_fn = getattr(
+        disp, "cleanup_duplicate_root_jobs", cleanup_duplicate_root_jobs
+    )
+    get_target_jobs_files_fn = getattr(
+        disp, "get_target_jobs_files", get_target_jobs_files
+    )
     load_jobs_from_file_fn = getattr(disp, "load_jobs_from_file", load_jobs_from_file)
     save_jobs_to_file_fn = getattr(disp, "save_jobs_to_file", save_jobs_to_file)
-    compute_job_next_run_fn = getattr(disp, "compute_job_next_run", compute_job_next_run)
-    is_cron_scheduler_enabled_fn = getattr(disp, "is_cron_scheduler_enabled", is_cron_scheduler_enabled)
+    compute_job_next_run_fn = getattr(
+        disp, "compute_job_next_run", compute_job_next_run
+    )
+    is_cron_scheduler_enabled_fn = getattr(
+        disp, "is_cron_scheduler_enabled", is_cron_scheduler_enabled
+    )
 
     # Active board slugs currently registered in the database
     active_board_slugs = set()
@@ -56,7 +65,9 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute("SELECT slug FROM boards")
-                active_board_slugs = {row["slug"] for row in cur.fetchall() if row["slug"]}
+                active_board_slugs = {
+                    row["slug"] for row in cur.fetchall() if row["slug"]
+                }
         except Exception as e:
             _log.warning("Failed to query board slugs for cron pruning: %s", e)
 
@@ -84,14 +95,13 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
 
             # Explicit check: If it is an improvement scanner job, prune if slug is not an active board
             if jid.startswith("zero-factory-improvement-scanner-"):
-                board_slug = jid[len("zero-factory-improvement-scanner-"):]
+                board_slug = jid[len("zero-factory-improvement-scanner-") :]
                 if board_slug not in active_board_slugs:
                     continue
 
             # Prune any Zero Factory job not in active definitions
-            is_zf_job = (
-                j.get("origin") == "zerofactory"
-                or jid.startswith("zero-factory-")
+            is_zf_job = j.get("origin") == "zerofactory" or jid.startswith(
+                "zero-factory-"
             )
             if is_zf_job and jid not in current_builtin_jobs:
                 continue
@@ -101,7 +111,9 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
         pruned_here = initial_count - len(pruned_jobs)
         total_pruned += pruned_here
         existing_jobs = pruned_jobs
-        existing_by_id = {j.get("id"): j for j in existing_jobs if isinstance(j, dict) and j.get("id")}
+        existing_by_id = {
+            j.get("id"): j for j in existing_jobs if isinstance(j, dict) and j.get("id")
+        }
 
         added_here = 0
         updated_here = 0
@@ -113,7 +125,9 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 new_job = dict(builtin_def)
                 new_job["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
                 if not new_job.get("next_run_at") and new_job.get("enabled", True):
-                    new_job["next_run_at"] = compute_job_next_run_fn(new_job.get("schedule", {}))
+                    new_job["next_run_at"] = compute_job_next_run_fn(
+                        new_job.get("schedule", {})
+                    )
                 existing_jobs.append(new_job)
                 added_here += 1
             else:
@@ -122,11 +136,35 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 changed = False
                 is_custom = bool(curr.get("custom_config"))
                 for field in (
-                    "name", "prompt", "schedule", "schedule_display",
-                    "enabled_toolsets", "origin", "model", "provider", "base_url", "workdir",
-                    "script", "no_agent", "context_from", "continuity"
+                    "name",
+                    "prompt",
+                    "schedule",
+                    "schedule_display",
+                    "enabled_toolsets",
+                    "origin",
+                    "model",
+                    "provider",
+                    "base_url",
+                    "workdir",
+                    "script",
+                    "no_agent",
+                    "context_from",
+                    "continuity",
                 ):
-                    if is_custom and field in ("name", "schedule", "schedule_display", "prompt", "model", "provider", "base_url", "workdir", "script", "no_agent", "context_from", "continuity"):
+                    if is_custom and field in (
+                        "name",
+                        "schedule",
+                        "schedule_display",
+                        "prompt",
+                        "model",
+                        "provider",
+                        "base_url",
+                        "workdir",
+                        "script",
+                        "no_agent",
+                        "context_from",
+                        "continuity",
+                    ):
                         continue
                     if curr.get(field) != builtin_def.get(field):
                         curr[field] = builtin_def.get(field)
@@ -134,7 +172,11 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
 
                 # Re-activate any scanner job that was retired as a one-shot completed job (only if scheduler enabled)
                 # Note: NEVER re-activate "paused" jobs here — if a job is paused, it was disabled by configuration or user.
-                if curr.get("state") == "completed" and not is_custom and is_cron_scheduler_enabled_fn():
+                if (
+                    curr.get("state") == "completed"
+                    and not is_custom
+                    and is_cron_scheduler_enabled_fn()
+                ):
                     curr["state"] = "scheduled"
                     curr["enabled"] = True
                     curr["paused_at"] = None
@@ -144,13 +186,15 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
                 # Ensure next_run_at is populated for active scheduled jobs
                 sched = curr.get("schedule", builtin_def.get("schedule", {}))
                 if curr.get("enabled", True) and not curr.get("next_run_at"):
-                    curr["next_run_at"] = compute_job_next_run_fn(sched, curr.get("last_run_at"))
+                    curr["next_run_at"] = compute_job_next_run_fn(
+                        sched, curr.get("last_run_at")
+                    )
                     changed = True
 
                 # Unblock job if it was previously blocked by preflight credential missing
-                if (
-                    curr.get("last_status") == "blocked_config"
-                    or (curr.get("last_error") and "[blocked_config]" in str(curr.get("last_error")))
+                if curr.get("last_status") == "blocked_config" or (
+                    curr.get("last_error")
+                    and "[blocked_config]" in str(curr.get("last_error"))
                 ):
                     curr["last_status"] = None
                     curr["last_error"] = None
@@ -174,14 +218,16 @@ def ensure_builtin_cron_jobs() -> Dict[str, Any]:
         "added": total_added,
         "updated": total_updated,
         "pruned": total_pruned,
-        "job_ids": list(current_builtin_jobs.keys())
+        "job_ids": list(current_builtin_jobs.keys()),
     }
 
 
 def prune_board_cron_job(slug: str) -> None:
     """Explicitly remove any improvement scanner cron job for a given board slug from all cron stores."""
     disp = _c()
-    get_target_jobs_files_fn = getattr(disp, "get_target_jobs_files", get_target_jobs_files)
+    get_target_jobs_files_fn = getattr(
+        disp, "get_target_jobs_files", get_target_jobs_files
+    )
     load_jobs_from_file_fn = getattr(disp, "load_jobs_from_file", load_jobs_from_file)
     save_jobs_to_file_fn = getattr(disp, "save_jobs_to_file", save_jobs_to_file)
 
@@ -197,11 +243,15 @@ def prune_board_cron_job(slug: str) -> None:
             _log.info("Pruned scanner cron job %s from %s", job_id, target)
 
 
-def list_builtin_jobs() -> List[Dict[str, Any]]:
+def list_builtin_jobs() -> list[dict[str, Any]]:
     """Return the current configuration and runtime status of builtin jobs."""
     disp = _c()
-    get_all_builtin_cron_jobs_fn = getattr(disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs)
-    get_target_jobs_files_fn = getattr(disp, "get_target_jobs_files", get_target_jobs_files)
+    get_all_builtin_cron_jobs_fn = getattr(
+        disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs
+    )
+    get_target_jobs_files_fn = getattr(
+        disp, "get_target_jobs_files", get_target_jobs_files
+    )
     load_jobs_from_file_fn = getattr(disp, "load_jobs_from_file", load_jobs_from_file)
 
     current_builtin_jobs = get_all_builtin_cron_jobs_fn()
@@ -210,39 +260,54 @@ def list_builtin_jobs() -> List[Dict[str, Any]]:
     for t in target_files:
         if t.exists():
             for j in load_jobs_from_file_fn(t):
-                if isinstance(j, dict) and j.get("id") in current_builtin_jobs and j.get("id") not in existing_by_id:
+                if (
+                    isinstance(j, dict)
+                    and j.get("id") in current_builtin_jobs
+                    and j.get("id") not in existing_by_id
+                ):
                     existing_by_id[j["id"]] = j
 
     results = []
     for job_id, builtin_def in current_builtin_jobs.items():
         curr = existing_by_id.get(job_id, builtin_def)
-        results.append({
-            "id": job_id,
-            "name": curr.get("name", builtin_def.get("name")),
-            "schedule": curr.get("schedule", builtin_def.get("schedule")),
-            "schedule_display": curr.get("schedule_display") or curr.get("schedule", {}).get("display", "configured"),
-            "enabled": curr.get("enabled", True),
-            "state": curr.get("state", "scheduled"),
-            "prompt": curr.get("prompt", builtin_def.get("prompt")),
-            "model": curr.get("model", builtin_def.get("model")),
-            "provider": curr.get("provider", builtin_def.get("provider")),
-            "base_url": curr.get("base_url", builtin_def.get("base_url")),
-            "workdir": curr.get("workdir", builtin_def.get("workdir")),
-            "profile": curr.get("profile", builtin_def.get("profile", "zf-orchestrator")),
-            "script": curr.get("script", builtin_def.get("script")),
-            "no_agent": bool(curr.get("no_agent", builtin_def.get("no_agent", False))),
-            "context_from": curr.get("context_from", builtin_def.get("context_from")),
-            "continuity": bool(curr.get("continuity", builtin_def.get("continuity", False))),
-            "custom_config": bool(curr.get("custom_config")),
-            "last_status": curr.get("last_status"),
-            "last_run_at": curr.get("last_run_at"),
-            "next_run_at": curr.get("next_run_at"),
-            "last_error": curr.get("last_error")
-        })
+        results.append(
+            {
+                "id": job_id,
+                "name": curr.get("name", builtin_def.get("name")),
+                "schedule": curr.get("schedule", builtin_def.get("schedule")),
+                "schedule_display": curr.get("schedule_display")
+                or curr.get("schedule", {}).get("display", "configured"),
+                "enabled": curr.get("enabled", True),
+                "state": curr.get("state", "scheduled"),
+                "prompt": curr.get("prompt", builtin_def.get("prompt")),
+                "model": curr.get("model", builtin_def.get("model")),
+                "provider": curr.get("provider", builtin_def.get("provider")),
+                "base_url": curr.get("base_url", builtin_def.get("base_url")),
+                "workdir": curr.get("workdir", builtin_def.get("workdir")),
+                "profile": curr.get(
+                    "profile", builtin_def.get("profile", "zf-orchestrator")
+                ),
+                "script": curr.get("script", builtin_def.get("script")),
+                "no_agent": bool(
+                    curr.get("no_agent", builtin_def.get("no_agent", False))
+                ),
+                "context_from": curr.get(
+                    "context_from", builtin_def.get("context_from")
+                ),
+                "continuity": bool(
+                    curr.get("continuity", builtin_def.get("continuity", False))
+                ),
+                "custom_config": bool(curr.get("custom_config")),
+                "last_status": curr.get("last_status"),
+                "last_run_at": curr.get("last_run_at"),
+                "next_run_at": curr.get("next_run_at"),
+                "last_error": curr.get("last_error"),
+            }
+        )
     return results
 
 
-def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> None:
+def _apply_job_field_updates(job: dict[str, Any], updates: dict[str, Any]) -> None:
     """Apply user-supplied field updates to a single jobs.json entry, in place."""
     # Enabled / State toggle
     if "enabled" in updates:
@@ -256,16 +321,20 @@ def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> No
         job["custom_config"] = True
 
     # Schedule updates
-    if "minutes" in updates and updates["minutes"]:
+    if updates.get("minutes"):
         try:
             m = int(updates["minutes"])
             if m > 0:
-                job["schedule"] = {"kind": "interval", "minutes": m, "display": f"every {m}m"}
+                job["schedule"] = {
+                    "kind": "interval",
+                    "minutes": m,
+                    "display": f"every {m}m",
+                }
                 job["schedule_display"] = f"every {m}m"
                 job["custom_config"] = True
         except (ValueError, TypeError):
             pass
-    elif "cron_expr" in updates and updates["cron_expr"]:
+    elif updates.get("cron_expr"):
         expr = str(updates["cron_expr"]).strip()
         if expr:
             job["schedule"] = {"kind": "cron", "expr": expr, "display": expr}
@@ -273,7 +342,9 @@ def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> No
             job["custom_config"] = True
     elif "schedule" in updates and isinstance(updates["schedule"], dict):
         job["schedule"] = updates["schedule"]
-        job["schedule_display"] = updates.get("schedule_display") or updates["schedule"].get("display", "configured")
+        job["schedule_display"] = updates.get("schedule_display") or updates[
+            "schedule"
+        ].get("display", "configured")
         job["custom_config"] = True
 
     # Model / workdir / prompt updates
@@ -286,7 +357,7 @@ def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> No
     if "prompt" in updates and updates["prompt"] is not None:
         job["prompt"] = str(updates["prompt"])
         job["custom_config"] = True
-    if "name" in updates and updates["name"]:
+    if updates.get("name"):
         job["name"] = str(updates["name"])
         job["custom_config"] = True
     if "script" in updates:
@@ -299,18 +370,24 @@ def _apply_job_field_updates(job: Dict[str, Any], updates: Dict[str, Any]) -> No
         cf = updates["context_from"]
         if isinstance(cf, str):
             cf = [cf]
-        job["context_from"] = [str(x).strip() for x in cf if str(x).strip()] if cf else None
+        job["context_from"] = (
+            [str(x).strip() for x in cf if str(x).strip()] if cf else None
+        )
         job["custom_config"] = True
     if "continuity" in updates:
         job["continuity"] = bool(updates["continuity"])
         job["custom_config"] = True
 
 
-def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+def update_builtin_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any]:
     """Update a builtin job configuration across all target cron store files."""
     disp = _c()
-    get_all_builtin_cron_jobs_fn = getattr(disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs)
-    get_target_jobs_files_fn = getattr(disp, "get_target_jobs_files", get_target_jobs_files)
+    get_all_builtin_cron_jobs_fn = getattr(
+        disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs
+    )
+    get_target_jobs_files_fn = getattr(
+        disp, "get_target_jobs_files", get_target_jobs_files
+    )
     load_jobs_from_file_fn = getattr(disp, "load_jobs_from_file", load_jobs_from_file)
     save_jobs_to_file_fn = getattr(disp, "save_jobs_to_file", save_jobs_to_file)
 
@@ -321,11 +398,15 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
             builtin_def = {
                 "id": job_id,
                 "name": f"Zero Factory improvement scanner ({slug})",
-                "schedule": {"kind": "interval", "minutes": 10080, "display": "on idle (active < 2)"},
+                "schedule": {
+                    "kind": "interval",
+                    "minutes": 10080,
+                    "display": "on idle (active < 2)",
+                },
                 "schedule_display": "on idle (active < 2)",
                 "enabled": True,
                 "state": "scheduled",
-                "custom_config": True
+                "custom_config": True,
             }
         else:
             return {"ok": False, "error": f"Unknown builtin job ID: {job_id}"}
@@ -357,10 +438,15 @@ def update_builtin_job(job_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         if save_jobs_to_file_fn(target, jobs):
             updated_count += 1
 
-    return {"ok": True, "job_id": job_id, "updated_targets": updated_count, "job": updated_job_data}
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "updated_targets": updated_count,
+        "job": updated_job_data,
+    }
 
 
-def toggle_builtin_job(job_id: str, enabled: Optional[bool] = None) -> Dict[str, Any]:
+def toggle_builtin_job(job_id: str, enabled: bool | None = None) -> dict[str, Any]:
     """Toggle a builtin job between enabled (scheduled) and disabled (paused)."""
     disp = _c()
     custom_toggle = getattr(disp, "toggle_builtin_job", None)
@@ -379,11 +465,15 @@ def toggle_builtin_job(job_id: str, enabled: Optional[bool] = None) -> Dict[str,
     return update_builtin_job_fn(job_id, {"enabled": new_enabled})
 
 
-def reset_builtin_job(job_id: str) -> Dict[str, Any]:
+def reset_builtin_job(job_id: str) -> dict[str, Any]:
     """Reset a builtin job back to canonical default definition, clearing custom_config."""
     disp = _c()
-    get_all_builtin_cron_jobs_fn = getattr(disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs)
-    get_target_jobs_files_fn = getattr(disp, "get_target_jobs_files", get_target_jobs_files)
+    get_all_builtin_cron_jobs_fn = getattr(
+        disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs
+    )
+    get_target_jobs_files_fn = getattr(
+        disp, "get_target_jobs_files", get_target_jobs_files
+    )
     load_jobs_from_file_fn = getattr(disp, "load_jobs_from_file", load_jobs_from_file)
     save_jobs_to_file_fn = getattr(disp, "save_jobs_to_file", save_jobs_to_file)
 
@@ -401,7 +491,20 @@ def reset_builtin_job(job_id: str) -> Dict[str, Any]:
         jobs = load_jobs_from_file_fn(target)
         for j in jobs:
             if isinstance(j, dict) and j.get("id") == job_id:
-                for k in ("schedule", "schedule_display", "model", "provider", "base_url", "prompt", "workdir", "name", "script", "no_agent", "context_from", "continuity"):
+                for k in (
+                    "schedule",
+                    "schedule_display",
+                    "model",
+                    "provider",
+                    "base_url",
+                    "prompt",
+                    "workdir",
+                    "name",
+                    "script",
+                    "no_agent",
+                    "context_from",
+                    "continuity",
+                ):
                     j[k] = builtin_def.get(k)
                 j["enabled"] = builtin_def.get("enabled", True)
                 j["state"] = "scheduled" if j["enabled"] else "paused"

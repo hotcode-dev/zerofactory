@@ -54,12 +54,12 @@ router.include_router(memories_router)
 router.include_router(agents_router)
 
 __all__ = [
-    "router",
     "agents_router",
     "boards_router",
     "cron_router",
     "dispatch_router",
     "memories_router",
+    "router",
     "settings_router",
     "stats_router",
     "tasks_router",

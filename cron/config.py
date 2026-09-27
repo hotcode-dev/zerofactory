@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -23,7 +23,7 @@ CRON_RUN_OUTPUT_TAIL_CHARS = 2048
 
 # Registry tracking active on-demand cron-run child processes keyed by job_id:
 # {job_id: subprocess.Popen}.
-_active_cron_runs: Dict[str, subprocess.Popen] = {}
+_active_cron_runs: dict[str, subprocess.Popen] = {}
 
 
 def _c() -> Any:
@@ -34,7 +34,11 @@ def _c() -> Any:
 def reap_active_cron_runs() -> int:
     """Reap finished on-demand cron-run child processes."""
     disp = _c()
-    active_runs = getattr(disp, "_active_cron_runs", _active_cron_runs) if disp else _active_cron_runs
+    active_runs = (
+        getattr(disp, "_active_cron_runs", _active_cron_runs)
+        if disp
+        else _active_cron_runs
+    )
 
     reaped = 0
     for jid, proc in list(active_runs.items()):
@@ -43,7 +47,9 @@ def reap_active_cron_runs() -> int:
             if retcode is not None:
                 active_runs.pop(jid, None)
                 reaped += 1
-                _log.debug("Cron-run process for job '%s' exited with code %d", jid, retcode)
+                _log.debug(
+                    "Cron-run process for job '%s' exited with code %d", jid, retcode
+                )
     return reaped
 
 

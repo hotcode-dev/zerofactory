@@ -1,6 +1,5 @@
 """Integration tests for Memories API endpoints (/api/plugins/zerofactory/memories)."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -22,7 +21,9 @@ def test_memories_lifecycle(api_client: TestClient, default_board: str):
     assert "Always test SQLite timeout" in mem_data["content"]
 
     # 2. List memories for board
-    list_res = api_client.get(f"/api/plugins/zerofactory/boards/{default_board}/memories")
+    list_res = api_client.get(
+        f"/api/plugins/zerofactory/boards/{default_board}/memories"
+    )
     assert list_res.status_code == 200
     memories = list_res.json()["memories"]
     assert any(m["id"] == mem_id for m in memories)
@@ -41,7 +42,7 @@ def test_memories_lifecycle(api_client: TestClient, default_board: str):
     assert "Always set timeout >= 15.0" in updated["content"]
 
     # 4. Search memories via query param q
-    search_res = api_client.get(f"/api/plugins/zerofactory/memories?q=timeout")
+    search_res = api_client.get("/api/plugins/zerofactory/memories?q=timeout")
     assert search_res.status_code == 200
     assert any(m["id"] == mem_id for m in search_res.json()["memories"])
 
@@ -51,5 +52,7 @@ def test_memories_lifecycle(api_client: TestClient, default_board: str):
     assert del_res.json()["ok"] is True
 
     # Check deleted
-    list_after = api_client.get(f"/api/plugins/zerofactory/boards/{default_board}/memories").json()["memories"]
+    list_after = api_client.get(
+        f"/api/plugins/zerofactory/boards/{default_board}/memories"
+    ).json()["memories"]
     assert not any(m["id"] == mem_id for m in list_after)

@@ -1,6 +1,5 @@
 """Integration tests for Board API endpoints (/api/plugins/zerofactory/boards)."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -89,7 +88,9 @@ def test_board_precommit_endpoints(api_client: TestClient):
     slug = create_res.json()["slug"]
 
     # Check status
-    status_res = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/precommit-status")
+    status_res = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/precommit-status"
+    )
     assert status_res.status_code == 200
     status_data = status_res.json()
     assert status_data["ok"] is True
@@ -97,7 +98,9 @@ def test_board_precommit_endpoints(api_client: TestClient):
     assert status_data["pending_task_id"] is None
 
     # Trigger setup via API
-    setup_res = api_client.post(f"/api/plugins/zerofactory/boards/{slug}/setup-precommit")
+    setup_res = api_client.post(
+        f"/api/plugins/zerofactory/boards/{slug}/setup-precommit"
+    )
     assert setup_res.status_code == 200
     setup_data = setup_res.json()
     assert setup_data["ok"] is True
@@ -105,7 +108,9 @@ def test_board_precommit_endpoints(api_client: TestClient):
     assert task_id is not None
 
     # Status check should now report pending setup task
-    status_res2 = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/precommit-status")
+    status_res2 = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/precommit-status"
+    )
     assert status_res2.status_code == 200
     status_data2 = status_res2.json()
     assert status_data2["pending_task_id"] == task_id

@@ -5,8 +5,7 @@ import sqlite3
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import MagicMock, patch
 
 from dispatcher.worker_spawner import (
     _inject_langfuse_env,
@@ -18,7 +17,9 @@ def test_inject_langfuse_env():
     """Verify Langfuse env injection when enabled vs disabled."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
-    conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)")
+    conn.execute(
+        "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)"
+    )
     conn.execute("INSERT INTO settings VALUES ('langfuse_enabled', 'true', 1000)")
     conn.execute("INSERT INTO settings VALUES ('langfuse_public_key', 'pk-123', 1000)")
     conn.execute("INSERT INTO settings VALUES ('langfuse_secret_key', 'sk-456', 1000)")
@@ -40,7 +41,9 @@ def test_inject_langfuse_env():
 def test_spawn_agent_worker_skip_env():
     """When ZEROFACTORY_SKIP_WORKER_SPAWN is set, spawn returns None immediately."""
     with patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1"}):
-        pid, sess = spawn_agent_worker("t1", "Title", "Desc", "P1", "zf-builder", "/tmp", "task/t1")
+        pid, sess = spawn_agent_worker(
+            "t1", "Title", "Desc", "P1", "zf-builder", "/tmp", "task/t1"
+        )
         assert pid is None
         assert sess is None
 
@@ -61,16 +64,27 @@ def test_spawn_agent_worker_cmd_and_session_isolation():
         )
         now = time.time()
         # Concurrent session from other task
-        conn.execute("INSERT INTO sessions VALUES ('sess-other', 'Task ID: zf-other', '/ws/other', ?)", (now + 0.1,))
+        conn.execute(
+            "INSERT INTO sessions VALUES ('sess-other', 'Task ID: zf-other', '/ws/other', ?)",
+            (now + 0.1,),
+        )
         # Session for target task
-        conn.execute("INSERT INTO sessions VALUES ('sess-mine', 'Task ID: zf-mine', '/ws/mine', ?)", (now,))
+        conn.execute(
+            "INSERT INTO sessions VALUES ('sess-mine', 'Task ID: zf-mine', '/ws/mine', ?)",
+            (now,),
+        )
         conn.commit()
         conn.close()
 
         import dispatcher
-        with patch.object(dispatcher, "resolve_profile_state_db", return_value=Path(tmp_db.name)), \
-             patch("subprocess.Popen") as mock_popen, \
-             patch.dict(os.environ, {}, clear=False):
+
+        with (
+            patch.object(
+                dispatcher, "resolve_profile_state_db", return_value=Path(tmp_db.name)
+            ),
+            patch("subprocess.Popen") as mock_popen,
+            patch.dict(os.environ, {}, clear=False),
+        ):
             os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
             mock_proc = MagicMock()
             mock_proc.pid = 99999
@@ -84,7 +98,7 @@ def test_spawn_agent_worker_cmd_and_session_isolation():
                 priority="P0",
                 description="Test isolation",
                 workspace_path="/ws/mine",
-                branch_name="task/zf-mine"
+                branch_name="task/zf-mine",
             )
 
             assert pid == 99999

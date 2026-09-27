@@ -44,6 +44,7 @@ Example: `0004_backfill_metadata.py`
 import json
 import sqlite3
 
+
 def up(conn: sqlite3.Connection) -> None:
     cursor = conn.cursor()
     cursor.execute("SELECT id, metadata FROM tasks WHERE metadata IS NOT NULL")
@@ -54,7 +55,7 @@ def up(conn: sqlite3.Connection) -> None:
                 meta["version"] = 1
                 cursor.execute(
                     "UPDATE tasks SET metadata = ? WHERE id = ?",
-                    (json.dumps(meta), task_id)
+                    (json.dumps(meta), task_id),
                 )
         except Exception:
             pass

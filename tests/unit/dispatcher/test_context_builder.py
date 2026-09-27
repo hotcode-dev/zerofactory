@@ -1,16 +1,13 @@
 """Unit tests for dispatcher/context_builder.py: conventional commit formatting, memory injection, reviewer git context."""
 
-import json
 import sqlite3
 import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 from dispatcher.context_builder import (
-    format_conventional_message,
     digest_board_memories_context,
     digest_reviewer_git_context,
+    format_conventional_message,
 )
 
 
@@ -99,19 +96,40 @@ def test_digest_reviewer_git_context_with_commits(tmp_path: Path):
     """Git workspace produces pre-digested commits, diffstat, and diff."""
     repo = tmp_path / "repo"
     repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=str(repo), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo), check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True)
+    subprocess.run(
+        ["git", "init", "-b", "main"], cwd=str(repo), check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"], cwd=str(repo), check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True
+    )
 
     (repo / "base.txt").write_text("line 1\n")
     subprocess.run(["git", "add", "."], cwd=str(repo), check=True)
-    subprocess.run(["git", "commit", "-m", "initial commit"], cwd=str(repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "initial commit"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
 
     # Branch to task/feature
-    subprocess.run(["git", "checkout", "-b", "task/feature"], cwd=str(repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "checkout", "-b", "task/feature"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
     (repo / "feature.py").write_text("def hello():\n    return 'world'\n")
     subprocess.run(["git", "add", "."], cwd=str(repo), check=True)
-    subprocess.run(["git", "commit", "-m", "feat: add hello function"], cwd=str(repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "feat: add hello function"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
 
     ctx = digest_reviewer_git_context(repo, target_branch="main")
     assert "Pre-Digested PR Changes" in ctx

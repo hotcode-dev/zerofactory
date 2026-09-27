@@ -1,17 +1,14 @@
 """Unit tests for deterministic precommit runner and failure handling in dispatcher."""
 
 import json
-import os
-import sqlite3
 import time
 from pathlib import Path
-import pytest
 
+from dashboard.plugin_api import get_db_conn
 from dispatcher.worktree import (
-    run_deterministic_precommit,
     _handle_precommit_failure,
+    run_deterministic_precommit,
 )
-from dashboard.plugin_api import init_db, get_db_conn
 
 
 def test_run_precommit_missing_script(tmp_path: Path):
@@ -78,16 +75,23 @@ def test_handle_precommit_failure_retries(initialized_db: Path, tmp_path: Path):
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO boards (slug, description, created_at, updated_at) VALUES ('test-board', 'Test Board', ?, ?)",
-            (now, now)
+            (now, now),
         )
         cursor.execute(
             "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) VALUES (?, 'test-board', ?, 'running', 'zf-builder', 'P1', ?, ?)",
-            (task_id, "feat: my task", now, now)
+            (task_id, "feat: my task", now, now),
         )
         conn.commit()
 
         # Attempt 1: Should keep task in running and record attempt 1/3
-        _handle_precommit_failure(cursor, task_id, "feat: my task", str(tmp_path), "Syntax error on line 5", now)
+        _handle_precommit_failure(
+            cursor,
+            task_id,
+            "feat: my task",
+            str(tmp_path),
+            "Syntax error on line 5",
+            now,
+        )
         conn.commit()
 
         cursor.execute("SELECT status, metadata FROM tasks WHERE id = ?", (task_id,))
@@ -98,21 +102,27 @@ def test_handle_precommit_failure_retries(initialized_db: Path, tmp_path: Path):
         assert "Syntax error on line 5" in meta["last_precommit_error"]
 
         # Attempt 2
-        _handle_precommit_failure(cursor, task_id, "feat: my task", str(tmp_path), "Syntax error 2", now)
+        _handle_precommit_failure(
+            cursor, task_id, "feat: my task", str(tmp_path), "Syntax error 2", now
+        )
         conn.commit()
         cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
         meta = json.loads(cursor.fetchone()["metadata"])
         assert meta["precommit_retries"] == 2
 
         # Attempt 3
-        _handle_precommit_failure(cursor, task_id, "feat: my task", str(tmp_path), "Syntax error 3", now)
+        _handle_precommit_failure(
+            cursor, task_id, "feat: my task", str(tmp_path), "Syntax error 3", now
+        )
         conn.commit()
         cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
         meta = json.loads(cursor.fetchone()["metadata"])
         assert meta["precommit_retries"] == 3
 
         # Attempt 4 (exceeding default 3 retries): Should move task to blocked
-        _handle_precommit_failure(cursor, task_id, "feat: my task", str(tmp_path), "Syntax error 4", now)
+        _handle_precommit_failure(
+            cursor, task_id, "feat: my task", str(tmp_path), "Syntax error 4", now
+        )
         conn.commit()
         cursor.execute("SELECT status, metadata FROM tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
@@ -121,7 +131,10 @@ def test_handle_precommit_failure_retries(initialized_db: Path, tmp_path: Path):
         assert meta["precommit_retries"] == 4
 
         # Verify comment was logged
-        cursor.execute("SELECT body FROM task_comments WHERE task_id = ? ORDER BY id DESC LIMIT 1", (task_id,))
+        cursor.execute(
+            "SELECT body FROM task_comments WHERE task_id = ? ORDER BY id DESC LIMIT 1",
+            (task_id,),
+        )
         cmt = cursor.fetchone()["body"]
         assert "Deterministic Precommit Failed" in cmt
         assert "Syntax error 4" in cmt

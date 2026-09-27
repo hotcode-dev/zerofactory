@@ -4,15 +4,16 @@ import os
 import sqlite3
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 import yaml
 
+import settings
 from cron.scheduler_check import (
     is_cron_scheduler_enabled,
     set_cron_scheduler_enabled,
 )
-from cron.store import save_jobs_to_file, load_jobs_from_file
-import settings
+from cron.store import load_jobs_from_file, save_jobs_to_file
 
 
 def test_is_cron_scheduler_enabled_defaults():
@@ -49,8 +50,12 @@ def test_is_cron_scheduler_enabled_db_settings():
     """Verify settings table inside DB toggles enablement."""
     with tempfile.NamedTemporaryFile(suffix=".db") as tf:
         with sqlite3.connect(tf.name) as conn:
-            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)")
-            conn.execute("INSERT INTO settings VALUES ('enable_cron_scheduler', 'false', 1000)")
+            conn.execute(
+                "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)"
+            )
+            conn.execute(
+                "INSERT INTO settings VALUES ('enable_cron_scheduler', 'false', 1000)"
+            )
             conn.commit()
 
             assert is_cron_scheduler_enabled(conn) is False
@@ -60,7 +65,9 @@ def test_is_cron_scheduler_enabled_db_settings():
             assert loaded["enable_cron_scheduler"] is False
 
             # Update to true
-            conn.execute("UPDATE settings SET value = 'true' WHERE key = 'enable_cron_scheduler'")
+            conn.execute(
+                "UPDATE settings SET value = 'true' WHERE key = 'enable_cron_scheduler'"
+            )
             conn.commit()
             assert is_cron_scheduler_enabled(conn) is True
 
@@ -80,7 +87,9 @@ def test_is_cron_scheduler_enabled_yaml_configs():
             yaml.dump(cfg_data, yf)
             yf.flush()
             with patch.dict(os.environ, {"ZEROFACTORY_CONFIG_FILE": yf.name}):
-                assert is_cron_scheduler_enabled() is False, f"Failed for config: {cfg_data}"
+                assert is_cron_scheduler_enabled() is False, (
+                    f"Failed for config: {cfg_data}"
+                )
 
 
 def test_set_cron_scheduler_enabled_durably_persists_to_conn():
@@ -139,11 +148,16 @@ def test_set_cron_scheduler_enabled_durably_persists_to_conn():
 
 def test_set_cron_scheduler_enabled_syncs_job_files():
     """Verify disabling scheduler pauses Zero Factory jobs and marks paused_by_master."""
-    with tempfile.NamedTemporaryFile(suffix=".db") as tf_db, tempfile.NamedTemporaryFile(suffix=".json") as jf:
+    with (
+        tempfile.NamedTemporaryFile(suffix=".db") as tf_db,
+        tempfile.NamedTemporaryFile(suffix=".json") as jf,
+    ):
         db_path = Path(tf_db.name)
         jobs_path = Path(jf.name)
         with sqlite3.connect(str(db_path)) as conn:
-            conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)")
+            conn.execute(
+                "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT, updated_at INTEGER)"
+            )
             conn.commit()
 
         initial_jobs = [
@@ -177,7 +191,9 @@ def test_set_cron_scheduler_enabled_syncs_job_files():
             assert res["updated_targets"] == 1
 
             saved = load_jobs_from_file(jobs_path)
-            zf_job = next(j for j in saved if j["id"] == "zero-factory-task-queue-check")
+            zf_job = next(
+                j for j in saved if j["id"] == "zero-factory-task-queue-check"
+            )
             user_job = next(j for j in saved if j["id"] == "user-custom-backup-job")
 
             assert zf_job["enabled"] is False
@@ -192,7 +208,9 @@ def test_set_cron_scheduler_enabled_syncs_job_files():
             res_on = set_cron_scheduler_enabled(True)
             assert res_on["ok"] is True
             saved_resumed = load_jobs_from_file(jobs_path)
-            zf_job_resumed = next(j for j in saved_resumed if j["id"] == "zero-factory-task-queue-check")
+            zf_job_resumed = next(
+                j for j in saved_resumed if j["id"] == "zero-factory-task-queue-check"
+            )
             assert zf_job_resumed["enabled"] is True
             assert zf_job_resumed["state"] == "scheduled"
             assert "paused_by_master" not in zf_job_resumed

@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+
 import pytest
 
 
@@ -51,7 +52,12 @@ def _zf_js_class_tokens(source):
     tokens = set()
     for s in strings:
         for tok in s.split():
-            if len(tok) >= 2 and re.fullmatch(token_charset, tok) and re.search(r"[a-z]", tok) and not tok.startswith("//"):
+            if (
+                len(tok) >= 2
+                and re.fullmatch(token_charset, tok)
+                and re.search(r"[a-z]", tok)
+                and not tok.startswith("//")
+            ):
                 tokens.add(tok)
     return tokens
 
@@ -66,20 +72,33 @@ def test_dashboard_css_is_portable_and_in_sync_with_js():
 
     # (a) No machine-specific absolute paths
     for label, text in (("input.css", input_css), ("style.css", style_css)):
-        assert not re.search(r"/home/|/Users/|C:\\", text), f"{label} contains absolute machine-specific paths"
+        assert not re.search(r"/home/|/Users/|C:\\", text), (
+            f"{label} contains absolute machine-specific paths"
+        )
 
     # (b) Every variant-prefixed class token has a selector
     tokens = _zf_js_class_tokens(js_src)
-    variant_stack = re.compile(r"^(?:hover|focus|focus-within|active|disabled|group-hover|md|lg|sm|xl|2xl):")
+    variant_stack = re.compile(
+        r"^(?:hover|focus|focus-within|active|disabled|group-hover|md|lg|sm|xl|2xl):"
+    )
     variant_tokens = [t for t in tokens if variant_stack.match(t)]
     assert len(variant_tokens) >= 10, "Expected UI to reference variant classes"
 
-    missing = [t for t in sorted(variant_tokens) if _zf_css_selectors((t,))[0] not in style_css]
+    missing = [
+        t for t in sorted(variant_tokens) if _zf_css_selectors((t,))[0] not in style_css
+    ]
     assert missing == [], f"dist/style.css missing selectors for: {missing[:10]}"
 
     # Smoke: each interaction state family must be present at least once
-    for family in (r"\.hover\\:", r"\.focus-within\\:", r"\.active\\:", r"\.disabled\\:"):
-        assert re.search(family, style_css), f"committed stylesheet has no {family} selector"
+    for family in (
+        r"\.hover\\:",
+        r"\.focus-within\\:",
+        r"\.active\\:",
+        r"\.disabled\\:",
+    ):
+        assert re.search(family, style_css), (
+            f"committed stylesheet has no {family} selector"
+        )
 
     # (c) Build reproducibility check if node is available
     node = shutil.which("node")
@@ -92,8 +111,11 @@ def test_dashboard_css_is_portable_and_in_sync_with_js():
     try:
         r = subprocess.run(
             [node, str(build_mjs)],
-            cwd=str(repo_root), env=env,
-            capture_output=True, text=True, timeout=180,
+            cwd=str(repo_root),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=180,
         )
     except (OSError, subprocess.SubprocessError) as e:
         pytest.skip(f"cannot run node build ({e}); skipping")
@@ -104,4 +126,6 @@ def test_dashboard_css_is_portable_and_in_sync_with_js():
         pytest.fail(f"dashboard/build_css.mjs failed:\n{r.stdout}\n{r.stderr}")
 
     rebuilt = (dash / "dist" / "style.css").read_text(encoding="utf-8")
-    assert rebuilt == style_css, "committed dist/style.css does not match output of build_css.mjs"
+    assert rebuilt == style_css, (
+        "committed dist/style.css does not match output of build_css.mjs"
+    )

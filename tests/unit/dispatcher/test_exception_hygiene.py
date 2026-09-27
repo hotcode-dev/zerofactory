@@ -9,7 +9,12 @@ def _get_dispatcher_trees():
     dispatcher_dir = repo_root / "dispatcher"
     trees = []
     for py_file in dispatcher_dir.glob("*.py"):
-        trees.append((py_file.name, ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))))
+        trees.append(
+            (
+                py_file.name,
+                ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file)),
+            )
+        )
     return trees
 
 
@@ -50,12 +55,14 @@ def test_no_orphaned_reviewer_pr_check_skip_in_commit_pr_block():
 
     commit_pr_generic_line = None
     for i, ln in enumerate(lines):
-        if "_log.warning(\"Task %s commit/PR failed:" in ln or "commit/PR failed:" in ln:
+        if '_log.warning("Task %s commit/PR failed:' in ln or "commit/PR failed:" in ln:
             commit_pr_generic_line = i
             break
 
     if commit_pr_generic_line is not None:
-        except_indent = len(lines[commit_pr_generic_line]) - len(lines[commit_pr_generic_line].lstrip())
+        except_indent = len(lines[commit_pr_generic_line]) - len(
+            lines[commit_pr_generic_line].lstrip()
+        )
         block_end = commit_pr_generic_line
         for i in range(commit_pr_generic_line + 1, len(lines)):
             ln = lines[i]

@@ -7,12 +7,12 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from .config import _d, _log
 
 
-def extract_gh_repo_info(pr_url: str) -> Optional[Tuple[str, str, int]]:
+def extract_gh_repo_info(pr_url: str) -> tuple[str, str, int] | None:
     """Parse owner, repo, and pull number from a GitHub PR URL."""
     if not pr_url:
         return None
@@ -24,12 +24,12 @@ def extract_gh_repo_info(pr_url: str) -> Optional[Tuple[str, str, int]]:
 
 def fetch_pr_review_comments(
     repo_path: Path,
-    pr_url: Optional[str] = None,
-    task_id: Optional[str] = None,
-    pr_data: Optional[Dict[str, Any]] = None,
-    exclude_authors: Optional[Set[str]] = None,
-    additional_reviewer_usernames: Optional[Set[str]] = None,
-) -> List[Dict[str, Any]]:
+    pr_url: str | None = None,
+    task_id: str | None = None,
+    pr_data: dict[str, Any] | None = None,
+    exclude_authors: set[str] | None = None,
+    additional_reviewer_usernames: set[str] | None = None,
+) -> list[dict[str, Any]]:
     """Fetch all types of review comments for a GitHub PR:
     1. Inline diff review comments (/pulls/{pr}/comments)
     2. Review summaries and states (/pulls/{pr}/reviews)
@@ -62,21 +62,22 @@ def fetch_pr_review_comments(
         back to the builder.
         """
         normalized = (author or "").lower()
-        return not normalized or normalized in exclude_authors or normalized.endswith("[bot]")
+        return (
+            not normalized
+            or normalized in exclude_authors
+            or normalized.endswith("[bot]")
+        )
 
     def is_trusted_reviewer(author: str, association: str = "") -> bool:
         """Return whether a non-bot PR participant may control task routing."""
         normalized = (author or "").lower()
-        return (
-            not is_excluded_author(normalized)
-            and (
-                normalized in additional_reviewers
-                or (association or "").upper() in trusted_associations
-            )
+        return not is_excluded_author(normalized) and (
+            normalized in additional_reviewers
+            or (association or "").upper() in trusted_associations
         )
 
-    comments: List[Dict[str, Any]] = []
-    seen_ids: Set[str] = set()
+    comments: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
 
     # If pr_url is not provided, try to get from pr_data or gh pr view
     if not pr_url and pr_data:
@@ -87,7 +88,10 @@ def fetch_pr_review_comments(
         try:
             res = subprocess.run(
                 ["gh", "pr", "view", f"task/{task_id}", "--json", "url"],
-                cwd=str(repo_path), capture_output=True, text=True, timeout=10
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if res.returncode == 0:
                 url_val = json.loads(res.stdout).get("url") or ""
@@ -98,8 +102,14 @@ def fetch_pr_review_comments(
     # 1. Check pr_data if provided (e.g. from gh pr view --json reviews,comments)
     if pr_data:
         for rev in pr_data.get("reviews", []):
-            author = (rev.get("author") or {}).get("login") or rev.get("user", {}).get("login") or ""
-            association = rev.get("authorAssociation") or rev.get("author_association") or ""
+            author = (
+                (rev.get("author") or {}).get("login")
+                or rev.get("user", {}).get("login")
+                or ""
+            )
+            association = (
+                rev.get("authorAssociation") or rev.get("author_association") or ""
+            )
             body = (rev.get("body") or "").strip()
             state = rev.get("state") or ""
             rev_id = str(rev.get("id") or "")
@@ -107,40 +117,54 @@ def fetch_pr_review_comments(
             if cid not in seen_ids and is_trusted_reviewer(author, association):
                 if body or state == "CHANGES_REQUESTED":
                     seen_ids.add(cid)
-                    comments.append({
-                        "comment_id": cid,
-                        "type": "review_summary",
-                        "author": author,
-                        "state": state,
-                        "body": body or f"Review submitted with state: {state}",
-                        "path": None,
-                        "line": None,
-                        "diff_hunk": None,
-                        "suggestion": None,
-                        "created_at": rev.get("submittedAt") or rev.get("submitted_at") or ""
-                    })
+                    comments.append(
+                        {
+                            "comment_id": cid,
+                            "type": "review_summary",
+                            "author": author,
+                            "state": state,
+                            "body": body or f"Review submitted with state: {state}",
+                            "path": None,
+                            "line": None,
+                            "diff_hunk": None,
+                            "suggestion": None,
+                            "created_at": rev.get("submittedAt")
+                            or rev.get("submitted_at")
+                            or "",
+                        }
+                    )
 
         for com in pr_data.get("comments", []):
-            author = (com.get("author") or {}).get("login") or com.get("user", {}).get("login") or ""
-            association = com.get("authorAssociation") or com.get("author_association") or ""
+            author = (
+                (com.get("author") or {}).get("login")
+                or com.get("user", {}).get("login")
+                or ""
+            )
+            association = (
+                com.get("authorAssociation") or com.get("author_association") or ""
+            )
             body = (com.get("body") or "").strip()
             com_id = str(com.get("id") or "")
             cid = f"issue_{com_id}"
             if cid not in seen_ids and is_trusted_reviewer(author, association):
                 if body and "Automated PR for task" not in body:
                     seen_ids.add(cid)
-                    comments.append({
-                        "comment_id": cid,
-                        "type": "pr_comment",
-                        "author": author,
-                        "state": "COMMENTED",
-                        "body": body,
-                        "path": None,
-                        "line": None,
-                        "diff_hunk": None,
-                        "suggestion": None,
-                        "created_at": com.get("createdAt") or com.get("created_at") or ""
-                    })
+                    comments.append(
+                        {
+                            "comment_id": cid,
+                            "type": "pr_comment",
+                            "author": author,
+                            "state": "COMMENTED",
+                            "body": body,
+                            "path": None,
+                            "line": None,
+                            "diff_hunk": None,
+                            "suggestion": None,
+                            "created_at": com.get("createdAt")
+                            or com.get("created_at")
+                            or "",
+                        }
+                    )
 
     if not info or os.environ.get("ZEROFACTORY_SKIP_GH_API"):
         return comments
@@ -151,7 +175,10 @@ def fetch_pr_review_comments(
     try:
         res = subprocess.run(
             ["gh", "api", f"repos/{owner}/{repo}/pulls/{pr_num}/comments"],
-            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if res.returncode == 0:
             raw_inline = json.loads(res.stdout)
@@ -161,39 +188,55 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
+                    if not is_trusted_reviewer(
+                        author, item.get("author_association") or ""
+                    ):
                         continue
                     body = (item.get("body") or "").strip()
                     if not body:
                         continue
 
                     suggestion = None
-                    sugg_match = re.search(r"```suggestion\r?\n(.*?)\r?\n```", body, re.DOTALL)
+                    sugg_match = re.search(
+                        r"```suggestion\r?\n(.*?)\r?\n```", body, re.DOTALL
+                    )
                     if sugg_match:
                         suggestion = sugg_match.group(1)
 
                     seen_ids.add(cid)
-                    comments.append({
-                        "comment_id": cid,
-                        "type": "inline_review",
-                        "author": author,
-                        "state": "COMMENTED",
-                        "body": body,
-                        "path": item.get("path"),
-                        "line": item.get("line") or item.get("original_line"),
-                        "start_line": item.get("start_line") or item.get("original_start_line"),
-                        "diff_hunk": item.get("diff_hunk"),
-                        "suggestion": suggestion,
-                        "created_at": item.get("created_at") or ""
-                    })
+                    comments.append(
+                        {
+                            "comment_id": cid,
+                            "type": "inline_review",
+                            "author": author,
+                            "state": "COMMENTED",
+                            "body": body,
+                            "path": item.get("path"),
+                            "line": item.get("line") or item.get("original_line"),
+                            "start_line": item.get("start_line")
+                            or item.get("original_start_line"),
+                            "diff_hunk": item.get("diff_hunk"),
+                            "suggestion": suggestion,
+                            "created_at": item.get("created_at") or "",
+                        }
+                    )
     except Exception as e:
-        _log.debug("Failed to fetch inline review comments for %s/%s#%s: %s", owner, repo, pr_num, e)
+        _log.debug(
+            "Failed to fetch inline review comments for %s/%s#%s: %s",
+            owner,
+            repo,
+            pr_num,
+            e,
+        )
 
     # 3. Fetch PR reviews via GitHub REST API if not already retrieved
     try:
         res = subprocess.run(
             ["gh", "api", f"repos/{owner}/{repo}/pulls/{pr_num}/reviews"],
-            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if res.returncode == 0:
             raw_reviews = json.loads(res.stdout)
@@ -203,24 +246,28 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
+                    if not is_trusted_reviewer(
+                        author, item.get("author_association") or ""
+                    ):
                         continue
                     body = (item.get("body") or "").strip()
                     state = item.get("state") or ""
                     if body or state == "CHANGES_REQUESTED":
                         seen_ids.add(cid)
-                        comments.append({
-                            "comment_id": cid,
-                            "type": "review_summary",
-                            "author": author,
-                            "state": state,
-                            "body": body or f"Review submitted with state: {state}",
-                            "path": None,
-                            "line": None,
-                            "diff_hunk": None,
-                            "suggestion": None,
-                            "created_at": item.get("submitted_at") or ""
-                        })
+                        comments.append(
+                            {
+                                "comment_id": cid,
+                                "type": "review_summary",
+                                "author": author,
+                                "state": state,
+                                "body": body or f"Review submitted with state: {state}",
+                                "path": None,
+                                "line": None,
+                                "diff_hunk": None,
+                                "suggestion": None,
+                                "created_at": item.get("submitted_at") or "",
+                            }
+                        )
     except Exception as e:
         _log.debug("Failed to fetch reviews for %s/%s#%s: %s", owner, repo, pr_num, e)
 
@@ -228,7 +275,10 @@ def fetch_pr_review_comments(
     try:
         res = subprocess.run(
             ["gh", "api", f"repos/{owner}/{repo}/issues/{pr_num}/comments"],
-            cwd=str(repo_path), capture_output=True, text=True, timeout=5
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if res.returncode == 0:
             raw_issues = json.loads(res.stdout)
@@ -238,30 +288,36 @@ def fetch_pr_review_comments(
                     if cid in seen_ids:
                         continue
                     author = item.get("user", {}).get("login") or ""
-                    if not is_trusted_reviewer(author, item.get("author_association") or ""):
+                    if not is_trusted_reviewer(
+                        author, item.get("author_association") or ""
+                    ):
                         continue
                     body = (item.get("body") or "").strip()
                     if body and "Automated PR for task" not in body:
                         seen_ids.add(cid)
-                        comments.append({
-                            "comment_id": cid,
-                            "type": "pr_comment",
-                            "author": author,
-                            "state": "COMMENTED",
-                            "body": body,
-                            "path": None,
-                            "line": None,
-                            "diff_hunk": None,
-                            "suggestion": None,
-                            "created_at": item.get("created_at") or ""
-                        })
+                        comments.append(
+                            {
+                                "comment_id": cid,
+                                "type": "pr_comment",
+                                "author": author,
+                                "state": "COMMENTED",
+                                "body": body,
+                                "path": None,
+                                "line": None,
+                                "diff_hunk": None,
+                                "suggestion": None,
+                                "created_at": item.get("created_at") or "",
+                            }
+                        )
     except Exception as e:
-        _log.debug("Failed to fetch issue comments for %s/%s#%s: %s", owner, repo, pr_num, e)
+        _log.debug(
+            "Failed to fetch issue comments for %s/%s#%s: %s", owner, repo, pr_num, e
+        )
 
     return comments
 
 
-def format_task_comment_body(comment: Dict[str, Any]) -> str:
+def format_task_comment_body(comment: dict[str, Any]) -> str:
     """Format a GitHub PR comment into a descriptive task comment."""
     ctype = comment.get("type", "")
     body = comment.get("body", "")
@@ -278,11 +334,7 @@ def format_task_comment_body(comment: Dict[str, Any]) -> str:
         line_str = (
             f":L{start_line}-{line}"
             if (start_line and line and start_line != line)
-            else (
-                f":L{line}"
-                if line
-                else (f":L{start_line}" if start_line else "")
-            )
+            else (f":L{line}" if line else (f":L{start_line}" if start_line else ""))
         )
         parts.append(f"**[GitHub Review Comment on `{path}{line_str}`]**")
     elif ctype == "review_summary":
@@ -298,7 +350,9 @@ def format_task_comment_body(comment: Dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-def is_reviewer_approval_comment(comment_body: str, state: Optional[str] = None) -> bool:
+def is_reviewer_approval_comment(
+    comment_body: str, state: str | None = None
+) -> bool:
     """Return True if a PR review comment or review summary represents an approval verdict.
 
     Handles cases where GitHub prevents self-approval (PR author matches reviewer CLI identity)
@@ -311,35 +365,40 @@ def is_reviewer_approval_comment(comment_body: str, state: Optional[str] = None)
         return False
     lower = body.lower()
 
-    has_approval_signal = any(phrase in lower for phrase in [
-        "[reviewer feedback]",
-        "reviewer feedback",
-        "verdict: approve",
-        "verdict: approved",
-        "verdict: **approve**",
-        "approved — no changes requested",
-        "approved - no changes requested",
-        "approved for human review",
-        "no changes requested",
-        "approving for human review",
-        "status: approved",
-    ]) or lower.startswith("approved")
+    has_approval_signal = any(
+        phrase in lower
+        for phrase in [
+            "[reviewer feedback]",
+            "reviewer feedback",
+            "verdict: approve",
+            "verdict: approved",
+            "verdict: **approve**",
+            "approved — no changes requested",
+            "approved - no changes requested",
+            "approved for human review",
+            "no changes requested",
+            "approving for human review",
+            "status: approved",
+        ]
+    ) or lower.startswith("approved")
 
     clean_for_changes = (
-        lower
-        .replace("no changes requested", "")
+        lower.replace("no changes requested", "")
         .replace("without changes requested", "")
         .replace("zero changes requested", "")
     )
-    has_changes_requested = any(phrase in clean_for_changes for phrase in [
-        "changes requested",
-        "changes needed",
-        "requires changes",
-        "please fix",
-        "must be fixed",
-        "needs work",
-        "action required",
-        "unresolved conflict",
-    ])
+    has_changes_requested = any(
+        phrase in clean_for_changes
+        for phrase in [
+            "changes requested",
+            "changes needed",
+            "requires changes",
+            "please fix",
+            "must be fixed",
+            "needs work",
+            "action required",
+            "unresolved conflict",
+        ]
+    )
 
     return has_approval_signal and not has_changes_requested

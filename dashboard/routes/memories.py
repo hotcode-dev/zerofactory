@@ -8,7 +8,7 @@ import secrets
 import sys
 import time
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -24,7 +24,11 @@ try:
     from ..models import VALID_MEMORY_CATEGORIES, MemoryCreate, MemoryUpdate
 except (ImportError, ValueError):
     from db import get_db_conn, init_db  # type: ignore
-    from models import VALID_MEMORY_CATEGORIES, MemoryCreate, MemoryUpdate  # type: ignore
+    from models import (  # type: ignore
+        VALID_MEMORY_CATEGORIES,
+        MemoryCreate,
+        MemoryUpdate,
+    )
 
 _log = logging.getLogger(__name__)
 
@@ -35,10 +39,10 @@ router = APIRouter()
 @router.get("/boards/{slug}/memories")
 def list_board_memories(
     slug: str = "all",
-    category: Optional[str] = None,
-    q: Optional[str] = None,
+    category: str | None = None,
+    q: str | None = None,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
 ):
     """List repository memories, conventions, and gotchas for a board."""
     init_db()
@@ -51,10 +55,10 @@ def list_board_memories(
 
         if slug == "all":
             query = "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE 1=1"
-            params: List[Any] = []
+            params: list[Any] = []
         else:
             query = "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE board_slug = ?"
-            params: List[Any] = [slug]
+            params: list[Any] = [slug]
 
         if category and category != "all":
             query += " AND category = ?"
@@ -64,7 +68,10 @@ def list_board_memories(
             query += " AND (content LIKE ? OR tags LIKE ?)"
             params.extend([f"%{q.strip()}%", f"%{q.strip()}%"])
 
-        count_query = query.replace("SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at", "SELECT COUNT(*)")
+        count_query = query.replace(
+            "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at",
+            "SELECT COUNT(*)",
+        )
         cursor.execute(count_query, params)
         total = cursor.fetchone()[0]
 
@@ -80,17 +87,19 @@ def list_board_memories(
                 tags = json.loads(r[5] or "[]")
             except Exception:
                 pass
-            memories.append({
-                "id": r[0],
-                "board_slug": r[1],
-                "task_id": r[2],
-                "category": r[3],
-                "content": r[4],
-                "tags": tags,
-                "author": r[6],
-                "created_at": r[7],
-                "updated_at": r[8],
-            })
+            memories.append(
+                {
+                    "id": r[0],
+                    "board_slug": r[1],
+                    "task_id": r[2],
+                    "category": r[3],
+                    "content": r[4],
+                    "tags": tags,
+                    "author": r[6],
+                    "created_at": r[7],
+                    "updated_at": r[8],
+                }
+            )
 
         return {"ok": True, "board_slug": slug, "total": total, "memories": memories}
 
@@ -118,7 +127,9 @@ def create_board_memory(slug: str, req: MemoryCreate):
             cursor.execute("SELECT slug FROM boards ORDER BY created_at ASC LIMIT 1")
             row = cursor.fetchone()
             if not row:
-                raise HTTPException(status_code=400, detail="No board available to associate memory")
+                raise HTTPException(
+                    status_code=400, detail="No board available to associate memory"
+                )
             slug = row[0]
         else:
             cursor.execute("SELECT slug FROM boards WHERE slug = ?", (slug,))
@@ -130,7 +141,17 @@ def create_board_memory(slug: str, req: MemoryCreate):
             INSERT INTO board_memories (id, board_slug, task_id, category, content, tags, author, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (mem_id, slug, req.task_id, cat, req.content.strip(), tags_json, author, now, now)
+            (
+                mem_id,
+                slug,
+                req.task_id,
+                cat,
+                req.content.strip(),
+                tags_json,
+                author,
+                now,
+                now,
+            ),
         )
         conn.commit()
 
@@ -145,8 +166,8 @@ def create_board_memory(slug: str, req: MemoryCreate):
             "tags": req.tags or [],
             "author": author,
             "created_at": now,
-            "updated_at": now
-        }
+            "updated_at": now,
+        },
     }
 
 
@@ -157,10 +178,15 @@ def update_board_memory(memory_id: str, req: MemoryUpdate):
     now = int(time.time())
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE id = ?", (memory_id,))
+        cursor.execute(
+            "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE id = ?",
+            (memory_id,),
+        )
         row = cursor.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Memory '{memory_id}' not found"
+            )
 
         updates = []
         params = []
@@ -172,7 +198,9 @@ def update_board_memory(memory_id: str, req: MemoryUpdate):
         if req.content is not None:
             stripped_content = req.content.strip()
             if not stripped_content:
-                raise HTTPException(status_code=400, detail="Memory content must not be blank")
+                raise HTTPException(
+                    status_code=400, detail="Memory content must not be blank"
+                )
             updates.append("content = ?")
             params.append(stripped_content)
         if req.tags is not None:
@@ -189,10 +217,15 @@ def update_board_memory(memory_id: str, req: MemoryUpdate):
             updates.append("updated_at = ?")
             params.append(now)
             params.append(memory_id)
-            cursor.execute(f"UPDATE board_memories SET {', '.join(updates)} WHERE id = ?", params)
+            cursor.execute(
+                f"UPDATE board_memories SET {', '.join(updates)} WHERE id = ?", params
+            )
             conn.commit()
 
-        cursor.execute("SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE id = ?", (memory_id,))
+        cursor.execute(
+            "SELECT id, board_slug, task_id, category, content, tags, author, created_at, updated_at FROM board_memories WHERE id = ?",
+            (memory_id,),
+        )
         r = cursor.fetchone()
         tags = []
         try:
@@ -212,7 +245,7 @@ def update_board_memory(memory_id: str, req: MemoryUpdate):
                 "author": r[6],
                 "created_at": r[7],
                 "updated_at": r[8],
-            }
+            },
         }
 
 
@@ -224,7 +257,9 @@ def delete_board_memory(memory_id: str):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM board_memories WHERE id = ?", (memory_id,))
         if cursor.rowcount == 0:
-            raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Memory '{memory_id}' not found"
+            )
         conn.commit()
     return {"ok": True, "deleted": memory_id}
 

@@ -8,17 +8,16 @@ import re
 import sqlite3
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple
 
 from .config import _d, _log, get_db_path
 
 
 def digest_reviewer_git_context(
     workspace_path: Path,
-    branch_name: Optional[str] = None,
+    branch_name: str | None = None,
     max_diff_lines: int = 100,
     max_diff_chars: int = 4000,
-    target_branch: Optional[str] = None,
+    target_branch: str | None = None,
 ) -> str:
     """Extract pre-digested commits, diffstat, and code diff for reviewer prompt.
 
@@ -34,24 +33,34 @@ def digest_reviewer_git_context(
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         if git_check.returncode != 0 or git_check.stdout.strip() != "true":
             return ""
     except Exception:
         return ""
 
-    default_branch = (target_branch or "").strip() or _d().get_default_branch(workspace_path)
+    default_branch = (target_branch or "").strip() or _d().get_default_branch(
+        workspace_path
+    )
     base_ref = f"origin/{default_branch}"
     try:
         verify_remote = subprocess.run(
             ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{base_ref}"],
-            cwd=str(workspace_path), timeout=5
+            cwd=str(workspace_path),
+            timeout=5,
         )
         if verify_remote.returncode != 0:
             verify_local = subprocess.run(
-                ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{default_branch}"],
-                cwd=str(workspace_path), timeout=5
+                [
+                    "git",
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    f"refs/heads/{default_branch}",
+                ],
+                cwd=str(workspace_path),
+                timeout=5,
             )
             base_ref = default_branch if verify_local.returncode == 0 else "HEAD~1"
     except Exception:
@@ -65,7 +74,7 @@ def digest_reviewer_git_context(
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         if mb_res.returncode == 0 and mb_res.stdout.strip():
             merge_base = mb_res.stdout.strip()
@@ -82,7 +91,7 @@ def digest_reviewer_git_context(
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         if log_res.returncode == 0:
             log_summary = log_res.stdout.strip()
@@ -108,7 +117,7 @@ def digest_reviewer_git_context(
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         if stat_res.returncode == 0 and stat_res.stdout.strip():
             diffstat = stat_res.stdout.strip()
@@ -118,7 +127,7 @@ def digest_reviewer_git_context(
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             if stat_fallback.returncode == 0:
                 diffstat = stat_fallback.stdout.strip()
@@ -133,7 +142,7 @@ def digest_reviewer_git_context(
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         raw_diff = diff_res.stdout.strip() if diff_res.returncode == 0 else ""
         if not raw_diff:
@@ -142,9 +151,11 @@ def digest_reviewer_git_context(
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
-            raw_diff = diff_fallback.stdout.strip() if diff_fallback.returncode == 0 else ""
+            raw_diff = (
+                diff_fallback.stdout.strip() if diff_fallback.returncode == 0 else ""
+            )
 
         if raw_diff:
             lines = raw_diff.splitlines()
@@ -169,7 +180,7 @@ def digest_reviewer_git_context(
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         if status_res.returncode == 0 and status_res.stdout.strip():
             status_summary = status_res.stdout.strip()
@@ -181,7 +192,7 @@ def digest_reviewer_git_context(
 
     sections = [
         "### 🔍 Pre-Digested PR Changes (Zero-Token Ingested)",
-        f"- **Target Base Branch:** `{default_branch}`"
+        f"- **Target Base Branch:** `{default_branch}`",
     ]
     if log_summary:
         sections.append(f"#### Commits on Feature Branch:\n```\n{log_summary}\n```")
@@ -196,9 +207,7 @@ def digest_reviewer_git_context(
 
 
 def digest_board_memories_context(
-    board_slug: Optional[str],
-    db_path: Optional[str] = None,
-    limit: int = 8
+    board_slug: str | None, db_path: str | None = None, limit: int = 8
 ) -> str:
     """Extract pre-digested repository memories, conventions, and gotchas for agent worker prompt.
 
@@ -224,13 +233,15 @@ def digest_board_memories_context(
                 ORDER BY created_at DESC
                 LIMIT ?
                 """,
-                (board_slug, limit)
+                (board_slug, limit),
             ).fetchall()
 
             if not rows:
                 return ""
 
-            lines = ["🧠 REPOSITORY KNOWLEDGE & CONVENTIONS (Learned from prior tasks):"]
+            lines = [
+                "🧠 REPOSITORY KNOWLEDGE & CONVENTIONS (Learned from prior tasks):"
+            ]
             for r in rows:
                 cat = r["category"] or "general"
                 content = (r["content"] or "").strip().replace("\n", " ")
@@ -245,14 +256,16 @@ def digest_board_memories_context(
                     pass
                 lines.append(f"- [{cat}] {content}{tag_str}")
 
-            lines.append("Please adhere to these conventions and avoid known gotchas during execution.")
+            lines.append(
+                "Please adhere to these conventions and avoid known gotchas during execution."
+            )
             return "\n".join(lines)
     except Exception as e:
         _log.debug("Could not digest board memories for %s: %s", board_slug, e)
         return ""
 
 
-def format_conventional_message(title: str, task_id: str = "") -> Tuple[str, str]:
+def format_conventional_message(title: str, task_id: str = "") -> tuple[str, str]:
     """Format task title into Conventional Commits subject and body.
 
     Output format:
@@ -261,11 +274,19 @@ def format_conventional_message(title: str, task_id: str = "") -> Tuple[str, str
     """
     raw_title = title
     # 1. Strip role and priority badges
-    cleaned = re.sub(r"\[(?:zf-builder|zf-reviewer|zf-orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]", "", title)
+    cleaned = re.sub(
+        r"\[(?:zf-builder|zf-reviewer|zf-orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]",
+        "",
+        title,
+    )
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     # 2. Check if already conventional
-    m = re.match(r"^(feat|fix|refactor|perf|test|docs|style|chore|ci|build)(\([^)]+\))?(!)?:\s*(.*)$", cleaned, re.IGNORECASE)
+    m = re.match(
+        r"^(feat|fix|refactor|perf|test|docs|style|chore|ci|build)(\([^)]+\))?(!)?:\s*(.*)$",
+        cleaned,
+        re.IGNORECASE,
+    )
     if m:
         c_type = m.group(1).lower()
         c_scope = m.group(2) or ""
@@ -276,7 +297,11 @@ def format_conventional_message(title: str, task_id: str = "") -> Tuple[str, str
             (r"^(?:BUG\s*FIX|BUGFIX|HOTFIX)[:\s-]+(.*)$", "fix", ""),
             (r"^(?:FIX|BUG):\s*(.*)$", "fix", ""),
             (r"^(?:SECURITY|SEC)[:\s-]+(.*)$", "fix", "(security)"),
-            (r"^(?:REFACTOR(?:ING)?|CLEANUP|DEDUP(?:LICATE)?)[:\s-]+(.*)$", "refactor", ""),
+            (
+                r"^(?:REFACTOR(?:ING)?|CLEANUP|DEDUP(?:LICATE)?)[:\s-]+(.*)$",
+                "refactor",
+                "",
+            ),
             (r"^(?:FEAT(?:URE)?|NEW)[:\s-]+(.*)$", "feat", ""),
             (r"^(?:ADD):\s*(.*)$", "feat", ""),
             (r"^(?:PERF(?:ORMANCE)?|OPTIMIZE|OPTIMIZATION)[:\s-]+(.*)$", "perf", ""),
@@ -296,34 +321,90 @@ def format_conventional_message(title: str, task_id: str = "") -> Tuple[str, str
                 break
         else:
             lower_cleaned = cleaned.lower()
-            if re.search(r"\b(?:unit[\s_-]?tests?|e2e|integration[\s_-]?tests?|tests?)\b", lower_cleaned) and not any(lower_cleaned.startswith(p) for p in ("fix ", "patch ")):
+            if re.search(
+                r"\b(?:unit[\s_-]?tests?|e2e|integration[\s_-]?tests?|tests?)\b",
+                lower_cleaned,
+            ) and not any(lower_cleaned.startswith(p) for p in ("fix ", "patch ")):
                 c_type = "test"
-            elif any(lower_cleaned.startswith(p) for p in ("add ", "create ", "implement ", "support ", "introduce ", "integrate ")):
+            elif any(
+                lower_cleaned.startswith(p)
+                for p in (
+                    "add ",
+                    "create ",
+                    "implement ",
+                    "support ",
+                    "introduce ",
+                    "integrate ",
+                )
+            ):
                 c_type = "feat"
-            elif any(lower_cleaned.startswith(p) for p in ("fix ", "resolve ", "patch ", "correct ", "prevent ", "handle ")):
+            elif any(
+                lower_cleaned.startswith(p)
+                for p in (
+                    "fix ",
+                    "resolve ",
+                    "patch ",
+                    "correct ",
+                    "prevent ",
+                    "handle ",
+                )
+            ):
                 c_type = "fix"
-            elif any(lower_cleaned.startswith(p) for p in ("refactor ", "extract ", "reorganize ", "simplify ", "deduplicate ", "clean ")):
+            elif any(
+                lower_cleaned.startswith(p)
+                for p in (
+                    "refactor ",
+                    "extract ",
+                    "reorganize ",
+                    "simplify ",
+                    "deduplicate ",
+                    "clean ",
+                )
+            ):
                 c_type = "refactor"
-            elif any(lower_cleaned.startswith(p) for p in ("optimize ", "speed ", "accelerate ", "reduce ")):
+            elif any(
+                lower_cleaned.startswith(p)
+                for p in ("optimize ", "speed ", "accelerate ", "reduce ")
+            ):
                 c_type = "perf"
-            elif any(lower_cleaned.startswith(p) for p in ("doc ", "document ", "readme")):
+            elif any(
+                lower_cleaned.startswith(p) for p in ("doc ", "document ", "readme")
+            ):
                 c_type = "docs"
 
     # 3. Infer scope if not provided
     if not c_scope:
-        file_m = re.search(r"(?:in\s+)?(?:[\w\-]+/)*([a-zA-Z0-9_\-]+)\.(?:ts|js|py|go|rs|json|jsx|tsx|svelte|vue|md)\b", c_desc)
+        file_m = re.search(
+            r"(?:in\s+)?(?:[\w\-]+/)*([a-zA-Z0-9_\-]+)\.(?:ts|js|py|go|rs|json|jsx|tsx|svelte|vue|md)\b",
+            c_desc,
+        )
         if file_m:
             c_scope = f"({file_m.group(1)})"
         else:
             mod_m = re.match(r"^([a-zA-Z0-9_\-]+)\s+", c_desc)
-            if mod_m and mod_m.group(1).lower() in ("dispatcher", "cron", "dashboard", "api", "auth", "worker", "agent"):
+            if mod_m and mod_m.group(1).lower() in (
+                "dispatcher",
+                "cron",
+                "dashboard",
+                "api",
+                "auth",
+                "worker",
+                "agent",
+            ):
                 c_scope = f"({mod_m.group(1).lower()})"
 
     # 4. Clean description
     if c_scope:
         scope_name = c_scope.strip("()")
-        c_desc = re.sub(rf"\s*in\s+(?:[\w\-]+/)*{re.escape(scope_name)}\.[a-zA-Z0-9]+\b", "", c_desc, flags=re.IGNORECASE)
-        c_desc = re.sub(rf"^{re.escape(scope_name)}[:\s]+", "", c_desc, flags=re.IGNORECASE)
+        c_desc = re.sub(
+            rf"\s*in\s+(?:[\w\-]+/)*{re.escape(scope_name)}\.[a-zA-Z0-9]+\b",
+            "",
+            c_desc,
+            flags=re.IGNORECASE,
+        )
+        c_desc = re.sub(
+            rf"^{re.escape(scope_name)}[:\s]+", "", c_desc, flags=re.IGNORECASE
+        )
 
     if len(c_desc) > 1 and c_desc[0].isupper() and not c_desc[1].isupper():
         c_desc = c_desc[0].lower() + c_desc[1:]

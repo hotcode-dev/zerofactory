@@ -15,7 +15,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 try:
     import yaml
@@ -28,7 +28,7 @@ ZF_PROFILES = ("zf-orchestrator", "zf-builder", "zf-reviewer")
 
 # All HERMES_LANGFUSE_* keys written to .env files by sync_langfuse_profiles().
 # Used to scrub stale credentials from every profile .env when Langfuse is disabled.
-LANGFUSE_ENV_KEYS: Set[str] = {
+LANGFUSE_ENV_KEYS: set[str] = {
     "HERMES_LANGFUSE_PUBLIC_KEY",
     "HERMES_LANGFUSE_SECRET_KEY",
     "HERMES_LANGFUSE_BASE_URL",
@@ -107,7 +107,7 @@ def get_plugin_root() -> Path:
     return cur
 
 
-def get_root_model_config() -> Dict[str, Any]:
+def get_root_model_config() -> dict[str, Any]:
     """Inspect ~/.hermes/config.yaml for default model/provider settings to inherit."""
     if not yaml:
         return {}
@@ -124,7 +124,9 @@ def get_root_model_config() -> Dict[str, Any]:
     return {}
 
 
-def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dict[str, List[str]]:
+def ensure_zf_profiles(
+    force: bool = False, update_prompts: bool = False
+) -> dict[str, list[str]]:
     """Ensure that zf-orchestrator, zf-builder, and zf-reviewer exist in ~/.hermes/profiles.
 
     Args:
@@ -199,11 +201,15 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
             if not config_dst.exists() or is_new or force:
                 if yaml and root_model:
                     try:
-                        base_cfg = yaml.safe_load(config_src.read_text(encoding="utf-8")) or {}
+                        base_cfg = (
+                            yaml.safe_load(config_src.read_text(encoding="utf-8")) or {}
+                        )
                         # Merge inherited model config if profile doesn't define a model
                         if "model" not in base_cfg and "model" in root_model:
                             base_cfg["model"] = root_model["model"]
-                        config_dst.write_text(yaml.dump(base_cfg, sort_keys=False), encoding="utf-8")
+                        config_dst.write_text(
+                            yaml.dump(base_cfg, sort_keys=False), encoding="utf-8"
+                        )
                     except Exception:
                         shutil.copy2(config_src, config_dst)
                 else:
@@ -270,7 +276,9 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
                     enabled_list.append("zerofactory")
                     cfg_modified = True
                 if cfg_modified:
-                    config_dst.write_text(yaml.dump(cfg_data, sort_keys=False), encoding="utf-8")
+                    config_dst.write_text(
+                        yaml.dump(cfg_data, sort_keys=False), encoding="utf-8"
+                    )
             except Exception as e:
                 _log.warning("Could not ensure plugins in %s: %s", config_dst, e)
 
@@ -299,7 +307,7 @@ def ensure_zf_profiles(force: bool = False, update_prompts: bool = False) -> Dic
     return res
 
 
-def ensure_plugin_symlinks() -> Dict[str, Any]:
+def ensure_plugin_symlinks() -> dict[str, Any]:
     """Ensure plugin symlink (zerofactory) and config entries exist in:
     1. Root ~/.hermes/plugins/ and ~/.hermes/config.yaml
     2. ~/.hermes/profiles/<role>/plugins/ and config.yaml for each zf-* profile
@@ -310,10 +318,13 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
 
     # Guardrail: NEVER symlink to a transient git worktree directory
     if "-worktrees" in str(plugin_root) or (plugin_root / ".git").is_file():
-        _log.warning("Refusing to create plugin symlink to git worktree directory: %s", plugin_root)
+        _log.warning(
+            "Refusing to create plugin symlink to git worktree directory: %s",
+            plugin_root,
+        )
         return {"linked": []}
 
-    linked: List[str] = []
+    linked: list[str] = []
 
     def _link_in_dir(target_plugins_dir: Path):
         target_plugins_dir.mkdir(parents=True, exist_ok=True)
@@ -381,7 +392,7 @@ def ensure_plugin_symlinks() -> Dict[str, Any]:
     return {"linked": linked}
 
 
-def ensure_script_files() -> Dict[str, Any]:
+def ensure_script_files() -> dict[str, Any]:
     """Deploy and synchronize Zero Factory automation scripts into Hermes scripts directories.
 
     Hermes cron job security model mandates that `script` targets must resolve inside
@@ -400,7 +411,7 @@ def ensure_script_files() -> Dict[str, Any]:
     for role in ZF_PROFILES:
         target_script_dirs.append(profiles_dir / role / "scripts")
 
-    copied: List[str] = []
+    copied: list[str] = []
     for script_file in src_scripts_dir.glob("*.py"):
         if not script_file.is_file():
             continue
@@ -420,15 +431,22 @@ def ensure_script_files() -> Dict[str, Any]:
                         pass
                 copied.append(str(dest_file))
             except Exception as e:
-                _log.warning("Could not sync script %s to %s: %s", script_file.name, target_dir, e)
+                _log.warning(
+                    "Could not sync script %s to %s: %s",
+                    script_file.name,
+                    target_dir,
+                    e,
+                )
 
     return {"copied": copied}
 
 
-def update_env_file(env_path: Path, updates: Dict[str, str], remove_keys: Optional[Set[str]] = None) -> None:
+def update_env_file(
+    env_path: Path, updates: dict[str, str], remove_keys: set[str] | None = None
+) -> None:
     """Update or insert key=value pairs in an environment file while preserving comments and other keys."""
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    existing_lines: List[str] = []
+    existing_lines: list[str] = []
     if env_path.exists():
         try:
             existing_lines = env_path.read_text(encoding="utf-8").splitlines()
@@ -437,7 +455,7 @@ def update_env_file(env_path: Path, updates: Dict[str, str], remove_keys: Option
 
     remaining_updates = dict(updates)
     remove_set = remove_keys or set()
-    new_lines: List[str] = []
+    new_lines: list[str] = []
 
     for line in existing_lines:
         stripped = line.strip()
@@ -462,7 +480,11 @@ def update_env_file(env_path: Path, updates: Dict[str, str], remove_keys: Option
         pass
 
 
-def update_config_yaml_plugins(config_path: Path, enable_plugin: Optional[str] = None, disable_plugin: Optional[str] = None) -> None:
+def update_config_yaml_plugins(
+    config_path: Path,
+    enable_plugin: str | None = None,
+    disable_plugin: str | None = None,
+) -> None:
     """Update plugins.enabled list in config.yaml without altering other configuration sections."""
     if not yaml or not config_path.exists():
         return
@@ -485,7 +507,7 @@ def update_config_yaml_plugins(config_path: Path, enable_plugin: Optional[str] =
         _log.warning("Could not update plugins in %s: %s", config_path, e)
 
 
-def sync_langfuse_profiles(settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def sync_langfuse_profiles(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     """Synchronize Langfuse credentials and plugin enablement across all Hermes profiles.
 
     Targets root (~/.hermes/) and all agent profile directories (~/.hermes/profiles/*).
@@ -499,17 +521,25 @@ def sync_langfuse_profiles(settings: Optional[Dict[str, Any]] = None) -> Dict[st
     if settings is None:
         try:
             import sqlite3
+
             from settings import load_settings
 
             db_override = os.environ.get("ZEROFACTORY_DB")
-            db_p = Path(db_override) if db_override else (get_hermes_home() / "zerofactory.db")
+            db_p = (
+                Path(db_override)
+                if db_override
+                else (get_hermes_home() / "zerofactory.db")
+            )
             if db_p.exists():
                 with sqlite3.connect(str(db_p), timeout=2.0) as conn:
                     conn.row_factory = sqlite3.Row
                     settings = load_settings(conn)
             else:
                 from settings import DEFAULT_SETTING_VALUES
-                settings = {k: DEFAULT_SETTING_VALUES.get(k) for k in DEFAULT_SETTING_VALUES}
+
+                settings = {
+                    k: DEFAULT_SETTING_VALUES.get(k) for k in DEFAULT_SETTING_VALUES
+                }
         except Exception as e:
             _log.debug("Could not load settings for Langfuse sync: %s", e)
             settings = {}
@@ -517,7 +547,7 @@ def sync_langfuse_profiles(settings: Optional[Dict[str, Any]] = None) -> Dict[st
     hermes_home = get_hermes_home()
     profiles_dir = hermes_home / "profiles"
 
-    target_dirs: List[Path] = [hermes_home]
+    target_dirs: list[Path] = [hermes_home]
     if profiles_dir.is_dir():
         for child in sorted(profiles_dir.iterdir()):
             if child.is_dir() and not child.name.startswith("."):
@@ -530,15 +560,25 @@ def sync_langfuse_profiles(settings: Optional[Dict[str, Any]] = None) -> Dict[st
             target_dirs.append(r_dir)
 
     is_enabled = bool(settings.get("langfuse_enabled"))
-    synced_targets: List[str] = []
+    synced_targets: list[str] = []
 
     if is_enabled:
         env_updates = {
-            "HERMES_LANGFUSE_PUBLIC_KEY": str(settings.get("langfuse_public_key") or "").strip(),
-            "HERMES_LANGFUSE_SECRET_KEY": str(settings.get("langfuse_secret_key") or "").strip(),
-            "HERMES_LANGFUSE_BASE_URL": str(settings.get("langfuse_base_url") or "https://cloud.langfuse.com").strip(),
-            "HERMES_LANGFUSE_CAPTURE": str(settings.get("langfuse_capture_mode") or "sanitized").strip(),
-            "HERMES_LANGFUSE_ENV": str(settings.get("langfuse_env") or "zerofactory").strip(),
+            "HERMES_LANGFUSE_PUBLIC_KEY": str(
+                settings.get("langfuse_public_key") or ""
+            ).strip(),
+            "HERMES_LANGFUSE_SECRET_KEY": str(
+                settings.get("langfuse_secret_key") or ""
+            ).strip(),
+            "HERMES_LANGFUSE_BASE_URL": str(
+                settings.get("langfuse_base_url") or "https://cloud.langfuse.com"
+            ).strip(),
+            "HERMES_LANGFUSE_CAPTURE": str(
+                settings.get("langfuse_capture_mode") or "sanitized"
+            ).strip(),
+            "HERMES_LANGFUSE_ENV": str(
+                settings.get("langfuse_env") or "zerofactory"
+            ).strip(),
         }
         for target in target_dirs:
             update_env_file(target / ".env", env_updates)
@@ -549,8 +589,9 @@ def sync_langfuse_profiles(settings: Optional[Dict[str, Any]] = None) -> Dict[st
             # Scrub stale Langfuse credentials (incl. secret key) from every .env
             # so disabling the feature leaves no plaintext secrets behind.
             update_env_file(target / ".env", {}, remove_keys=LANGFUSE_ENV_KEYS)
-            update_config_yaml_plugins(target / "config.yaml", disable_plugin="langfuse")
+            update_config_yaml_plugins(
+                target / "config.yaml", disable_plugin="langfuse"
+            )
             synced_targets.append(str(target))
 
     return {"enabled": is_enabled, "synced": synced_targets}
-

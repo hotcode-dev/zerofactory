@@ -7,13 +7,11 @@ import io
 import os
 import shutil
 import sqlite3
-import sys
 import tempfile
 import time
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import List
 
 import __init__ as zf_cli
 from dashboard.plugin_api import init_db
@@ -32,8 +30,12 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         self.orig_env = {
             "ZEROFACTORY_DB": os.environ.get("ZEROFACTORY_DB"),
             "ZEROFACTORY_LOCK_PATH": os.environ.get("ZEROFACTORY_LOCK_PATH"),
-            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"),
-            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"),
+            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get(
+                "ZEROFACTORY_DISABLE_DISPATCHER"
+            ),
+            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get(
+                "ZEROFACTORY_SKIP_WORKER_SPAWN"
+            ),
             "ZEROFACTORY_SKIP_GIT": os.environ.get("ZEROFACTORY_SKIP_GIT"),
             "HOME": os.environ.get("HOME"),
             "HERMES_PROFILE": os.environ.get("HERMES_PROFILE"),
@@ -74,7 +76,7 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
                 os.environ.pop(k, None)
         shutil.rmtree(self.td, ignore_errors=True)
 
-    def _run_cli(self, args_list: List[str]) -> str:
+    def _run_cli(self, args_list: list[str]) -> str:
         """Parse arguments and execute the CLI handler, returning captured stdout."""
         args = self.parser.parse_args(args_list)
         buf = io.StringIO()
@@ -101,10 +103,15 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
     def test_02_cli_board_crud(self):
         """CLI board create, list, and delete workflow."""
         # Create board
-        out_create = self._run_cli([
-            "board", "create", "https://github.com/example/cli-demo.git",
-            "--description", "Demo Board"
-        ])
+        out_create = self._run_cli(
+            [
+                "board",
+                "create",
+                "https://github.com/example/cli-demo.git",
+                "--description",
+                "Demo Board",
+            ]
+        )
         self.assertIn("Created board: example-cli-demo", out_create)
 
         # List boards
@@ -127,46 +134,92 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
 
         # 1. Create with description file
         desc_file = Path(self.td) / "task_desc.md"
-        desc_file.write_text("Detailed multi-line\ntask description with 'quotes' and $special chars.\n", encoding="utf-8")
+        desc_file.write_text(
+            "Detailed multi-line\ntask description with 'quotes' and $special chars.\n",
+            encoding="utf-8",
+        )
 
-        out_create = self._run_cli([
-            "create", "CLI Feature Task",
-            "--board", "example-workflow",
-            "--description-file", str(desc_file),
-            "--priority", "P1",
-            "--status", "triage",
-            "--assignee", "zf-builder",
-            "--files", "app/main.py,app/test.py",
-            "--category", "bug-fix",
-            "--actor", "test-engineer"
-        ])
+        out_create = self._run_cli(
+            [
+                "create",
+                "CLI Feature Task",
+                "--board",
+                "example-workflow",
+                "--description-file",
+                str(desc_file),
+                "--priority",
+                "P1",
+                "--status",
+                "triage",
+                "--assignee",
+                "zf-builder",
+                "--files",
+                "app/main.py,app/test.py",
+                "--category",
+                "bug-fix",
+                "--actor",
+                "test-engineer",
+            ]
+        )
         self.assertIn("Created task zf-", out_create)
-        task_id = [part for part in out_create.split() if part.startswith("zf-")][0].rstrip(":")
+        task_id = [part for part in out_create.split() if part.startswith("zf-")][
+            0
+        ].rstrip(":")
 
         # 2. Deduplication check: re-creating identical fingerprint is skipped
-        out_dup = self._run_cli([
-            "create", "CLI Feature Task Duplicate",
-            "--board", "example-workflow",
-            "--files", "app/main.py,app/test.py",
-            "--category", "bug-fix"
-        ])
+        out_dup = self._run_cli(
+            [
+                "create",
+                "CLI Feature Task Duplicate",
+                "--board",
+                "example-workflow",
+                "--files",
+                "app/main.py,app/test.py",
+                "--category",
+                "bug-fix",
+            ]
+        )
         self.assertIn("[Duplicate Skipped]", out_dup)
 
         # 3. List tasks
-        out_list = self._run_cli(["list", "--board", "example-workflow", "--status", "triage"])
+        out_list = self._run_cli(
+            ["list", "--board", "example-workflow", "--status", "triage"]
+        )
         self.assertIn(task_id, out_list)
         self.assertIn("CLI Feature Task", out_list)
 
         # 4. Move task
-        out_move = self._run_cli(["move", task_id, "todo", "--actor", "zf-orchestrator"])
+        out_move = self._run_cli(
+            ["move", task_id, "todo", "--actor", "zf-orchestrator"]
+        )
         self.assertIn(f"Moved task {task_id} to todo", out_move)
 
         # 5. Block task with reason
-        out_block = self._run_cli(["block", task_id, "--reason", "Waiting on Database Migration", "--actor", "user"])
-        self.assertIn(f"Task {task_id} marked as BLOCKED (Waiting on Database Migration)", out_block)
+        out_block = self._run_cli(
+            [
+                "block",
+                task_id,
+                "--reason",
+                "Waiting on Database Migration",
+                "--actor",
+                "user",
+            ]
+        )
+        self.assertIn(
+            f"Task {task_id} marked as BLOCKED (Waiting on Database Migration)",
+            out_block,
+        )
 
         # 6. Add comment
-        out_comment = self._run_cli(["comment", task_id, "Database migration has landed", "--author", "dba-team"])
+        out_comment = self._run_cli(
+            [
+                "comment",
+                task_id,
+                "Database migration has landed",
+                "--author",
+                "dba-team",
+            ]
+        )
         self.assertIn(f"Added comment to task {task_id}", out_comment)
 
         # 7. Check stats
@@ -190,18 +243,24 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
             conn.commit()
 
         # check-stuck inspection
-        out_check = self._run_cli(["check-stuck", "--timeout", "60", "--inactivity", "60"])
+        out_check = self._run_cli(
+            ["check-stuck", "--timeout", "60", "--inactivity", "60"]
+        )
         self.assertIn("zf-stuck-1", out_check)
         self.assertIn("STUCK", out_check)
 
         # check-stuck with reap
-        out_reap = self._run_cli(["check-stuck", "--timeout", "60", "--inactivity", "60", "--reap"])
+        out_reap = self._run_cli(
+            ["check-stuck", "--timeout", "60", "--inactivity", "60", "--reap"]
+        )
         self.assertIn("Reaped 1 stuck task", out_reap)
         self.assertIn("zf-stuck-1", out_reap)
 
         # Verify task is now blocked in DB
         with sqlite3.connect(str(self.db_path)) as conn:
-            status = conn.execute("SELECT status FROM tasks WHERE id = 'zf-stuck-1'").fetchone()[0]
+            status = conn.execute(
+                "SELECT status FROM tasks WHERE id = 'zf-stuck-1'"
+            ).fetchone()[0]
             self.assertEqual(status, "blocked")
 
     def test_05_cli_cron_and_dispatch(self):
@@ -221,11 +280,16 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
     def test_06_cli_setup_repo(self):
         """CLI setup-repo command creates P0 setup task."""
         # Create board first
-        self._run_cli(["board", "create", "https://github.com/setup-cli/repo-setup.git"])
+        self._run_cli(
+            ["board", "create", "https://github.com/setup-cli/repo-setup.git"]
+        )
 
         # Run setup-repo command
         out = self._run_cli(["setup-repo", "--board", "setup-cli-repo-setup"])
-        self.assertTrue("Created P0 precommit setup task" in out or "Precommit setup task already active" in out)
+        self.assertTrue(
+            "Created P0 precommit setup task" in out
+            or "Precommit setup task already active" in out
+        )
 
         # Verify task in DB
         with sqlite3.connect(str(self.db_path)) as conn:

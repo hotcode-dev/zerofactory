@@ -3,17 +3,13 @@
 import json
 import os
 import sqlite3
-import tempfile
-import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import MagicMock, patch
 
 from dispatcher.reaper import (
     _compute_stuck_state,
     _mark_task_session_ended,
     reap_active_workers,
-    check_stuck_tasks,
 )
 
 
@@ -94,7 +90,12 @@ def test_mark_task_session_ended():
     meta = {
         "sessions": [
             {"session_id": "s1", "status": "ongoing", "started_at": 100},
-            {"session_id": "s0", "status": "completed", "started_at": 50, "ended_at": 90},
+            {
+                "session_id": "s0",
+                "status": "completed",
+                "started_at": 50,
+                "ended_at": 90,
+            },
         ]
     }
     updated = _mark_task_session_ended(meta, now=200, final_status="aborted")
@@ -150,24 +151,30 @@ def test_reap_active_workers_transitions_stuck_task(tmp_path: Path):
 
     now = 5000
     started_at = now - 4000  # Exceeded default timeout (3600s)
-    meta = json.dumps({
-        "started_at": started_at,
-        "worker_pid": 1111,
-        "sessions": [{"session_id": "s1", "status": "ongoing", "started_at": started_at}],
-    })
+    meta = json.dumps(
+        {
+            "started_at": started_at,
+            "worker_pid": 1111,
+            "sessions": [
+                {"session_id": "s1", "status": "ongoing", "started_at": started_at}
+            ],
+        }
+    )
     conn.execute(
         "INSERT INTO tasks VALUES ('t-stuck', 'Stuck Task', 'running', 'zf-builder', ?, ?, ?)",
-        (meta, started_at, started_at)
+        (meta, started_at, started_at),
     )
     conn.commit()
 
     from dispatcher.config import _active_workers
+
     mock_proc = MagicMock()
     mock_proc.pid = 1111
     mock_proc.poll.return_value = None
     _active_workers["t-stuck"] = mock_proc
 
     import dispatcher
+
     with patch.object(dispatcher, "terminate_worker_process") as mock_term:
         reaped = reap_active_workers(conn.cursor(), now=now)
         conn.commit()
@@ -175,7 +182,9 @@ def test_reap_active_workers_transitions_stuck_task(tmp_path: Path):
     assert reaped == 1
     mock_term.assert_called_once_with(mock_proc, 1111)
 
-    row = conn.execute("SELECT status, metadata FROM tasks WHERE id = 't-stuck'").fetchone()
+    row = conn.execute(
+        "SELECT status, metadata FROM tasks WHERE id = 't-stuck'"
+    ).fetchone()
     assert row["status"] == "blocked"
     saved_meta = json.loads(row["metadata"])
     assert "blocked_reason" in saved_meta

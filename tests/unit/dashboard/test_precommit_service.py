@@ -1,17 +1,14 @@
 """Unit tests for dashboard/precommit_service.py."""
 
 from pathlib import Path
-import pytest
 
+from dashboard.plugin_api import BoardCreate, create_board
 from dashboard.precommit_service import (
     PRECOMMIT_RELATIVE_PATH,
-    SETUP_TASK_DEDUP_KEY,
-    SETUP_TASK_TITLE,
     build_precommit_setup_task_prompt,
     check_board_precommit_status,
     create_precommit_setup_task,
 )
-from dashboard.plugin_api import create_board, BoardCreate, get_db_conn
 
 
 def test_build_precommit_setup_task_prompt():
@@ -45,11 +42,13 @@ def test_precommit_status_and_task_lifecycle(initialized_db: Path, tmp_path: Pat
     (repo_dir / ".git").mkdir()
 
     # Create board pointing to this local directory
-    b_res = create_board(BoardCreate(
-        git_url=str(repo_dir),
-        description="Local dummy repo",
-        auto_setup_precommit=False
-    ))
+    b_res = create_board(
+        BoardCreate(
+            git_url=str(repo_dir),
+            description="Local dummy repo",
+            auto_setup_precommit=False,
+        )
+    )
     slug = b_res["slug"]
 
     # Initial check: no precommit script

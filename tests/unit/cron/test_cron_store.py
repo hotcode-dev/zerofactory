@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cron.store import (
-    compute_job_next_run,
     cleanup_duplicate_root_jobs,
+    compute_job_next_run,
     get_target_jobs_files,
     load_jobs_from_file,
     save_jobs_to_file,
@@ -69,8 +69,13 @@ def test_cleanup_duplicate_root_jobs():
         ]
         save_jobs_to_file(root_jobs, initial)
 
-        with patch("pathlib.Path.home", return_value=Path(td)), \
-             patch("os.path.expanduser", side_effect=lambda p: str(hermes_dir) if "~/.hermes" in p else p):
+        with (
+            patch("pathlib.Path.home", return_value=Path(td)),
+            patch(
+                "os.path.expanduser",
+                side_effect=lambda p: str(hermes_dir) if "~/.hermes" in p else p,
+            ),
+        ):
             cleanup_duplicate_root_jobs()
 
         remaining = load_jobs_from_file(root_jobs)

@@ -35,13 +35,15 @@ for candidate in candidate_roots:
     except Exception:
         pass
 
-from dispatcher import check_stuck_tasks, reap_stuck_tasks, run_dispatch_cycle
 from dashboard.plugin_api import get_stats
+from dispatcher import reap_stuck_tasks, run_dispatch_cycle
 
 
 def run_watchdog() -> int:
     timeout_sec = int(os.environ.get("ZEROFACTORY_TASK_TIMEOUT_SECONDS", "3600"))
-    inactivity_sec = int(os.environ.get("ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS", "900"))
+    inactivity_sec = int(
+        os.environ.get("ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS", "900")
+    )
 
     # 1. Check and reap stuck tasks
     reap_res = reap_stuck_tasks()
@@ -70,7 +72,7 @@ def run_watchdog() -> int:
             "total_tasks": stats.get("total", 0),
             "todo": cols.get("todo", 0),
             "running": cols.get("running", 0),
-            "dispatched": dispatched
+            "dispatched": dispatched,
         }
         print(json.dumps(gate))
         return 0
@@ -90,7 +92,9 @@ def run_watchdog() -> int:
     print(f"- **Blocked:** {cols.get('blocked', 0)}")
     print(f"- **Dispatched this tick:** {dispatched}")
     print()
-    print("Action taken: Timed-out workers were terminated and moved to `blocked` for triage.")
+    print(
+        "Action taken: Timed-out workers were terminated and moved to `blocked` for triage."
+    )
     return 0
 
 

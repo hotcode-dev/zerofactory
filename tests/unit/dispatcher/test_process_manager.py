@@ -5,17 +5,14 @@ import os
 import signal
 import sqlite3
 import subprocess
-import time
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import MagicMock, patch
 
+from dispatcher.config import _active_workers
 from dispatcher.process_manager import (
     is_pid_alive,
-    terminate_process_group,
-    terminate_worker_process,
     stop_task_worker,
+    terminate_process_group,
 )
-from dispatcher.config import _active_workers
 
 
 def test_is_pid_alive():
@@ -51,9 +48,12 @@ def test_terminate_process_group_kills_session_group():
         calls.append((pgid, sig))
 
     import dispatcher
-    with patch.object(dispatcher.os, "getpgid", return_value=1234), \
-         patch.object(dispatcher.os, "killpg", side_effect=mock_killpg), \
-         patch.object(dispatcher.time, "sleep", return_value=None):
+
+    with (
+        patch.object(dispatcher.os, "getpgid", return_value=1234),
+        patch.object(dispatcher.os, "killpg", side_effect=mock_killpg),
+        patch.object(dispatcher.time, "sleep", return_value=None),
+    ):
         terminate_process_group(mock_proc, 1234, grace=0.1)
 
     # Pre-flight probe (signal 0), then SIGTERM, then SIGKILL
@@ -69,6 +69,7 @@ def test_stop_task_worker_in_memory_and_db():
     _active_workers["task-test-1"] = mock_proc
 
     import dispatcher
+
     with patch.object(dispatcher, "terminate_worker_process") as mock_term:
         stop_task_worker("task-test-1")
         assert "task-test-1" not in _active_workers
@@ -81,12 +82,12 @@ def test_stop_task_worker_falls_back_to_db_metadata():
     conn.row_factory = sqlite3.Row
     conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, metadata TEXT)")
     conn.execute(
-        "INSERT INTO tasks VALUES ('t-meta', ?)",
-        (json.dumps({"worker_pid": 8888}),)
+        "INSERT INTO tasks VALUES ('t-meta', ?)", (json.dumps({"worker_pid": 8888}),)
     )
     conn.commit()
 
     import dispatcher
+
     with patch.object(dispatcher, "terminate_worker_process") as mock_term:
         stop_task_worker("t-meta", cursor=conn.cursor())
         mock_term.assert_called_once_with(None, 8888)

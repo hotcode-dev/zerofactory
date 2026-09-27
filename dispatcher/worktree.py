@@ -8,7 +8,6 @@ import re
 import sqlite3
 import subprocess
 from pathlib import Path
-from typing import List, Optional
 
 from .config import (
     _REMOTE_BRANCH_DELETE_TIMEOUT,
@@ -20,12 +19,17 @@ from .config import (
 )
 
 
-def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optional[str], tenant: Optional[str]) -> Path:
+def resolve_task_repo_path(
+    cursor: sqlite3.Cursor | None, board_slug: str | None, tenant: str | None
+) -> Path:
     """Resolve the git repository root for a task given its board_slug and tenant."""
     # 1. If board_slug is provided, query boards table and resolve repo path
     if board_slug and cursor:
         try:
-            cursor.execute("SELECT slug, description, git_url FROM boards WHERE slug = ?", (board_slug,))
+            cursor.execute(
+                "SELECT slug, description, git_url FROM boards WHERE slug = ?",
+                (board_slug,),
+            )
             b_row = cursor.fetchone()
             if b_row:
                 b_dict = dict(b_row)
@@ -40,11 +44,17 @@ def resolve_task_repo_path(cursor: Optional[sqlite3.Cursor], board_slug: Optiona
                     try:
                         from ..builtin_cron import resolve_board_repo_path
                     except (ImportError, ValueError):
-                        from .builtin_cron import resolve_board_repo_path  # type: ignore
+                        from .builtin_cron import (
+                            resolve_board_repo_path,  # type: ignore
+                        )
                 except Exception:
                     from builtin_cron import resolve_board_repo_path  # type: ignore
                 resolved_b = resolve_board_repo_path(b_dict)
-                if resolved_b and resolved_b.exists() and (resolved_b / ".git").exists():
+                if (
+                    resolved_b
+                    and resolved_b.exists()
+                    and (resolved_b / ".git").exists()
+                ):
                     return resolved_b
         except Exception:
             pass
@@ -82,11 +92,11 @@ def setup_worktree(
     task_id: str,
     title: str,
     assignee: str,
-    tenant: Optional[str],
+    tenant: str | None,
     db_path: Path,
-    board_slug: Optional[str] = None,
-    repo_path: Optional[Path] = None
-) -> Optional[str]:
+    board_slug: str | None = None,
+    repo_path: Path | None = None,
+) -> str | None:
     """Ensure git worktree and branch exist for task execution."""
     valid_profiles = getattr(_d(), "VALID_PROFILES", VALID_PROFILES)
     if not assignee or assignee == "unassigned" or assignee not in valid_profiles:
@@ -98,12 +108,17 @@ def setup_worktree(
             assignee = "zf-orchestrator"
         else:
             assignee = "zf-builder"
-        cursor.execute("UPDATE tasks SET assignee = ?, skills = '[]' WHERE id = ?", (assignee, task_id))
+        cursor.execute(
+            "UPDATE tasks SET assignee = ?, skills = '[]' WHERE id = ?",
+            (assignee, task_id),
+        )
     else:
         norm_assignee = normalize_assignee(assignee)
         if norm_assignee != assignee:
             assignee = norm_assignee
-            cursor.execute("UPDATE tasks SET assignee = ? WHERE id = ?", (assignee, task_id))
+            cursor.execute(
+                "UPDATE tasks SET assignee = ? WHERE id = ?", (assignee, task_id)
+            )
         else:
             assignee = norm_assignee
 
@@ -125,70 +140,152 @@ def setup_worktree(
         target_branch = ""
         if cursor and board_slug:
             try:
-                cursor.execute("SELECT target_branch FROM boards WHERE slug = ?", (board_slug,))
+                cursor.execute(
+                    "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
+                )
                 b_row = cursor.fetchone()
                 if b_row and b_row[0]:
                     target_branch = str(b_row[0]).strip()
             except Exception:
                 pass
 
-        default_branch = _d().sync_repo_main(repo_path, default_branch=target_branch or None)
+        default_branch = _d().sync_repo_main(
+            repo_path, default_branch=target_branch or None
+        )
         base_ref = f"origin/{default_branch}"
         verify_ref = subprocess.run(
             ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{base_ref}"],
-            cwd=repo_path, timeout=5
+            cwd=repo_path,
+            timeout=5,
         )
         if verify_ref.returncode != 0:
             verify_local = subprocess.run(
-                ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{default_branch}"],
-                cwd=repo_path, timeout=5
+                [
+                    "git",
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    f"refs/heads/{default_branch}",
+                ],
+                cwd=repo_path,
+                timeout=5,
             )
             base_ref = default_branch if verify_local.returncode == 0 else "HEAD"
 
         # Ensure worktree_dir is healthy if it exists on disk
         if worktree_dir.exists():
-            rev_check = subprocess.run(["git", "rev-parse", "--git-dir"], cwd=str(worktree_dir), capture_output=True, timeout=5)
+            rev_check = subprocess.run(
+                ["git", "rev-parse", "--git-dir"],
+                cwd=str(worktree_dir),
+                capture_output=True,
+                timeout=5,
+            )
             if rev_check.returncode != 0:
-                _log.warning("Worktree dir %s has invalid/dangling git pointer; removing to re-create", worktree_dir)
+                _log.warning(
+                    "Worktree dir %s has invalid/dangling git pointer; removing to re-create",
+                    worktree_dir,
+                )
                 import shutil
+
                 try:
-                    subprocess.run(["git", "worktree", "remove", "--force", str(worktree_dir)], cwd=str(repo_path), capture_output=True, timeout=10)
+                    subprocess.run(
+                        ["git", "worktree", "remove", "--force", str(worktree_dir)],
+                        cwd=str(repo_path),
+                        capture_output=True,
+                        timeout=10,
+                    )
                 except Exception:
                     pass
                 try:
-                    subprocess.run(["git", "worktree", "prune"], cwd=str(repo_path), capture_output=True, timeout=10)
+                    subprocess.run(
+                        ["git", "worktree", "prune"],
+                        cwd=str(repo_path),
+                        capture_output=True,
+                        timeout=10,
+                    )
                 except Exception:
                     pass
                 if worktree_dir.exists():
                     shutil.rmtree(str(worktree_dir), ignore_errors=True)
 
-        res = subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"], cwd=repo_path, timeout=5)
+        res = subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}"],
+            cwd=repo_path,
+            timeout=5,
+        )
         if res.returncode == 0:
             if not worktree_dir.exists():
                 try:
-                    subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path, timeout=5)
+                    subprocess.run(
+                        ["git", "worktree", "add", str(worktree_dir), branch_name],
+                        check=True,
+                        cwd=repo_path,
+                        timeout=5,
+                    )
                 except subprocess.CalledProcessError:
-                    subprocess.run(["git", "worktree", "prune"], check=False, cwd=repo_path, capture_output=True, timeout=10)
-                    subprocess.run(["git", "worktree", "add", str(worktree_dir), branch_name], check=True, cwd=repo_path, timeout=5)
+                    subprocess.run(
+                        ["git", "worktree", "prune"],
+                        check=False,
+                        cwd=repo_path,
+                        capture_output=True,
+                        timeout=10,
+                    )
+                    subprocess.run(
+                        ["git", "worktree", "add", str(worktree_dir), branch_name],
+                        check=True,
+                        cwd=repo_path,
+                        timeout=5,
+                    )
             # Sync existing worktree with latest default branch if assignee is builder
             if assignee == "zf-builder" and worktree_dir.exists():
                 _d().pull_and_merge_main(worktree_dir, repo_path, default_branch)
         else:
             if not worktree_dir.exists():
                 try:
-                    subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, base_ref], check=True, cwd=repo_path, timeout=5)
+                    subprocess.run(
+                        [
+                            "git",
+                            "worktree",
+                            "add",
+                            str(worktree_dir),
+                            "-b",
+                            branch_name,
+                            base_ref,
+                        ],
+                        check=True,
+                        cwd=repo_path,
+                        timeout=5,
+                    )
                 except Exception:
-                    subprocess.run(["git", "worktree", "add", str(worktree_dir), "-b", branch_name, "HEAD"], check=True, cwd=repo_path, timeout=5)
+                    subprocess.run(
+                        [
+                            "git",
+                            "worktree",
+                            "add",
+                            str(worktree_dir),
+                            "-b",
+                            branch_name,
+                            "HEAD",
+                        ],
+                        check=True,
+                        cwd=repo_path,
+                        timeout=5,
+                    )
             # Sync newly created worktree with latest default branch if assignee is builder
             if assignee == "zf-builder" and worktree_dir.exists():
                 _d().pull_and_merge_main(worktree_dir, repo_path, default_branch)
         cursor.execute(
             "UPDATE tasks SET workspace_kind = 'dir', workspace_path = ?, branch_name = ? WHERE id = ?",
-            (str(worktree_dir), branch_name, task_id)
+            (str(worktree_dir), branch_name, task_id),
         )
         return str(worktree_dir)
     except Exception as e:
-        _log.warning("Worktree setup skipped or failed for task %s (%s): %s", task_id, repo_path, e)
+        _log.warning(
+            "Worktree setup skipped or failed for task %s (%s): %s",
+            task_id,
+            repo_path,
+            e,
+        )
         return None
 
 
@@ -197,9 +294,9 @@ def _handle_local_merge_conflict(
     task_id: str,
     title: str,
     workspace_path: str,
-    conflict_files: List[str],
+    conflict_files: list[str],
     now: int,
-    err_msg: str = ""
+    err_msg: str = "",
 ) -> None:
     """Handle a local merge conflict when syncing task branch with main before push."""
     max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
@@ -215,7 +312,12 @@ def _handle_local_merge_conflict(
 
     retries = int(meta.get("conflict_retries", 0))
     if retries > max_conflict_retries:
-        _log.debug("Task %s has already reached conflict retries limit (%d > %d); skipping duplicate conflict failure handling", task_id, retries, max_conflict_retries)
+        _log.debug(
+            "Task %s has already reached conflict retries limit (%d > %d); skipping duplicate conflict failure handling",
+            task_id,
+            retries,
+            max_conflict_retries,
+        )
         return
     retries += 1
     meta["conflict_retries"] = retries
@@ -229,11 +331,15 @@ def _handle_local_merge_conflict(
     if retries > max_conflict_retries:
         cursor.execute(
             "UPDATE tasks SET title = ?, assignee = 'zf-builder', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (new_title, json.dumps(meta), now, task_id)
+            (new_title, json.dumps(meta), now, task_id),
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
-            (task_id, f"Merge conflict resolution exceeded {max_conflict_retries} attempts{file_msg}. Moved to blocked.", now)
+            (
+                task_id,
+                f"Merge conflict resolution exceeded {max_conflict_retries} attempts{file_msg}. Moved to blocked.",
+                now,
+            ),
         )
         try:
             cursor.execute(
@@ -244,8 +350,8 @@ def _handle_local_merge_conflict(
                     f"🚨 **Merge Conflict Resolution Failed**: Pulling latest main branch encountered conflicts{file_msg}. "
                     f"Automatic resolution was attempted {retries - 1} times without success. "
                     f"Task has been moved to **blocked** for manual review and resolution.",
-                    now
-                )
+                    now,
+                ),
             )
         except Exception as e:
             _log.debug("Failed to record task comment for conflict limit: %s", e)
@@ -253,11 +359,15 @@ def _handle_local_merge_conflict(
 
     cursor.execute(
         "UPDATE tasks SET title = ?, assignee = 'zf-builder', status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-        (new_title, json.dumps(meta), now, task_id)
+        (new_title, json.dumps(meta), now, task_id),
     )
     cursor.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
-        (task_id, f"Merge conflict with main branch detected{file_msg}. Routed back to zf-builder for resolution.", now)
+        (
+            task_id,
+            f"Merge conflict with main branch detected{file_msg}. Routed back to zf-builder for resolution.",
+            now,
+        ),
     )
     try:
         cursor.execute(
@@ -268,8 +378,8 @@ def _handle_local_merge_conflict(
                 f"🚨 **Merge Conflict Detected**: Pulling latest main branch encountered conflicts{file_msg}. "
                 f"Worktree has been left with conflict markers for resolution. "
                 f"Please reconcile conflict markers, verify tests pass, and commit.",
-                now
-            )
+                now,
+            ),
         )
     except Exception as e:
         _log.debug("Failed to record task comment for conflict: %s", e)
@@ -285,14 +395,17 @@ def _delete_remote_branch(task_id: str, repo_path: Path) -> None:
     try:
         res = subprocess.run(
             ["git", "push", "origin", "--delete", branch],
-            check=False, cwd=str(repo_path), capture_output=True,
+            check=False,
+            cwd=str(repo_path),
+            capture_output=True,
             timeout=_REMOTE_BRANCH_DELETE_TIMEOUT,
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
     except subprocess.TimeoutExpired:
         _log.warning(
             "Remote branch delete timed out after %ss for %s; leaving remote branch for manual cleanup",
-            _REMOTE_BRANCH_DELETE_TIMEOUT, branch,
+            _REMOTE_BRANCH_DELETE_TIMEOUT,
+            branch,
         )
         return
     except Exception as e:
@@ -301,37 +414,46 @@ def _delete_remote_branch(task_id: str, repo_path: Path) -> None:
     if res.returncode != 0:
         _log.warning(
             "Remote branch delete failed for %s (rc=%s): %s",
-            branch, res.returncode, (res.stderr or res.stdout or "").strip(),
+            branch,
+            res.returncode,
+            (res.stderr or res.stdout or "").strip(),
         )
     else:
         _log.info("Deleted remote branch %s (PR archived)", branch)
 
 
-def _remove_worktree(workspace_path: Optional[str], repo_path: Path) -> None:
+def _remove_worktree(workspace_path: str | None, repo_path: Path) -> None:
     """Safely remove a git worktree without hanging the dispatch cycle."""
     if not workspace_path or not Path(workspace_path).exists():
         return
     try:
         subprocess.run(
             ["git", "worktree", "remove", workspace_path, "--force"],
-            check=False, cwd=str(repo_path), capture_output=True,
+            check=False,
+            cwd=str(repo_path),
+            capture_output=True,
             timeout=_WORKTREE_REMOVE_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
         _log.warning(
             "Worktree remove timed out after %ss for %s; falling back to 'git worktree prune'",
-            _WORKTREE_REMOVE_TIMEOUT, workspace_path,
+            _WORKTREE_REMOVE_TIMEOUT,
+            workspace_path,
         )
         try:
             subprocess.run(
                 ["git", "worktree", "prune"],
-                check=False, cwd=str(repo_path), capture_output=True,
+                check=False,
+                cwd=str(repo_path),
+                capture_output=True,
                 timeout=_WORKTREE_REMOVE_TIMEOUT,
             )
         except subprocess.TimeoutExpired as e:
             _log.warning(
                 "Worktree prune also timed out after %ss for %s: %s",
-                _WORKTREE_REMOVE_TIMEOUT, workspace_path, e.cmd,
+                _WORKTREE_REMOVE_TIMEOUT,
+                workspace_path,
+                e.cmd,
             )
         return
     except Exception as e:
@@ -341,28 +463,35 @@ def _remove_worktree(workspace_path: Optional[str], repo_path: Path) -> None:
         try:
             subprocess.run(
                 ["git", "worktree", "prune"],
-                check=False, cwd=str(repo_path), capture_output=True,
+                check=False,
+                cwd=str(repo_path),
+                capture_output=True,
                 timeout=_WORKTREE_REMOVE_TIMEOUT,
             )
         except subprocess.TimeoutExpired as e:
             _log.warning(
                 "Worktree prune timed out after %ss for %s: %s",
-                _WORKTREE_REMOVE_TIMEOUT, workspace_path, e.cmd,
+                _WORKTREE_REMOVE_TIMEOUT,
+                workspace_path,
+                e.cmd,
             )
         if Path(workspace_path).exists():
-            _log.warning("Worktree directory still present after cleanup attempts: %s", workspace_path)
+            _log.warning(
+                "Worktree directory still present after cleanup attempts: %s",
+                workspace_path,
+            )
 
 
 def _handle_pr_conflict_from_github(
     cursor: sqlite3.Cursor,
     task_id: str,
     title: str,
-    workspace_path: Optional[str],
+    workspace_path: str | None,
     repo_path: Path,
-    tenant: Optional[str],
+    tenant: str | None,
     db_path: Path,
-    board_slug: Optional[str],
-    now: int
+    board_slug: str | None,
+    now: int,
 ) -> None:
     """Handle a PR that has merge conflicts on GitHub by routing back to builder."""
     max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
@@ -378,7 +507,12 @@ def _handle_pr_conflict_from_github(
 
     retries = int(meta.get("conflict_retries", 0))
     if retries > max_conflict_retries:
-        _log.debug("Task %s has already reached conflict retries limit (%d > %d); skipping duplicate PR conflict failure handling", task_id, retries, max_conflict_retries)
+        _log.debug(
+            "Task %s has already reached conflict retries limit (%d > %d); skipping duplicate PR conflict failure handling",
+            task_id,
+            retries,
+            max_conflict_retries,
+        )
         return
     retries += 1
     meta["conflict_retries"] = retries
@@ -400,11 +534,15 @@ def _handle_pr_conflict_from_github(
     if retries > max_conflict_retries:
         cursor.execute(
             "UPDATE tasks SET title = ?, assignee = ?, status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (new_title, author, json.dumps(meta), now, task_id)
+            (new_title, author, json.dumps(meta), now, task_id),
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
-            (task_id, f"GitHub PR conflict resolution exceeded {max_conflict_retries} attempts. Moved to blocked.", now)
+            (
+                task_id,
+                f"GitHub PR conflict resolution exceeded {max_conflict_retries} attempts. Moved to blocked.",
+                now,
+            ),
         )
         try:
             cursor.execute(
@@ -415,26 +553,41 @@ def _handle_pr_conflict_from_github(
                     f"🚨 **PR Conflict Resolution Failed**: GitHub reports mergeable state is CONFLICTING. "
                     f"Automatic resolution was attempted {retries - 1} times without success. "
                     f"Task has been moved to **blocked** for manual review and resolution.",
-                    now
-                )
+                    now,
+                ),
             )
         except Exception as e:
             _log.debug("Failed to record task comment for conflict limit: %s", e)
         return
 
-    wt_path = _d().setup_worktree(cursor, task_id, new_title, author, tenant, db_path, board_slug=board_slug, repo_path=repo_path)
+    wt_path = _d().setup_worktree(
+        cursor,
+        task_id,
+        new_title,
+        author,
+        tenant,
+        db_path,
+        board_slug=board_slug,
+        repo_path=repo_path,
+    )
     conflict_files = []
     if wt_path and Path(wt_path).exists():
-        _verified, conflict_files, _err = _d().check_unresolved_conflicts_safe(Path(wt_path))
+        _verified, conflict_files, _err = _d().check_unresolved_conflicts_safe(
+            Path(wt_path)
+        )
 
     file_msg = f" in {', '.join(conflict_files)}" if conflict_files else ""
     cursor.execute(
         "UPDATE tasks SET title = ?, assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-        (new_title, author, json.dumps(meta), now, task_id)
+        (new_title, author, json.dumps(meta), now, task_id),
     )
     cursor.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
-        (task_id, f"GitHub PR is conflicting with main branch{file_msg}. Routed to {author} to resolve conflicts.", now)
+        (
+            task_id,
+            f"GitHub PR is conflicting with main branch{file_msg}. Routed to {author} to resolve conflicts.",
+            now,
+        ),
     )
     try:
         cursor.execute(
@@ -445,8 +598,8 @@ def _handle_pr_conflict_from_github(
                 f"🚨 **PR Conflict Detected**: GitHub reports mergeable state is CONFLICTING. "
                 f"The worktree has been synced with latest main branch{file_msg}. "
                 f"Please resolve all conflict markers, verify tests pass, and commit.",
-                now
-            )
+                now,
+            ),
         )
     except Exception as e:
         _log.debug("Failed to record task comment for conflict: %s", e)
@@ -483,16 +636,20 @@ def run_deterministic_precommit(workspace_path: Path) -> tuple[bool, str, int]:
             timeout=timeout,
             env=env,
         )
-        out = (res.stdout or "")
+        out = res.stdout or ""
         if res.stderr:
-            out += ("\n" + res.stderr if out else res.stderr)
+            out += "\n" + res.stderr if out else res.stderr
         if res.returncode == 0:
             return True, out.strip(), 0
-        return False, out.strip() or f"Precommit script exited with code {res.returncode}", res.returncode
+        return (
+            False,
+            out.strip() or f"Precommit script exited with code {res.returncode}",
+            res.returncode,
+        )
     except subprocess.TimeoutExpired as te:
-        out = (te.stdout or "")
+        out = te.stdout or ""
         if te.stderr:
-            out += ("\n" + te.stderr if out else te.stderr)
+            out += "\n" + te.stderr if out else te.stderr
         return False, f"Precommit script timed out after {timeout}s.\n{out}".strip(), -1
     except Exception as e:
         return False, f"Precommit script execution failed: {e}", -1
@@ -504,7 +661,7 @@ def _handle_precommit_failure(
     title: str,
     workspace_path: str,
     err_output: str,
-    now: int
+    now: int,
 ) -> None:
     """Handle deterministic precommit check failure before git commit/push."""
     max_retries = int(os.environ.get("ZEROFACTORY_MAX_PRECOMMIT_RETRIES", "3"))
@@ -529,11 +686,15 @@ def _handle_precommit_failure(
     if retries > max_retries:
         cursor.execute(
             "UPDATE tasks SET assignee = 'zf-builder', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(meta), now, task_id)
+            (json.dumps(meta), now, task_id),
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'precommit_failed', ?, ?)",
-            (task_id, f"Deterministic precommit failed after {max_retries} attempts. Moved to blocked.", now)
+            (
+                task_id,
+                f"Deterministic precommit failed after {max_retries} attempts. Moved to blocked.",
+                now,
+            ),
         )
         try:
             cursor.execute(
@@ -542,19 +703,25 @@ def _handle_precommit_failure(
                     task_id,
                     "dispatcher",
                     f"🚨 **Deterministic Precommit Failed**: Execution of `.zerofactory/precommit.sh` failed after {max_retries} attempts.\n\n```\n{snippet}\n```\nMoved task to **blocked** for inspection.",
-                    now
-                )
+                    now,
+                ),
             )
         except Exception as e:
-            _log.warning("Failed to insert precommit failure comment for task %s: %s", task_id, e)
+            _log.warning(
+                "Failed to insert precommit failure comment for task %s: %s", task_id, e
+            )
     else:
         cursor.execute(
             "UPDATE tasks SET assignee = 'zf-builder', status = 'running', metadata = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(meta), now, task_id)
+            (json.dumps(meta), now, task_id),
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'precommit_failed_retry', ?, ?)",
-            (task_id, f"Deterministic precommit failed (attempt {retries}/{max_retries}); routing back to zf-builder", now)
+            (
+                task_id,
+                f"Deterministic precommit failed (attempt {retries}/{max_retries}); routing back to zf-builder",
+                now,
+            ),
         )
         try:
             cursor.execute(
@@ -563,8 +730,10 @@ def _handle_precommit_failure(
                     task_id,
                     "dispatcher",
                     f"🚨 **Deterministic Precommit Failed** (Attempt {retries}/{max_retries})\n\nExecution of `.zerofactory/precommit.sh` failed with output:\n```\n{snippet}\n```\nPlease fix the formatting, build, or test failures and mark done.",
-                    now
-                )
+                    now,
+                ),
             )
         except Exception as e:
-            _log.warning("Failed to insert precommit retry comment for task %s: %s", task_id, e)
+            _log.warning(
+                "Failed to insert precommit retry comment for task %s: %s", task_id, e
+            )

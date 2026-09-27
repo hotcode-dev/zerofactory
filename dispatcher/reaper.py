@@ -3,21 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .config import (
     _active_workers,
     _d,
     _dispatcher_lock,
     _log,
-    get_db_path,
-    get_inactivity_timeout_seconds,
-    get_max_worker_retries,
-    get_task_timeout_seconds,
 )
 
 
@@ -32,9 +27,9 @@ def _compute_stuck_state(
     log_path: Path,
     task_timeout: int,
     inactivity_timeout: int,
-    is_dead: Optional[bool] = None,
-    pid: Optional[int] = None,
-) -> Tuple[bool, Optional[str], int]:
+    is_dead: bool | None = None,
+    pid: int | None = None,
+) -> tuple[bool, str | None, int]:
     """Compute (is_stuck, stuck_reason, idle_seconds) for a running task.
 
     Single source of truth for stuck-worker semantics, shared by
@@ -44,7 +39,7 @@ def _compute_stuck_state(
     """
     running_seconds = max(0, now - int(started_at))
 
-    idle_seconds: Optional[int] = None
+    idle_seconds: int | None = None
     if log_path.exists():
         try:
             mtime = int(log_path.stat().st_mtime)
@@ -65,7 +60,9 @@ def _compute_stuck_state(
         stuck_reason = f"Worker process PID {pid} is dead/not found"
     elif running_seconds > task_timeout:
         is_stuck = True
-        stuck_reason = f"Exceeded running timeout ({running_seconds}s > {task_timeout}s)"
+        stuck_reason = (
+            f"Exceeded running timeout ({running_seconds}s > {task_timeout}s)"
+        )
     elif (
         running_seconds > inactivity_timeout
         and idle_seconds is not None
@@ -80,7 +77,9 @@ def _compute_stuck_state(
     return is_stuck, stuck_reason, reported_idle
 
 
-def _mark_task_session_ended(meta: Dict[str, Any], now: int, final_status: str = "finished") -> Dict[str, Any]:
+def _mark_task_session_ended(
+    meta: dict[str, Any], now: int, final_status: str = "finished"
+) -> dict[str, Any]:
     """Helper to finalize the ongoing session entry in task metadata."""
     sessions = meta.get("sessions")
     if isinstance(sessions, list):
@@ -94,7 +93,9 @@ def _mark_task_session_ended(meta: Dict[str, Any], now: int, final_status: str =
 
 def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
     """Check running tasks and reap finished, crashed, or stuck worker processes."""
-    cursor.execute("SELECT id, title, metadata, updated_at, created_at FROM tasks WHERE status = 'running'")
+    cursor.execute(
+        "SELECT id, title, metadata, updated_at, created_at FROM tasks WHERE status = 'running'"
+    )
     running_rows = cursor.fetchall()
     reaped = 0
 
@@ -135,12 +136,18 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta = _d()._mark_task_session_ended(meta, now, "finished")
                     meta.pop("worker_failure_retries", None)
                     meta.pop("last_worker_failure", None)
-                    cursor.execute("UPDATE tasks SET status = 'done', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
+                    cursor.execute(
+                        "UPDATE tasks SET status = 'done', metadata = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(meta), now, task_id),
+                    )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', 'Worker process completed successfully (exit 0)', ?)",
-                        (task_id, now)
+                        (task_id, now),
                     )
-                    _log.info("Worker for task %s finished successfully (exit 0); moved to done", task_id)
+                    _log.info(
+                        "Worker for task %s finished successfully (exit 0); moved to done",
+                        task_id,
+                    )
                 else:
                     meta = _d()._mark_task_session_ended(meta, now, "failed")
                     fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
@@ -149,29 +156,56 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     max_worker_retries = _d().get_max_worker_retries()
                     if fail_retries >= max_worker_retries:
                         meta["permanently_blocked"] = True
-                        meta["blocked_reason"] = f"Worker process failed {fail_retries} times (limit {max_worker_retries})"
-                        cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
+                        meta["blocked_reason"] = (
+                            f"Worker process failed {fail_retries} times (limit {max_worker_retries})"
+                        )
+                        cursor.execute(
+                            "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                            (json.dumps(meta), now, task_id),
+                        )
                         cursor.execute(
                             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                            (task_id, f"Blocked: {meta['blocked_reason']}", now)
+                            (task_id, f"Blocked: {meta['blocked_reason']}", now),
                         )
                         cursor.execute(
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed_permanently', ?, ?)",
-                            (task_id, f"Worker process failed with exit code {retcode} ({fail_retries}/{max_worker_retries} retries exceeded); task permanently blocked", now)
+                            (
+                                task_id,
+                                f"Worker process failed with exit code {retcode} ({fail_retries}/{max_worker_retries} retries exceeded); task permanently blocked",
+                                now,
+                            ),
                         )
-                        _log.warning("Worker for task %s permanently blocked after %d failures (code %d)", task_id, fail_retries, retcode)
+                        _log.warning(
+                            "Worker for task %s permanently blocked after %d failures (code %d)",
+                            task_id,
+                            fail_retries,
+                            retcode,
+                        )
                     else:
-                        meta["blocked_reason"] = f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})"
-                        cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
+                        meta["blocked_reason"] = (
+                            f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})"
+                        )
+                        cursor.execute(
+                            "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                            (json.dumps(meta), now, task_id),
+                        )
                         cursor.execute(
                             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                            (task_id, f"Blocked: {meta['blocked_reason']}", now)
+                            (task_id, f"Blocked: {meta['blocked_reason']}", now),
                         )
                         cursor.execute(
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed', ?, ?)",
-                            (task_id, f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})", now)
+                            (
+                                task_id,
+                                f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})",
+                                now,
+                            ),
                         )
-                        _log.warning("Worker for task %s failed with exit code %d; moved to blocked", task_id, retcode)
+                        _log.warning(
+                            "Worker for task %s failed with exit code %d; moved to blocked",
+                            task_id,
+                            retcode,
+                        )
                 reaped += 1
                 continue
         elif pid:
@@ -179,32 +213,58 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 meta = _d()._mark_task_session_ended(meta, now, "lost")
                 fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
                 meta["worker_failure_retries"] = fail_retries
-                meta["last_worker_failure"] = {"retcode": -1, "reason": "PID not found", "failed_at": now}
+                meta["last_worker_failure"] = {
+                    "retcode": -1,
+                    "reason": "PID not found",
+                    "failed_at": now,
+                }
                 max_worker_retries = _d().get_max_worker_retries()
                 if fail_retries >= max_worker_retries:
                     meta["permanently_blocked"] = True
-                    meta["blocked_reason"] = f"Worker lost {fail_retries} times (limit {max_worker_retries})"
-                    cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
+                    meta["blocked_reason"] = (
+                        f"Worker lost {fail_retries} times (limit {max_worker_retries})"
+                    )
+                    cursor.execute(
+                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(meta), now, task_id),
+                    )
                     cursor.execute(
                         "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                        (task_id, f"Blocked: {meta['blocked_reason']}", now)
+                        (task_id, f"Blocked: {meta['blocked_reason']}", now),
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed_permanently', ?, ?)",
-                        (task_id, f"Worker process PID {pid} not found ({fail_retries}/{max_worker_retries} retries exceeded); task permanently blocked", now)
+                        (
+                            task_id,
+                            f"Worker process PID {pid} not found ({fail_retries}/{max_worker_retries} retries exceeded); task permanently blocked",
+                            now,
+                        ),
                     )
                 else:
-                    meta["blocked_reason"] = f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries})"
-                    cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
+                    meta["blocked_reason"] = (
+                        f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries})"
+                    )
+                    cursor.execute(
+                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(meta), now, task_id),
+                    )
                     cursor.execute(
                         "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                        (task_id, f"Blocked: {meta['blocked_reason']}", now)
+                        (task_id, f"Blocked: {meta['blocked_reason']}", now),
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_lost', ?, ?)",
-                        (task_id, f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries}); moved to blocked", now)
+                        (
+                            task_id,
+                            f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries}); moved to blocked",
+                            now,
+                        ),
                     )
-                _log.warning("Worker PID %d for task %s not found; moved to blocked", pid, task_id)
+                _log.warning(
+                    "Worker PID %d for task %s not found; moved to blocked",
+                    pid,
+                    task_id,
+                )
                 reaped += 1
                 continue
         elif not has_ongoing_session:
@@ -213,17 +273,23 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             if claim_age >= 30:
                 cursor.execute(
                     "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?",
-                    (now, task_id)
+                    (now, task_id),
                 )
                 cursor.execute(
                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_recovered', 'Orphaned running task (no active worker process or session) recovered to todo', ?)",
-                    (task_id, now)
+                    (task_id, now),
                 )
-                _log.warning("Recovered orphaned running task %s to todo (no active worker or session, age %ds)", task_id, claim_age)
+                _log.warning(
+                    "Recovered orphaned running task %s to todo (no active worker or session, age %ds)",
+                    task_id,
+                    claim_age,
+                )
                 reaped += 1
                 continue
 
-        started_at = meta.get("started_at") or row["updated_at"] or row["created_at"] or now
+        started_at = (
+            meta.get("started_at") or row["updated_at"] or row["created_at"] or now
+        )
         is_stuck, stuck_reason, _idle = _d()._compute_stuck_state(
             now=now,
             started_at=started_at,
@@ -239,38 +305,66 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             meta = _d()._mark_task_session_ended(meta, now, "timed_out")
             fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
             meta["worker_failure_retries"] = fail_retries
-            meta["last_worker_failure"] = {"retcode": -9, "reason": stuck_reason, "failed_at": now}
+            meta["last_worker_failure"] = {
+                "retcode": -9,
+                "reason": stuck_reason,
+                "failed_at": now,
+            }
             max_worker_retries = _d().get_max_worker_retries()
             if fail_retries >= max_worker_retries:
                 meta["permanently_blocked"] = True
-                meta["blocked_reason"] = f"Worker timeout/inactivity {fail_retries} times (limit {max_worker_retries}): {stuck_reason}"
-                cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
+                meta["blocked_reason"] = (
+                    f"Worker timeout/inactivity {fail_retries} times (limit {max_worker_retries}): {stuck_reason}"
+                )
+                cursor.execute(
+                    "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(meta), now, task_id),
+                )
                 cursor.execute(
                     "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                    (task_id, f"Blocked: {meta['blocked_reason']}", now)
+                    (task_id, f"Blocked: {meta['blocked_reason']}", now),
                 )
                 cursor.execute(
                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout_permanently', ?, ?)",
-                    (task_id, f"Task exceeded timeout/inactivity limit ({fail_retries}/{max_worker_retries}): {stuck_reason}; task permanently blocked", now)
+                    (
+                        task_id,
+                        f"Task exceeded timeout/inactivity limit ({fail_retries}/{max_worker_retries}): {stuck_reason}; task permanently blocked",
+                        now,
+                    ),
                 )
             else:
-                meta["blocked_reason"] = f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})"
-                cursor.execute("UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
+                meta["blocked_reason"] = (
+                    f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})"
+                )
+                cursor.execute(
+                    "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(meta), now, task_id),
+                )
                 cursor.execute(
                     "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                    (task_id, f"Blocked: {meta['blocked_reason']}", now)
+                    (task_id, f"Blocked: {meta['blocked_reason']}", now),
                 )
                 cursor.execute(
                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
-                    (task_id, f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})", now)
+                    (
+                        task_id,
+                        f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})",
+                        now,
+                    ),
                 )
-            _log.warning("Task %s reaped due to timeout/inactivity: %s; moved to blocked", task_id, stuck_reason)
+            _log.warning(
+                "Task %s reaped due to timeout/inactivity: %s; moved to blocked",
+                task_id,
+                stuck_reason,
+            )
             reaped += 1
 
     return reaped
 
 
-def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional[Path] = None) -> List[Dict[str, Any]]:
+def check_stuck_tasks(
+    cursor: sqlite3.Cursor | None = None, db_path: Path | None = None
+) -> list[dict[str, Any]]:
     """Inspect all running tasks and identify any that are stuck or inactive."""
     if db_path is None:
         db_path = _d().get_db_path()
@@ -291,7 +385,9 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
 
     results = []
     try:
-        cursor.execute("SELECT id, title, status, assignee, workspace_path, metadata, created_at, updated_at, board_slug FROM tasks WHERE status = 'running'")
+        cursor.execute(
+            "SELECT id, title, status, assignee, workspace_path, metadata, created_at, updated_at, board_slug FROM tasks WHERE status = 'running'"
+        )
         for row in cursor.fetchall():
             task_id = str(row["id"])
             meta = {}
@@ -309,7 +405,9 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
             elif pid:
                 is_alive = _d().is_pid_alive(int(pid))
 
-            started_at = meta.get("started_at") or row["updated_at"] or row["created_at"] or now
+            started_at = (
+                meta.get("started_at") or row["updated_at"] or row["created_at"] or now
+            )
             running_seconds = max(0, now - int(started_at))
 
             is_dead = (not is_alive) and bool(pid)
@@ -323,21 +421,25 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
                 pid=pid,
             )
 
-            results.append({
-                "id": task_id,
-                "title": row["title"],
-                "board_slug": row["board_slug"] if "board_slug" in row.keys() else None,
-                "assignee": row["assignee"] or "zf-builder",
-                "worker_pid": pid,
-                "is_alive": is_alive,
-                "started_at": started_at,
-                "running_seconds": running_seconds,
-                "idle_seconds": idle_seconds,
-                "is_stuck": is_stuck,
-                "stuck_reason": stuck_reason,
-                "timeout_limit": task_timeout,
-                "inactivity_limit": inactivity_timeout
-            })
+            results.append(
+                {
+                    "id": task_id,
+                    "title": row["title"],
+                    "board_slug": row["board_slug"]
+                    if "board_slug" in row.keys()
+                    else None,
+                    "assignee": row["assignee"] or "zf-builder",
+                    "worker_pid": pid,
+                    "is_alive": is_alive,
+                    "started_at": started_at,
+                    "running_seconds": running_seconds,
+                    "idle_seconds": idle_seconds,
+                    "is_stuck": is_stuck,
+                    "stuck_reason": stuck_reason,
+                    "timeout_limit": task_timeout,
+                    "inactivity_limit": inactivity_timeout,
+                }
+            )
 
         return results
     finally:
@@ -348,7 +450,9 @@ def check_stuck_tasks(cursor: Optional[sqlite3.Cursor] = None, db_path: Optional
                 pass
 
 
-def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = None) -> Dict[str, Any]:
+def reap_stuck_tasks(
+    task_id: str | None = None, db_path: Path | None = None
+) -> dict[str, Any]:
     """Manually or programmatically reap stuck tasks or a specific running task."""
     if db_path is None:
         db_path = _d().get_db_path()
@@ -371,7 +475,10 @@ def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = No
                     pid = item["worker_pid"]
                     _d().terminate_worker_process(proc, pid)
 
-                    reason = item["stuck_reason"] or f"Manually reaped after running {item['running_seconds']}s"
+                    reason = (
+                        item["stuck_reason"]
+                        or f"Manually reaped after running {item['running_seconds']}s"
+                    )
                     _meta = {}
                     _row = cursor.execute(
                         "SELECT metadata FROM tasks WHERE id = ?", (t_id,)
@@ -382,17 +489,21 @@ def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = No
                         except Exception:
                             _meta = {}
                     _meta["blocked_reason"] = reason
-                    _meta = _d()._mark_task_session_ended(_meta, now, "aborted" if task_id else "timed_out")
+                    _meta = _d()._mark_task_session_ended(
+                        _meta, now, "aborted" if task_id else "timed_out"
+                    )
                     _meta.pop("worker_pid", None)
                     cursor.execute(
                         "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-                        (json.dumps(_meta), now, t_id)
+                        (json.dumps(_meta), now, t_id),
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
-                        (t_id, reason, now)
+                        (t_id, reason, now),
                     )
-                    reaped_tasks.append({"id": t_id, "title": item["title"], "reason": reason})
+                    reaped_tasks.append(
+                        {"id": t_id, "title": item["title"], "reason": reason}
+                    )
 
             conn.commit()
 
@@ -400,5 +511,5 @@ def reap_stuck_tasks(task_id: Optional[str] = None, db_path: Optional[Path] = No
         "ok": True,
         "reaped_count": len(reaped_tasks),
         "reaped_tasks": reaped_tasks,
-        "reaped": reaped_tasks
+        "reaped": reaped_tasks,
     }

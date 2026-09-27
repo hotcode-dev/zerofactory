@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from contextlib import closing
-import json
 import os
 import shutil
 import sqlite3
 import subprocess
 import time
+from contextlib import closing
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .config import (
     _active_workers,
@@ -23,7 +22,7 @@ from .config import (
 )
 
 
-def _inject_langfuse_env(env: Dict[str, str], conn_or_cursor: Any = None) -> None:
+def _inject_langfuse_env(env: dict[str, str], conn_or_cursor: Any = None) -> None:
     """Inject active Langfuse credentials and configuration into worker subprocess environment."""
     try:
         if conn_or_cursor is None:
@@ -37,13 +36,29 @@ def _inject_langfuse_env(env: Dict[str, str], conn_or_cursor: Any = None) -> Non
             settings = load_settings(conn_or_cursor)
 
         if settings.get("langfuse_enabled"):
-            env["HERMES_LANGFUSE_PUBLIC_KEY"] = str(settings.get("langfuse_public_key") or "").strip()
-            env["HERMES_LANGFUSE_SECRET_KEY"] = str(settings.get("langfuse_secret_key") or "").strip()
-            env["HERMES_LANGFUSE_BASE_URL"] = str(settings.get("langfuse_base_url") or "https://cloud.langfuse.com").strip()
-            env["HERMES_LANGFUSE_CAPTURE"] = str(settings.get("langfuse_capture_mode") or "sanitized").strip()
-            env["HERMES_LANGFUSE_ENV"] = str(settings.get("langfuse_env") or "zerofactory").strip()
+            env["HERMES_LANGFUSE_PUBLIC_KEY"] = str(
+                settings.get("langfuse_public_key") or ""
+            ).strip()
+            env["HERMES_LANGFUSE_SECRET_KEY"] = str(
+                settings.get("langfuse_secret_key") or ""
+            ).strip()
+            env["HERMES_LANGFUSE_BASE_URL"] = str(
+                settings.get("langfuse_base_url") or "https://cloud.langfuse.com"
+            ).strip()
+            env["HERMES_LANGFUSE_CAPTURE"] = str(
+                settings.get("langfuse_capture_mode") or "sanitized"
+            ).strip()
+            env["HERMES_LANGFUSE_ENV"] = str(
+                settings.get("langfuse_env") or "zerofactory"
+            ).strip()
         else:
-            for k in ("HERMES_LANGFUSE_PUBLIC_KEY", "HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE", "HERMES_LANGFUSE_ENV"):
+            for k in (
+                "HERMES_LANGFUSE_PUBLIC_KEY",
+                "HERMES_LANGFUSE_SECRET_KEY",
+                "HERMES_LANGFUSE_BASE_URL",
+                "HERMES_LANGFUSE_CAPTURE",
+                "HERMES_LANGFUSE_ENV",
+            ):
                 env.pop(k, None)
     except Exception as e:
         _log.debug("Could not inject Langfuse env: %s", e)
@@ -55,10 +70,10 @@ def spawn_agent_worker(
     description: str,
     priority: str,
     assignee: str,
-    workspace_path: Optional[str],
-    branch_name: Optional[str],
-    board_slug: Optional[str] = None
-) -> Tuple[Optional[int], Optional[str]]:
+    workspace_path: str | None,
+    branch_name: str | None,
+    board_slug: str | None = None,
+) -> tuple[int | None, str | None]:
     """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"):
         return None, None
@@ -71,7 +86,11 @@ def spawn_agent_worker(
         or (str(local_hermes) if local_hermes.exists() else "hermes")
     )
 
-    workdir = workspace_path if (workspace_path and Path(workspace_path).exists()) else os.getcwd()
+    workdir = (
+        workspace_path
+        if (workspace_path and Path(workspace_path).exists())
+        else os.getcwd()
+    )
     memories_digest = _d().digest_board_memories_context(board_slug)
     memories_block = f"{memories_digest}\n\n" if memories_digest else ""
 
@@ -84,12 +103,16 @@ def spawn_agent_worker(
                 except (ImportError, ValueError):
                     from dashboard.plugin_api import get_db_conn
                 with get_db_conn() as conn:
-                    row = conn.execute("SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)).fetchone()
+                    row = conn.execute(
+                        "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
+                    ).fetchone()
                     if row and row[0]:
                         target_branch = str(row[0]).strip()
             except Exception:
                 pass
-        pre_digested_git = _d().digest_reviewer_git_context(Path(workdir), branch_name, target_branch=target_branch or None)
+        pre_digested_git = _d().digest_reviewer_git_context(
+            Path(workdir), branch_name, target_branch=target_branch or None
+        )
         pre_digested_block = f"\n{pre_digested_git}\n\n" if pre_digested_git else "\n"
         prompt = (
             f"Task ID: {task_id}\n"
@@ -108,7 +131,7 @@ def spawn_agent_worker(
             f"4. Continuous Learning & Repository Knowledge:\n"
             f"   - If you catch a recurring mistake, testing gotcha, or project convention that future tasks should follow, record it!\n"
             f"   - In your review comment or summary, include a line: `GOTCHA: <rule>` or `CONVENTION: <rule>` (the system will auto-record it).\n"
-            f"   - Or run: `hermes zerofactory memory add --board {board_slug or 'default'} \"<rule>\" --category <gotcha|convention>`.\n"
+            f'   - Or run: `hermes zerofactory memory add --board {board_slug or "default"} "<rule>" --category <gotcha|convention>`.\n'
             f"5. When finished:\n"
             f"   - If approved: run `hermes zerofactory block {task_id} --reason 'Human Review & Merge'` (the task will be assigned to human for review/merge, and the dispatcher will automatically move the task to 'done' once merged on GitHub; DO NOT mark done yourself).\n"
             f"   - If changes are requested: run `hermes zerofactory block {task_id} --reason 'changes-requested'` (the dispatcher will route it back to the builder).\n"
@@ -120,10 +143,12 @@ def spawn_agent_worker(
         # than the generic implement prompt (an unverifiable worktree must not
         # be advanced as if it were clean).
         conflict_check_verified = True
-        _files: List[str] = []
+        _files: list[str] = []
         _cc_err = ""
         try:
-            conflict_check_verified, _files, _cc_err = _d().check_unresolved_conflicts_safe(Path(workdir))
+            conflict_check_verified, _files, _cc_err = (
+                _d().check_unresolved_conflicts_safe(Path(workdir))
+            )
         except Exception as e:  # defensive: safe wrapper should not raise
             conflict_check_verified, _cc_err = False, str(e)
         has_conflict = (
@@ -163,7 +188,7 @@ def spawn_agent_worker(
                 f"4. Apply targeted edits (search/replace or localized chunk edits) rather than rewriting entire files to conserve tokens.\n"
                 f"5. Run the repository test suites and linters to verify everything compiles and passes cleanly.\n"
                 f"6. Hand off for re-review:\n"
-                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n\n"
+                f'   hermes zerofactory move {task_id} blocked --reason "review-required"\n\n'
                 f"NOTE: Do NOT run git commands (git add/commit/push). The factory dispatcher automatically verifies clean conflict resolution and commits with 'fix(merge): resolve merge conflicts with main' upon handoff.\n"
             )
         else:
@@ -177,11 +202,12 @@ def spawn_agent_worker(
                         _cur = _c.cursor()
                         _cur.execute(
                             "SELECT author, body, created_at FROM task_comments WHERE task_id = ? ORDER BY created_at ASC",
-                            (task_id,)
+                            (task_id,),
                         )
                         _rows = _cur.fetchall()
                         _rev_rows = [
-                            r for r in _rows
+                            r
+                            for r in _rows
                             if "[github review" in r["body"].lower()
                             or "[github pr" in r["body"].lower()
                             or r["author"] in ("zf-reviewer", "reviewer")
@@ -190,8 +216,13 @@ def spawn_agent_worker(
                         if _rev_rows:
                             _cmt_blocks = []
                             for idx, r in enumerate(_rev_rows, 1):
-                                _cmt_blocks.append(f"### Review Comment #{idx} (by @{r['author']}):\n{r['body']}")
-                            is_precommit_fail = any("deterministic precommit failed" in r["body"].lower() for r in _rev_rows)
+                                _cmt_blocks.append(
+                                    f"### Review Comment #{idx} (by @{r['author']}):\n{r['body']}"
+                                )
+                            is_precommit_fail = any(
+                                "deterministic precommit failed" in r["body"].lower()
+                                for r in _rev_rows
+                            )
                             if is_precommit_fail:
                                 review_comments_prompt = (
                                     "🚨 CRITICAL: DETERMINISTIC PRECOMMIT CHECKS FAILED\n"
@@ -211,7 +242,11 @@ def spawn_agent_worker(
             except Exception as e:
                 _log.debug("Could not inspect task_comments for worker prompt: %s", e)
 
-            if review_comments_prompt and any("deterministic precommit failed" in r["body"].lower() for r in _rev_rows if "_rev_rows" in locals()):
+            if review_comments_prompt and any(
+                "deterministic precommit failed" in r["body"].lower()
+                for r in _rev_rows
+                if "_rev_rows" in locals()
+            ):
                 goal_instructions = (
                     f"Your goal as Builder (Fix Precommit Failures):\n"
                     f"1. Inspect the precommit failure output above.\n"
@@ -228,7 +263,7 @@ def spawn_agent_worker(
                     f"2. Apply targeted, concise code edits rather than rewriting or bloating files.\n"
                     f"3. Run automated tests and linters in your workspace to verify correctness.\n"
                     f"4. When finished, hand off for re-review:\n"
-                    f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n"
+                    f'   hermes zerofactory move {task_id} blocked --reason "review-required"\n'
                     f"5. Provide a summary of how each review comment was resolved.\n\n"
                     f"NOTE: Do NOT run git commands (git add/commit/push/checkout). The factory dispatcher automatically stages, commits, and pushes your fixes to the PR upon handoff.\n"
                 )
@@ -236,16 +271,16 @@ def spawn_agent_worker(
                 goal_instructions = (
                     f"Your goal:\n"
                     f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
-                f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
-                f"   - TOKEN EFFICIENCY: Apply targeted search/replace or hunk edits instead of rewriting entire files.\n"
-                f"3. Verify your changes with tests, linters, or typechecks.\n"
-                f"4. When finished, mark the task as complete using:\n"
-                f"   hermes zerofactory move {task_id} done\n"
-                f"   (or if human review or external dependencies are required, run:\n"
-                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\")\n"
-                f"5. Provide a summary of your changes.\n\n"
-                f"NOTE: Do NOT run git commands (git add/commit/push/checkout). Your worktree is already synced with latest main. The factory dispatcher automatically stages, commits, and opens PRs upon task completion.\n"
-            )
+                    f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
+                    f"   - TOKEN EFFICIENCY: Apply targeted search/replace or hunk edits instead of rewriting entire files.\n"
+                    f"3. Verify your changes with tests, linters, or typechecks.\n"
+                    f"4. When finished, mark the task as complete using:\n"
+                    f"   hermes zerofactory move {task_id} done\n"
+                    f"   (or if human review or external dependencies are required, run:\n"
+                    f'   hermes zerofactory move {task_id} blocked --reason "review-required")\n'
+                    f"5. Provide a summary of your changes.\n\n"
+                    f"NOTE: Do NOT run git commands (git add/commit/push/checkout). Your worktree is already synced with latest main. The factory dispatcher automatically stages, commits, and opens PRs upon task completion.\n"
+                )
 
             prompt = (
                 f"Task ID: {task_id}\n"
@@ -262,12 +297,14 @@ def spawn_agent_worker(
 
     cmd = [
         hermes_bin,
-        "-p", assignee,
+        "-p",
+        assignee,
         "--yolo",
         "--cli",
         "--accept-hooks",
         "chat",
-        "-q", prompt
+        "-q",
+        prompt,
     ]
 
     log_dir = Path.home() / ".hermes" / "logs"
@@ -304,13 +341,21 @@ def spawn_agent_worker(
         )
         log_f.close()
         _active_workers[task_id] = proc
-        _log.info("Spawned %s worker for task %s (PID: %d, cwd: %s)", assignee, task_id, proc.pid, workdir)
+        _log.info(
+            "Spawned %s worker for task %s (PID: %d, cwd: %s)",
+            assignee,
+            task_id,
+            proc.pid,
+            workdir,
+        )
 
         # Detect session_id from profile's state.db (only if started around this spawn).
         # Resolution goes through the shared helper so the dispatcher and the
         # dashboard agree on which state.db a profile owns.
         session_id = None
-        state_db_path = getattr(_d(), "resolve_profile_state_db", resolve_profile_state_db)(assignee)
+        state_db_path = getattr(
+            _d(), "resolve_profile_state_db", resolve_profile_state_db
+        )(assignee)
         if state_db_path is not None and state_db_path.exists():
             resolved_state = state_db_path.resolve()
             uri = resolved_state.as_uri() + "?mode=ro"
@@ -337,7 +382,7 @@ def spawn_agent_worker(
                               )
                             ORDER BY started_at DESC LIMIT 1
                             """,
-                            (spawn_time - 2.0, f"%{task_id}%", f"%{task_id}%")
+                            (spawn_time - 2.0, f"%{task_id}%", f"%{task_id}%"),
                         )
                         s_row = s_cur.fetchone()
                         if s_row:

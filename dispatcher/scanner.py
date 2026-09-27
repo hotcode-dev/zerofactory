@@ -6,7 +6,6 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from .config import (
     _active_scanners,
@@ -25,7 +24,9 @@ def reap_active_scanners() -> int:
             if retcode is not None:
                 _active_scanners.pop(slug, None)
                 reaped += 1
-                _log.debug("Scanner process for board '%s' exited with code %d", slug, retcode)
+                _log.debug(
+                    "Scanner process for board '%s' exited with code %d", slug, retcode
+                )
     return reaped
 
 
@@ -33,6 +34,7 @@ def _running_cron_llm_jobs() -> int:
     """Count in-process Zero Factory cron LLM jobs (exclude No-Agent queue checks)."""
     try:
         from cron.scheduler import get_running_job_ids  # type: ignore
+
         return sum(
             job_id.startswith("zero-factory-improvement-scanner-")
             for job_id in get_running_job_ids()
@@ -47,19 +49,32 @@ def _global_llm_occupancy(running_tasks: int) -> int:
         from ..builtin_cron import _active_cron_runs, reap_active_cron_runs
     except (ImportError, ValueError):
         try:
-            from .builtin_cron import _active_cron_runs, reap_active_cron_runs  # type: ignore
+            from .builtin_cron import (  # type: ignore
+                _active_cron_runs,
+                reap_active_cron_runs,
+            )
         except (ImportError, ValueError):
-            from builtin_cron import _active_cron_runs, reap_active_cron_runs  # type: ignore
+            from builtin_cron import (  # type: ignore
+                _active_cron_runs,
+                reap_active_cron_runs,
+            )
     reap_active_cron_runs()
     running_cron = getattr(_d(), "_running_cron_llm_jobs", _running_cron_llm_jobs)()
-    return running_tasks + len(_active_scanners) + running_cron + sum(
-        job_id != "zero-factory-task-queue-check" for job_id in _active_cron_runs
+    return (
+        running_tasks
+        + len(_active_scanners)
+        + running_cron
+        + sum(job_id != "zero-factory-task-queue-check" for job_id in _active_cron_runs)
     )
 
 
-def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Optional[int]:
+def spawn_board_scanner(
+    board_slug: str, repo_path: Path | None = None
+) -> int | None:
     """Spawn an improvement scanner agent worker process for a specific board."""
-    if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN") or os.environ.get("ZEROFACTORY_SKIP_SCANNER_SPAWN"):
+    if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN") or os.environ.get(
+        "ZEROFACTORY_SKIP_SCANNER_SPAWN"
+    ):
         return None
 
     try:
@@ -71,7 +86,10 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
             except (ImportError, ValueError):
                 from builtin_cron import is_cron_scheduler_enabled  # type: ignore
         if not is_cron_scheduler_enabled():
-            _log.debug("Cron scheduler is disabled in config; skipping scanner spawn for '%s'", board_slug)
+            _log.debug(
+                "Cron scheduler is disabled in config; skipping scanner spawn for '%s'",
+                board_slug,
+            )
             return None
     except Exception as e:
         _log.debug("Scanner cron scheduler check failed: %s", e)
@@ -86,23 +104,43 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
     # Check if this scanner job is paused/disabled before running
     try:
         try:
-            from ..builtin_cron import list_builtin_jobs, get_target_jobs_files, load_jobs_from_file
+            from ..builtin_cron import (
+                get_target_jobs_files,
+                list_builtin_jobs,
+                load_jobs_from_file,
+            )
         except (ImportError, ValueError):
             try:
-                from .builtin_cron import list_builtin_jobs, get_target_jobs_files, load_jobs_from_file  # type: ignore
+                from .builtin_cron import (
+                    get_target_jobs_files,
+                    list_builtin_jobs,
+                    load_jobs_from_file,
+                )  # type: ignore
             except (ImportError, ValueError):
-                from builtin_cron import list_builtin_jobs, get_target_jobs_files, load_jobs_from_file  # type: ignore
+                from builtin_cron import (
+                    get_target_jobs_files,
+                    list_builtin_jobs,
+                    load_jobs_from_file,
+                )  # type: ignore
         for tf in get_target_jobs_files():
             if tf.exists():
                 for j in load_jobs_from_file(tf):
                     if isinstance(j, dict) and j.get("id") == job_id:
                         if not j.get("enabled", True) or j.get("state") == "paused":
-                            _log.debug("Scanner job '%s' is paused/disabled in %s; skipping spawn", job_id, tf)
+                            _log.debug(
+                                "Scanner job '%s' is paused/disabled in %s; skipping spawn",
+                                job_id,
+                                tf,
+                            )
                             return None
         all_jobs = list_builtin_jobs()
         job = next((j for j in all_jobs if j.get("id") == job_id), None)
         if job and not job.get("enabled", True):
-            _log.debug("Scanner job '%s' is paused/disabled; skipping spawn for board '%s'", job_id, board_slug)
+            _log.debug(
+                "Scanner job '%s' is paused/disabled; skipping spawn for board '%s'",
+                job_id,
+                board_slug,
+            )
             return None
     except Exception as e:
         _log.debug("Scanner enabled check failed: %s", e)
@@ -128,7 +166,9 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
         try:
             _d().sync_repo_main(repo_path)
         except Exception as e:
-            _log.debug("Auto-pull before idle scanner spawn failed for '%s': %s", board_slug, e)
+            _log.debug(
+                "Auto-pull before idle scanner spawn failed for '%s': %s", board_slug, e
+            )
 
     try:
         log_f = open(log_file_path, "ab")
@@ -143,10 +183,17 @@ def spawn_board_scanner(board_slug: str, repo_path: Optional[Path] = None) -> Op
         )
         log_f.close()
         _active_scanners[board_slug] = proc
-        _log.info("Spawned idle improvement scanner for board '%s' (PID: %d, cwd: %s)", board_slug, proc.pid, workdir)
+        _log.info(
+            "Spawned idle improvement scanner for board '%s' (PID: %d, cwd: %s)",
+            board_slug,
+            proc.pid,
+            workdir,
+        )
         return proc.pid
     except Exception as e:
-        _log.error("Failed to spawn idle improvement scanner for board '%s': %s", board_slug, e)
+        _log.error(
+            "Failed to spawn idle improvement scanner for board '%s': %s", board_slug, e
+        )
         return None
 
 

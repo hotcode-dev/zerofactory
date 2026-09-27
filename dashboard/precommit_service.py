@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -20,7 +18,7 @@ try:
     from .db import get_db_conn, init_db, row_to_dict
     from .models import TaskCreate
 except (ImportError, ValueError):
-    from db import get_db_conn, init_db, row_to_dict  # type: ignore
+    from db import get_db_conn, init_db  # type: ignore
     from models import TaskCreate  # type: ignore
 
 _log = logging.getLogger(__name__)
@@ -34,27 +32,33 @@ def get_repo_resolver():
     """Import resolve_board_repo_path safely."""
     try:
         from ..builtin_cron import resolve_board_repo_path
+
         return resolve_board_repo_path
     except Exception:
         pass
     try:
         from builtin_cron import resolve_board_repo_path  # type: ignore
+
         return resolve_board_repo_path
     except Exception:
         pass
     try:
         from ..cron.definitions import resolve_board_repo_path
+
         return resolve_board_repo_path
     except Exception:
         pass
     try:
         from cron.definitions import resolve_board_repo_path  # type: ignore
+
         return resolve_board_repo_path
     except Exception:
         return None
 
 
-def build_precommit_setup_task_prompt(board_slug: str, repo_path: Optional[Path] = None) -> str:
+def build_precommit_setup_task_prompt(
+    board_slug: str, repo_path: Path | None = None
+) -> str:
     """Generate structured instructions for zf-builder to inspect repo and generate .zerofactory/precommit.sh."""
     path_hint = f" (`{repo_path}`)" if repo_path else ""
     return f"""Set up the standard Zero Factory precommit script for this repository{path_hint} on board `{board_slug}`.
@@ -139,7 +143,7 @@ Automate and standardize code formatting, building/typechecking, and test execut
 """
 
 
-def check_board_precommit_status(board_slug: str) -> Dict[str, Any]:
+def check_board_precommit_status(board_slug: str) -> dict[str, Any]:
     """Check if .zerofactory/precommit.sh exists for a board and check active setup task status."""
     init_db()
     with get_db_conn() as conn:
@@ -159,7 +163,8 @@ def check_board_precommit_status(board_slug: str) -> Dict[str, Any]:
         board = dict(row)
 
         # Check for pending setup task
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, status, title FROM tasks
             WHERE board_slug = ? AND status != 'done'
             AND (
@@ -167,7 +172,9 @@ def check_board_precommit_status(board_slug: str) -> Dict[str, Any]:
                 OR metadata LIKE '%setup:precommit%'
             )
             ORDER BY created_at DESC LIMIT 1
-        """, (board_slug,))
+        """,
+            (board_slug,),
+        )
         t_row = cursor.fetchone()
         pending_task_id = t_row["id"] if t_row else None
         pending_task_status = t_row["status"] if t_row else None
@@ -205,7 +212,7 @@ def check_board_precommit_status(board_slug: str) -> Dict[str, Any]:
     }
 
 
-def create_precommit_setup_task(board_slug: str, actor: str = "user") -> Dict[str, Any]:
+def create_precommit_setup_task(board_slug: str, actor: str = "user") -> dict[str, Any]:
     """Create or return an existing setup task to generate .zerofactory/precommit.sh."""
     init_db()
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import inspect
 import os
 import shutil
-import subprocess
 import tempfile
 import time
 import unittest
@@ -32,6 +31,7 @@ class TestCronExecutorUnit(unittest.TestCase):
 
     def test_reap_active_cron_runs_reaps_finished_children(self):
         """reap_active_cron_runs reaps exited children and preserves running ones."""
+
         def make_proc(retcode):
             p = mock.Mock()
             p.returncode = retcode
@@ -43,8 +43,10 @@ class TestCronExecutorUnit(unittest.TestCase):
         still_running = make_proc(None)
 
         reg = {"job-a": done_a, "job-b": done_b, "job-c": still_running}
-        with mock.patch.object(builtin_cron, "_active_cron_runs", reg), \
-             mock.patch.object(config, "_active_cron_runs", reg):
+        with (
+            mock.patch.object(builtin_cron, "_active_cron_runs", reg),
+            mock.patch.object(config, "_active_cron_runs", reg),
+        ):
             reaped = reap_active_cron_runs()
         self.assertEqual(reaped, 2)
         self.assertNotIn("job-a", reg)

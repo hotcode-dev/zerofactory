@@ -14,6 +14,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
+
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, _PLUGIN_ROOT)
@@ -42,7 +43,9 @@ def get_applied_migrations(conn: sqlite3.Connection) -> Dict[str, int]:
     """Return a mapping of applied migration versions to their application timestamp."""
     ensure_migration_table(conn)
     cursor = conn.cursor()
-    cursor.execute("SELECT version, applied_at FROM schema_migrations ORDER BY version ASC")
+    cursor.execute(
+        "SELECT version, applied_at FROM schema_migrations ORDER BY version ASC"
+    )
     return {row[0]: row[1] for row in cursor.fetchall()}
 
 
@@ -68,6 +71,7 @@ def _resolve_default_db_path() -> Path:
         return Path(override)
     try:
         from dashboard.db import get_db_path
+
         return get_db_path()
     except Exception:
         return Path.home() / ".hermes" / "zerofactory.db"
@@ -94,13 +98,15 @@ def get_migration_status(
         for p in available:
             version = p.stem
             is_applied = version in applied
-            status.append({
-                "version": version,
-                "filename": p.name,
-                "path": str(p),
-                "applied": is_applied,
-                "applied_at": applied.get(version),
-            })
+            status.append(
+                {
+                    "version": version,
+                    "filename": p.name,
+                    "path": str(p),
+                    "applied": is_applied,
+                    "applied_at": applied.get(version),
+                }
+            )
 
         return status
     finally:
@@ -121,7 +127,9 @@ def _execute_sql_file(conn: sqlite3.Connection, file_path: Path) -> None:
         if not stmt:
             continue
         # Remove comment lines to see if there is actual executable SQL
-        lines = [line for line in stmt.splitlines() if not line.strip().startswith("--")]
+        lines = [
+            line for line in stmt.splitlines() if not line.strip().startswith("--")
+        ]
         executable_sql = "\n".join(lines).strip()
         if not executable_sql:
             continue
@@ -132,21 +140,30 @@ def _execute_sql_file(conn: sqlite3.Connection, file_path: Path) -> None:
             err_msg = str(e).lower()
             # If the column or index already exists, allow idempotent pass-through
             if "duplicate column name" in err_msg or "already exists" in err_msg:
-                _log.debug("Migration %s statement skipped (%s): %s", file_path.name, e, stmt[:60])
+                _log.debug(
+                    "Migration %s statement skipped (%s): %s",
+                    file_path.name,
+                    e,
+                    stmt[:60],
+                )
             else:
                 raise
 
 
 def _execute_py_file(conn: sqlite3.Connection, file_path: Path) -> None:
     """Execute a .py migration file by invoking its `up(conn)` function."""
-    spec = importlib.util.spec_from_file_location(f"migration_{file_path.stem}", str(file_path))
+    spec = importlib.util.spec_from_file_location(
+        f"migration_{file_path.stem}", str(file_path)
+    )
     if not spec or not spec.loader:
         raise ImportError(f"Cannot load migration module from {file_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
     if not hasattr(module, "up"):
-        raise AttributeError(f"Python migration {file_path.name} must define an `up(conn)` function")
+        raise AttributeError(
+            f"Python migration {file_path.name} must define an `up(conn)` function"
+        )
     module.up(conn)
 
 
@@ -229,7 +246,11 @@ def main() -> None:
         print("-" * 65)
         for s in statuses:
             st = "Applied" if s["applied"] else "Pending"
-            applied_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(s["applied_at"])) if s["applied_at"] else "-"
+            applied_str = (
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(s["applied_at"]))
+                if s["applied_at"]
+                else "-"
+            )
             print(f"{s['version']:<35} {st:<12} {applied_str}")
     else:
         applied = run_migrations(db=args.db)

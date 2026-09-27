@@ -10,7 +10,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -33,7 +33,7 @@ _log = logging.getLogger(__name__)
 
 AUTO_MEMORY_PREFIX_REGEX = re.compile(
     r"(?:^|\n|[\s\.\;\,\:\-\(\)\[\]])(?:\*{1,2})?(GOTCHA|RULE|CONVENTION|GUIDELINE|DECISION|ARCH|REJECTED_PATH|REJECTED PATH|REJECTED|LESSON|LEARNING|TIP)(?:\*{1,2})?:\s*(?:\*{1,2})?([^\n\r]+)",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 
@@ -51,7 +51,9 @@ def normalize_file_path(path_str: str) -> str:
     return p.lstrip("/").lower()
 
 
-def compute_dedup_key(files: Optional[List[str]], category: Optional[str] = None) -> Optional[str]:
+def compute_dedup_key(
+    files: list[str] | None, category: str | None = None
+) -> str | None:
     """Generate a deterministic fingerprint from a sorted list of affected files and category."""
     if not files:
         return None
@@ -73,9 +75,9 @@ def extract_and_record_memory(
     conn: sqlite3.Connection,
     board_slug: str,
     text: str,
-    task_id: Optional[str] = None,
+    task_id: str | None = None,
     author: str = "zf-reviewer",
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Extract structured rules/gotchas from reviewer feedback and auto-record to board_memories if enabled."""
     if not text or not board_slug:
         return []
@@ -85,9 +87,15 @@ def extract_and_record_memory(
         return []
 
     try:
-        b_row = conn.execute("SELECT auto_record_memory FROM boards WHERE slug = ?", (board_slug,)).fetchone()
+        b_row = conn.execute(
+            "SELECT auto_record_memory FROM boards WHERE slug = ?", (board_slug,)
+        ).fetchone()
         if b_row:
-            arm_val = b_row["auto_record_memory"] if "auto_record_memory" in b_row.keys() else b_row[0]
+            arm_val = (
+                b_row["auto_record_memory"]
+                if "auto_record_memory" in b_row.keys()
+                else b_row[0]
+            )
             if arm_val is not None and not bool(arm_val):
                 return []
     except Exception:
@@ -124,13 +132,12 @@ def extract_and_record_memory(
         dedup_key = normalize_memory_content(clean_content)
         exact_row = conn.execute(
             "SELECT id FROM board_memories WHERE board_slug = ? AND content = ?",
-            (board_slug, clean_content)
+            (board_slug, clean_content),
         ).fetchone()
         if exact_row:
             continue
         rows = conn.execute(
-            "SELECT content FROM board_memories WHERE board_slug = ?",
-            (board_slug,)
+            "SELECT content FROM board_memories WHERE board_slug = ?", (board_slug,)
         ).fetchall()
         if any(normalize_memory_content(r["content"]) == dedup_key for r in rows):
             continue
@@ -144,25 +151,43 @@ def extract_and_record_memory(
             INSERT INTO board_memories (id, board_slug, task_id, category, content, tags, author, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (mem_id, board_slug, task_id, cat, clean_content, tags_json, author, now, now)
+            (
+                mem_id,
+                board_slug,
+                task_id,
+                cat,
+                clean_content,
+                tags_json,
+                author,
+                now,
+                now,
+            ),
         )
 
         if task_id:
             try:
-                log_activity(conn, task_id, author, "auto_memory_recorded", f"Auto-recorded {cat}: {clean_content[:80]}")
+                log_activity(
+                    conn,
+                    task_id,
+                    author,
+                    "auto_memory_recorded",
+                    f"Auto-recorded {cat}: {clean_content[:80]}",
+                )
             except Exception:
                 pass
 
-        recorded.append({
-            "id": mem_id,
-            "board_slug": board_slug,
-            "task_id": task_id,
-            "category": cat,
-            "content": clean_content,
-            "tags": tags,
-            "author": author,
-            "created_at": now,
-            "updated_at": now
-        })
+        recorded.append(
+            {
+                "id": mem_id,
+                "board_slug": board_slug,
+                "task_id": task_id,
+                "category": cat,
+                "content": clean_content,
+                "tags": tags,
+                "author": author,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
 
     return recorded

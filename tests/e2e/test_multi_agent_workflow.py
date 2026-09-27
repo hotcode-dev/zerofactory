@@ -44,8 +44,12 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
             "ZEROFACTORY_DB": os.environ.get("ZEROFACTORY_DB"),
             "ZEROFACTORY_LOCK_PATH": os.environ.get("ZEROFACTORY_LOCK_PATH"),
             "ZEROFACTORY_SKIP_GIT": os.environ.get("ZEROFACTORY_SKIP_GIT"),
-            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"),
-            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"),
+            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get(
+                "ZEROFACTORY_SKIP_WORKER_SPAWN"
+            ),
+            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get(
+                "ZEROFACTORY_DISABLE_DISPATCHER"
+            ),
             "HOME": os.environ.get("HOME"),
         }
 
@@ -54,7 +58,9 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         os.environ["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
         os.environ["HOME"] = str(self.fake_home)
         os.environ.pop("ZEROFACTORY_SKIP_GIT", None)  # Enable real git operations
-        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"  # Workers driven deterministically
+        os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = (
+            "1"  # Workers driven deterministically
+        )
         init_db(force=True)
 
         # Initialize real git test repository under fake home
@@ -68,10 +74,11 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         self._git(self.repo_dir, "commit", "-m", "chore: initial commit")
 
         # Create Kanban board pointing to this local git repository
-        b_res = create_board(BoardCreate(
-            git_url=str(self.repo_dir),
-            description="E2E Lifecycle Repository"
-        ))
+        b_res = create_board(
+            BoardCreate(
+                git_url=str(self.repo_dir), description="E2E Lifecycle Repository"
+            )
+        )
         self.board_slug = b_res["slug"]
 
     def tearDown(self):
@@ -83,7 +90,9 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         shutil.rmtree(self.td, ignore_errors=True)
 
     def _git(self, cwd: Path, *args: str) -> str:
-        res = subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True)
+        res = subprocess.run(
+            ["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True
+        )
         return res.stdout.strip()
 
     def test_01_full_delivery_cycle_builder_review_rounds_approval_and_merge(self):
@@ -91,14 +100,16 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         Triage -> Todo -> Running (Builder) -> PR -> 3 Review Rounds -> Approved -> Merged -> Done.
         """
         # Step 1: Create goal task in 'todo'
-        t_res = create_task(TaskCreate(
-            board_slug=self.board_slug,
-            title="Implement User Authentication",
-            description="Add JWT token generation and validation tests",
-            status="todo",
-            assignee="zf-builder",
-            priority="P1"
-        ))
+        t_res = create_task(
+            TaskCreate(
+                board_slug=self.board_slug,
+                title="Implement User Authentication",
+                description="Add JWT token generation and validation tests",
+                status="todo",
+                assignee="zf-builder",
+                priority="P1",
+            )
+        )
         task_id = t_res["id"]
 
         # Step 2: Dispatcher dispatch cycle -> todo -> running with worktree
@@ -115,29 +126,54 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         self.assertTrue((worktree_path / ".git").exists())
 
         # Step 3: zf-builder commits code and tests in worktree
-        (worktree_path / "auth.py").write_text("def generate_jwt(): return 'token-123'\n")
-        (worktree_path / "test_auth.py").write_text("from auth import generate_jwt\ndef test(): assert generate_jwt()\n")
+        (worktree_path / "auth.py").write_text(
+            "def generate_jwt(): return 'token-123'\n"
+        )
+        (worktree_path / "test_auth.py").write_text(
+            "from auth import generate_jwt\ndef test(): assert generate_jwt()\n"
+        )
         self._git(worktree_path, "add", ".")
-        self._git(worktree_path, "commit", "-m", "feat(auth): add JWT token generator and tests")
+        self._git(
+            worktree_path,
+            "commit",
+            "-m",
+            "feat(auth): add JWT token generator and tests",
+        )
 
         # Builder completes implementation and marks done for packaging
         move_task(task_id, TaskMove(status="done", actor="zf-builder"))
 
         # Step 4: Dispatcher packages work and opens PR
         pr_url = "https://github.com/example/repo/pull/101"
-        fake_gh_state = {"state": "OPEN", "reviewDecision": None, "mergeable": "MERGEABLE", "url": pr_url}
+        fake_gh_state = {
+            "state": "OPEN",
+            "reviewDecision": None,
+            "mergeable": "MERGEABLE",
+            "url": pr_url,
+        }
         orig_run = subprocess.run
 
         def mock_gh_run(cmd, *args, **kwargs):
             if isinstance(cmd, (list, tuple)):
                 if len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
-                    return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=0, stdout="", stderr=""
+                    )
                 if len(cmd) >= 1 and cmd[0] == "gh":
                     if "create" in cmd:
-                        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=pr_url, stderr="")
+                        return subprocess.CompletedProcess(
+                            args=cmd, returncode=0, stdout=pr_url, stderr=""
+                        )
                     elif "view" in cmd:
-                        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=json.dumps(fake_gh_state), stderr="")
-                    return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+                        return subprocess.CompletedProcess(
+                            args=cmd,
+                            returncode=0,
+                            stdout=json.dumps(fake_gh_state),
+                            stderr="",
+                        )
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=0, stdout="", stderr=""
+                    )
             return orig_run(cmd, *args, **kwargs)
 
         with patch("subprocess.run", side_effect=mock_gh_run):
@@ -151,11 +187,29 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
 
         # Step 5: Review Rounds 1, 2, 3
         # Round 1: Correctness / Tests
-        add_comment(task_id, CommentCreate(author="zf-reviewer", body="Round 1 Review: Test coverage is sufficient. Edge cases validated."))
+        add_comment(
+            task_id,
+            CommentCreate(
+                author="zf-reviewer",
+                body="Round 1 Review: Test coverage is sufficient. Edge cases validated.",
+            ),
+        )
         # Round 2: Performance
-        add_comment(task_id, CommentCreate(author="zf-reviewer", body="Round 2 Review: Token generation performance verified."))
+        add_comment(
+            task_id,
+            CommentCreate(
+                author="zf-reviewer",
+                body="Round 2 Review: Token generation performance verified.",
+            ),
+        )
         # Round 3: Clean code & approval
-        add_comment(task_id, CommentCreate(author="zf-reviewer", body="Round 3 Review: Code clean and formatted. Ready for human merge."))
+        add_comment(
+            task_id,
+            CommentCreate(
+                author="zf-reviewer",
+                body="Round 3 Review: Code clean and formatted. Ready for human merge.",
+            ),
+        )
 
         # Reviewer submits review, waiting for approval
         move_task(task_id, TaskMove(status="blocked", actor="zf-reviewer"))
@@ -179,7 +233,9 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         # Task is done and worktree is cleaned up
         t_info4 = get_task(task_id)["task"]
         self.assertEqual(t_info4["status"], "done")
-        self.assertFalse(worktree_path.exists(), "Worktree directory must be cleaned up on merge")
+        self.assertFalse(
+            worktree_path.exists(), "Worktree directory must be cleaned up on merge"
+        )
 
         # Verify activity timeline records full history
         acts = get_activities(limit=50)["activities"]
@@ -191,12 +247,14 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
 
     def test_02_reviewer_changes_requested_loop(self):
         """Reviewer requests changes -> routes back to zf-builder -> builder fixes -> re-submits."""
-        t_res = create_task(TaskCreate(
-            board_slug=self.board_slug,
-            title="Refactor Cache Layer",
-            status="todo",
-            assignee="zf-builder"
-        ))
+        t_res = create_task(
+            TaskCreate(
+                board_slug=self.board_slug,
+                title="Refactor Cache Layer",
+                status="todo",
+                assignee="zf-builder",
+            )
+        )
         task_id = t_res["id"]
 
         # Run cycle to dispatch to running and setup worktree
@@ -212,17 +270,31 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
 
         # Open PR -> moves to reviewer
         pr_url = "https://github.com/example/repo/pull/102"
-        gh_state = {"state": "OPEN", "reviewDecision": "CHANGES_REQUESTED", "mergeable": "MERGEABLE", "url": pr_url}
+        gh_state = {
+            "state": "OPEN",
+            "reviewDecision": "CHANGES_REQUESTED",
+            "mergeable": "MERGEABLE",
+            "url": pr_url,
+        }
         orig_run = subprocess.run
 
         def mock_gh(cmd, *a, **kw):
             if isinstance(cmd, (list, tuple)):
                 if len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
-                    return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=0, stdout="", stderr=""
+                    )
                 if len(cmd) >= 1 and cmd[0] == "gh":
                     if "view" in cmd:
-                        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=json.dumps(gh_state), stderr="")
-                    return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=pr_url, stderr="")
+                        return subprocess.CompletedProcess(
+                            args=cmd,
+                            returncode=0,
+                            stdout=json.dumps(gh_state),
+                            stderr="",
+                        )
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=0, stdout=pr_url, stderr=""
+                    )
             return orig_run(cmd, *a, **kw)
 
         with patch("subprocess.run", side_effect=mock_gh):
@@ -238,7 +310,9 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         self.assertEqual(t_after_changes["assignee"], "zf-builder")
 
         # Builder pushes update
-        (worktree_path / "cache.py").write_text("class Cache:\n    def get(self): return None\n")
+        (worktree_path / "cache.py").write_text(
+            "class Cache:\n    def get(self): return None\n"
+        )
         self._git(worktree_path, "add", ".")
         self._git(worktree_path, "commit", "-m", "fix: implement get method")
         move_task(task_id, TaskMove(status="done", actor="zf-builder"))
@@ -258,34 +332,52 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         rev_ws.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
             ["git", "worktree", "add", str(rev_ws), "-b", "task/conf"],
-            cwd=str(self.repo_dir), check=True, capture_output=True
+            cwd=str(self.repo_dir),
+            check=True,
+            capture_output=True,
         )
 
         pr_url = "https://github.com/example/repo/pull/103"
-        t_res = create_task(TaskCreate(
-            board_slug=self.board_slug,
-            title="Add Config Parser [PR Opened by zf-builder]",
-            status="blocked",
-            assignee="zf-reviewer"
-        ))
+        t_res = create_task(
+            TaskCreate(
+                board_slug=self.board_slug,
+                title="Add Config Parser [PR Opened by zf-builder]",
+                status="blocked",
+                assignee="zf-reviewer",
+            )
+        )
         task_id = t_res["id"]
 
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.execute(
                 "UPDATE tasks SET pr_url = ?, branch_name = 'task/conf', workspace_path = ? WHERE id = ?",
-                (pr_url, str(rev_ws), task_id)
+                (pr_url, str(rev_ws), task_id),
             )
             conn.commit()
 
-        gh_state = {"state": "OPEN", "reviewDecision": None, "mergeable": "CONFLICTING", "url": pr_url}
+        gh_state = {
+            "state": "OPEN",
+            "reviewDecision": None,
+            "mergeable": "CONFLICTING",
+            "url": pr_url,
+        }
         orig_run = subprocess.run
 
         def mock_gh(cmd, *a, **kw):
             if isinstance(cmd, (list, tuple)):
-                if len(cmd) >= 3 and cmd[0] == "gh" and cmd[1] == "pr" and cmd[2] == "view":
-                    return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=json.dumps(gh_state), stderr="")
+                if (
+                    len(cmd) >= 3
+                    and cmd[0] == "gh"
+                    and cmd[1] == "pr"
+                    and cmd[2] == "view"
+                ):
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=0, stdout=json.dumps(gh_state), stderr=""
+                    )
                 if len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "push":
-                    return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=0, stdout="", stderr=""
+                    )
             return orig_run(cmd, *a, **kw)
 
         with patch("subprocess.run", side_effect=mock_gh):
@@ -299,22 +391,29 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
     def test_04_dependency_dag_blocking_and_cascading_unblock(self):
         """Parent task completion unblocks dependent child task."""
         # Parent task
-        t_parent = create_task(TaskCreate(
-            board_slug=self.board_slug,
-            title="Database Schema Setup",
-            status="running",
-            assignee="zf-builder"
-        ))["id"]
+        t_parent = create_task(
+            TaskCreate(
+                board_slug=self.board_slug,
+                title="Database Schema Setup",
+                status="running",
+                assignee="zf-builder",
+            )
+        )["id"]
 
         # Child task blocked on parent
-        t_child = create_task(TaskCreate(
-            board_slug=self.board_slug,
-            title="API Endpoints Setup",
-            status="blocked",
-            assignee="zf-builder"
-        ))["id"]
+        t_child = create_task(
+            TaskCreate(
+                board_slug=self.board_slug,
+                title="API Endpoints Setup",
+                status="blocked",
+                assignee="zf-builder",
+            )
+        )["id"]
 
-        add_dependency(t_parent, DependencyLink(parent_id=t_parent, child_id=t_child, link_type="blocks"))
+        add_dependency(
+            t_parent,
+            DependencyLink(parent_id=t_parent, child_id=t_child, link_type="blocks"),
+        )
 
         # While parent is running, dispatch does not unblock child
         dispatcher.run_dispatch_cycle(self.db_path)

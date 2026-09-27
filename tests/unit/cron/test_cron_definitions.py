@@ -40,10 +40,22 @@ class TestCronDefinitionsUnit(unittest.TestCase):
     def test_resolve_board_repo_path_http_and_ssh(self):
         """resolve_board_repo_path handles HTTP, SSH, and description fallbacks."""
         # Current workspace is zerofactory, which should resolve
-        b_http = {"slug": "zerofactory", "git_url": "https://github.com/hotcode-dev/zerofactory.git"}
-        b_ssh = {"slug": "zerofactory", "git_url": "git@github.com:hotcode-dev/zerofactory.git"}
-        b_proto = {"slug": "zerofactory", "git_url": "ssh://git@github.com/hotcode-dev/zerofactory.git"}
-        b_desc = {"slug": "zerofactory", "description": "Project at git@github.com:hotcode-dev/zerofactory.git"}
+        b_http = {
+            "slug": "zerofactory",
+            "git_url": "https://github.com/hotcode-dev/zerofactory.git",
+        }
+        b_ssh = {
+            "slug": "zerofactory",
+            "git_url": "git@github.com:hotcode-dev/zerofactory.git",
+        }
+        b_proto = {
+            "slug": "zerofactory",
+            "git_url": "ssh://git@github.com/hotcode-dev/zerofactory.git",
+        }
+        b_desc = {
+            "slug": "zerofactory",
+            "description": "Project at git@github.com:hotcode-dev/zerofactory.git",
+        }
 
         res_http = resolve_board_repo_path(b_http)
         res_ssh = resolve_board_repo_path(b_ssh)
@@ -66,12 +78,17 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                 conn.commit()
 
             import builtin_cron
+
             with patch.dict(os.environ, {"ZEROFACTORY_DB": str(empty_db)}):
                 orig_bc = getattr(builtin_cron, "get_db_path", None)
                 builtin_cron.get_db_path = lambda: empty_db
                 try:
                     jobs = get_all_builtin_cron_jobs()
-                    scanners = [jid for jid in jobs if jid.startswith("zero-factory-improvement-scanner-")]
+                    scanners = [
+                        jid
+                        for jid in jobs
+                        if jid.startswith("zero-factory-improvement-scanner-")
+                    ]
                     self.assertEqual(scanners, [])
                     self.assertIn("zero-factory-task-queue-check", jobs)
                 finally:

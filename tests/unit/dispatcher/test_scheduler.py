@@ -4,10 +4,8 @@ import fcntl
 import json
 import os
 import sqlite3
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import MagicMock, patch
 
 from dispatcher.scheduler import run_dispatch_cycle
 
@@ -106,7 +104,10 @@ def test_run_dispatch_cycle_concurrent_flock_skipped(tmp_path: Path):
 
     try:
         import dispatcher
-        with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file):
+
+        with patch.object(
+            dispatcher, "get_dispatcher_lock_path", return_value=lock_file
+        ):
             res = run_dispatch_cycle(db_path)
             assert res["ok"] is True
             assert res.get("skipped") is True
@@ -125,22 +126,28 @@ def test_run_dispatch_cycle_unblocks_prerequisite_dependencies(tmp_path: Path):
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             "INSERT INTO tasks VALUES ('parent-1', 'Parent', '', 'done', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
-            (now, now)
+            (now, now),
         )
         conn.execute(
             "INSERT INTO tasks VALUES ('child-1', 'Child', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
-            (now, now)
+            (now, now),
         )
         conn.execute(
             "INSERT INTO task_links (parent_id, child_id, link_type, created_at) VALUES ('parent-1', 'child-1', 'blocks', ?)",
-            (now,)
+            (now,),
         )
         conn.commit()
 
     lock_file = tmp_path / "dispatcher.lock"
     import dispatcher
-    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
-         patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": "1"}):
+
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(
+            os.environ,
+            {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": "1"},
+        ),
+    ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         assert res.get("unblocked", 0) >= 1
@@ -161,14 +168,20 @@ def test_run_dispatch_cycle_promotes_todo_to_running(tmp_path: Path):
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             "INSERT INTO tasks VALUES ('t-todo', 'Work Item', '', 'todo', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
-            (now, now)
+            (now, now),
         )
         conn.commit()
 
     lock_file = tmp_path / "dispatcher.lock"
     import dispatcher
-    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
-         patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": "1"}):
+
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(
+            os.environ,
+            {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": "1"},
+        ),
+    ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         assert res.get("dispatched", 0) >= 1
@@ -179,7 +192,9 @@ def test_run_dispatch_cycle_promotes_todo_to_running(tmp_path: Path):
         assert row["status"] == "running"
 
 
-def test_run_dispatch_cycle_skips_pr_conflict_for_queued_or_builder_task(tmp_path: Path):
+def test_run_dispatch_cycle_skips_pr_conflict_for_queued_or_builder_task(
+    tmp_path: Path,
+):
     """PR conflict check must not burn retries for tasks already in todo/ready or assigned to builder."""
     db_path = tmp_path / "test.db"
     _init_test_db(db_path)
@@ -188,7 +203,7 @@ def test_run_dispatch_cycle_skips_pr_conflict_for_queued_or_builder_task(tmp_pat
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             "INSERT INTO tasks VALUES ('t-conf-todo', 'Feature [PR Conflict]', '', 'todo', 'zf-builder', 'P0', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/10', ?, ?)",
-            (str(tmp_path), now, now)
+            (str(tmp_path), now, now),
         )
         conn.commit()
 
@@ -198,20 +213,38 @@ def test_run_dispatch_cycle_skips_pr_conflict_for_queued_or_builder_task(tmp_pat
     def fake_run(cmd, *args, **kwargs):
         if "rev-parse" in cmd:
             return MagicMock(returncode=0, stdout=str(tmp_path))
-        return MagicMock(returncode=0, stdout=json.dumps({"state": "OPEN", "mergeable": "CONFLICTING", "url": "https://github.com/foo/bar/pull/10"}))
+        return MagicMock(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "state": "OPEN",
+                    "mergeable": "CONFLICTING",
+                    "url": "https://github.com/foo/bar/pull/10",
+                }
+            ),
+        )
 
-    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
-         patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": ""}), \
-         patch("dispatcher.resolve_task_repo_path", return_value=tmp_path), \
-         patch("dispatcher.scheduler.subprocess.run", side_effect=fake_run), \
-         patch.object(dispatcher, "_handle_pr_conflict_from_github") as mock_handle_conflict:
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(
+            os.environ,
+            {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": ""},
+        ),
+        patch("dispatcher.resolve_task_repo_path", return_value=tmp_path),
+        patch("dispatcher.scheduler.subprocess.run", side_effect=fake_run),
+        patch.object(
+            dispatcher, "_handle_pr_conflict_from_github"
+        ) as mock_handle_conflict,
+    ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         mock_handle_conflict.assert_not_called()
 
     with sqlite3.connect(str(db_path)) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT metadata FROM tasks WHERE id = 't-conf-todo'").fetchone()
+        row = conn.execute(
+            "SELECT metadata FROM tasks WHERE id = 't-conf-todo'"
+        ).fetchone()
         meta = json.loads(row["metadata"])
         # Conflict retries must not have been incremented
         assert meta.get("conflict_retries", 1) == 1
@@ -226,7 +259,7 @@ def test_run_dispatch_cycle_routes_blocked_human_pr_conflict_to_builder(tmp_path
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             "INSERT INTO tasks VALUES ('t-conf-blocked', 'Feature [Human Review]', '', 'blocked', 'human', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/20', ?, ?)",
-            (str(tmp_path), now, now)
+            (str(tmp_path), now, now),
         )
         conn.commit()
 
@@ -236,19 +269,37 @@ def test_run_dispatch_cycle_routes_blocked_human_pr_conflict_to_builder(tmp_path
     def fake_run(cmd, *args, **kwargs):
         if "rev-parse" in cmd:
             return MagicMock(returncode=0, stdout=str(tmp_path))
-        return MagicMock(returncode=0, stdout=json.dumps({"state": "OPEN", "mergeable": "CONFLICTING", "url": "https://github.com/foo/bar/pull/20"}))
+        return MagicMock(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "state": "OPEN",
+                    "mergeable": "CONFLICTING",
+                    "url": "https://github.com/foo/bar/pull/20",
+                }
+            ),
+        )
 
-    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
-         patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": ""}), \
-         patch("dispatcher.resolve_task_repo_path", return_value=tmp_path), \
-         patch("dispatcher.scheduler.subprocess.run", side_effect=fake_run), \
-         patch.object(dispatcher, "_handle_pr_conflict_from_github") as mock_handle_conflict:
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(
+            os.environ,
+            {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": ""},
+        ),
+        patch("dispatcher.resolve_task_repo_path", return_value=tmp_path),
+        patch("dispatcher.scheduler.subprocess.run", side_effect=fake_run),
+        patch.object(
+            dispatcher, "_handle_pr_conflict_from_github"
+        ) as mock_handle_conflict,
+    ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         mock_handle_conflict.assert_called_once()
 
 
-def test_run_dispatch_cycle_routes_blocked_builder_pr_conflict_to_builder(tmp_path: Path):
+def test_run_dispatch_cycle_routes_blocked_builder_pr_conflict_to_builder(
+    tmp_path: Path,
+):
     """A conflicting PR in blocked status assigned to zf-builder is routed to zf-builder for resolution."""
     db_path = tmp_path / "test.db"
     _init_test_db(db_path)
@@ -257,7 +308,7 @@ def test_run_dispatch_cycle_routes_blocked_builder_pr_conflict_to_builder(tmp_pa
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             "INSERT INTO tasks VALUES ('t-conf-builder-blocked', 'Feature [PR Conflict]', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/30', ?, ?)",
-            (str(tmp_path), now, now)
+            (str(tmp_path), now, now),
         )
         conn.commit()
 
@@ -267,13 +318,29 @@ def test_run_dispatch_cycle_routes_blocked_builder_pr_conflict_to_builder(tmp_pa
     def fake_run(cmd, *args, **kwargs):
         if "rev-parse" in cmd:
             return MagicMock(returncode=0, stdout=str(tmp_path))
-        return MagicMock(returncode=0, stdout=json.dumps({"state": "OPEN", "mergeable": "CONFLICTING", "url": "https://github.com/foo/bar/pull/30"}))
+        return MagicMock(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "state": "OPEN",
+                    "mergeable": "CONFLICTING",
+                    "url": "https://github.com/foo/bar/pull/30",
+                }
+            ),
+        )
 
-    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
-         patch.dict(os.environ, {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": ""}), \
-         patch("dispatcher.resolve_task_repo_path", return_value=tmp_path), \
-         patch("dispatcher.scheduler.subprocess.run", side_effect=fake_run), \
-         patch.object(dispatcher, "_handle_pr_conflict_from_github") as mock_handle_conflict:
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(
+            os.environ,
+            {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": ""},
+        ),
+        patch("dispatcher.resolve_task_repo_path", return_value=tmp_path),
+        patch("dispatcher.scheduler.subprocess.run", side_effect=fake_run),
+        patch.object(
+            dispatcher, "_handle_pr_conflict_from_github"
+        ) as mock_handle_conflict,
+    ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         mock_handle_conflict.assert_called_once()
@@ -288,24 +355,30 @@ def test_run_dispatch_cycle_logs_conflict_fixing_activity(tmp_path: Path):
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             "INSERT INTO tasks VALUES ('t-fix-conf', 'Fix feature [PR Conflict]', 'desc', 'todo', 'zf-builder', 'P1', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', '', ?, ?)",
-            (str(tmp_path), now, now)
+            (str(tmp_path), now, now),
         )
         conn.commit()
 
     lock_file = tmp_path / "dispatcher.lock"
     import dispatcher
 
-    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
-         patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": "1"}), \
-         patch.object(dispatcher, "setup_worktree", return_value=str(tmp_path)), \
-         patch.object(dispatcher, "spawn_agent_worker", return_value=(9999, "sess-conf")):
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": "1"}),
+        patch.object(dispatcher, "setup_worktree", return_value=str(tmp_path)),
+        patch.object(
+            dispatcher, "spawn_agent_worker", return_value=(9999, "sess-conf")
+        ),
+    ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         assert res["dispatched"] == 1
 
     with sqlite3.connect(str(db_path)) as conn:
         conn.row_factory = sqlite3.Row
-        acts = conn.execute("SELECT action, details FROM task_activity WHERE task_id = 't-fix-conf' ORDER BY id ASC").fetchall()
+        acts = conn.execute(
+            "SELECT action, details FROM task_activity WHERE task_id = 't-fix-conf' ORDER BY id ASC"
+        ).fetchall()
         actions = [a["action"] for a in acts]
         assert "start" in actions
         assert "conflict_fixing" in actions
@@ -322,7 +395,7 @@ def test_run_dispatch_cycle_logs_conflict_resolved_activity(tmp_path: Path):
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             "INSERT INTO tasks VALUES ('t-conf-res', 'Fix feature [PR Conflict]', 'desc', 'done', 'zf-builder', 'P1', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
-            (str(tmp_path), now, now)
+            (str(tmp_path), now, now),
         )
         conn.commit()
 
@@ -335,34 +408,45 @@ def test_run_dispatch_cycle_logs_conflict_resolved_activity(tmp_path: Path):
         if "status" in cmd:
             return MagicMock(returncode=0, stdout="")
         if "view" in cmd:
-            return MagicMock(returncode=0, stdout=json.dumps({"url": "https://github.com/foo/bar/pull/50"}))
+            return MagicMock(
+                returncode=0,
+                stdout=json.dumps({"url": "https://github.com/foo/bar/pull/50"}),
+            )
         return MagicMock(returncode=0, stdout="")
 
-    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
-         patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}), \
-         patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path), \
-         patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run), \
-         patch.object(dispatcher, "clean_stale_git_locks"), \
-         patch.object(dispatcher, "get_git_dir", return_value=None), \
-         patch.object(dispatcher, "get_unmerged_status_files", return_value=[]), \
-         patch.object(dispatcher, "check_unresolved_conflicts_safe", return_value=(True, [], "")), \
-         patch.object(dispatcher, "pull_and_merge_main", return_value=(True, [], "")), \
-         patch.object(dispatcher, "stop_task_worker"), \
-         patch.object(dispatcher, "_remove_worktree"), \
-         patch.object(dispatcher, "setup_worktree"):
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+        patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
+        patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run),
+        patch.object(dispatcher, "clean_stale_git_locks"),
+        patch.object(dispatcher, "get_git_dir", return_value=None),
+        patch.object(dispatcher, "get_unmerged_status_files", return_value=[]),
+        patch.object(
+            dispatcher, "check_unresolved_conflicts_safe", return_value=(True, [], "")
+        ),
+        patch.object(dispatcher, "pull_and_merge_main", return_value=(True, [], "")),
+        patch.object(dispatcher, "stop_task_worker"),
+        patch.object(dispatcher, "_remove_worktree"),
+        patch.object(dispatcher, "setup_worktree"),
+    ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         assert res["prs_opened"] == 1
 
     with sqlite3.connect(str(db_path)) as conn:
         conn.row_factory = sqlite3.Row
-        acts = conn.execute("SELECT action, details FROM task_activity WHERE task_id = 't-conf-res' ORDER BY id ASC").fetchall()
+        acts = conn.execute(
+            "SELECT action, details FROM task_activity WHERE task_id = 't-conf-res' ORDER BY id ASC"
+        ).fetchall()
         actions = [a["action"] for a in acts]
         assert "conflict_resolved" in actions
         assert "pr_opened" in actions
 
 
-def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(tmp_path: Path):
+def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(
+    tmp_path: Path,
+):
     """When a task is blocked for review-required handoff but GitHub still reports CONFLICTING,
     it falls through to commit/push instead of wiping worktree and re-entering conflict loop."""
     db_path = tmp_path / "test.db"
@@ -372,7 +456,7 @@ def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(tmp_pa
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             "INSERT INTO tasks VALUES ('t-rev-conf', 'Fix conflict [PR Opened by zf-builder] [PR Conflict]', 'desc', 'blocked', 'zf-builder', 'P1', '{\"blocked_reason\": \"review-required\"}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
-            (str(tmp_path), now, now)
+            (str(tmp_path), now, now),
         )
         conn.commit()
 
@@ -388,23 +472,35 @@ def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(tmp_pa
             # PR view returns CONFLICTING to simulate GitHub not yet updated
             return MagicMock(
                 returncode=0,
-                stdout=json.dumps({"url": "https://github.com/foo/bar/pull/50", "mergeable": "CONFLICTING", "reviewDecision": ""})
+                stdout=json.dumps(
+                    {
+                        "url": "https://github.com/foo/bar/pull/50",
+                        "mergeable": "CONFLICTING",
+                        "reviewDecision": "",
+                    }
+                ),
             )
         return MagicMock(returncode=0, stdout="")
 
-    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
-         patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}), \
-         patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path), \
-         patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run), \
-         patch.object(dispatcher, "clean_stale_git_locks"), \
-         patch.object(dispatcher, "get_git_dir", return_value=None), \
-         patch.object(dispatcher, "get_unmerged_status_files", return_value=[]), \
-         patch.object(dispatcher, "check_unresolved_conflicts_safe", return_value=(True, [], "")), \
-         patch.object(dispatcher, "pull_and_merge_main", return_value=(True, [], "")), \
-         patch.object(dispatcher, "_handle_pr_conflict_from_github") as mock_handle_github, \
-         patch.object(dispatcher, "stop_task_worker"), \
-         patch.object(dispatcher, "_remove_worktree"), \
-         patch.object(dispatcher, "setup_worktree"):
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+        patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
+        patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run),
+        patch.object(dispatcher, "clean_stale_git_locks"),
+        patch.object(dispatcher, "get_git_dir", return_value=None),
+        patch.object(dispatcher, "get_unmerged_status_files", return_value=[]),
+        patch.object(
+            dispatcher, "check_unresolved_conflicts_safe", return_value=(True, [], "")
+        ),
+        patch.object(dispatcher, "pull_and_merge_main", return_value=(True, [], "")),
+        patch.object(
+            dispatcher, "_handle_pr_conflict_from_github"
+        ) as mock_handle_github,
+        patch.object(dispatcher, "stop_task_worker"),
+        patch.object(dispatcher, "_remove_worktree"),
+        patch.object(dispatcher, "setup_worktree"),
+    ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         assert res["prs_opened"] == 1
@@ -412,10 +508,9 @@ def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(tmp_pa
 
     with sqlite3.connect(str(db_path)) as conn:
         conn.row_factory = sqlite3.Row
-        task = conn.execute("SELECT status, assignee, title FROM tasks WHERE id = 't-rev-conf'").fetchone()
+        task = conn.execute(
+            "SELECT status, assignee, title FROM tasks WHERE id = 't-rev-conf'"
+        ).fetchone()
         assert task["status"] == "todo"
         assert task["assignee"] == "zf-reviewer"
         assert "[PR Conflict]" not in task["title"]
-
-
-

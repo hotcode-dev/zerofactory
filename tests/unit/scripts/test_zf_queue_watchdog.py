@@ -18,10 +18,8 @@ from dashboard.plugin_api import (
     TaskCreate,
     create_board,
     create_task,
-    get_db_conn,
     get_task,
     init_db,
-    list_boards,
 )
 from dispatcher import _active_workers, reap_stuck_tasks
 
@@ -43,19 +41,25 @@ class TestZfQueueWatchdogUnit(unittest.TestCase):
         self.db_path = Path(self.td) / "watchdog.db"
         self.orig_env = {
             "ZEROFACTORY_DB": os.environ.get("ZEROFACTORY_DB"),
-            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"),
+            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get(
+                "ZEROFACTORY_SKIP_WORKER_SPAWN"
+            ),
             "ZEROFACTORY_SKIP_GIT": os.environ.get("ZEROFACTORY_SKIP_GIT"),
-            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"),
+            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get(
+                "ZEROFACTORY_DISABLE_DISPATCHER"
+            ),
         }
         os.environ["ZEROFACTORY_DB"] = str(self.db_path)
         os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
         os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
         init_db(force=True)
 
-        create_board(BoardCreate(
-            git_url="https://github.com/hotcode-dev/zerofactory",
-            description="AI workflow",
-        ))
+        create_board(
+            BoardCreate(
+                git_url="https://github.com/hotcode-dev/zerofactory",
+                description="AI workflow",
+            )
+        )
 
     def tearDown(self):
         for k, v in self.orig_env.items():
@@ -88,12 +92,14 @@ class TestZfQueueWatchdogUnit(unittest.TestCase):
 
     def test_watchdog_reaped_alert_rendering(self):
         """When a stuck worker is reaped, watchdog prints alert and does not suppress."""
-        t_id = create_task(TaskCreate(
-            title="Watchdog Stuck Task",
-            status="running",
-            priority="P0",
-            assignee="zf-builder",
-        ))["id"]
+        t_id = create_task(
+            TaskCreate(
+                title="Watchdog Stuck Task",
+                status="running",
+                priority="P0",
+                assignee="zf-builder",
+            )
+        )["id"]
 
         dead_proc = MagicMock()
         dead_proc.poll.return_value = 1

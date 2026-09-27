@@ -6,7 +6,6 @@ import logging
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Optional
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -24,6 +23,7 @@ try:
 except (ImportError, ValueError):
     from db import get_db_path, init_db  # type: ignore
     from models import CronJobUpdate, CronToggleRequest  # type: ignore
+
     try:
         from routes.boards import _get_cron_helpers  # type: ignore
     except (ImportError, ValueError):
@@ -43,41 +43,64 @@ def get_builtin_cron_jobs():
     scheduler_enabled = True
     try:
         from ...builtin_cron import is_cron_scheduler_enabled
+
         scheduler_enabled = is_cron_scheduler_enabled()
     except Exception:
         try:
             from builtin_cron import is_cron_scheduler_enabled  # type: ignore
+
             scheduler_enabled = is_cron_scheduler_enabled()
         except Exception:
             pass
 
     if not list_cron:
-        return {"ok": False, "error": "Builtin cron engine not available", "jobs": [], "count": 0, "scheduler_enabled": scheduler_enabled}
+        return {
+            "ok": False,
+            "error": "Builtin cron engine not available",
+            "jobs": [],
+            "count": 0,
+            "scheduler_enabled": scheduler_enabled,
+        }
     if ensure_cron:
         try:
             ensure_cron()
         except Exception:
             pass
     jobs = list_cron()
-    return {"ok": True, "jobs": jobs, "count": len(jobs), "scheduler_enabled": scheduler_enabled}
+    return {
+        "ok": True,
+        "jobs": jobs,
+        "count": len(jobs),
+        "scheduler_enabled": scheduler_enabled,
+    }
 
 
 @router.post("/cron/scheduler/toggle")
 @router.put("/cron/scheduler/toggle")
-def toggle_cron_scheduler(req: Optional[CronToggleRequest] = None):
+def toggle_cron_scheduler(req: CronToggleRequest | None = None):
     """Toggle the periodic background cron scheduler on or off."""
     init_db()
     db_p = get_db_path()
     try:
-        from ...builtin_cron import is_cron_scheduler_enabled, set_cron_scheduler_enabled
+        from ...builtin_cron import (
+            is_cron_scheduler_enabled,
+            set_cron_scheduler_enabled,
+        )
     except (ImportError, ValueError):
-        from builtin_cron import is_cron_scheduler_enabled, set_cron_scheduler_enabled  # type: ignore
+        from builtin_cron import (  # type: ignore
+            is_cron_scheduler_enabled,
+            set_cron_scheduler_enabled,
+        )
     with sqlite3.connect(str(db_p), timeout=10.0) as conn:
         current = is_cron_scheduler_enabled(conn)
         target = req.enabled if (req and req.enabled is not None) else not current
         res = set_cron_scheduler_enabled(target, conn=conn)
         conn.commit()
-    return {"ok": True, "scheduler_enabled": target, "updated_targets": res.get("updated_targets", 0)}
+    return {
+        "ok": True,
+        "scheduler_enabled": target,
+        "updated_targets": res.get("updated_targets", 0),
+    }
 
 
 @router.post("/cron/sync")
@@ -108,7 +131,11 @@ def update_builtin_cron_job(job_id: str, req: CronJobUpdate):
     update_cron = helpers[4] if len(helpers) > 4 else None
     if not update_cron:
         raise HTTPException(status_code=500, detail="Builtin cron engine not available")
-    update_data = req.model_dump(exclude_unset=True) if hasattr(req, "model_dump") else req.dict(exclude_unset=True)
+    update_data = (
+        req.model_dump(exclude_unset=True)
+        if hasattr(req, "model_dump")
+        else req.dict(exclude_unset=True)
+    )
     res = update_cron(job_id, update_data)
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("error", "Update failed"))
@@ -118,9 +145,7 @@ def update_builtin_cron_job(job_id: str, req: CronJobUpdate):
 @router.post("/cron/{job_id}/toggle")
 @router.put("/cron/{job_id}/toggle")
 def toggle_builtin_cron_job(
-    job_id: str,
-    req: Optional[CronToggleRequest] = None,
-    enabled: Optional[bool] = None
+    job_id: str, req: CronToggleRequest | None = None, enabled: bool | None = None
 ):
     """Toggle a builtin cron job between enabled and paused."""
     helpers = _get_cron_helpers()

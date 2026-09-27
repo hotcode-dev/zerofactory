@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import tempfile
-import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .config import _c, _log
 from .definitions import get_all_builtin_cron_jobs
 
 
-def compute_job_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = None) -> Optional[str]:
+def compute_job_next_run(
+    schedule: dict[str, Any], last_run_at: str | None = None
+) -> str | None:
     """Compute ISO next_run_at timestamp for a cron job schedule."""
     disp = _c()
     custom_fn = getattr(disp, "compute_job_next_run", None)
@@ -22,10 +22,13 @@ def compute_job_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = 
         return custom_fn(schedule, last_run_at=last_run_at)
 
     try:
-        hermes_agent_dir = Path(os.getenv("HERMES_AGENT_DIR", str(Path.home() / ".hermes" / "hermes-agent")))
+        hermes_agent_dir = Path(
+            os.getenv("HERMES_AGENT_DIR", str(Path.home() / ".hermes" / "hermes-agent"))
+        )
         jobs_py = hermes_agent_dir / "cron" / "jobs.py"
         if jobs_py.exists():
             import importlib.util
+
             spec = importlib.util.spec_from_file_location("hermes_cron_jobs", jobs_py)
             if spec and spec.loader:
                 mod = importlib.util.module_from_spec(spec)
@@ -38,10 +41,12 @@ def compute_job_next_run(schedule: Dict[str, Any], last_run_at: Optional[str] = 
     kind = schedule.get("kind") if isinstance(schedule, dict) else None
     if kind == "interval":
         minutes = schedule.get("minutes", 60)
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
+
         return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
     elif kind == "cron":
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
+
         return (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     return None
 
@@ -69,21 +74,26 @@ def cleanup_duplicate_root_jobs() -> None:
             existing = load_jobs_fn(root_jobs_file)
             current_ids = set(get_jobs_fn().keys())
             filtered = [
-                j for j in existing
-                if isinstance(j, dict) and not (
-                    j.get("id") in current_ids or
-                    str(j.get("id", "")).startswith("zero-factory-") or
-                    j.get("origin") == "zerofactory"
+                j
+                for j in existing
+                if isinstance(j, dict)
+                and not (
+                    j.get("id") in current_ids
+                    or str(j.get("id", "")).startswith("zero-factory-")
+                    or j.get("origin") == "zerofactory"
                 )
             ]
             if len(filtered) != len(existing):
                 save_jobs_fn(root_jobs_file, filtered)
-                _log.info("Cleaned %d duplicate Zero Factory job(s) from root cron store", len(existing) - len(filtered))
+                _log.info(
+                    "Cleaned %d duplicate Zero Factory job(s) from root cron store",
+                    len(existing) - len(filtered),
+                )
     except Exception as e:
         _log.warning("Failed to cleanup duplicate jobs from root store: %s", e)
 
 
-def get_target_jobs_files() -> List[Path]:
+def get_target_jobs_files() -> list[Path]:
     """Resolve all locations where jobs.json should be synced.
 
     Targets:
@@ -111,7 +121,7 @@ def get_target_jobs_files() -> List[Path]:
         except Exception:
             return []
 
-    files: List[Path] = []
+    files: list[Path] = []
     hermes_root = Path(os.path.expanduser("~/.hermes"))
 
     # 1. Active profile jobs.json
@@ -120,7 +130,9 @@ def get_target_jobs_files() -> List[Path]:
         try:
             profile_name = active_profile_file.read_text(encoding="utf-8").strip()
             if profile_name and profile_name != "default":
-                profile_jobs = hermes_root / "profiles" / profile_name / "cron" / "jobs.json"
+                profile_jobs = (
+                    hermes_root / "profiles" / profile_name / "cron" / "jobs.json"
+                )
                 files.append(profile_jobs)
         except Exception:
             pass
@@ -133,7 +145,7 @@ def get_target_jobs_files() -> List[Path]:
     return files
 
 
-def load_jobs_from_file(jobs_file: Path) -> List[Dict[str, Any]]:
+def load_jobs_from_file(jobs_file: Path) -> list[dict[str, Any]]:
     """Load jobs from a given JSON file safely."""
     disp = _c()
     custom_fn = getattr(disp, "load_jobs_from_file", None)
@@ -154,7 +166,7 @@ def load_jobs_from_file(jobs_file: Path) -> List[Dict[str, Any]]:
     return []
 
 
-def save_jobs_to_file(jobs_file: Path, jobs: List[Dict[str, Any]]) -> bool:
+def save_jobs_to_file(jobs_file: Path, jobs: list[dict[str, Any]]) -> bool:
     """Save jobs atomically to a JSON file."""
     disp = _c()
     custom_fn = getattr(disp, "save_jobs_to_file", None)
@@ -164,7 +176,9 @@ def save_jobs_to_file(jobs_file: Path, jobs: List[Dict[str, Any]]) -> bool:
     try:
         jobs_file.parent.mkdir(parents=True, exist_ok=True)
         payload = {"jobs": jobs}
-        temp_fd, temp_path = tempfile.mkstemp(dir=str(jobs_file.parent), prefix="jobs_", suffix=".tmp")
+        temp_fd, temp_path = tempfile.mkstemp(
+            dir=str(jobs_file.parent), prefix="jobs_", suffix=".tmp"
+        )
         with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
         os.replace(temp_path, str(jobs_file))

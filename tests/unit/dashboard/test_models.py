@@ -4,17 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from dashboard.models import (
+    MEMORY_CONTENT_MAX_LENGTH,
+    VALID_STATUSES,
     BoardCreate,
-    BoardUpdate,
-    TaskCreate,
-    TaskUpdate,
-    TaskMove,
     MemoryCreate,
     SettingsUpdate,
-    VALID_STATUSES,
-    VALID_PRIORITIES,
-    VALID_MEMORY_CATEGORIES,
-    MEMORY_CONTENT_MAX_LENGTH,
+    TaskCreate,
+    TaskMove,
 )
 
 
@@ -36,7 +32,9 @@ def test_board_create_validation():
 
     # max_concurrent_running < 1 fails
     with pytest.raises(ValidationError):
-        BoardCreate(git_url="https://github.com/owner/repo.git", max_concurrent_running=0)
+        BoardCreate(
+            git_url="https://github.com/owner/repo.git", max_concurrent_running=0
+        )
 
 
 def test_task_create_validation():

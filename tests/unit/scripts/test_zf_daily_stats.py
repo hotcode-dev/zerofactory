@@ -23,7 +23,9 @@ class TestZfDailyStatsUnit(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         script_path = REPO_ROOT / "scripts" / "zf_daily_stats.py"
-        spec = importlib.util.spec_from_file_location("zf_daily_stats_under_test", script_path)
+        spec = importlib.util.spec_from_file_location(
+            "zf_daily_stats_under_test", script_path
+        )
         cls.mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.mod)
 
@@ -32,20 +34,28 @@ class TestZfDailyStatsUnit(unittest.TestCase):
         now = 2_000_000_000
         # started_at (recent) must beat a stale updated_at
         rt_a = {
-            "id": "t", "updated_at": now - 10, "created_at": now - 999,
+            "id": "t",
+            "updated_at": now - 10,
+            "created_at": now - 999,
             "metadata": json.dumps({"started_at": now - 47 * 60}),
         }
         self.assertEqual(self.mod._resolve_running_since(rt_a, now), now - 47 * 60)
 
         # No started_at -> fall back to updated_at
         rt_b = {
-            "id": "t", "updated_at": now - 120, "created_at": now - 999, "metadata": "{}",
+            "id": "t",
+            "updated_at": now - 120,
+            "created_at": now - 999,
+            "metadata": "{}",
         }
         self.assertEqual(self.mod._resolve_running_since(rt_b, now), now - 120)
 
         # No started_at and no updated_at (0/unset) -> fall back to created_at
         rt_c = {
-            "id": "t", "updated_at": 0, "created_at": now - 999, "metadata": "not-json",
+            "id": "t",
+            "updated_at": 0,
+            "created_at": now - 999,
+            "metadata": "not-json",
         }
         self.assertEqual(self.mod._resolve_running_since(rt_c, now), now - 999)
 
@@ -66,21 +76,39 @@ class TestZfDailyStatsUnit(unittest.TestCase):
                 " created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);"
             )
             real_now = int(_time.time())
-            conn.execute("INSERT INTO boards (slug, created_at, updated_at) VALUES (?,1,1)", ("stats-board",))
+            conn.execute(
+                "INSERT INTO boards (slug, created_at, updated_at) VALUES (?,1,1)",
+                ("stats-board",),
+            )
             # Task A: running ~47 min per metadata.started_at, but updated_at is seconds old
             conn.execute(
                 "INSERT INTO tasks (id, board_slug, title, status, assignee, metadata, created_at, updated_at)"
                 " VALUES (?,?,?,?,?,?,?,?)",
-                ("zf-run-a", "stats-board", "Long build", "running", "zf-builder",
-                 json.dumps({"started_at": real_now - 47 * 60, "worker_pid": 1234}),
-                 real_now - 47 * 60, real_now - 5),
+                (
+                    "zf-run-a",
+                    "stats-board",
+                    "Long build",
+                    "running",
+                    "zf-builder",
+                    json.dumps({"started_at": real_now - 47 * 60, "worker_pid": 1234}),
+                    real_now - 47 * 60,
+                    real_now - 5,
+                ),
             )
             # Task B: clock skew — started_at in the future; must clamp to 0m (never negative)
             conn.execute(
                 "INSERT INTO tasks (id, board_slug, title, status, assignee, metadata, created_at, updated_at)"
                 " VALUES (?,?,?,?,?,?,?,?)",
-                ("zf-run-b", "stats-board", "Skewed task", "running", "zf-builder",
-                 json.dumps({"started_at": real_now + 600}), real_now - 5, real_now - 5),
+                (
+                    "zf-run-b",
+                    "stats-board",
+                    "Skewed task",
+                    "running",
+                    "zf-builder",
+                    json.dumps({"started_at": real_now + 600}),
+                    real_now - 5,
+                    real_now - 5,
+                ),
             )
             conn.commit()
             conn.close()

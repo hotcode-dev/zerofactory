@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,12 +52,18 @@ class TestProfileManagerUnit(unittest.TestCase):
                 copied = res.get("copied", [])
                 self.assertGreater(len(copied), 0)
 
-                expected_scripts = ["zf_queue_watchdog.py", "zf_scanner_gate.py", "zf_daily_stats.py"]
+                expected_scripts = [
+                    "zf_queue_watchdog.py",
+                    "zf_scanner_gate.py",
+                    "zf_daily_stats.py",
+                ]
                 for s in expected_scripts:
                     root_s = fake_home / "scripts" / s
                     self.assertTrue(root_s.exists(), f"Missing {root_s}")
                     self.assertTrue(root_s.is_file())
-                    self.assertFalse(root_s.is_symlink(), f"{root_s} should not be a symlink")
+                    self.assertFalse(
+                        root_s.is_symlink(), f"{root_s} should not be a symlink"
+                    )
 
                     for role in PM.ZF_PROFILES:
                         prof_s = fake_home / "profiles" / role / "scripts" / s
@@ -69,7 +74,10 @@ class TestProfileManagerUnit(unittest.TestCase):
         """update_env_file preserves unrelated keys and comments."""
         with tempfile.TemporaryDirectory() as td:
             env_p = Path(td) / ".env"
-            env_p.write_text("# Custom comment\nOPENROUTER_API_KEY=existing-key\nOTHER_VAR=123\n", encoding="utf-8")
+            env_p.write_text(
+                "# Custom comment\nOPENROUTER_API_KEY=existing-key\nOTHER_VAR=123\n",
+                encoding="utf-8",
+            )
             updates = {
                 "HERMES_LANGFUSE_PUBLIC_KEY": "pk-lf-sample",
                 "HERMES_LANGFUSE_SECRET_KEY": "sk-lf-sample",
@@ -93,7 +101,16 @@ class TestProfileManagerUnit(unittest.TestCase):
         """update_config_yaml_plugins adds and removes plugins cleanly."""
         with tempfile.TemporaryDirectory() as td:
             cfg_p = Path(td) / "config.yaml"
-            cfg_p.write_text(yaml.dump({"plugins": {"enabled": ["zerofactory"]}, "model": {"default": "test"}}, sort_keys=False), encoding="utf-8")
+            cfg_p.write_text(
+                yaml.dump(
+                    {
+                        "plugins": {"enabled": ["zerofactory"]},
+                        "model": {"default": "test"},
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
 
             # Enable langfuse
             PM.update_config_yaml_plugins(cfg_p, enable_plugin="langfuse")

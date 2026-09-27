@@ -1,13 +1,12 @@
 """Unit tests for dashboard/memory_service.py: rule extraction, normalization, deduplication."""
 
 import sqlite3
-import pytest
 
 from dashboard.memory_service import (
-    normalize_memory_content,
-    normalize_file_path,
     compute_dedup_key,
     extract_and_record_memory,
+    normalize_file_path,
+    normalize_memory_content,
 )
 
 
@@ -82,36 +81,50 @@ def test_compute_dedup_key():
 def test_extract_and_record_memory_basic():
     """Reviewer feedback containing GOTCHA: is extracted and stored."""
     conn = _init_memory_db()
-    conn.execute("INSERT INTO boards (slug, auto_record_memory) VALUES ('test-board', 1)")
+    conn.execute(
+        "INSERT INTO boards (slug, auto_record_memory) VALUES ('test-board', 1)"
+    )
     conn.commit()
 
     feedback = "LGTM! One note for future: **GOTCHA**: Always run db migrations before starting worker."
-    recorded = extract_and_record_memory(conn, "test-board", feedback, task_id="t-1", author="zf-reviewer")
+    recorded = extract_and_record_memory(
+        conn, "test-board", feedback, task_id="t-1", author="zf-reviewer"
+    )
 
     assert len(recorded) == 1
     assert recorded[0]["category"] == "gotcha"
     assert "Always run db migrations before starting worker" in recorded[0]["content"]
 
     # Verify stored in DB
-    rows = conn.execute("SELECT * FROM board_memories WHERE board_slug = 'test-board'").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM board_memories WHERE board_slug = 'test-board'"
+    ).fetchall()
     assert len(rows) == 1
 
     # Second run with same feedback should deduplicate and return empty
-    duplicate_run = extract_and_record_memory(conn, "test-board", feedback, task_id="t-2")
+    duplicate_run = extract_and_record_memory(
+        conn, "test-board", feedback, task_id="t-2"
+    )
     assert duplicate_run == []
-    rows_after = conn.execute("SELECT * FROM board_memories WHERE board_slug = 'test-board'").fetchall()
+    rows_after = conn.execute(
+        "SELECT * FROM board_memories WHERE board_slug = 'test-board'"
+    ).fetchall()
     assert len(rows_after) == 1
 
 
 def test_extract_and_record_memory_board_disabled():
     """When board has auto_record_memory disabled, nothing is extracted."""
     conn = _init_memory_db()
-    conn.execute("INSERT INTO boards (slug, auto_record_memory) VALUES ('disabled-board', 0)")
+    conn.execute(
+        "INSERT INTO boards (slug, auto_record_memory) VALUES ('disabled-board', 0)"
+    )
     conn.commit()
 
     feedback = "GOTCHA: Should not be saved."
     recorded = extract_and_record_memory(conn, "disabled-board", feedback)
     assert recorded == []
 
-    rows = conn.execute("SELECT * FROM board_memories WHERE board_slug = 'disabled-board'").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM board_memories WHERE board_slug = 'disabled-board'"
+    ).fetchall()
     assert len(rows) == 0

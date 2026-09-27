@@ -24,7 +24,7 @@ default so the dispatcher's fallback path reads naturally.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 # --- Default values (source of truth) ---------------------------------------
 
@@ -100,7 +100,7 @@ SETTING_KEYS = (
 
 # Seed values for the settings table, derived from the constants above (NOT
 # string literals) so the seed rows and the in-code defaults can never drift.
-DEFAULT_SETTING_VALUES: Dict[str, str] = {
+DEFAULT_SETTING_VALUES: dict[str, str] = {
     "max_active_tasks": str(DEFAULT_MAX_ACTIVE_TASKS),
     "max_concurrent_llm_workers": str(DEFAULT_MAX_CONCURRENT_LLM_WORKERS),
     "scan_on_idle": "true" if DEFAULT_SCAN_ON_IDLE else "false",
@@ -132,7 +132,7 @@ def _parse_bool(value: Any) -> bool:
     return str(value).lower() in ("true", "1", "yes")
 
 
-def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
+def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
     """Load all global settings from the ``settings`` table.
 
     Accepts a ``sqlite3`` connection or cursor. Every key falls back to its
@@ -144,7 +144,7 @@ def load_settings(conn_or_cursor: Any) -> Dict[str, Any]:
     types. ``idle_scan_cooldown_minutes`` is returned in MINUTES (the DB unit);
     see the module docstring for the unit boundary.
     """
-    settings: Dict[str, Any] = {
+    settings: dict[str, Any] = {
         "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
         "max_concurrent_llm_workers": DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         "scan_on_idle": DEFAULT_SCAN_ON_IDLE,

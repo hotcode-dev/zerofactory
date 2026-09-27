@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import sqlite3
 import subprocess
 import sys
-import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .config import (
     CRON_RUN_OUTPUT_TAIL_CHARS,
@@ -24,11 +22,15 @@ from .manager import ensure_builtin_cron_jobs
 from .scheduler_check import is_cron_scheduler_enabled
 
 
-def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
+def trigger_builtin_job(job_id: str) -> dict[str, Any]:
     """Immediately trigger an execution of a builtin job."""
     disp = _c()
-    get_all_builtin_cron_jobs_fn = getattr(disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs)
-    ensure_builtin_cron_jobs_fn = getattr(disp, "ensure_builtin_cron_jobs", ensure_builtin_cron_jobs)
+    get_all_builtin_cron_jobs_fn = getattr(
+        disp, "get_all_builtin_cron_jobs", get_all_builtin_cron_jobs
+    )
+    ensure_builtin_cron_jobs_fn = getattr(
+        disp, "ensure_builtin_cron_jobs", ensure_builtin_cron_jobs
+    )
     get_db_path_fn = getattr(disp, "get_db_path", get_db_path)
     sub_module = getattr(disp, "subprocess", subprocess)
 
@@ -39,11 +41,18 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
     target_job_id = job_id
     if job_id not in current_builtin_jobs:
         if job_id == "zero-factory-improvement-scanner":
-            scanner_jobs = [j for j in current_builtin_jobs if j.startswith("zero-factory-improvement-scanner-")]
+            scanner_jobs = [
+                j
+                for j in current_builtin_jobs
+                if j.startswith("zero-factory-improvement-scanner-")
+            ]
             if scanner_jobs:
                 target_job_id = scanner_jobs[0]
             else:
-                return {"ok": False, "error": f"No active board scanner jobs found to execute: {job_id}"}
+                return {
+                    "ok": False,
+                    "error": f"No active board scanner jobs found to execute: {job_id}",
+                }
         else:
             return {"ok": False, "error": f"Unknown builtin job ID: {job_id}"}
 
@@ -54,18 +63,23 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
     if not job_def.get("no_agent", False):
         try:
             try:
-                from .settings import load_settings
                 from .dispatcher import _global_llm_occupancy, reap_active_scanners
+                from .settings import load_settings
             except ImportError:
-                from settings import load_settings
                 from dispatcher import _global_llm_occupancy, reap_active_scanners
+                from settings import load_settings
 
             with sqlite3.connect(str(get_db_path_fn()), timeout=15) as conn:
                 cap = load_settings(conn)["max_concurrent_llm_workers"]
-                running = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
+                running = conn.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE status = 'running'"
+                ).fetchone()[0]
             reap_active_scanners()
             if _global_llm_occupancy(running) >= cap:
-                return {"ok": False, "error": "Global concurrent LLM worker limit reached"}
+                return {
+                    "ok": False,
+                    "error": "Global concurrent LLM worker limit reached",
+                }
         except (OSError, sqlite3.Error) as e:
             _log.warning("Cron capacity check failed: %s", e)
             return {"ok": False, "error": f"Cannot verify LLM worker capacity: {e}"}
@@ -108,7 +122,11 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
         try:
             proc.wait(timeout=CRON_RUN_TIMEOUT)
         except subprocess.TimeoutExpired:
-            _log.error("Cron job %s timed out after %ss; terminating", target_job_id, CRON_RUN_TIMEOUT)
+            _log.error(
+                "Cron job %s timed out after %ss; terminating",
+                target_job_id,
+                CRON_RUN_TIMEOUT,
+            )
             try:
                 try:
                     from .dispatcher import terminate_process_group
@@ -116,7 +134,11 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
                     from dispatcher import terminate_process_group  # type: ignore
                 terminate_process_group(proc, proc.pid, grace=5.0)
             except Exception as term_exc:
-                _log.warning("Group termination failed for cron job %s: %s", target_job_id, term_exc)
+                _log.warning(
+                    "Group termination failed for cron job %s: %s",
+                    target_job_id,
+                    term_exc,
+                )
                 proc.terminate()
                 try:
                     proc.wait(timeout=5)
@@ -159,8 +181,10 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
                 tail = raw.decode("utf-8", errors="replace")
             except Exception:
                 tail = ""
-        _log.error("Cron job %s failed (PID: %d, rc=%s)", target_job_id, proc.pid, returncode)
-        result: Dict[str, Any] = {
+        _log.error(
+            "Cron job %s failed (PID: %d, rc=%s)", target_job_id, proc.pid, returncode
+        )
+        result: dict[str, Any] = {
             "ok": False,
             "job_id": target_job_id,
             "pid": proc.pid,
@@ -183,25 +207,31 @@ def tick_builtin_cron() -> int:
     ensuring scheduled jobs fire on time even when the external gateway is inactive.
     """
     disp = _c()
-    is_cron_scheduler_enabled_fn = getattr(disp, "is_cron_scheduler_enabled", is_cron_scheduler_enabled)
+    is_cron_scheduler_enabled_fn = getattr(
+        disp, "is_cron_scheduler_enabled", is_cron_scheduler_enabled
+    )
     if not is_cron_scheduler_enabled_fn():
         _log.debug("[builtin_cron] Cron scheduler is disabled in config; skipping tick")
         return 0
 
     try:
-        from .settings import load_settings
         from .dispatcher import _global_llm_occupancy, reap_active_scanners
+        from .settings import load_settings
     except ImportError:
-        from settings import load_settings
         from dispatcher import _global_llm_occupancy, reap_active_scanners
+        from settings import load_settings
     try:
         get_db_path_fn = getattr(disp, "get_db_path", get_db_path)
         with sqlite3.connect(str(get_db_path_fn()), timeout=5) as conn:
             cap = load_settings(conn)["max_concurrent_llm_workers"]
-            running = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'").fetchone()[0]
+            running = conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE status = 'running'"
+            ).fetchone()[0]
         reap_active_scanners()
         if _global_llm_occupancy(running) >= cap:
-            _log.debug("[builtin_cron] Global LLM worker limit reached; deferring scheduled jobs")
+            _log.debug(
+                "[builtin_cron] Global LLM worker limit reached; deferring scheduled jobs"
+            )
             return 0
     except sqlite3.Error as e:
         _log.warning("[builtin_cron] Cannot verify LLM worker capacity: %s", e)
@@ -214,11 +244,18 @@ def tick_builtin_cron() -> int:
             tick = getattr(sched_mod, "tick", None)
 
         if tick is None:
-            hermes_agent_dir = Path(os.getenv("HERMES_AGENT_DIR", str(Path.home() / ".hermes" / "hermes-agent")))
+            hermes_agent_dir = Path(
+                os.getenv(
+                    "HERMES_AGENT_DIR", str(Path.home() / ".hermes" / "hermes-agent")
+                )
+            )
             sched_py = hermes_agent_dir / "cron" / "scheduler.py"
             if sched_py.exists():
                 import importlib.util
-                spec = importlib.util.spec_from_file_location("hermes_cron_scheduler", sched_py)
+
+                spec = importlib.util.spec_from_file_location(
+                    "hermes_cron_scheduler", sched_py
+                )
                 if spec and spec.loader:
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
@@ -232,12 +269,19 @@ def tick_builtin_cron() -> int:
         orch_profile_dir = Path.home() / ".hermes" / "profiles" / "zf-orchestrator"
         if orch_profile_dir.is_dir():
             try:
-                from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+                from hermes_constants import (
+                    reset_hermes_home_override,
+                    set_hermes_home_override,
+                )
+
                 token = set_hermes_home_override(str(orch_profile_dir))
                 try:
                     executed = tick(verbose=False)
                     if executed:
-                        _log.info("[builtin_cron] Scheduler tick fired %s due job(s)", executed)
+                        _log.info(
+                            "[builtin_cron] Scheduler tick fired %s due job(s)",
+                            executed,
+                        )
                     return executed or 0
                 finally:
                     reset_hermes_home_override(token)

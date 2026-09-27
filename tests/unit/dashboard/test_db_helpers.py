@@ -10,7 +10,7 @@ def test_derive_board_code():
     assert derive_board_code("example-zerohub") == "ez"
     assert derive_board_code("zerofactory") == "z"
     assert derive_board_code("my-team-project-service") == "tps"  # last 3 of mtps
-    assert derive_board_code("a-b-c-d-e") == "cde"                # last 3 of abcde
+    assert derive_board_code("a-b-c-d-e") == "cde"  # last 3 of abcde
     assert derive_board_code("") == ""
     assert derive_board_code(None) == ""
 

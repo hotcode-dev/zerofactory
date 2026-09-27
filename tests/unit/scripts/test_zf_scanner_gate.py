@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
 import importlib.util
-import io
 import json
 import os
-import shutil
-import sqlite3
-import subprocess
 import sys
 import tempfile
-import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -83,8 +77,10 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
         mod = _load_gate()
         str_rec = _StrRecorder(str_results)
         proc_rec = _ProcRecorder(proc_results)
-        with patch.object(mod, "_run_cmd", new=str_rec), \
-             patch.object(mod.subprocess, "run", new=proc_rec):
+        with (
+            patch.object(mod, "_run_cmd", new=str_rec),
+            patch.object(mod.subprocess, "run", new=proc_rec),
+        ):
             out = mod._auto_sync_repo(Path("/tmp/fake_repo"))
         return out, str_rec, proc_rec
 
@@ -96,8 +92,10 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
 
     def test_dirty_worktree_early_return(self):
         out, str_rec, proc_rec = self._call_gate(
-            {("git", "remote"): "origin",
-             ("git", "status", "--porcelain"): " M dirty.txt\n"},
+            {
+                ("git", "remote"): "origin",
+                ("git", "status", "--porcelain"): " M dirty.txt\n",
+            },
             {},
         )
         self.assertIsNone(out)
@@ -105,50 +103,95 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
 
     def test_symbolic_ref_preferred(self):
         out, str_rec, proc_rec = self._call_gate(
-            {("git", "remote"): "origin",
-             ("git", "status", "--porcelain"): "",
-             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/feature-x",
-             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "feature-x\n"},
-            {("git", "fetch", "origin", "feature-x"): _proc_result(0, ""),
-             ("git", "merge", "--ff-only", "origin/feature-x"): _proc_result(0, "")},
+            {
+                ("git", "remote"): "origin",
+                ("git", "status", "--porcelain"): "",
+                (
+                    "git",
+                    "symbolic-ref",
+                    "--short",
+                    "refs/remotes/origin/HEAD",
+                ): "origin/feature-x",
+                ("git", "rev-parse", "--abbrev-ref", "HEAD"): "feature-x\n",
+            },
+            {
+                ("git", "fetch", "origin", "feature-x"): _proc_result(0, ""),
+                ("git", "merge", "--ff-only", "origin/feature-x"): _proc_result(0, ""),
+            },
         )
         self.assertIsNone(out)
         self.assertIn(("git", "merge", "--ff-only", "origin/feature-x"), proc_rec.calls)
 
     def test_fallback_main_showref(self):
         out, str_rec, proc_rec = self._call_gate(
-            {("git", "remote"): "origin",
-             ("git", "status", "--porcelain"): "",
-             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
-             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n"},
-            {("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(0, ""),
-             ("git", "fetch", "origin", "main"): _proc_result(0, ""),
-             ("git", "merge", "--ff-only", "origin/main"): _proc_result(0, "")},
+            {
+                ("git", "remote"): "origin",
+                ("git", "status", "--porcelain"): "",
+                ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
+                ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n",
+            },
+            {
+                (
+                    "git",
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    "refs/remotes/origin/main",
+                ): _proc_result(0, ""),
+                ("git", "fetch", "origin", "main"): _proc_result(0, ""),
+                ("git", "merge", "--ff-only", "origin/main"): _proc_result(0, ""),
+            },
         )
         self.assertIsNone(out)
-        self.assertIn(("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"), proc_rec.calls)
+        self.assertIn(
+            ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"),
+            proc_rec.calls,
+        )
         self.assertIn(("git", "merge", "--ff-only", "origin/main"), proc_rec.calls)
 
     def test_fallback_master_showref(self):
         out, str_rec, proc_rec = self._call_gate(
-            {("git", "remote"): "origin",
-             ("git", "status", "--porcelain"): "",
-             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
-             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "master\n"},
-            {("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
-             ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(0, ""),
-             ("git", "fetch", "origin", "master"): _proc_result(0, ""),
-             ("git", "merge", "--ff-only", "origin/master"): _proc_result(0, "")},
+            {
+                ("git", "remote"): "origin",
+                ("git", "status", "--porcelain"): "",
+                ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "",
+                ("git", "rev-parse", "--abbrev-ref", "HEAD"): "master\n",
+            },
+            {
+                (
+                    "git",
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    "refs/remotes/origin/main",
+                ): _proc_result(1, ""),
+                (
+                    "git",
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    "refs/remotes/origin/master",
+                ): _proc_result(0, ""),
+                ("git", "fetch", "origin", "master"): _proc_result(0, ""),
+                ("git", "merge", "--ff-only", "origin/master"): _proc_result(0, ""),
+            },
         )
         self.assertIsNone(out)
         self.assertIn(("git", "merge", "--ff-only", "origin/master"), proc_rec.calls)
 
     def test_not_on_default_branch_early_return(self):
         out, str_rec, proc_rec = self._call_gate(
-            {("git", "remote"): "origin",
-             ("git", "status", "--porcelain"): "",
-             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/main",
-             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "feature\n"},
+            {
+                ("git", "remote"): "origin",
+                ("git", "status", "--porcelain"): "",
+                (
+                    "git",
+                    "symbolic-ref",
+                    "--short",
+                    "refs/remotes/origin/HEAD",
+                ): "origin/main",
+                ("git", "rev-parse", "--abbrev-ref", "HEAD"): "feature\n",
+            },
             {},
         )
         self.assertIsNone(out)
@@ -156,10 +199,17 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
 
     def test_fetch_nonzero_aborts_before_merge(self):
         out, str_rec, proc_rec = self._call_gate(
-            {("git", "remote"): "origin",
-             ("git", "status", "--porcelain"): "",
-             ("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"): "origin/main",
-             ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n"},
+            {
+                ("git", "remote"): "origin",
+                ("git", "status", "--porcelain"): "",
+                (
+                    "git",
+                    "symbolic-ref",
+                    "--short",
+                    "refs/remotes/origin/HEAD",
+                ): "origin/main",
+                ("git", "rev-parse", "--abbrev-ref", "HEAD"): "main\n",
+            },
             {("git", "fetch", "origin", "main"): _proc_result(1, "")},
         )
         self.assertIsNone(out)
@@ -168,9 +218,12 @@ class TestAutoSyncRepoGuards(unittest.TestCase):
 
     def test_exceptions_swallowed(self):
         out, str_rec, proc_rec = self._call_gate(
-            {("git", "remote"): RuntimeError("boom")}, {},
+            {("git", "remote"): RuntimeError("boom")},
+            {},
         )
-        self.assertIsNone(out, "_auto_sync_repo must swallow exceptions and return cleanly")
+        self.assertIsNone(
+            out, "_auto_sync_repo must swallow exceptions and return cleanly"
+        )
 
 
 class TestZfScannerGateUnit(unittest.TestCase):
@@ -211,7 +264,9 @@ class TestZfScannerGateUnit(unittest.TestCase):
             with patch.dict(os.environ, {"ZEROFACTORY_SCANNER_STATE": str(state_path)}):
                 self.assertEqual(mod.get_state_file(), state_path)
 
-                self.assertTrue(mod.write_state_atomic({"board-a": {"last_scanned_sha": "abc"}}))
+                self.assertTrue(
+                    mod.write_state_atomic({"board-a": {"last_scanned_sha": "abc"}})
+                )
                 self.assertTrue(state_path.exists())
                 data = json.loads(state_path.read_text(encoding="utf-8"))
                 self.assertEqual(data, {"board-a": {"last_scanned_sha": "abc"}})
@@ -224,7 +279,9 @@ class TestZfScannerGateUnit(unittest.TestCase):
             mod = _load_gate()
 
             def write_worker(idx):
-                with patch.dict(os.environ, {"ZEROFACTORY_SCANNER_STATE": str(state_path)}):
+                with patch.dict(
+                    os.environ, {"ZEROFACTORY_SCANNER_STATE": str(state_path)}
+                ):
                     mod.mark_task_created(f"board-{idx}")
 
             with ThreadPoolExecutor(max_workers=8) as ex:

@@ -9,15 +9,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cron.store import load_jobs_from_file, save_jobs_to_file
 from cron.manager import (
     ensure_builtin_cron_jobs,
-    list_builtin_jobs,
     prune_board_cron_job,
     reset_builtin_job,
-    toggle_builtin_job,
     update_builtin_job,
 )
+from cron.store import load_jobs_from_file, save_jobs_to_file
 
 
 class TestCronManagerUnit(unittest.TestCase):
@@ -44,8 +42,14 @@ class TestCronManagerUnit(unittest.TestCase):
             jobs_file = Path(td) / "jobs.json"
             initial_jobs = [
                 {"id": "zero-factory-task-queue-check", "origin": "zerofactory"},
-                {"id": "zero-factory-improvement-scanner-active-board", "origin": "zerofactory"},
-                {"id": "zero-factory-improvement-scanner-orphan-board", "origin": "zerofactory"},
+                {
+                    "id": "zero-factory-improvement-scanner-active-board",
+                    "origin": "zerofactory",
+                },
+                {
+                    "id": "zero-factory-improvement-scanner-orphan-board",
+                    "origin": "zerofactory",
+                },
                 {"id": "user-custom-cron-job"},
             ]
             save_jobs_to_file(jobs_file, initial_jobs)
@@ -60,10 +64,13 @@ class TestCronManagerUnit(unittest.TestCase):
                 )
                 conn.commit()
 
-            with patch.dict(os.environ, {
-                "ZEROFACTORY_DB": str(db_path),
-                "ZEROFACTORY_CRON_JOBS_FILE": str(jobs_file),
-            }):
+            with patch.dict(
+                os.environ,
+                {
+                    "ZEROFACTORY_DB": str(db_path),
+                    "ZEROFACTORY_CRON_JOBS_FILE": str(jobs_file),
+                },
+            ):
                 os.environ.pop("ZEROFACTORY_SKIP_CRON_SYNC", None)
                 try:
                     ensure_builtin_cron_jobs()
@@ -73,17 +80,27 @@ class TestCronManagerUnit(unittest.TestCase):
             remaining = load_jobs_from_file(jobs_file)
             remaining_ids = [j["id"] for j in remaining]
             self.assertIn("zero-factory-task-queue-check", remaining_ids)
-            self.assertIn("zero-factory-improvement-scanner-active-board", remaining_ids)
+            self.assertIn(
+                "zero-factory-improvement-scanner-active-board", remaining_ids
+            )
             self.assertIn("user-custom-cron-job", remaining_ids)
-            self.assertNotIn("zero-factory-improvement-scanner-orphan-board", remaining_ids)
+            self.assertNotIn(
+                "zero-factory-improvement-scanner-orphan-board", remaining_ids
+            )
 
     def test_prune_board_cron_job(self):
         """prune_board_cron_job removes only the specified board's scanner job."""
         with tempfile.TemporaryDirectory() as td:
             jobs_file = Path(td) / "jobs.json"
             initial_jobs = [
-                {"id": "zero-factory-improvement-scanner-board-to-delete", "origin": "zerofactory"},
-                {"id": "zero-factory-improvement-scanner-other-board", "origin": "zerofactory"},
+                {
+                    "id": "zero-factory-improvement-scanner-board-to-delete",
+                    "origin": "zerofactory",
+                },
+                {
+                    "id": "zero-factory-improvement-scanner-other-board",
+                    "origin": "zerofactory",
+                },
                 {"id": "zero-factory-task-queue-check", "origin": "zerofactory"},
             ]
             save_jobs_to_file(jobs_file, initial_jobs)
@@ -93,7 +110,9 @@ class TestCronManagerUnit(unittest.TestCase):
 
             remaining = load_jobs_from_file(jobs_file)
             remaining_ids = [j["id"] for j in remaining]
-            self.assertNotIn("zero-factory-improvement-scanner-board-to-delete", remaining_ids)
+            self.assertNotIn(
+                "zero-factory-improvement-scanner-board-to-delete", remaining_ids
+            )
             self.assertIn("zero-factory-improvement-scanner-other-board", remaining_ids)
             self.assertIn("zero-factory-task-queue-check", remaining_ids)
 
@@ -106,7 +125,11 @@ class TestCronManagerUnit(unittest.TestCase):
                 {
                     "id": job_id,
                     "name": "Zero Factory task queue check",
-                    "schedule": {"kind": "interval", "minutes": 120, "display": "every 120m"},
+                    "schedule": {
+                        "kind": "interval",
+                        "minutes": 120,
+                        "display": "every 120m",
+                    },
                     "enabled": True,
                     "state": "scheduled",
                     "origin": "zerofactory",

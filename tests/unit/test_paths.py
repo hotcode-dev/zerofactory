@@ -11,8 +11,14 @@ import dispatcher as D
 import paths as P
 from dashboard.plugin_api import (
     PROFILE_MAP as PA_PROFILE_MAP,
+)
+from dashboard.plugin_api import (
     VALID_ASSIGNEES as PA_VALID_ASSIGNEES,
+)
+from dashboard.plugin_api import (
     get_profile_state_db,
+)
+from dashboard.plugin_api import (
     normalize_assignee as PA_normalize_assignee,
 )
 
@@ -54,7 +60,9 @@ class TestPathsResolution(unittest.TestCase):
             home_root = Path(td) / "home"
             plugin_root = Path(td) / "plugin_profiles"
             self._mk(plugin_root, "zf-builder", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=plugin_root)
+            home_ctx, plug_ctx = self._with_fake_home(
+                home_root, plugin_root=plugin_root
+            )
             with home_ctx, plug_ctx:
                 self.assertEqual(
                     P.resolve_profile_state_db("zf-builder"),
@@ -99,7 +107,9 @@ class TestPathsResolution(unittest.TestCase):
             self._mk(home_root, ".hermes", "state.db")
             self._mk(plugin_root, "zf-builder", "state.db")
             self._mk(home_root, ".hermes", "profiles", "zf-builder", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=plugin_root)
+            home_ctx, plug_ctx = self._with_fake_home(
+                home_root, plugin_root=plugin_root
+            )
             with home_ctx, plug_ctx:
                 self.assertEqual(
                     P.resolve_profile_state_db("zf-builder"),
@@ -133,13 +143,18 @@ class TestPathsResolution(unittest.TestCase):
             home_root = Path(td) / "home"
             plugin_root = Path(td) / "plugin_profiles"
             self._mk(plugin_root, "zf-reviewer", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=plugin_root)
+            home_ctx, plug_ctx = self._with_fake_home(
+                home_root, plugin_root=plugin_root
+            )
             with home_ctx, plug_ctx:
                 expected = plugin_root / "zf-reviewer" / "state.db"
                 self.assertEqual(D.resolve_profile_state_db("zf-reviewer"), expected)
                 self.assertEqual(get_profile_state_db("zf-reviewer"), expected)
                 self.assertIs(D.resolve_profile_state_db, P.resolve_profile_state_db)
-                self.assertEqual(get_profile_state_db("zf-reviewer"), P.resolve_profile_state_db("zf-reviewer"))
+                self.assertEqual(
+                    get_profile_state_db("zf-reviewer"),
+                    P.resolve_profile_state_db("zf-reviewer"),
+                )
 
     def test_single_source_of_truth_identity(self):
         """dispatcher and dashboard re-export the SAME objects from paths.py."""

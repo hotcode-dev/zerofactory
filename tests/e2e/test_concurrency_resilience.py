@@ -38,8 +38,12 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
         self.orig_env = {
             "ZEROFACTORY_DB": os.environ.get("ZEROFACTORY_DB"),
             "ZEROFACTORY_LOCK_PATH": os.environ.get("ZEROFACTORY_LOCK_PATH"),
-            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"),
-            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"),
+            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get(
+                "ZEROFACTORY_DISABLE_DISPATCHER"
+            ),
+            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get(
+                "ZEROFACTORY_SKIP_WORKER_SPAWN"
+            ),
         }
 
         os.environ["ZEROFACTORY_DB"] = str(self.db_path)
@@ -83,16 +87,21 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
     def test_02_board_max_concurrent_running_enforcement(self):
         """Dispatcher strictly respects board max_concurrent_running cap."""
         create_board(BoardCreate(git_url="https://github.com/example/cap.git"))
-        self.client.patch("/api/plugins/zerofactory/boards/example-cap", json={"max_concurrent_running": 2})
+        self.client.patch(
+            "/api/plugins/zerofactory/boards/example-cap",
+            json={"max_concurrent_running": 2},
+        )
 
         # Create 4 tasks in todo
         for i in range(1, 5):
-            create_task(TaskCreate(
-                board_slug="example-cap",
-                title=f"Parallel Task {i}",
-                status="todo",
-                assignee="zf-builder"
-            ))
+            create_task(
+                TaskCreate(
+                    board_slug="example-cap",
+                    title=f"Parallel Task {i}",
+                    status="todo",
+                    assignee="zf-builder",
+                )
+            )
 
         # Run dispatch cycle
         res = dispatcher.run_dispatch_cycle(self.db_path)
@@ -127,19 +136,24 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
             # Must complete cleanly without raising TimeoutExpired
             dispatcher._remove_worktree(str(fake_ws), fake_repo)
 
-        self.assertEqual(len(prune_calls), 1, "Worktree prune must be called on remove timeout")
+        self.assertEqual(
+            len(prune_calls), 1, "Worktree prune must be called on remove timeout"
+        )
 
     def test_20_langfuse_settings_and_test_connection(self):
         """Verify Langfuse settings lifecycle and /settings/langfuse/test endpoint."""
         # 1. Update settings
-        patch_res = self.client.patch("/api/plugins/zerofactory/settings", json={
-            "langfuse_enabled": True,
-            "langfuse_base_url": "https://cloud.langfuse.com",
-            "langfuse_public_key": "pk-lf-test-e2e",
-            "langfuse_secret_key": "sk-lf-test-e2e",
-            "langfuse_capture_mode": "metadata",
-            "langfuse_env": "e2e-test"
-        })
+        patch_res = self.client.patch(
+            "/api/plugins/zerofactory/settings",
+            json={
+                "langfuse_enabled": True,
+                "langfuse_base_url": "https://cloud.langfuse.com",
+                "langfuse_public_key": "pk-lf-test-e2e",
+                "langfuse_secret_key": "sk-lf-test-e2e",
+                "langfuse_capture_mode": "metadata",
+                "langfuse_env": "e2e-test",
+            },
+        )
         self.assertEqual(patch_res.status_code, 200)
         st = patch_res.json()["settings"]
         self.assertTrue(st["langfuse_enabled"])
@@ -147,11 +161,14 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
         self.assertEqual(st["langfuse_capture_mode"], "metadata")
 
         # 2. Test endpoint validation
-        test_res = self.client.post("/api/plugins/zerofactory/settings/langfuse/test", json={
-            "base_url": "https://cloud.langfuse.com",
-            "public_key": "invalid_key_prefix",
-            "secret_key": "sk-lf-123"
-        })
+        test_res = self.client.post(
+            "/api/plugins/zerofactory/settings/langfuse/test",
+            json={
+                "base_url": "https://cloud.langfuse.com",
+                "public_key": "invalid_key_prefix",
+                "secret_key": "sk-lf-123",
+            },
+        )
         self.assertEqual(test_res.status_code, 200)
         self.assertFalse(test_res.json()["ok"])
         self.assertIn("Invalid key format", test_res.json()["error"])
@@ -170,18 +187,26 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
                 "langfuse_capture_mode": "metadata",
                 "langfuse_env": "e2e-test",
             }
-            with patch.object(profile_manager, "get_hermes_home", return_value=hermes_fake):
+            with patch.object(
+                profile_manager, "get_hermes_home", return_value=hermes_fake
+            ):
                 profile_manager.sync_langfuse_profiles(enable_settings)
                 self.assertIn(
                     "HERMES_LANGFUSE_SECRET_KEY=«redacted:sk-…»",
                     (hermes_fake / ".env").read_text(encoding="utf-8"),
                 )
-                profile_manager.sync_langfuse_profiles(dict(enable_settings, langfuse_enabled=False))
+                profile_manager.sync_langfuse_profiles(
+                    dict(enable_settings, langfuse_enabled=False)
+                )
                 for d in (hermes_fake, profiles_dir):
                     env_text = (d / ".env").read_text(encoding="utf-8")
-                    for k in ("HERMES_LANGFUSE_SECRET_KEY", "HERMES_LANGFUSE_PUBLIC_KEY",
-                              "HERMES_LANGFUSE_BASE_URL", "HERMES_LANGFUSE_CAPTURE",
-                              "HERMES_LANGFUSE_ENV"):
+                    for k in (
+                        "HERMES_LANGFUSE_SECRET_KEY",
+                        "HERMES_LANGFUSE_PUBLIC_KEY",
+                        "HERMES_LANGFUSE_BASE_URL",
+                        "HERMES_LANGFUSE_CAPTURE",
+                        "HERMES_LANGFUSE_ENV",
+                    ):
                         self.assertNotIn(k, env_text, f"stale {k} left in {d / '.env'}")
 
 

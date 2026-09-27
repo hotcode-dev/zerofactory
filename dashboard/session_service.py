@@ -11,7 +11,7 @@ import sys
 import time
 from contextlib import closing
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -37,16 +37,20 @@ def _d():
     return sys.modules.get("dashboard.plugin_api") or sys.modules.get("plugin_api")
 
 
-def get_profile_state_db(assignee: str) -> Optional[Path]:
+def get_profile_state_db(assignee: str) -> Path | None:
     """Find the SQLite state.db for an agent profile."""
     return resolve_profile_state_db(assignee)
 
 
-def _resolve_profile_state_db_dyn(prof: str) -> Optional[Path]:
+def _resolve_profile_state_db_dyn(prof: str) -> Path | None:
     disp = _d()
     if disp is not None:
         target = getattr(disp, "resolve_profile_state_db", None)
-        if target is not None and target is not get_profile_state_db and target is not _resolve_profile_state_db_dyn:
+        if (
+            target is not None
+            and target is not get_profile_state_db
+            and target is not _resolve_profile_state_db_dyn
+        ):
             return target(prof)
     return resolve_profile_state_db(prof)
 
@@ -67,13 +71,13 @@ AGENT_ICONS = {
 
 
 def _compute_stuck_status(
-    task: Dict[str, Any],
+    task: dict[str, Any],
     is_alive: bool,
-    worker_pid: Optional[int],
-    started_at: Optional[float],
-    last_active: Optional[float],
-    log_path: Path
-) -> tuple[int, int, bool, Optional[str]]:
+    worker_pid: int | None,
+    started_at: float | None,
+    last_active: float | None,
+    log_path: Path,
+) -> tuple[int, int, bool, str | None]:
     """Compute running/idle duration and stuck status for a task."""
     now = int(time.time())
     meta = task.get("metadata") or {}
@@ -83,8 +87,15 @@ def _compute_stuck_status(
         except Exception:
             meta = {}
 
-    started = meta.get("started_at") or task.get("updated_at") or task.get("created_at") or now
-    running_seconds = max(0, now - int(started)) if task.get("status") == "running" else 0
+    started = (
+        meta.get("started_at")
+        or task.get("updated_at")
+        or task.get("created_at")
+        or now
+    )
+    running_seconds = (
+        max(0, now - int(started)) if task.get("status") == "running" else 0
+    )
 
     log_idle = None
     if log_path.exists():
@@ -107,10 +118,16 @@ def _compute_stuck_status(
         return running_seconds, idle_seconds, False, None
 
     try:
-        from ..dispatcher import get_task_timeout_seconds, get_inactivity_timeout_seconds
+        from ..dispatcher import (
+            get_inactivity_timeout_seconds,
+            get_task_timeout_seconds,
+        )
     except Exception:
         try:
-            from dispatcher import get_task_timeout_seconds, get_inactivity_timeout_seconds
+            from dispatcher import (
+                get_inactivity_timeout_seconds,
+                get_task_timeout_seconds,
+            )
         except Exception:
             get_task_timeout_seconds = lambda: 3600
             get_inactivity_timeout_seconds = lambda: 900
@@ -129,12 +146,16 @@ def _compute_stuck_status(
         stuck_reason = f"Exceeded running timeout ({running_seconds}s > {task_to}s)"
     elif idle_seconds > inact_to:
         is_stuck = True
-        stuck_reason = f"Worker inactive with no updates for {idle_seconds}s (limit {inact_to}s)"
+        stuck_reason = (
+            f"Worker inactive with no updates for {idle_seconds}s (limit {inact_to}s)"
+        )
 
     return running_seconds, idle_seconds, is_stuck, stuck_reason
 
 
-def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> List[Dict[str, Any]]:
+def resolve_task_all_sessions(
+    task: dict[str, Any], backfill: bool = True
+) -> list[dict[str, Any]]:
     """Extract all execution sessions (finished and ongoing) for a task across all agent profiles."""
     meta = task.get("metadata") or {}
     if isinstance(meta, str):
@@ -211,13 +232,12 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                     sid = str(r["id"])
                     is_match = False
 
-                    if sid in recorded_ids:
-                        is_match = True
-                    elif task_id and r["cwd"] and task_id in str(r["cwd"]):
-                        is_match = True
-                    elif task_id and r["title"] and task_id in str(r["title"]):
-                        is_match = True
-                    elif task_title and len(task_title) > 8 and r["title"] and task_title.lower() in str(r["title"]).lower():
+                    if sid in recorded_ids or task_id and r["cwd"] and task_id in str(r["cwd"]) or task_id and r["title"] and task_id in str(r["title"]) or (
+                        task_title
+                        and len(task_title) > 8
+                        and r["title"]
+                        and task_title.lower() in str(r["title"]).lower()
+                    ):
                         is_match = True
 
                     if not is_match:
@@ -239,16 +259,22 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                     recent_steps = []
                     last_action = r["last_activity_description"] or None
                     try:
-                        cursor.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'assistant'", (sid,))
+                        cursor.execute(
+                            "SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'assistant'",
+                            (sid,),
+                        )
                         turn_count = cursor.fetchone()["cnt"]
 
-                        cursor.execute("""
+                        cursor.execute(
+                            """
                             SELECT id, role, tool_name, tool_calls, content, reasoning_content, timestamp
                             FROM messages
                             WHERE session_id = ?
                             ORDER BY timestamp DESC, id DESC
                             LIMIT 8
-                        """, (sid,))
+                        """,
+                            (sid,),
+                        )
                         recent_rows = cursor.fetchall()
                         for msg in reversed(recent_rows):
                             r_role = msg["role"]
@@ -261,17 +287,29 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                                     try:
                                         tc = json.loads(msg["tool_calls"])
                                         if isinstance(tc, list) and tc:
-                                            fn_name = tc[0].get("function", {}).get("name") or tc[0].get("name", "tool")
+                                            fn_name = tc[0].get("function", {}).get(
+                                                "name"
+                                            ) or tc[0].get("name", "tool")
                                             snippet = f"executing {fn_name}"
                                         elif isinstance(tc, dict):
-                                            fn_name = tc.get("function", {}).get("name") or tc.get("name", "tool")
+                                            fn_name = tc.get("function", {}).get(
+                                                "name"
+                                            ) or tc.get("name", "tool")
                                             snippet = f"executing {fn_name}"
                                     except Exception:
                                         snippet = "tool calling"
                                 elif msg["reasoning_content"]:
-                                    snippet = (msg["reasoning_content"][:90] + "...") if len(msg["reasoning_content"]) > 90 else msg["reasoning_content"]
+                                    snippet = (
+                                        (msg["reasoning_content"][:90] + "...")
+                                        if len(msg["reasoning_content"]) > 90
+                                        else msg["reasoning_content"]
+                                    )
                                 elif msg["content"]:
-                                    snippet = (msg["content"][:90] + "...") if len(msg["content"]) > 90 else msg["content"]
+                                    snippet = (
+                                        (msg["content"][:90] + "...")
+                                        if len(msg["content"]) > 90
+                                        else msg["content"]
+                                    )
                                 else:
                                     snippet = "thinking..."
                             elif r_role == "tool":
@@ -283,13 +321,15 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                             if not last_action and snippet:
                                 last_action = snippet
 
-                            recent_steps.append({
-                                "id": msg["id"],
-                                "role": r_role,
-                                "tool_name": r_tool,
-                                "snippet": snippet,
-                                "timestamp": msg["timestamp"]
-                            })
+                            recent_steps.append(
+                                {
+                                    "id": msg["id"],
+                                    "role": r_role,
+                                    "tool_name": r_tool,
+                                    "snippet": snippet,
+                                    "timestamp": msg["timestamp"],
+                                }
+                            )
                     except Exception:
                         pass
 
@@ -297,10 +337,24 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                     started = r["started_at"]
                     ended = r["ended_at"]
                     task_started_at = meta.get("started_at")
-                    is_stale_start = bool(task_started_at and started and started < (task_started_at - 60))
-                    if is_alive and not is_stale_start and (sid == active_sess_id or r["ended_at"] is None) and task_status in ("running", "todo"):
-                        is_active_session = True
-                    elif r["ended_at"] is None and not is_stale_start and task_status == "running" and (time.time() - (r["last_activity_at"] or r["started_at"] or 0)) < 300:
+                    is_stale_start = bool(
+                        task_started_at and started and started < (task_started_at - 60)
+                    )
+                    if (
+                        is_alive
+                        and not is_stale_start
+                        and (sid == active_sess_id or r["ended_at"] is None)
+                        and task_status in ("running", "todo")
+                    ) or (
+                        r["ended_at"] is None
+                        and not is_stale_start
+                        and task_status == "running"
+                        and (
+                            time.time()
+                            - (r["last_activity_at"] or r["started_at"] or 0)
+                        )
+                        < 300
+                    ):
                         is_active_session = True
 
                     sess_status = "ongoing" if is_active_session else "finished"
@@ -314,26 +368,31 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                     if r["profile_name"] and r["profile_name"] in profile_roles:
                         agent_role = r["profile_name"]
 
-                    sessions_found.append({
-                        "session_id": sid,
-                        "agent": agent_role,
-                        "agent_label": AGENT_LABELS.get(agent_role, agent_role.replace("zf-", "").capitalize()),
-                        "agent_icon": AGENT_ICONS.get(agent_role, "🤖"),
-                        "status": sess_status,
-                        "is_active": is_active_session,
-                        "model": r["model"],
-                        "started_at": started,
-                        "ended_at": ended,
-                        "last_activity_at": r["last_activity_at"],
-                        "duration_seconds": duration,
-                        "message_count": r["message_count"] or 0,
-                        "turn_count": turn_count or r["tool_call_count"] or 0,
-                        "tool_calls_count": r["tool_call_count"] or 0,
-                        "title": r["title"],
-                        "last_action": last_action or (f"Turn {turn_count}" if turn_count else "Active"),
-                        "recent_steps": recent_steps,
-                        "cwd": r["cwd"]
-                    })
+                    sessions_found.append(
+                        {
+                            "session_id": sid,
+                            "agent": agent_role,
+                            "agent_label": AGENT_LABELS.get(
+                                agent_role, agent_role.replace("zf-", "").capitalize()
+                            ),
+                            "agent_icon": AGENT_ICONS.get(agent_role, "🤖"),
+                            "status": sess_status,
+                            "is_active": is_active_session,
+                            "model": r["model"],
+                            "started_at": started,
+                            "ended_at": ended,
+                            "last_activity_at": r["last_activity_at"],
+                            "duration_seconds": duration,
+                            "message_count": r["message_count"] or 0,
+                            "turn_count": turn_count or r["tool_call_count"] or 0,
+                            "tool_calls_count": r["tool_call_count"] or 0,
+                            "title": r["title"],
+                            "last_action": last_action
+                            or (f"Turn {turn_count}" if turn_count else "Active"),
+                            "recent_steps": recent_steps,
+                            "cwd": r["cwd"],
+                        }
+                    )
         except Exception as e:
             _log.debug("Error checking profile %s state DB: %s", prof, e)
 
@@ -350,32 +409,42 @@ def resolve_task_all_sessions(task: Dict[str, Any], backfill: bool = True) -> Li
                     s_status = "ongoing"
                 elif task_status != "running":
                     s_status = "finished"
-                sessions_found.append({
-                    "session_id": s_id,
-                    "agent": s_agent,
-                    "agent_label": AGENT_LABELS.get(s_agent, s_agent.replace("zf-", "").capitalize()),
-                    "agent_icon": AGENT_ICONS.get(s_agent, "🤖"),
-                    "status": s_status,
-                    "is_active": (s_status == "ongoing"),
-                    "model": s.get("model"),
-                    "started_at": s.get("started_at"),
-                    "ended_at": s.get("ended_at"),
-                    "last_activity_at": s.get("last_activity_at") or s.get("started_at"),
-                    "duration_seconds": None,
-                    "message_count": s.get("message_count", 0),
-                    "turn_count": s.get("turn_count", 0),
-                    "tool_calls_count": s.get("tool_calls_count", 0),
-                    "title": s.get("title", task_title),
-                    "last_action": s.get("last_action", "Active" if s_status == "ongoing" else "Completed"),
-                    "recent_steps": s.get("recent_steps", []),
-                    "cwd": task.get("workspace_path")
-                })
+                sessions_found.append(
+                    {
+                        "session_id": s_id,
+                        "agent": s_agent,
+                        "agent_label": AGENT_LABELS.get(
+                            s_agent, s_agent.replace("zf-", "").capitalize()
+                        ),
+                        "agent_icon": AGENT_ICONS.get(s_agent, "🤖"),
+                        "status": s_status,
+                        "is_active": (s_status == "ongoing"),
+                        "model": s.get("model"),
+                        "started_at": s.get("started_at"),
+                        "ended_at": s.get("ended_at"),
+                        "last_activity_at": s.get("last_activity_at")
+                        or s.get("started_at"),
+                        "duration_seconds": None,
+                        "message_count": s.get("message_count", 0),
+                        "turn_count": s.get("turn_count", 0),
+                        "tool_calls_count": s.get("tool_calls_count", 0),
+                        "title": s.get("title", task_title),
+                        "last_action": s.get(
+                            "last_action",
+                            "Active" if s_status == "ongoing" else "Completed",
+                        ),
+                        "recent_steps": s.get("recent_steps", []),
+                        "cwd": task.get("workspace_path"),
+                    }
+                )
 
     sessions_found.sort(key=lambda s: s.get("started_at") or 0)
     return sessions_found
 
 
-def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -> Dict[str, Any]:
+def resolve_task_session_progress(
+    task: dict[str, Any], backfill: bool = True
+) -> dict[str, Any]:
     """Extract real-time execution progress, turn counts, tool calls, and all historical/ongoing sessions for a task."""
     meta = task.get("metadata") or {}
     if isinstance(meta, str):
@@ -423,17 +492,24 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             try:
                 with get_db_conn() as k_conn:
                     meta["session_id"] = s_id
-                    k_conn.execute("UPDATE tasks SET metadata = ? WHERE id = ?", (json.dumps(meta), task_id))
+                    k_conn.execute(
+                        "UPDATE tasks SET metadata = ? WHERE id = ?",
+                        (json.dumps(meta), task_id),
+                    )
                     k_conn.commit()
             except Exception:
                 pass
 
-        last_active_ts = active_session.get("last_activity_at") or active_session.get("started_at")
+        last_active_ts = active_session.get("last_activity_at") or active_session.get(
+            "started_at"
+        )
         r_sec, i_sec, stuck, reason = _compute_stuck_status(
-            task, is_alive, worker_pid,
+            task,
+            is_alive,
+            worker_pid,
             active_session.get("started_at"),
             last_active_ts,
-            log_path
+            log_path,
         )
 
         return {
@@ -459,10 +535,12 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
             "idle_seconds": i_sec,
             "is_stuck": stuck,
             "stuck_reason": reason,
-            "sessions": sessions
+            "sessions": sessions,
         }
 
-    r_sec, i_sec, stuck, reason = _compute_stuck_status(task, is_alive, worker_pid, None, None, log_path)
+    r_sec, i_sec, stuck, reason = _compute_stuck_status(
+        task, is_alive, worker_pid, None, None, log_path
+    )
     return {
         "has_session": bool(session_id),
         "session_id": session_id,
@@ -482,19 +560,23 @@ def resolve_task_session_progress(task: Dict[str, Any], backfill: bool = True) -
         "idle_seconds": i_sec,
         "is_stuck": stuck,
         "stuck_reason": reason,
-        "sessions": sessions
+        "sessions": sessions,
     }
 
 
-def _load_task_board_map() -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], set[str]]:
+def _load_task_board_map() -> tuple[
+    dict[str, dict[str, Any]], dict[str, dict[str, Any]], set[str]
+]:
     """Loads a mapping of task_id -> task info, session_id -> task info, and known board_slugs."""
-    task_map: Dict[str, Dict[str, Any]] = {}
-    session_to_task: Dict[str, Dict[str, Any]] = {}
+    task_map: dict[str, dict[str, Any]] = {}
+    session_to_task: dict[str, dict[str, Any]] = {}
     board_slugs: set[str] = set()
     try:
         with get_db_conn() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT id, board_slug, title, workspace_path, metadata FROM tasks")
+            cur.execute(
+                "SELECT id, board_slug, title, workspace_path, metadata FROM tasks"
+            )
             for row in cur.fetchall():
                 tid = str(row[0])
                 bslug = str(row[1] or "")
@@ -510,7 +592,11 @@ def _load_task_board_map() -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[st
                 meta_raw = row[4]
                 if meta_raw:
                     try:
-                        mdict = json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
+                        mdict = (
+                            json.loads(meta_raw)
+                            if isinstance(meta_raw, str)
+                            else meta_raw
+                        )
                         if isinstance(mdict, dict):
                             msid = mdict.get("session_id")
                             if msid:
@@ -523,12 +609,12 @@ def _load_task_board_map() -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[st
 
 
 def list_all_sessions(
-    role: Optional[str] = None,
-    status: Optional[str] = None,
-    board_slug: Optional[str] = None,
+    role: str | None = None,
+    status: str | None = None,
+    board_slug: str | None = None,
     limit: int = 15,
-    offset: int = 0
-) -> Dict[str, Any]:
+    offset: int = 0,
+) -> dict[str, Any]:
     """List recent and active AI agent sessions across Orchestrator, Builder, and Reviewer."""
     profiles = ["zf-builder", "zf-reviewer", "zf-orchestrator"]
     if role and role in profiles:
@@ -538,30 +624,46 @@ def list_all_sessions(
 
     all_sessions = []
     seen = set()
-    fetch_limit = (offset + limit) * 3 if (board_slug and board_slug != "all") else (offset + limit)
+    fetch_limit = (
+        (offset + limit) * 3
+        if (board_slug and board_slug != "all")
+        else (offset + limit)
+    )
     for prof in profiles:
         sdb = _resolve_profile_state_db_dyn(prof)
         if not sdb or not sdb.exists():
             continue
         try:
-            conn = sqlite3.connect(f"file:{sdb.resolve()}?mode=ro", uri=True, timeout=2.0)
+            conn = sqlite3.connect(
+                f"file:{sdb.resolve()}?mode=ro", uri=True, timeout=2.0
+            )
             conn.row_factory = sqlite3.Row
             with closing(conn):
                 cur = conn.cursor()
-                rows = cur.execute("""
+                rows = cur.execute(
+                    """
                     SELECT id, model, started_at, ended_at, last_activity_at, last_activity_description,
                            message_count, tool_call_count, cwd, title, profile_name
                     FROM sessions
                     ORDER BY started_at DESC
                     LIMIT ?
-                """, (fetch_limit,)).fetchall()
+                """,
+                    (fetch_limit,),
+                ).fetchall()
                 for r in rows:
                     sid = str(r["id"])
                     if sid in seen:
                         continue
                     seen.add(sid)
                     ended = r["ended_at"]
-                    is_ongoing = (ended is None and (time.time() - (r["last_activity_at"] or r["started_at"] or 0)) < 300)
+                    is_ongoing = (
+                        ended is None
+                        and (
+                            time.time()
+                            - (r["last_activity_at"] or r["started_at"] or 0)
+                        )
+                        < 300
+                    )
                     sess_status = "ongoing" if is_ongoing else "finished"
                     if status and sess_status != status:
                         continue
@@ -574,17 +676,24 @@ def list_all_sessions(
                         matched_board_slug = session_to_task[sid]["board_slug"]
                     else:
                         cwd_or_title = f"{r['cwd'] or ''} {r['title'] or ''}"
-                        m_task = re.search(r"\b(zf-[a-z0-9_-]+|task-[a-z0-9_-]+)\b", cwd_or_title, re.I)
+                        m_task = re.search(
+                            r"\b(zf-[a-z0-9_-]+|task-[a-z0-9_-]+)\b", cwd_or_title, re.IGNORECASE
+                        )
                         if m_task:
                             tid_candidate = m_task.group(1).lower()
                             if tid_candidate in task_map:
                                 matched_task_id = task_map[tid_candidate]["id"]
-                                matched_board_slug = task_map[tid_candidate]["board_slug"]
+                                matched_board_slug = task_map[tid_candidate][
+                                    "board_slug"
+                                ]
                             else:
                                 matched_task_id = m_task.group(1)
                         if not matched_board_slug:
                             for b in known_board_slugs:
-                                if b in cwd_or_title or b.replace("-", "/") in cwd_or_title:
+                                if (
+                                    b in cwd_or_title
+                                    or b.replace("-", "/") in cwd_or_title
+                                ):
                                     matched_board_slug = b
                                     break
 
@@ -593,40 +702,55 @@ def list_all_sessions(
                             continue
 
                     started = r["started_at"]
-                    duration = max(0, int(ended - started)) if (started and ended) else (max(0, int(time.time() - started)) if (started and is_ongoing) else None)
+                    duration = (
+                        max(0, int(ended - started))
+                        if (started and ended)
+                        else (
+                            max(0, int(time.time() - started))
+                            if (started and is_ongoing)
+                            else None
+                        )
+                    )
 
                     # Compute turn count if possible
                     turn_cnt = r["tool_call_count"] or 0
                     try:
                         cur2 = conn.cursor()
-                        cur2.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'assistant'", (sid,))
+                        cur2.execute(
+                            "SELECT COUNT(*) as cnt FROM messages WHERE session_id = ? AND role = 'assistant'",
+                            (sid,),
+                        )
                         m_res = cur2.fetchone()
                         if m_res and m_res[0]:
                             turn_cnt = m_res[0]
                     except Exception:
                         pass
 
-                    all_sessions.append({
-                        "session_id": sid,
-                        "agent": prof,
-                        "agent_label": AGENT_LABELS.get(prof, prof.replace("zf-", "").capitalize()),
-                        "agent_icon": AGENT_ICONS.get(prof, "🤖"),
-                        "status": sess_status,
-                        "is_active": is_ongoing,
-                        "model": r["model"],
-                        "started_at": started,
-                        "ended_at": ended,
-                        "last_activity_at": r["last_activity_at"],
-                        "duration_seconds": duration,
-                        "message_count": r["message_count"] or 0,
-                        "turn_count": turn_cnt,
-                        "tool_calls_count": r["tool_call_count"] or 0,
-                        "title": r["title"],
-                        "last_action": r["last_activity_description"] or "Active",
-                        "cwd": r["cwd"],
-                        "task_id": matched_task_id,
-                        "board_slug": matched_board_slug
-                    })
+                    all_sessions.append(
+                        {
+                            "session_id": sid,
+                            "agent": prof,
+                            "agent_label": AGENT_LABELS.get(
+                                prof, prof.replace("zf-", "").capitalize()
+                            ),
+                            "agent_icon": AGENT_ICONS.get(prof, "🤖"),
+                            "status": sess_status,
+                            "is_active": is_ongoing,
+                            "model": r["model"],
+                            "started_at": started,
+                            "ended_at": ended,
+                            "last_activity_at": r["last_activity_at"],
+                            "duration_seconds": duration,
+                            "message_count": r["message_count"] or 0,
+                            "turn_count": turn_cnt,
+                            "tool_calls_count": r["tool_call_count"] or 0,
+                            "title": r["title"],
+                            "last_action": r["last_activity_description"] or "Active",
+                            "cwd": r["cwd"],
+                            "task_id": matched_task_id,
+                            "board_slug": matched_board_slug,
+                        }
+                    )
         except Exception as e:
             _log.debug("Error reading sessions for profile %s: %s", prof, e)
 
@@ -638,5 +762,5 @@ def list_all_sessions(
         "total": len(all_sessions),
         "limit": limit,
         "offset": offset,
-        "sessions": all_sessions[start_idx:end_idx]
+        "sessions": all_sessions[start_idx:end_idx],
     }

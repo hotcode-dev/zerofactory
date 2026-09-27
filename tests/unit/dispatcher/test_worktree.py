@@ -4,18 +4,14 @@ import json
 import os
 import sqlite3
 import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-import pytest
+from unittest.mock import patch
 
 from dispatcher.worktree import (
-    resolve_task_repo_path,
-    setup_worktree,
-    _remove_worktree,
-    _handle_local_merge_conflict,
-    _handle_pr_conflict_from_github,
     _delete_remote_branch,
+    _handle_local_merge_conflict,
+    _remove_worktree,
+    resolve_task_repo_path,
 )
 
 
@@ -75,6 +71,7 @@ def _init_tasks_db(conn: sqlite3.Connection):
 
 # --- 1. resolve_task_repo_path ---
 
+
 def test_resolve_task_repo_path_from_board_git_url(tmp_path: Path):
     """Local repo path in board git_url is preferred when valid."""
     repo = tmp_path / "my_repo"
@@ -102,6 +99,7 @@ def test_resolve_task_repo_path_from_tenant(tmp_path: Path):
 
 
 # --- 2. _remove_worktree ---
+
 
 def test_remove_worktree_missing_path_noops(tmp_path: Path):
     """Missing or empty path does nothing and does not invoke git."""
@@ -144,6 +142,7 @@ def test_remove_worktree_survives_hanging_remove(tmp_path: Path):
 
 # --- 3. _delete_remote_branch ---
 
+
 def test_delete_remote_branch_timeout_handled(tmp_path: Path):
     """Timeout during remote branch deletion logs a warning and returns cleanly."""
     repo = tmp_path / "repo"
@@ -159,6 +158,7 @@ def test_delete_remote_branch_timeout_handled(tmp_path: Path):
 
 # --- 4. Conflict Handlers ---
 
+
 def test_handle_local_merge_conflict_increments_retries_and_routes_to_builder():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -169,10 +169,14 @@ def test_handle_local_merge_conflict_increments_retries_and_routes_to_builder():
     conn.commit()
 
     cur = conn.cursor()
-    _handle_local_merge_conflict(cur, "t1", "Feature 1", "/fake/ws", ["file.py"], now=1001)
+    _handle_local_merge_conflict(
+        cur, "t1", "Feature 1", "/fake/ws", ["file.py"], now=1001
+    )
     conn.commit()
 
-    row = conn.execute("SELECT title, status, assignee, metadata FROM tasks WHERE id = 't1'").fetchone()
+    row = conn.execute(
+        "SELECT title, status, assignee, metadata FROM tasks WHERE id = 't1'"
+    ).fetchone()
     assert "[PR Conflict]" in row["title"]
     assert row["status"] == "todo"
     assert row["assignee"] == "zf-builder"
@@ -187,13 +191,15 @@ def test_handle_local_merge_conflict_blocks_when_max_retries_exceeded():
     initial_meta = json.dumps({"conflict_retries": 3})
     conn.execute(
         "INSERT INTO tasks (id, title, status, assignee, metadata, updated_at) VALUES ('t2', 'Feature 2', 'running', 'zf-builder', ?, 1000)",
-        (initial_meta,)
+        (initial_meta,),
     )
     conn.commit()
 
     cur = conn.cursor()
     with patch.dict(os.environ, {"ZEROFACTORY_MAX_CONFLICT_RETRIES": "3"}):
-        _handle_local_merge_conflict(cur, "t2", "Feature 2", "/fake/ws", ["file.py"], now=1001)
+        _handle_local_merge_conflict(
+            cur, "t2", "Feature 2", "/fake/ws", ["file.py"], now=1001
+        )
         conn.commit()
 
     row = conn.execute("SELECT status, metadata FROM tasks WHERE id = 't2'").fetchone()

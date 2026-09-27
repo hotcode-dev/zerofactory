@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import os
-import shutil
-import sqlite3
 import subprocess
 import sys
-import tempfile
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Generator, Iterator
 
 import pytest
 
@@ -57,12 +54,29 @@ def git_repo(tmp_path: Path) -> Path:
     """Create and initialize a clean local git repository."""
     repo = tmp_path / "test_repo"
     repo.mkdir(parents=True)
-    subprocess.run(["git", "init", "-b", "main"], cwd=str(repo), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "init", "-b", "main"], cwd=str(repo), check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
     (repo / "README.md").write_text("# Test Repo\n", encoding="utf-8")
     subprocess.run(["git", "add", "."], cwd=str(repo), check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "chore: initial commit"], cwd=str(repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "chore: initial commit"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
     return repo
 
 
@@ -71,6 +85,7 @@ def api_client(initialized_db: Path):
     """Provide a FastAPI TestClient wired to the Zero Factory plugin router."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from dashboard.plugin_api import router
 
     app = FastAPI()

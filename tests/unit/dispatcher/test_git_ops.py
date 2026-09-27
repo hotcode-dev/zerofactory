@@ -2,21 +2,20 @@
 
 import os
 import subprocess
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from dispatcher.git_ops import (
-    get_default_branch,
-    sync_repo_main,
-    check_files_for_conflict_markers,
-    check_unresolved_conflicts,
-    check_unresolved_conflicts_safe,
-    pull_and_merge_main,
-    clean_stale_git_locks,
     GitConflictCheckError,
     _has_unresolved_conflict_markers,
+    check_unresolved_conflicts,
+    check_unresolved_conflicts_safe,
+    clean_stale_git_locks,
+    get_default_branch,
+    pull_and_merge_main,
+    sync_repo_main,
 )
 
 
@@ -56,10 +55,13 @@ def _merge_cmds(rec):
 
 # --- 1. Conflict Marker Unit Logic ---
 
+
 def test_has_unresolved_conflict_markers():
     """Verify three-way conflict marker detection without false positives."""
     # Valid marker block
-    valid_marker = b"<<<<<<< HEAD\nlocal changes\n=======\nremote changes\n>>>>>>> main\n"
+    valid_marker = (
+        b"<<<<<<< HEAD\nlocal changes\n=======\nremote changes\n>>>>>>> main\n"
+    )
     assert _has_unresolved_conflict_markers(valid_marker) is True
 
     # Missing separator
@@ -77,54 +79,111 @@ def test_has_unresolved_conflict_markers():
 
 # --- 2. Default Branch Resolution Fallback Chain ---
 
+
 def test_get_default_branch_origin_head():
-    rec = _ProcRecorder({
-        ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(0, "refs/remotes/origin/main"),
-    })
+    rec = _ProcRecorder(
+        {
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(
+                0, "refs/remotes/origin/main"
+            ),
+        }
+    )
     with patch("dispatcher.git_ops.subprocess.run", new=rec):
         assert get_default_branch(Path("/tmp/fake_repo")) == "main"
 
 
 def test_get_default_branch_origin_main_showref():
-    rec = _ProcRecorder({
-        ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
-        ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(0, ""),
-    })
+    rec = _ProcRecorder(
+        {
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            (
+                "git",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/main",
+            ): _proc_result(0, ""),
+        }
+    )
     with patch("dispatcher.git_ops.subprocess.run", new=rec):
         assert get_default_branch(Path("/tmp/fake_repo")) == "main"
 
 
 def test_get_default_branch_origin_master_showref():
-    rec = _ProcRecorder({
-        ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
-        ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
-        ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(0, ""),
-    })
+    rec = _ProcRecorder(
+        {
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            (
+                "git",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/main",
+            ): _proc_result(1, ""),
+            (
+                "git",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/master",
+            ): _proc_result(0, ""),
+        }
+    )
     with patch("dispatcher.git_ops.subprocess.run", new=rec):
         assert get_default_branch(Path("/tmp/fake_repo")) == "master"
 
 
 def test_get_default_branch_fallback_main():
-    rec = _ProcRecorder({
-        ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
-        ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/main"): _proc_result(1, ""),
-        ("git", "show-ref", "--verify", "--quiet", "refs/remotes/origin/master"): _proc_result(1, ""),
-        ("git", "show-ref", "--verify", "--quiet", "refs/heads/main"): _proc_result(1, ""),
-        ("git", "show-ref", "--verify", "--quiet", "refs/heads/master"): _proc_result(1, ""),
-    })
+    rec = _ProcRecorder(
+        {
+            ("git", "symbolic-ref", "refs/remotes/origin/HEAD"): _proc_result(1, ""),
+            (
+                "git",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/main",
+            ): _proc_result(1, ""),
+            (
+                "git",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/master",
+            ): _proc_result(1, ""),
+            ("git", "show-ref", "--verify", "--quiet", "refs/heads/main"): _proc_result(
+                1, ""
+            ),
+            (
+                "git",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/heads/master",
+            ): _proc_result(1, ""),
+        }
+    )
     with patch("dispatcher.git_ops.subprocess.run", new=rec):
         assert get_default_branch(Path("/tmp/fake_repo")) == "main"
 
 
 # --- 3. sync_repo_main Guards ---
 
+
 def test_sync_repo_main_skipped_when_off_default_branch():
-    rec = _ProcRecorder({
-        ("git", "fetch", "origin", "main"): _proc_result(),
-        ("git", "status", "--porcelain"): _proc_result(0, ""),
-        ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "feature-x\n"),
-    })
-    with patch("dispatcher.git_ops._d") as mock_d, patch("dispatcher.git_ops.subprocess.run", new=rec):
+    rec = _ProcRecorder(
+        {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, ""),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(
+                0, "feature-x\n"
+            ),
+        }
+    )
+    with (
+        patch("dispatcher.git_ops._d") as mock_d,
+        patch("dispatcher.git_ops.subprocess.run", new=rec),
+    ):
         mock_d.return_value.get_default_branch.return_value = "main"
         out = sync_repo_main(Path("/tmp/fake_repo"))
     assert out == "main"
@@ -132,12 +191,17 @@ def test_sync_repo_main_skipped_when_off_default_branch():
 
 
 def test_sync_repo_main_skipped_when_dirty():
-    rec = _ProcRecorder({
-        ("git", "fetch", "origin", "main"): _proc_result(),
-        ("git", "status", "--porcelain"): _proc_result(0, " M dirty.txt\n"),
-        ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "main\n"),
-    })
-    with patch("dispatcher.git_ops._d") as mock_d, patch("dispatcher.git_ops.subprocess.run", new=rec):
+    rec = _ProcRecorder(
+        {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, " M dirty.txt\n"),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "main\n"),
+        }
+    )
+    with (
+        patch("dispatcher.git_ops._d") as mock_d,
+        patch("dispatcher.git_ops.subprocess.run", new=rec),
+    ):
         mock_d.return_value.get_default_branch.return_value = "main"
         out = sync_repo_main(Path("/tmp/fake_repo"))
     assert out == "main"
@@ -145,13 +209,18 @@ def test_sync_repo_main_skipped_when_dirty():
 
 
 def test_sync_repo_main_ff_merge_on_clean_main():
-    rec = _ProcRecorder({
-        ("git", "fetch", "origin", "main"): _proc_result(),
-        ("git", "status", "--porcelain"): _proc_result(0, ""),
-        ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "main\n"),
-        ("git", "merge", "--ff-only", "origin/main"): _proc_result(),
-    })
-    with patch("dispatcher.git_ops._d") as mock_d, patch("dispatcher.git_ops.subprocess.run", new=rec):
+    rec = _ProcRecorder(
+        {
+            ("git", "fetch", "origin", "main"): _proc_result(),
+            ("git", "status", "--porcelain"): _proc_result(0, ""),
+            ("git", "rev-parse", "--abbrev-ref", "HEAD"): _proc_result(0, "main\n"),
+            ("git", "merge", "--ff-only", "origin/main"): _proc_result(),
+        }
+    )
+    with (
+        patch("dispatcher.git_ops._d") as mock_d,
+        patch("dispatcher.git_ops.subprocess.run", new=rec),
+    ):
         mock_d.return_value.get_default_branch.return_value = "main"
         out = sync_repo_main(Path("/tmp/fake_repo"))
     assert out == "main"
@@ -159,6 +228,7 @@ def test_sync_repo_main_ff_merge_on_clean_main():
 
 
 # --- 4. Fail-Closed Conflict Detection & Safe Wrapper ---
+
 
 def test_check_unresolved_conflicts_fail_closed(tmp_path: Path):
     """Authoritative git query failure must raise GitConflictCheckError, not silently return []."""
@@ -184,6 +254,7 @@ def test_check_unresolved_conflicts_fail_closed(tmp_path: Path):
 
 # --- 5. Stale Lock File Cleanup ---
 
+
 def test_clean_stale_git_locks(tmp_path: Path):
     """Locks older than max_age_seconds must be removed, fresh ones preserved."""
     repo = tmp_path / "repo"
@@ -194,6 +265,7 @@ def test_clean_stale_git_locks(tmp_path: Path):
     old_lock.write_text("lock")
     # Set mtime to 30 seconds ago
     import time
+
     old_time = time.time() - 30
     os.utime(str(old_lock), (old_time, old_time))
 
@@ -211,32 +283,69 @@ def test_clean_stale_git_locks(tmp_path: Path):
 
 # --- 6. Non-Fast-Forward Merge Integration ---
 
+
 def test_pull_and_merge_main_non_ff(tmp_path: Path):
     """Test 3-way merge without conflict on diverged branches."""
     repo_path = tmp_path / "repo"
     repo_path.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_path), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(repo_path), check=True)
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=str(repo_path),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"], cwd=str(repo_path), check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=str(repo_path),
+        check=True,
+    )
 
     (repo_path / "base.txt").write_text("base\n")
-    subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "base"], cwd=str(repo_path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "add", "."], cwd=str(repo_path), check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=str(repo_path),
+        check=True,
+        capture_output=True,
+    )
 
     worktree_dir = tmp_path / "wt"
     subprocess.run(
         ["git", "worktree", "add", str(worktree_dir), "-b", "task/nff"],
-        cwd=str(repo_path), check=True, capture_output=True,
+        cwd=str(repo_path),
+        check=True,
+        capture_output=True,
     )
     (worktree_dir / "task.txt").write_text("task change\n")
-    subprocess.run(["git", "add", "."], cwd=str(worktree_dir), check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "task commit"], cwd=str(worktree_dir), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "add", "."], cwd=str(worktree_dir), check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "task commit"],
+        cwd=str(worktree_dir),
+        check=True,
+        capture_output=True,
+    )
 
     (repo_path / "main.txt").write_text("main change\n")
-    subprocess.run(["git", "add", "."], cwd=str(repo_path), check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "main commit"], cwd=str(repo_path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "add", "."], cwd=str(repo_path), check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "main commit"],
+        cwd=str(repo_path),
+        check=True,
+        capture_output=True,
+    )
 
-    success, conflicts, msg = pull_and_merge_main(worktree_dir, repo_path, default_branch="main")
+    success, conflicts, msg = pull_and_merge_main(
+        worktree_dir, repo_path, default_branch="main"
+    )
     assert success is True
     assert conflicts == []
     assert "Successfully merged" in msg

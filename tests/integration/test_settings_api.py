@@ -1,6 +1,5 @@
 """Integration tests for Settings API endpoints (/api/plugins/zerofactory/settings)."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 

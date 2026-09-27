@@ -9,12 +9,11 @@ import sqlite3
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional
 
 from .config import _active_workers, _d, _log
 
 
-def is_pid_alive(pid: Optional[int]) -> bool:
+def is_pid_alive(pid: int | None) -> bool:
     """Check if a process exists and is actively running (not a zombie/defunct)."""
     if not pid or not isinstance(pid, int) or pid <= 0:
         return False
@@ -45,7 +44,9 @@ def is_pid_alive(pid: Optional[int]) -> bool:
     return True
 
 
-def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int], grace: float = 2.0) -> None:
+def terminate_process_group(
+    proc: subprocess.Popen | None, pid: int | None, grace: float = 2.0
+) -> None:
     """Terminate a worker's ENTIRE process group (session), not just the child.
 
     All Zero Factory spawn sites run children with ``start_new_session=True``
@@ -71,7 +72,7 @@ def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int]
     _os = getattr(_disp, "os", os)
     _time = getattr(_disp, "time", time)
 
-    pgid: Optional[int] = None
+    pgid: int | None = None
     if proc is not None and isinstance(proc.pid, int):
         try:
             pgid = _os.getpgid(proc.pid)
@@ -83,7 +84,11 @@ def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int]
         pgid = pid
 
     if pgid is None:
-        _log.debug("terminate_process_group: no resolvable process group (proc=%s, pid=%s)", proc, pid)
+        _log.debug(
+            "terminate_process_group: no resolvable process group (proc=%s, pid=%s)",
+            proc,
+            pid,
+        )
         return
 
     # Cheap guard: make sure the group still exists before signalling (avoids
@@ -149,7 +154,9 @@ def terminate_process_group(proc: Optional[subprocess.Popen], pid: Optional[int]
             pass
 
 
-def terminate_worker_process(proc: Optional[subprocess.Popen], pid: Optional[int]) -> None:
+def terminate_worker_process(
+    proc: subprocess.Popen | None, pid: int | None
+) -> None:
     """Safely terminate a worker process with SIGTERM then SIGKILL.
 
     Signals the worker's whole process group (session) rather than just the
@@ -163,7 +170,7 @@ def terminate_worker_process(proc: Optional[subprocess.Popen], pid: Optional[int
         _log.debug("terminate_worker_process: group termination raised: %s", e)
 
 
-def stop_task_worker(task_id: str, cursor: Optional[sqlite3.Cursor] = None) -> None:
+def stop_task_worker(task_id: str, cursor: sqlite3.Cursor | None = None) -> None:
     """Safely terminate any active worker process for a task.
 
     Invoked before git worktree removal or task transitions to prevent orphaned
@@ -180,7 +187,11 @@ def stop_task_worker(task_id: str, cursor: Optional[sqlite3.Cursor] = None) -> N
             cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
             row = cursor.fetchone()
             if row:
-                raw_meta = row["metadata"] if hasattr(row, "keys") or isinstance(row, dict) else row[0]
+                raw_meta = (
+                    row["metadata"]
+                    if hasattr(row, "keys") or isinstance(row, dict)
+                    else row[0]
+                )
                 meta = json.loads(raw_meta or "{}")
                 pid = meta.get("worker_pid")
         except Exception:

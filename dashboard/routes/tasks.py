@@ -8,7 +8,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -81,11 +81,13 @@ router = APIRouter()
 
 @router.get("/tasks")
 def list_tasks(
-    board: Optional[str] = Query(None, description="Board slug filter"),
-    status: Optional[str] = Query(None, description="Status column filter"),
-    assignee: Optional[str] = Query(None, description="Assignee filter"),
-    priority: Optional[str] = Query(None, description="Priority filter"),
-    search: Optional[str] = Query(None, description="Search term in title or description")
+    board: str | None = Query(None, description="Board slug filter"),
+    status: str | None = Query(None, description="Status column filter"),
+    assignee: str | None = Query(None, description="Assignee filter"),
+    priority: str | None = Query(None, description="Priority filter"),
+    search: str | None = Query(
+        None, description="Search term in title or description"
+    ),
 ):
     """List tasks with flexible filtering."""
     init_db()
@@ -103,7 +105,7 @@ def list_tasks(
         search = None
 
     query = "SELECT * FROM tasks WHERE 1=1"
-    params: List[Any] = []
+    params: list[Any] = []
 
     if board and board != "all":
         query += " AND board_slug = ?"
@@ -133,22 +135,34 @@ def list_tasks(
         task_ids = [t["id"] for t in tasks]
         if task_ids:
             placeholders = ",".join("?" for _ in task_ids)
-            cursor.execute(f"SELECT child_id, COUNT(*) as count FROM task_links WHERE child_id IN ({placeholders}) GROUP BY child_id", task_ids)
+            cursor.execute(
+                f"SELECT child_id, COUNT(*) as count FROM task_links WHERE child_id IN ({placeholders}) GROUP BY child_id",
+                task_ids,
+            )
             parent_counts = {r["child_id"]: r["count"] for r in cursor.fetchall()}
 
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 SELECT tl.child_id, COUNT(*) as count
                 FROM task_links tl
                 JOIN tasks pt ON pt.id = tl.parent_id
                 WHERE tl.child_id IN ({placeholders}) AND pt.status != 'done'
                 GROUP BY tl.child_id
-            """, task_ids)
+            """,
+                task_ids,
+            )
             blocking_counts = {r["child_id"]: r["count"] for r in cursor.fetchall()}
 
-            cursor.execute(f"SELECT parent_id, COUNT(*) as count FROM task_links WHERE parent_id IN ({placeholders}) GROUP BY parent_id", task_ids)
+            cursor.execute(
+                f"SELECT parent_id, COUNT(*) as count FROM task_links WHERE parent_id IN ({placeholders}) GROUP BY parent_id",
+                task_ids,
+            )
             child_counts = {r["parent_id"]: r["count"] for r in cursor.fetchall()}
 
-            cursor.execute(f"SELECT task_id, COUNT(*) as count FROM task_comments WHERE task_id IN ({placeholders}) GROUP BY task_id", task_ids)
+            cursor.execute(
+                f"SELECT task_id, COUNT(*) as count FROM task_comments WHERE task_id IN ({placeholders}) GROUP BY task_id",
+                task_ids,
+            )
             comment_counts = {r["task_id"]: r["count"] for r in cursor.fetchall()}
 
             for t in tasks:
@@ -161,7 +175,11 @@ def list_tasks(
                 raw_meta = t.get("metadata")
                 if raw_meta:
                     try:
-                        meta_obj = json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+                        meta_obj = (
+                            json.loads(raw_meta)
+                            if isinstance(raw_meta, str)
+                            else (raw_meta or {})
+                        )
                     except Exception:
                         meta_obj = {}
                 meta_sessions = meta_obj.get("sessions") or []
@@ -179,7 +197,7 @@ def list_tasks(
                         "stuck_reason": prog.get("stuck_reason"),
                         "running_seconds": prog.get("running_seconds", 0),
                         "idle_seconds": prog.get("idle_seconds", 0),
-                        "sessions": prog.get("sessions", [])
+                        "sessions": prog.get("sessions", []),
                     }
                 elif meta_sessions:
                     clean_sessions = []
@@ -194,9 +212,13 @@ def list_tasks(
                         "has_session": True,
                         "session_id": meta_obj.get("session_id"),
                         "is_alive": False,
-                        "turn_count": sum(s.get("turn_count", 0) for s in clean_sessions),
-                        "message_count": sum(s.get("message_count", 0) for s in clean_sessions),
-                        "sessions": clean_sessions
+                        "turn_count": sum(
+                            s.get("turn_count", 0) for s in clean_sessions
+                        ),
+                        "message_count": sum(
+                            s.get("message_count", 0) for s in clean_sessions
+                        ),
+                        "sessions": clean_sessions,
                     }
 
         return {"ok": True, "tasks": tasks, "count": len(tasks)}
@@ -209,7 +231,11 @@ def create_task(req: TaskCreate):
     now = int(time.time())
     status_val = req.status if req.status in VALID_STATUSES else "triage"
     priority_val = req.priority if req.priority in VALID_PRIORITIES else "P2"
-    assignee_val = normalize_assignee(req.assignee) if req.assignee in VALID_ASSIGNEES else "unassigned"
+    assignee_val = (
+        normalize_assignee(req.assignee)
+        if req.assignee in VALID_ASSIGNEES
+        else "unassigned"
+    )
     tags_json = json.dumps(req.tags or [])
     metadata_json = "{}"
 
@@ -231,10 +257,13 @@ def create_task(req: TaskCreate):
         branch_name = req.branch_name or f"task/{task_id}"
 
         dedup_key = req.dedup_key or compute_dedup_key(req.files, req.category)
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, title, status, metadata FROM tasks 
             WHERE board_slug = ? AND status != 'done'
-        """, (board_slug,))
+        """,
+            (board_slug,),
+        )
         active_tasks = cursor.fetchall()
 
         norm_title = req.title.strip().lower()
@@ -251,17 +280,17 @@ def create_task(req: TaskCreate):
                     "ok": True,
                     "id": row["id"],
                     "duplicate": True,
-                    "message": f"Task already exists ({row['id']}) with matching file fingerprint in status '{row['status']}': {row['title']}"
+                    "message": f"Task already exists ({row['id']}) with matching file fingerprint in status '{row['status']}': {row['title']}",
                 }
             elif not dedup_key and row["title"].strip().lower() == norm_title:
                 return {
                     "ok": True,
                     "id": row["id"],
                     "duplicate": True,
-                    "message": f"Task already exists ({row['id']}) with identical title in status '{row['status']}'"
+                    "message": f"Task already exists ({row['id']}) with identical title in status '{row['status']}'",
                 }
 
-        meta: Dict[str, Any] = {}
+        meta: dict[str, Any] = {}
         if dedup_key:
             meta["dedup_key"] = dedup_key
         if req.files:
@@ -288,24 +317,40 @@ def create_task(req: TaskCreate):
         tags_json = json.dumps(tags)
         metadata_json = json.dumps(meta)
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO tasks (
                 id, board_slug, title, description, status, assignee, priority,
                 workspace_path, workspace_kind, branch_name, pr_url, tenant,
                 tags, metadata, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            task_id, board_slug, req.title.strip(), req.description or "", status_val,
-            assignee_val, priority_val, req.workspace_path, req.workspace_kind or "worktree",
-            branch_name, req.pr_url, req.tenant or "", tags_json, metadata_json, now, now
-        ))
+        """,
+            (
+                task_id,
+                board_slug,
+                req.title.strip(),
+                req.description or "",
+                status_val,
+                assignee_val,
+                priority_val,
+                req.workspace_path,
+                req.workspace_kind or "worktree",
+                branch_name,
+                req.pr_url,
+                req.tenant or "",
+                tags_json,
+                metadata_json,
+                now,
+                now,
+            ),
+        )
 
         if req.parent_id:
             cursor.execute("SELECT id FROM tasks WHERE id = ?", (req.parent_id,))
             if cursor.fetchone():
                 cursor.execute(
                     "INSERT OR IGNORE INTO task_links (parent_id, child_id, created_at) VALUES (?, ?, ?)",
-                    (req.parent_id, task_id, now)
+                    (req.parent_id, task_id, now),
                 )
 
         creator_actor = req.actor
@@ -318,7 +363,9 @@ def create_task(req: TaskCreate):
         if not creator_actor:
             creator_actor = os.environ.get("HERMES_PROFILE") or "user"
 
-        log_activity(conn, task_id, creator_actor, "create", f"Task created in {status_val}")
+        log_activity(
+            conn, task_id, creator_actor, "create", f"Task created in {status_val}"
+        )
         conn.commit()
 
         if board_slug:
@@ -340,26 +387,38 @@ def get_task(task_id: str):
 
         task = row_to_dict(task_row)
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT t.id, t.title, t.status, t.assignee, t.priority
             FROM task_links tl
             JOIN tasks t ON t.id = tl.parent_id
             WHERE tl.child_id = ?
-        """, (task_id,))
+        """,
+            (task_id,),
+        )
         task["parents"] = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT t.id, t.title, t.status, t.assignee, t.priority
             FROM task_links tl
             JOIN tasks t ON t.id = tl.child_id
             WHERE tl.parent_id = ?
-        """, (task_id,))
+        """,
+            (task_id,),
+        )
         task["children"] = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute("SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC", (task_id,))
+        cursor.execute(
+            "SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC",
+            (task_id,),
+        )
         task["comments"] = [dict(r) for r in cursor.fetchall()]
 
-        cursor.execute("SELECT * FROM task_activity WHERE task_id = ? ORDER BY created_at DESC LIMIT 50", (task_id,))
+        cursor.execute(
+            "SELECT * FROM task_activity WHERE task_id = ? ORDER BY created_at DESC LIMIT 50",
+            (task_id,),
+        )
         task["activity"] = [dict(r) for r in cursor.fetchall()]
 
         task["session_progress"] = resolve_task_session_progress(task, backfill=True)
@@ -379,7 +438,11 @@ def get_task_session(task_id: str):
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
         task = row_to_dict(task_row)
         prog = resolve_task_session_progress(task, backfill=True)
-        return {"ok": True, "session_progress": prog, "sessions": prog.get("sessions", [])}
+        return {
+            "ok": True,
+            "session_progress": prog,
+            "sessions": prog.get("sessions", []),
+        }
 
 
 @router.get("/tasks/{task_id}/sessions")
@@ -394,11 +457,15 @@ def get_task_sessions(task_id: str):
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
         task = row_to_dict(task_row)
         prog = resolve_task_session_progress(task, backfill=True)
-        return {"ok": True, "sessions": prog.get("sessions", []), "session_progress": prog}
+        return {
+            "ok": True,
+            "sessions": prog.get("sessions", []),
+            "session_progress": prog,
+        }
 
 
 @router.post("/tasks/{task_id}/stop")
-def stop_task_session(task_id: str, to_status: Optional[str] = "blocked"):
+def stop_task_session(task_id: str, to_status: str | None = "blocked"):
     """Safely terminate any running AI session / worker for the task and update status."""
     init_db()
     now = int(time.time())
@@ -418,10 +485,13 @@ def stop_task_session(task_id: str, to_status: Optional[str] = "blocked"):
 
         # Safely terminate active worker process group via dispatcher
         try:
-            from ...dispatcher import stop_task_worker, _mark_task_session_ended
+            from ...dispatcher import _mark_task_session_ended, stop_task_worker
         except Exception:
             try:
-                from dispatcher import stop_task_worker, _mark_task_session_ended  # type: ignore
+                from dispatcher import (  # type: ignore
+                    _mark_task_session_ended,
+                    stop_task_worker,
+                )
             except Exception:
                 stop_task_worker = None
                 _mark_task_session_ended = None
@@ -466,16 +536,16 @@ def stop_task_session(task_id: str, to_status: Optional[str] = "blocked"):
 
         cursor.execute(
             "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
-            (target_status, json.dumps(meta), now, task_id)
+            (target_status, json.dumps(meta), now, task_id),
         )
 
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'user', 'session_aborted', 'AI session stopped by user', ?)",
-            (task_id, now)
+            (task_id, now),
         )
         cursor.execute(
             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'user', '⏹ AI session manually stopped by user.', ?)",
-            (task_id, now)
+            (task_id, now),
         )
 
         # Mark ended_at in profile state.db if session_id is active
@@ -493,32 +563,46 @@ def stop_task_session(task_id: str, to_status: Optional[str] = "blocked"):
                     if sdb and sdb.exists():
                         try:
                             import sqlite3 as _sqlite3
+
                             with _sqlite3.connect(str(sdb), timeout=2.0) as pconn:
                                 pcur = pconn.cursor()
-                                pcur.execute("UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL", (now, active_sid))
+                                pcur.execute(
+                                    "UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL",
+                                    (now, active_sid),
+                                )
                                 pconn.commit()
                         except Exception:
                             pass
 
         conn.commit()
 
-        if target_status == "todo" and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"):
+        if (
+            target_status == "todo"
+            and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
+            and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        ):
             try:
                 import threading
+
                 try:
                     from ...dispatcher import run_dispatch_cycle
                 except Exception:
                     from dispatcher import run_dispatch_cycle  # type: ignore
-                threading.Thread(target=run_dispatch_cycle, args=(get_db_path(),), daemon=True).start()
+                threading.Thread(
+                    target=run_dispatch_cycle, args=(get_db_path(),), daemon=True
+                ).start()
             except Exception as _disp_err:
-                _log.debug("Async dispatch trigger after stop_task_session failed: %s", _disp_err)
+                _log.debug(
+                    "Async dispatch trigger after stop_task_session failed: %s",
+                    _disp_err,
+                )
 
         return {
             "ok": True,
             "stopped": True,
             "task_id": task_id,
             "status": target_status,
-            "message": f"AI session for task {task_id} successfully stopped."
+            "message": f"AI session for task {task_id} successfully stopped.",
         }
 
 
@@ -527,9 +611,9 @@ def update_task(task_id: str, req: TaskUpdate):
     """Update task fields."""
     init_db()
     now = int(time.time())
-    updates: List[str] = []
-    params: List[Any] = []
-    changes: List[str] = []
+    updates: list[str] = []
+    params: list[Any] = []
+    changes: list[str] = []
 
     if req.title is not None:
         updates.append("title = ?")
@@ -556,7 +640,9 @@ def update_task(task_id: str, req: TaskUpdate):
         changes.append(f"assignee changed to {asgn}")
     if req.priority is not None:
         if req.priority not in VALID_PRIORITIES:
-            raise HTTPException(status_code=400, detail=f"Invalid priority: {req.priority}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid priority: {req.priority}"
+            )
         updates.append("priority = ?")
         params.append(req.priority)
         changes.append(f"priority changed to {req.priority}")
@@ -611,7 +697,9 @@ def move_task(task_id: str, req: TaskMove):
     now = int(time.time())
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT status, metadata, board_slug FROM tasks WHERE id = ?", (task_id,))
+        cursor.execute(
+            "SELECT status, metadata, board_slug FROM tasks WHERE id = ?", (task_id,)
+        )
         curr = cursor.fetchone()
         if not curr:
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
@@ -625,7 +713,9 @@ def move_task(task_id: str, req: TaskMove):
             pass
 
         meta_updated = False
-        if req.status in ("todo", "ready", "running", "done") or (req.status == "blocked" and req.reason == "review-required"):
+        if req.status in ("todo", "ready", "running", "done") or (
+            req.status == "blocked" and req.reason == "review-required"
+        ):
             if "last_worker_failure" in meta:
                 meta.pop("last_worker_failure", None)
                 meta_updated = True
@@ -670,58 +760,106 @@ def move_task(task_id: str, req: TaskMove):
                     try:
                         stop_task_worker(task_id, cursor=cursor)
                     except Exception as _stw_err:
-                        _log.debug("stop_task_worker in move_task failed for %s: %s", task_id, _stw_err)
+                        _log.debug(
+                            "stop_task_worker in move_task failed for %s: %s",
+                            task_id,
+                            _stw_err,
+                        )
 
         new_assignee = None
-        if req.status == "blocked" and req.reason and ("human review" in req.reason.lower() or "human merge" in req.reason.lower()):
+        if (
+            req.status == "blocked"
+            and req.reason
+            and (
+                "human review" in req.reason.lower()
+                or "human merge" in req.reason.lower()
+            )
+        ):
             new_assignee = "human"
 
         if prev_status != req.status or meta_updated or new_assignee:
             if new_assignee:
-                cursor.execute("UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?", (req.status, new_assignee, json.dumps(meta), now, task_id))
+                cursor.execute(
+                    "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                    (req.status, new_assignee, json.dumps(meta), now, task_id),
+                )
             else:
-                cursor.execute("UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?", (req.status, json.dumps(meta), now, task_id))
+                cursor.execute(
+                    "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                    (req.status, json.dumps(meta), now, task_id),
+                )
             if prev_status != req.status:
                 move_actor = req.actor or "user"
-                log_activity(conn, task_id, move_actor, "move", f"Moved from {prev_status} to {req.status}")
+                log_activity(
+                    conn,
+                    task_id,
+                    move_actor,
+                    "move",
+                    f"Moved from {prev_status} to {req.status}",
+                )
 
         if req.status == "blocked" and req.reason:
             actor = req.actor or "user"
             comment_body = f"Blocked: {req.reason}"
             cursor.execute(
                 "SELECT body FROM task_comments WHERE task_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
-                (task_id,)
+                (task_id,),
             )
             last_comment = cursor.fetchone()
             if not last_comment or last_comment["body"] != comment_body:
                 cursor.execute(
                     "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                    (task_id, actor, comment_body, now)
+                    (task_id, actor, comment_body, now),
                 )
                 comment_id = cursor.lastrowid
-                log_activity(conn, task_id, actor, "comment", f"Added comment #{comment_id}")
+                log_activity(
+                    conn, task_id, actor, "comment", f"Added comment #{comment_id}"
+                )
 
             b_slug = curr["board_slug"] if "board_slug" in curr.keys() else ""
             if b_slug:
                 try:
-                    extract_and_record_memory(conn, board_slug=b_slug, text=req.reason, task_id=task_id, author=actor)
+                    extract_and_record_memory(
+                        conn,
+                        board_slug=b_slug,
+                        text=req.reason,
+                        task_id=task_id,
+                        author=actor,
+                    )
                 except Exception as _mem_err:
-                    _log.debug("Auto-record memory from move_task reason failed: %s", _mem_err)
+                    _log.debug(
+                        "Auto-record memory from move_task reason failed: %s", _mem_err
+                    )
 
         conn.commit()
 
-        if req.status in ("todo", "ready") and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"):
+        if (
+            req.status in ("todo", "ready")
+            and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
+            and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        ):
             try:
                 import threading
+
                 try:
                     from ...dispatcher import run_dispatch_cycle
                 except Exception:
                     from dispatcher import run_dispatch_cycle  # type: ignore
-                threading.Thread(target=run_dispatch_cycle, args=(get_db_path(),), daemon=True).start()
+                threading.Thread(
+                    target=run_dispatch_cycle, args=(get_db_path(),), daemon=True
+                ).start()
             except Exception as _disp_err:
-                _log.debug("Async dispatch trigger after move_task failed: %s", _disp_err)
+                _log.debug(
+                    "Async dispatch trigger after move_task failed: %s", _disp_err
+                )
 
-    return {"ok": True, "id": task_id, "status": req.status, "prev_status": prev_status, "reason": req.reason}
+    return {
+        "ok": True,
+        "id": task_id,
+        "status": req.status,
+        "prev_status": prev_status,
+        "reason": req.reason,
+    }
 
 
 @router.delete("/tasks/{task_id}")
@@ -740,7 +878,10 @@ def delete_task(task_id: str):
 def get_comments(task_id: str):
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC", (task_id,))
+        cursor.execute(
+            "SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC",
+            (task_id,),
+        )
         return {"ok": True, "comments": [dict(r) for r in cursor.fetchall()]}
 
 
@@ -764,17 +905,27 @@ def add_comment(task_id: str, req: CommentCreate):
 
         cursor.execute(
             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-            (task_id, author_val, body_str, now)
+            (task_id, author_val, body_str, now),
         )
         comment_id = cursor.lastrowid
         first_line = body_str.split("\n")[0][:60]
-        details_str = f"Added comment #{comment_id}: {first_line}" if first_line else f"Added comment #{comment_id}"
+        details_str = (
+            f"Added comment #{comment_id}: {first_line}"
+            if first_line
+            else f"Added comment #{comment_id}"
+        )
         log_activity(conn, task_id, author_val, "comment", details_str)
 
         b_slug = task_row["board_slug"] if "board_slug" in task_row.keys() else ""
         if b_slug:
             try:
-                extract_and_record_memory(conn, board_slug=b_slug, text=body_str, task_id=task_id, author=author_val)
+                extract_and_record_memory(
+                    conn,
+                    board_slug=b_slug,
+                    text=body_str,
+                    task_id=task_id,
+                    author=author_val,
+                )
             except Exception as _mem_err:
                 _log.debug("Auto-record memory from comment failed: %s", _mem_err)
 
@@ -797,19 +948,25 @@ def add_dependency(task_id: str, link: DependencyLink):
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM tasks WHERE id = ?", (parent_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Parent task '{parent_id}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Parent task '{parent_id}' not found"
+            )
         cursor.execute("SELECT id FROM tasks WHERE id = ?", (child_id,))
         if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail=f"Child task '{child_id}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Child task '{child_id}' not found"
+            )
 
         if parent_id == child_id:
             raise HTTPException(status_code=400, detail="Task cannot depend on itself")
 
         cursor.execute(
             "INSERT OR IGNORE INTO task_links (parent_id, child_id, created_at) VALUES (?, ?, ?)",
-            (parent_id, child_id, now)
+            (parent_id, child_id, now),
         )
-        log_activity(conn, child_id, "user", "link", f"Added parent dependency #{parent_id}")
+        log_activity(
+            conn, child_id, "user", "link", f"Added parent dependency #{parent_id}"
+        )
         conn.commit()
 
     return {"ok": True, "parent_id": parent_id, "child_id": child_id}
@@ -820,7 +977,12 @@ def remove_dependency(task_id: str, parent_id: str):
     """Remove a dependency link."""
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM task_links WHERE parent_id = ? AND child_id = ?", (parent_id, task_id))
-        log_activity(conn, task_id, "user", "unlink", f"Removed parent dependency #{parent_id}")
+        cursor.execute(
+            "DELETE FROM task_links WHERE parent_id = ? AND child_id = ?",
+            (parent_id, task_id),
+        )
+        log_activity(
+            conn, task_id, "user", "unlink", f"Removed parent dependency #{parent_id}"
+        )
         conn.commit()
     return {"ok": True, "removed": f"{parent_id} -> {task_id}"}

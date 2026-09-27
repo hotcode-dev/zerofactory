@@ -44,6 +44,8 @@ from .store import (
 )
 
 __all__ = [
+    "BUILTIN_CRON_JOBS",
+    "CORE_CRON_JOBS",
     "CRON_RUN_OUTPUT_TAIL_CHARS",
     "CRON_RUN_TIMEOUT",
     "DAILY_REPORT_PROMPT",
@@ -54,10 +56,8 @@ __all__ = [
     "_c",
     "_load_env_defaults",
     "build_board_scanner_prompt",
-    "BUILTIN_CRON_JOBS",
     "cleanup_duplicate_root_jobs",
     "compute_job_next_run",
-    "CORE_CRON_JOBS",
     "ensure_builtin_cron_jobs",
     "get_all_builtin_cron_jobs",
     "get_db_path",

@@ -14,7 +14,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Ensure zerofactory plugin root is in sys.path for direct module imports
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -38,9 +38,13 @@ _log = logging.getLogger(__name__)
 
 # --- Scanner state file helpers -----------------------------------------------
 
+
 def _load_scanner_gate_module():
     import importlib.util
-    gate_path = Path(__file__).resolve().parent.parent / "scripts" / "zf_scanner_gate.py"
+
+    gate_path = (
+        Path(__file__).resolve().parent.parent / "scripts" / "zf_scanner_gate.py"
+    )
     if not gate_path.is_file():
         return None
     try:
@@ -50,6 +54,7 @@ def _load_scanner_gate_module():
         return mod
     except Exception:
         return None
+
 
 _scanner_gate_mod = _load_scanner_gate_module()
 
@@ -63,11 +68,17 @@ def _mark_scanner_task_created(board_slug: str) -> bool:
     """
     if not board_slug:
         return False
-    if _scanner_gate_mod is not None and hasattr(_scanner_gate_mod, "mark_task_created"):
+    if _scanner_gate_mod is not None and hasattr(
+        _scanner_gate_mod, "mark_task_created"
+    ):
         return bool(_scanner_gate_mod.mark_task_created(board_slug))
 
     state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
-    state_file = Path(state_override) if state_override else (Path.home() / ".hermes" / "scanner_state.json")
+    state_file = (
+        Path(state_override)
+        if state_override
+        else (Path.home() / ".hermes" / "scanner_state.json")
+    )
     try:
         state_file.parent.mkdir(parents=True, exist_ok=True)
         lock_path = state_file.with_name(state_file.name + ".lock")
@@ -114,6 +125,7 @@ def _mark_scanner_task_created(board_slug: str) -> bool:
 
 DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
 
+
 def get_db_path() -> Path:
     override = os.environ.get("ZEROFACTORY_DB")
     if override:
@@ -154,8 +166,8 @@ ACTIVITY_PRUNE_INTERVAL_SECONDS = 3600
 
 
 def prune_old_activity(
-    conn: Optional[sqlite3.Connection] = None,
-    retention_days: Optional[int] = None,
+    conn: sqlite3.Connection | None = None,
+    retention_days: int | None = None,
     vacuum: bool = True,
 ) -> int:
     """Delete ``task_activity`` rows older than the retention window."""
@@ -215,6 +227,7 @@ def init_db(force: bool = False):
             pass
         with conn:
             from migrations import run_migrations
+
             run_migrations(conn)
 
             # Seed default global settings if missing
@@ -222,7 +235,7 @@ def init_db(force: bool = False):
             for _key, _value in DEFAULT_SETTING_VALUES.items():
                 conn.execute(
                     "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
-                    (_key, _value, now_ts)
+                    (_key, _value, now_ts),
                 )
 
             # Retention prune throttled to at most once per hour
@@ -230,9 +243,11 @@ def init_db(force: bool = False):
                 _last_prune_row = conn.execute(
                     "SELECT value FROM settings WHERE key = 'activity_last_prune'"
                 ).fetchone()
-                if _last_prune_row is None or (
-                    now_ts - int(_last_prune_row[0])
-                ) >= ACTIVITY_PRUNE_INTERVAL_SECONDS:
+                if (
+                    _last_prune_row is None
+                    or (now_ts - int(_last_prune_row[0]))
+                    >= ACTIVITY_PRUNE_INTERVAL_SECONDS
+                ):
                     _deleted = prune_old_activity(conn=conn)
                     conn.execute(
                         "INSERT OR REPLACE INTO settings (key, value, updated_at) "
@@ -240,22 +255,26 @@ def init_db(force: bool = False):
                         (str(now_ts), now_ts),
                     )
                     if _deleted:
-                        _log.debug("Pruned %d task_activity rows past retention", _deleted)
+                        _log.debug(
+                            "Pruned %d task_activity rows past retention", _deleted
+                        )
             except Exception as _prune_err:
                 _log.warning("task_activity retention prune skipped: %s", _prune_err)
     _DB_INITIALIZED_PATHS.add(db_path)
 
 
-def log_activity(conn: sqlite3.Connection, task_id: str, actor: str, action: str, details: str = ""):
+def log_activity(
+    conn: sqlite3.Connection, task_id: str, actor: str, action: str, details: str = ""
+):
     actor = actor or "user"
     now = int(time.time())
     conn.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, ?, ?, ?)",
-        (task_id, actor, action, details, now)
+        (task_id, actor, action, details, now),
     )
 
 
-def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     if "tags" in d and isinstance(d["tags"], str):
         try:
@@ -270,7 +289,7 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return d
 
 
-def derive_board_code(board_slug: Optional[str]) -> str:
+def derive_board_code(board_slug: str | None) -> str:
     """Extract first characters of the board slug, capped to the last 3 chars max (e.g. ntsd-sdp-compact -> nsc)."""
     if not board_slug:
         return ""
@@ -280,7 +299,7 @@ def derive_board_code(board_slug: Optional[str]) -> str:
     return code[-3:]
 
 
-def generate_task_id(board_slug: Optional[str] = None) -> str:
+def generate_task_id(board_slug: str | None = None) -> str:
     token = secrets.token_hex(4)
     code = derive_board_code(board_slug)
     if code:

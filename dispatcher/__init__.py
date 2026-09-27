@@ -54,16 +54,18 @@ from pathlib import Path
 
 # Submodule re-exports
 from .config import (
+    _REMOTE_BRANCH_DELETE_TIMEOUT,
+    _WORKTREE_REMOVE_TIMEOUT,
+    DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
+    DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+    DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
+    DEFAULT_IDLE_SCAN_MAX_TODO,
     DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
     DEFAULT_MAX_ACTIVE_TASKS,
     DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
     DEFAULT_MAX_CONCURRENT_WORKERS,
     DEFAULT_MAX_WORKER_RETRIES,
     DEFAULT_SCAN_ON_IDLE,
-    DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
-    DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-    DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
-    DEFAULT_IDLE_SCAN_MAX_TODO,
     DEFAULT_TASK_TIMEOUT_SECONDS,
     DISPATCH_INTERVAL_SECONDS,
     HUMAN,
@@ -76,8 +78,6 @@ from .config import (
     _dispatcher_thread,
     _last_idle_scan_times,
     _log,
-    _REMOTE_BRANCH_DELETE_TIMEOUT,
-    _WORKTREE_REMOVE_TIMEOUT,
     get_db_path,
     get_dispatcher_lock_path,
     get_inactivity_timeout_seconds,
@@ -95,6 +95,8 @@ from .context_builder import (
 )
 from .git_ops import (
     GitConflictCheckError,
+    _has_unresolved_conflict_markers,
+    _unverifiable_result,
     check_files_for_conflict_markers,
     check_unresolved_conflicts,
     check_unresolved_conflicts_safe,
@@ -105,8 +107,6 @@ from .git_ops import (
     get_unmerged_status_files,
     pull_and_merge_main,
     sync_repo_main,
-    _has_unresolved_conflict_markers,
-    _unverifiable_result,
 )
 from .github_pr import (
     extract_gh_repo_info,
@@ -120,39 +120,39 @@ from .process_manager import (
     terminate_process_group,
     terminate_worker_process,
 )
-from .worker_spawner import (
-    spawn_agent_worker,
-    _inject_langfuse_env,
-)
 from .reaper import (
-    check_stuck_tasks,
-    reap_active_workers,
-    reap_stuck_tasks,
     _compute_stuck_state,
     _mark_task_session_ended,
     _worker_log_path,
+    check_stuck_tasks,
+    reap_active_workers,
+    reap_stuck_tasks,
 )
 from .scanner import (
+    _global_llm_occupancy,
+    _running_cron_llm_jobs,
     reap_active_scanners,
     reset_idle_scanner_state,
     spawn_board_scanner,
-    _global_llm_occupancy,
-    _running_cron_llm_jobs,
 )
 from .scheduler import (
+    _dispatcher_loop,
     run_dispatch_cycle,
     start_background_dispatcher,
-    _dispatcher_loop,
+)
+from .worker_spawner import (
+    _inject_langfuse_env,
+    spawn_agent_worker,
 )
 from .worktree import (
-    resolve_task_repo_path,
-    setup_worktree,
-    run_deterministic_precommit,
     _delete_remote_branch,
     _handle_local_merge_conflict,
-    _handle_precommit_failure,
     _handle_pr_conflict_from_github,
+    _handle_precommit_failure,
     _remove_worktree,
+    resolve_task_repo_path,
+    run_deterministic_precommit,
+    setup_worktree,
 )
 
 __all__ = [

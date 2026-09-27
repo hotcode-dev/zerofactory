@@ -11,7 +11,6 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from dashboard.plugin_api import (
     BoardCreate,
@@ -43,8 +42,12 @@ class TestAutomationScriptsE2E(unittest.TestCase):
             "ZEROFACTORY_DB": os.environ.get("ZEROFACTORY_DB"),
             "ZEROFACTORY_LOCK_PATH": os.environ.get("ZEROFACTORY_LOCK_PATH"),
             "ZEROFACTORY_SKIP_GIT": os.environ.get("ZEROFACTORY_SKIP_GIT"),
-            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"),
-            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"),
+            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get(
+                "ZEROFACTORY_SKIP_WORKER_SPAWN"
+            ),
+            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get(
+                "ZEROFACTORY_DISABLE_DISPATCHER"
+            ),
             "HOME": os.environ.get("HOME"),
         }
 
@@ -66,7 +69,13 @@ class TestAutomationScriptsE2E(unittest.TestCase):
                 os.environ.pop(k, None)
         shutil.rmtree(self.td, ignore_errors=True)
 
-    def _run_script(self, script_name: str, args: List[str] = None, cwd: Optional[Path] = None, extra_env: Dict[str, str] = None) -> tuple[int, str]:
+    def _run_script(
+        self,
+        script_name: str,
+        args: list[str] = None,
+        cwd: Path | None = None,
+        extra_env: dict[str, str] = None,
+    ) -> tuple[int, str]:
         cmd = [sys.executable, str(self.scripts_dir / script_name)] + (args or [])
         python_path = os.pathsep.join([str(REPO_ROOT)] + sys.path)
         env = {
@@ -77,9 +86,16 @@ class TestAutomationScriptsE2E(unittest.TestCase):
             "ZEROFACTORY_LOCK_PATH": str(self.lock_path),
             "ZEROFACTORY_DISABLE_DISPATCHER": "1",
             "ZEROFACTORY_SKIP_WORKER_SPAWN": "1",
-            **(extra_env or {})
+            **(extra_env or {}),
         }
-        res = subprocess.run(cmd, cwd=str(cwd or self.scripts_dir), capture_output=True, text=True, env=env, timeout=20)
+        res = subprocess.run(
+            cmd,
+            cwd=str(cwd or self.scripts_dir),
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=20,
+        )
         return res.returncode, res.stdout.strip()
 
     def test_01_queue_watchdog_healthy_vs_stuck_alerts(self):
@@ -104,7 +120,10 @@ class TestAutomationScriptsE2E(unittest.TestCase):
         # Run watchdog with short timeout
         rc2, out2 = self._run_script(
             "zf_queue_watchdog.py",
-            extra_env={"ZEROFACTORY_TASK_TIMEOUT_SECONDS": "60", "ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS": "60"}
+            extra_env={
+                "ZEROFACTORY_TASK_TIMEOUT_SECONDS": "60",
+                "ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS": "60",
+            },
         )
         self.assertEqual(rc2, 0)
         self.assertIn("ZeroFactory Queue Watchdog Alert", out2)
@@ -115,12 +134,29 @@ class TestAutomationScriptsE2E(unittest.TestCase):
 
     def test_02_scanner_gate_suppression_and_wake(self):
         """zf_scanner_gate: unchanged repo suppresses (wakeAgent:false); new commits wake agent."""
-        subprocess.run(["git", "init", "-b", "main"], cwd=str(self.repo_dir), check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Scanner E2E"], cwd=str(self.repo_dir), check=True)
-        subprocess.run(["git", "config", "user.email", "scanner@zerofactory.ai"], cwd=str(self.repo_dir), check=True)
+        subprocess.run(
+            ["git", "init", "-b", "main"],
+            cwd=str(self.repo_dir),
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Scanner E2E"],
+            cwd=str(self.repo_dir),
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "scanner@zerofactory.ai"],
+            cwd=str(self.repo_dir),
+            check=True,
+        )
         (self.repo_dir / "index.py").write_text("print('hello')\n")
         subprocess.run(["git", "add", "."], cwd=str(self.repo_dir), check=True)
-        subprocess.run(["git", "commit", "-m", "chore: initial commit"], cwd=str(self.repo_dir), check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "chore: initial commit"],
+            cwd=str(self.repo_dir),
+            check=True,
+        )
 
         create_board(BoardCreate(git_url=str(self.repo_dir)))
 
@@ -138,7 +174,11 @@ class TestAutomationScriptsE2E(unittest.TestCase):
         # 3. Add new commit: wakes agent again
         (self.repo_dir / "feature.py").write_text("def new_feature(): pass\n")
         subprocess.run(["git", "add", "."], cwd=str(self.repo_dir), check=True)
-        subprocess.run(["git", "commit", "-m", "feat: new feature"], cwd=str(self.repo_dir), check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "feat: new feature"],
+            cwd=str(self.repo_dir),
+            check=True,
+        )
 
         rc3, out3 = self._run_script("zf_scanner_gate.py", cwd=self.repo_dir)
         self.assertEqual(rc3, 0)
@@ -149,11 +189,23 @@ class TestAutomationScriptsE2E(unittest.TestCase):
         create_board(BoardCreate(git_url="https://github.com/example/stats-demo.git"))
 
         # Create tasks across various columns
-        t1 = create_task(TaskCreate(board_slug="example-stats-demo", title="Task 1", status="done"))["id"]
-        t2 = create_task(TaskCreate(board_slug="example-stats-demo", title="Task 2", status="running"))["id"]
-        t3 = create_task(TaskCreate(board_slug="example-stats-demo", title="Task 3", status="blocked"))["id"]
+        t1 = create_task(
+            TaskCreate(board_slug="example-stats-demo", title="Task 1", status="done")
+        )["id"]
+        t2 = create_task(
+            TaskCreate(
+                board_slug="example-stats-demo", title="Task 2", status="running"
+            )
+        )["id"]
+        t3 = create_task(
+            TaskCreate(
+                board_slug="example-stats-demo", title="Task 3", status="blocked"
+            )
+        )["id"]
 
-        add_comment(t1, CommentCreate(author="zf-builder", body="Implemented and tested"))
+        add_comment(
+            t1, CommentCreate(author="zf-builder", body="Implemented and tested")
+        )
 
         rc, out = self._run_script("zf_daily_stats.py")
         self.assertEqual(rc, 0)

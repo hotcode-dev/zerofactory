@@ -8,7 +8,6 @@ import sys
 import time
 from contextlib import closing
 from pathlib import Path
-from typing import Optional
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -25,6 +24,8 @@ try:
         AGENT_ICONS,
         AGENT_LABELS,
         _resolve_profile_state_db_dyn,
+    )
+    from ..session_service import (
         list_all_sessions as _list_all_sessions,
     )
 except (ImportError, ValueError):
@@ -33,6 +34,8 @@ except (ImportError, ValueError):
         AGENT_ICONS,
         AGENT_LABELS,
         _resolve_profile_state_db_dyn,
+    )
+    from session_service import (
         list_all_sessions as _list_all_sessions,
     )
 
@@ -43,25 +46,27 @@ router = APIRouter()
 
 @router.get("/sessions")
 def list_all_sessions(
-    role: Optional[str] = None,
-    status: Optional[str] = None,
-    board_slug: Optional[str] = None,
+    role: str | None = None,
+    status: str | None = None,
+    board_slug: str | None = None,
     limit: int = 15,
-    offset: int = 0
+    offset: int = 0,
 ):
     """List recent and active AI agent sessions across Orchestrator, Builder, and Reviewer."""
-    return _list_all_sessions(role=role, status=status, board_slug=board_slug, limit=limit, offset=offset)
+    return _list_all_sessions(
+        role=role, status=status, board_slug=board_slug, limit=limit, offset=offset
+    )
 
 
 @router.get("/agents")
-def get_agents_status(board_slug: Optional[str] = None):
+def get_agents_status(board_slug: str | None = None):
     """Retrieve real-time status and telemetry for the 3 Zero Factory specialist agents."""
     init_db()
     profiles = ["zf-orchestrator", "zf-builder", "zf-reviewer"]
     role_descriptions = {
         "zf-orchestrator": "Backlog planning, triage, workflow coordination & improvement scans",
         "zf-builder": "Autonomous code implementation, bug fixing, test writing & pull requests",
-        "zf-reviewer": "Automated pull request review, edge case verification & test suite execution"
+        "zf-reviewer": "Automated pull request review, edge case verification & test suite execution",
     }
 
     running_tasks_by_assignee = {}
@@ -81,7 +86,7 @@ def get_agents_status(board_slug: Optional[str] = None):
                     "title": row[1],
                     "board_slug": row[2],
                     "workspace_path": row[4],
-                    "updated_at": row[5]
+                    "updated_at": row[5],
                 }
 
     agents_data = []
@@ -94,7 +99,9 @@ def get_agents_status(board_slug: Optional[str] = None):
         sdb = _resolve_profile_state_db_dyn(prof)
         if sdb and sdb.exists():
             try:
-                conn = sqlite3.connect(f"file:{sdb.resolve()}?mode=ro", uri=True, timeout=2.0)
+                conn = sqlite3.connect(
+                    f"file:{sdb.resolve()}?mode=ro", uri=True, timeout=2.0
+                )
                 conn.row_factory = sqlite3.Row
                 with closing(conn):
                     cur = conn.cursor()
@@ -108,16 +115,27 @@ def get_agents_status(board_slug: Optional[str] = None):
 
                     total_sessions = len(rows)
                     for r in rows:
-                        total_tool_calls += (r["tool_call_count"] or 0)
+                        total_tool_calls += r["tool_call_count"] or 0
                         act_ts = r["last_activity_at"] or r["started_at"]
-                        if act_ts and (last_active_at is None or act_ts > last_active_at):
+                        if act_ts and (
+                            last_active_at is None or act_ts > last_active_at
+                        ):
                             last_active_at = act_ts
 
                         ended = r["ended_at"]
-                        is_ongoing = (ended is None and (time.time() - (r["last_activity_at"] or r["started_at"] or 0)) < 300)
+                        is_ongoing = (
+                            ended is None
+                            and (
+                                time.time()
+                                - (r["last_activity_at"] or r["started_at"] or 0)
+                            )
+                            < 300
+                        )
                         if is_ongoing and active_sess is None:
                             started = r["started_at"]
-                            duration = max(0, int(time.time() - started)) if started else None
+                            duration = (
+                                max(0, int(time.time() - started)) if started else None
+                            )
                             active_sess = {
                                 "session_id": str(r["id"]),
                                 "model": r["model"],
@@ -126,8 +144,9 @@ def get_agents_status(board_slug: Optional[str] = None):
                                 "message_count": r["message_count"] or 0,
                                 "tool_calls_count": r["tool_call_count"] or 0,
                                 "title": r["title"],
-                                "last_action": r["last_activity_description"] or "Active",
-                                "cwd": r["cwd"]
+                                "last_action": r["last_activity_description"]
+                                or "Active",
+                                "cwd": r["cwd"],
                             }
             except Exception as e:
                 _log.debug("Error checking agent status for %s: %s", prof, e)
@@ -135,21 +154,23 @@ def get_agents_status(board_slug: Optional[str] = None):
         current_task = running_tasks_by_assignee.get(prof)
         is_active = (active_sess is not None) or (current_task is not None)
 
-        agents_data.append({
-            "name": prof,
-            "label": AGENT_LABELS.get(prof, prof.replace("zf-", "").capitalize()),
-            "icon": AGENT_ICONS.get(prof, "🤖"),
-            "description": role_descriptions.get(prof, ""),
-            "status": "active" if is_active else "idle",
-            "is_active": is_active,
-            "active_session": active_sess,
-            "current_task": current_task,
-            "stats": {
-                "total_sessions": total_sessions,
-                "total_tool_calls": total_tool_calls,
-                "last_active_at": last_active_at
+        agents_data.append(
+            {
+                "name": prof,
+                "label": AGENT_LABELS.get(prof, prof.replace("zf-", "").capitalize()),
+                "icon": AGENT_ICONS.get(prof, "🤖"),
+                "description": role_descriptions.get(prof, ""),
+                "status": "active" if is_active else "idle",
+                "is_active": is_active,
+                "active_session": active_sess,
+                "current_task": current_task,
+                "stats": {
+                    "total_sessions": total_sessions,
+                    "total_tool_calls": total_tool_calls,
+                    "last_active_at": last_active_at,
+                },
             }
-        })
+        )
 
     return {"ok": True, "agents": agents_data}
 
@@ -163,11 +184,14 @@ def stop_session(session_id: str):
     # Check if session is associated with a task in the tasks table
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM tasks WHERE metadata LIKE ?", (f"%{session_id}%",))
+        cursor.execute(
+            "SELECT id FROM tasks WHERE metadata LIKE ?", (f"%{session_id}%",)
+        )
         row = cursor.fetchone()
         if row:
             task_id = str(row[0])
             from .tasks import stop_task_session
+
             return stop_task_session(task_id=task_id)
 
     # Standalone session fallback: mark ended in profile state.db
@@ -178,7 +202,10 @@ def stop_session(session_id: str):
             try:
                 with sqlite3.connect(str(sdb.resolve()), timeout=2.0) as pconn:
                     pcur = pconn.cursor()
-                    pcur.execute("UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL", (now, session_id))
+                    pcur.execute(
+                        "UPDATE sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL",
+                        (now, session_id),
+                    )
                     if pcur.rowcount > 0:
                         stopped_in_db = True
                         pconn.commit()
@@ -189,7 +216,7 @@ def stop_session(session_id: str):
         "ok": True,
         "stopped": True,
         "session_id": session_id,
-        "message": f"Session {session_id} marked as ended." if stopped_in_db else f"Session {session_id} stopped."
+        "message": f"Session {session_id} marked as ended."
+        if stopped_in_db
+        else f"Session {session_id} stopped.",
     }
-
-

@@ -9,7 +9,7 @@ import sqlite3
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -28,10 +28,14 @@ from .config import (
 _log = logging.getLogger("zerofactory.cron")
 
 
-def build_board_scanner_prompt(board: Dict[str, Any], workdir: Optional[str]) -> str:
+def build_board_scanner_prompt(board: dict[str, Any], workdir: str | None) -> str:
     """Generate a clean, focused improvement scanner prompt for a specific board."""
     slug = board.get("slug") or "default"
-    workdir_desc = f"Current repository root (`{workdir}`)" if workdir else "Current repository workspace"
+    workdir_desc = (
+        f"Current repository root (`{workdir}`)"
+        if workdir
+        else "Current repository workspace"
+    )
 
     return f"""Scan the workspace repository for code quality issues, tech debt, and improvement opportunities for the '{slug}' board.
 
@@ -85,7 +89,7 @@ Write your detailed context to a temporary file (e.g. `/tmp/task_desc.md`) and r
 - End the run after delivery."""
 
 
-def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
+def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
     """Resolve the local repository path for a given Kanban board."""
     slug = (board.get("slug") or "").strip()
     git_url = (board.get("git_url") or "").strip()
@@ -114,7 +118,7 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
             candidate_names.add(n.lower())
 
     home = Path.home()
-    candidates: List[Path] = []
+    candidates: list[Path] = []
 
     # 0. Check if git_url is an existing local directory
     if git_url:
@@ -150,7 +154,9 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
     # 4. Check current working directory if matching
     try:
         cwd = Path.cwd()
-        if (cwd / ".git").exists() and any(cname in (cwd.name, cwd.name.lower()) for cname in candidate_names):
+        if (cwd / ".git").exists() and any(
+            cname in (cwd.name, cwd.name.lower()) for cname in candidate_names
+        ):
             candidates.insert(0, cwd)
     except Exception:
         pass
@@ -160,7 +166,11 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
             return cand.resolve()
 
     # 5. Optional auto-clone
-    auto_clone_enabled = os.environ.get("ZEROFACTORY_AUTO_CLONE", "1").lower() not in ("0", "false", "no")
+    auto_clone_enabled = os.environ.get("ZEROFACTORY_AUTO_CLONE", "1").lower() not in (
+        "0",
+        "false",
+        "no",
+    )
     if (
         git_url
         and auto_clone_enabled
@@ -179,9 +189,13 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
                 capture_output=True,
                 timeout=60,
                 stdin=subprocess.DEVNULL,
-                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
             )
-            if res.returncode == 0 and target_clone.is_dir() and (target_clone / ".git").exists():
+            if (
+                res.returncode == 0
+                and target_clone.is_dir()
+                and (target_clone / ".git").exists()
+            ):
                 return target_clone.resolve()
         except Exception as e:
             _log.debug("Auto-clone skipped or failed for %s: %s", git_url, e)
@@ -189,7 +203,7 @@ def resolve_board_repo_path(board: Dict[str, Any]) -> Optional[Path]:
     return None
 
 
-CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
+CORE_CRON_JOBS: dict[str, dict[str, Any]] = {
     "zero-factory-task-queue-check": {
         "id": "zero-factory-task-queue-check",
         "name": "Zero Factory task queue check",
@@ -202,11 +216,7 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "script": "zf_queue_watchdog.py",
         "no_agent": True,
         "context_from": None,
-        "schedule": {
-            "kind": "interval",
-            "minutes": 120,
-            "display": "every 120m"
-        },
+        "schedule": {"kind": "interval", "minutes": 120, "display": "every 120m"},
         "schedule_display": "every 120m",
         "enabled": True,
         "state": "scheduled",
@@ -216,25 +226,25 @@ CORE_CRON_JOBS: Dict[str, Dict[str, Any]] = {
         "origin": "zerofactory",
         "enabled_toolsets": ["terminal", "file"],
         "workdir": None,
-        "profile": "zf-orchestrator"
+        "profile": "zf-orchestrator",
     }
 }
 
-BUILTIN_CRON_JOBS: Dict[str, Dict[str, Any]] = {}
+BUILTIN_CRON_JOBS: dict[str, dict[str, Any]] = {}
 
 
-def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
+def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
     """Resolve all builtin jobs including core jobs and dynamic per-board scanner jobs."""
     disp = _c()
     if disp and hasattr(disp, "get_all_builtin_cron_jobs"):
         # If patched by test on builtin_cron, return mock
-        target = getattr(disp, "get_all_builtin_cron_jobs")
+        target = disp.get_all_builtin_cron_jobs
         if target is not get_all_builtin_cron_jobs:
             return target()
 
     eff_model, eff_provider, eff_base_url = _load_env_defaults()
 
-    jobs: Dict[str, Dict[str, Any]] = {}
+    jobs: dict[str, dict[str, Any]] = {}
     for jid, cjob in CORE_CRON_JOBS.items():
         job_copy = dict(cjob)
         job_copy["model"] = eff_model
@@ -244,13 +254,15 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
 
     get_db_path_fn = getattr(disp, "get_db_path", get_db_path)
     db_path = get_db_path_fn()
-    boards: List[Dict[str, Any]] = []
+    boards: list[dict[str, Any]] = []
     if db_path.exists():
         try:
             with sqlite3.connect(str(db_path), timeout=5.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                cursor.execute("SELECT slug, description, git_url FROM boards ORDER BY created_at ASC")
+                cursor.execute(
+                    "SELECT slug, description, git_url FROM boards ORDER BY created_at ASC"
+                )
                 boards = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             _log.warning("Failed to query boards for cron generation: %s", e)
@@ -259,7 +271,11 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
         slug = board.get("slug") or "default"
         job_id = f"zero-factory-improvement-scanner-{slug}"
         repo_path = resolve_board_repo_path(board)
-        workdir = str(repo_path) if repo_path and repo_path.is_dir() and (repo_path / ".git").exists() else None
+        workdir = (
+            str(repo_path)
+            if repo_path and repo_path.is_dir() and (repo_path / ".git").exists()
+            else None
+        )
         prompt = build_board_scanner_prompt(board, workdir)
 
         jobs[job_id] = {
@@ -278,7 +294,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "schedule": {
                 "kind": "interval",
                 "minutes": 10080,
-                "display": "on idle (active < 2)"
+                "display": "on idle (active < 2)",
             },
             "schedule_display": "on idle (active < 2)",
             "enabled": True,
@@ -289,7 +305,7 @@ def get_all_builtin_cron_jobs() -> Dict[str, Dict[str, Any]]:
             "origin": "zerofactory",
             "enabled_toolsets": ["terminal", "file", "web"],
             "workdir": workdir,
-            "profile": "zf-orchestrator"
+            "profile": "zf-orchestrator",
         }
 
     BUILTIN_CRON_JOBS.clear()

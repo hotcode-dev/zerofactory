@@ -25,13 +25,13 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 STATE_FILE = Path.home() / ".hermes" / "scanner_state.json"
 DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
 
 
-def _run_cmd(cmd: List[str], cwd: Optional[Path] = None) -> str:
+def _run_cmd(cmd: list[str], cwd: Path | None = None) -> str:
     try:
         res = subprocess.run(
             cmd,
@@ -39,7 +39,7 @@ def _run_cmd(cmd: List[str], cwd: Optional[Path] = None) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=10
+            timeout=10,
         )
         return res.stdout.strip() if res.returncode == 0 else ""
     except Exception:
@@ -60,7 +60,7 @@ def _state_lock_path(state_file: Path) -> Path:
     return state_file.with_name(state_file.name + ".lock")
 
 
-def load_state() -> Dict[str, Any]:
+def load_state() -> dict[str, Any]:
     # The state file is only ever published atomically (write_state_atomic ->
     # os.replace), so a reader can never observe a torn/partial JSON document.
     sf = get_state_file()
@@ -73,7 +73,7 @@ def load_state() -> Dict[str, Any]:
     return {}
 
 
-def _atomic_write_json(sf: Path, data: Dict[str, Any]) -> None:
+def _atomic_write_json(sf: Path, data: dict[str, Any]) -> None:
     """Write ``data`` to ``sf`` atomically: temp file + fsync + os.replace.
 
     Same pattern as ``builtin_cron.save_jobs_to_file`` — the target is replaced
@@ -82,7 +82,9 @@ def _atomic_write_json(sf: Path, data: Dict[str, Any]) -> None:
     """
     sf.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(data, indent=2)
-    temp_fd, temp_path = tempfile.mkstemp(dir=str(sf.parent), prefix="scanner_state_", suffix=".tmp")
+    temp_fd, temp_path = tempfile.mkstemp(
+        dir=str(sf.parent), prefix="scanner_state_", suffix=".tmp"
+    )
     try:
         with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
             f.write(payload)
@@ -97,7 +99,7 @@ def _atomic_write_json(sf: Path, data: Dict[str, Any]) -> None:
         raise
 
 
-def write_state_atomic(state: Dict[str, Any]) -> bool:
+def write_state_atomic(state: dict[str, Any]) -> bool:
     """Atomically persist the full state dict (temp file + os.replace)."""
     try:
         _atomic_write_json(get_state_file(), state)
@@ -106,7 +108,7 @@ def write_state_atomic(state: Dict[str, Any]) -> bool:
         return False
 
 
-def save_state(state: Dict[str, Any]) -> None:
+def save_state(state: dict[str, Any]) -> None:
     write_state_atomic(state)
 
 
@@ -150,7 +152,7 @@ def mark_task_created(board_slug: str) -> bool:
     if not board_slug:
         return False
 
-    def _mutate(data: Dict[str, Any]) -> None:
+    def _mutate(data: dict[str, Any]) -> None:
         board_state = data.setdefault(board_slug, {})
         if isinstance(board_state, dict):
             board_state["task_created"] = True
@@ -168,6 +170,7 @@ def is_llm_reachable(timeout: float = 2.0) -> bool:
         return True
 
     import urllib.request
+
     base_url = os.environ.get("OPENAI_BASE_URL")
     if not base_url:
         for cfg_path in [
@@ -211,15 +214,24 @@ def _auto_sync_repo(repo_dir: Path) -> None:
 
         # 3. Detect default branch: try origin/HEAD symbolic ref, fallback to checking main/master
         default_branch = ""
-        sym_ref = _run_cmd(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=repo_dir)
+        sym_ref = _run_cmd(
+            ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=repo_dir
+        )
         if sym_ref and "/" in sym_ref:
             default_branch = sym_ref.split("/", 1)[1].strip()
 
         if not default_branch:
             for cand in ("main", "master"):
                 check_branch = subprocess.run(
-                    ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{cand}"],
-                    cwd=str(repo_dir), timeout=3
+                    [
+                        "git",
+                        "show-ref",
+                        "--verify",
+                        "--quiet",
+                        f"refs/remotes/origin/{cand}",
+                    ],
+                    cwd=str(repo_dir),
+                    timeout=3,
                 )
                 if check_branch.returncode == 0:
                     default_branch = cand
@@ -229,14 +241,19 @@ def _auto_sync_repo(repo_dir: Path) -> None:
             default_branch = "main"
 
         # 4. Check currently checked out branch - only sync if on the default branch
-        curr_branch = _run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir).strip()
+        curr_branch = _run_cmd(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir
+        ).strip()
         if curr_branch != default_branch:
             return
 
         # 5. Fetch from origin for default branch (bounded 10s timeout)
         fetch_res = subprocess.run(
             ["git", "fetch", "origin", default_branch],
-            cwd=str(repo_dir), capture_output=True, text=True, timeout=10
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if fetch_res.returncode != 0:
             return
@@ -244,7 +261,10 @@ def _auto_sync_repo(repo_dir: Path) -> None:
         # 6. Fast-forward merge origin/<default_branch> (bounded 5s timeout)
         subprocess.run(
             ["git", "merge", "--ff-only", f"origin/{default_branch}"],
-            cwd=str(repo_dir), capture_output=True, text=True, timeout=5
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
     except Exception:
         pass
@@ -264,7 +284,7 @@ def get_active_pipeline_task_count(board_slug: str) -> int:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT COUNT(*) FROM tasks WHERE board_slug = ? AND status IN ('running', 'todo')",
-                (board_slug,)
+                (board_slug,),
             )
             row = cursor.fetchone()
             return int(row[0]) if row else 0
@@ -272,7 +292,7 @@ def get_active_pipeline_task_count(board_slug: str) -> int:
         return 0
 
 
-def get_board_pipeline_capacity(board_slug: str) -> Dict[str, Any]:
+def get_board_pipeline_capacity(board_slug: str) -> dict[str, Any]:
     """Get active pipeline task counts and capacity-driven idle scan settings."""
     db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
     res = {
@@ -290,7 +310,7 @@ def get_board_pipeline_capacity(board_slug: str) -> Dict[str, Any]:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT status, COUNT(*) FROM tasks WHERE board_slug = ? AND status IN ('running', 'todo') GROUP BY status",
-                (board_slug,)
+                (board_slug,),
             )
             for row in cursor.fetchall():
                 if row[0] == "running":
@@ -304,7 +324,11 @@ def get_board_pipeline_capacity(board_slug: str) -> Dict[str, Any]:
                 )
                 for key, val in cursor.fetchall():
                     if key == "scan_on_idle":
-                        res["scan_on_idle"] = str(val).strip().lower() in ("true", "1", "yes")
+                        res["scan_on_idle"] = str(val).strip().lower() in (
+                            "true",
+                            "1",
+                            "yes",
+                        )
                     elif key == "idle_scan_active_threshold":
                         try:
                             res["idle_scan_active_threshold"] = max(1, int(val))
@@ -327,7 +351,7 @@ def get_board_pipeline_capacity(board_slug: str) -> Dict[str, Any]:
     return res
 
 
-def get_existing_task_titles(board_slug: str) -> List[str]:
+def get_existing_task_titles(board_slug: str) -> list[str]:
     db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
     if not db_path.exists():
         return []
@@ -336,7 +360,7 @@ def get_existing_task_titles(board_slug: str) -> List[str]:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT title FROM tasks WHERE board_slug = ? AND status != 'done' ORDER BY created_at DESC LIMIT 25",
-                (board_slug,)
+                (board_slug,),
             )
             return [row[0] for row in cursor.fetchall()]
     except Exception:
@@ -355,7 +379,7 @@ def has_task_on_or_after_commit(board_slug: str, commit_time: int) -> bool:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT 1 FROM tasks WHERE board_slug = ? AND created_at >= ? LIMIT 1",
-                (board_slug, commit_time)
+                (board_slug, commit_time),
             )
             return cursor.fetchone() is not None
     except Exception:
@@ -382,11 +406,17 @@ def resolve_board_slug(repo_dir: Path) -> str:
                 rows = cursor.fetchall()
                 # 1. Match by slug == repo name or slug ends with repo name
                 for slug, _ in rows:
-                    if repo_dir.name.lower() in (slug.lower(), slug.split("-")[-1].lower()):
+                    if repo_dir.name.lower() in (
+                        slug.lower(),
+                        slug.split("-")[-1].lower(),
+                    ):
                         return slug
                 # 2. Match by git remote origin url (supports both HTTPS and SSH)
-                remote_url = _run_cmd(["git", "config", "--get", "remote.origin.url"], cwd=repo_dir)
+                remote_url = _run_cmd(
+                    ["git", "config", "--get", "remote.origin.url"], cwd=repo_dir
+                )
                 if remote_url:
+
                     def _normalize_repo_slug(url_str: str) -> str:
                         cleaned = re.sub(r"\.git$", "", url_str.strip().rstrip("/"))
                         parts = cleaned.replace(":", "/").split("/")
@@ -398,7 +428,10 @@ def resolve_board_slug(repo_dir: Path) -> str:
                     for slug, git_url in rows:
                         if git_url:
                             norm_board_git = _normalize_repo_slug(git_url)
-                            if norm_remote == norm_board_git or norm_remote in git_url.lower():
+                            if (
+                                norm_remote == norm_board_git
+                                or norm_remote in git_url.lower()
+                            ):
                                 return slug
                 # Fallback to first board if available
                 if rows:
@@ -422,7 +455,9 @@ def run_scanner_gate() -> int:
 
     if not head_sha:
         # Not a git repo or git failed — allow normal run
-        print(f"Warning: Not a valid git repository at {repo_dir}. Running standard inspection.")
+        print(
+            f"Warning: Not a valid git repository at {repo_dir}. Running standard inspection."
+        )
         print(json.dumps({"wakeAgent": True}))
         return 0
 
@@ -436,22 +471,20 @@ def run_scanner_gate() -> int:
     capacity = get_board_pipeline_capacity(board_slug)
 
     # Check for forced or idle scan
-    force_scan = (
-        "--force" in sys.argv
-        or os.environ.get("ZEROFACTORY_FORCE_SCAN", "").lower() in ("1", "true", "yes")
-    )
-    is_idle_scan = (
-        "--idle" in sys.argv
-        or os.environ.get("ZEROFACTORY_IDLE_SCAN", "").lower() in ("1", "true", "yes")
-    )
+    force_scan = "--force" in sys.argv or os.environ.get(
+        "ZEROFACTORY_FORCE_SCAN", ""
+    ).lower() in ("1", "true", "yes")
+    is_idle_scan = "--idle" in sys.argv or os.environ.get(
+        "ZEROFACTORY_IDLE_SCAN", ""
+    ).lower() in ("1", "true", "yes")
 
     state = load_state()
     board_state = state.get(board_slug, {})
     last_sha = board_state.get("last_scanned_sha")
     last_status = board_state.get("last_status")
 
-    is_same_commit = (head_sha == last_sha)
-    is_same_status = (status_porcelain == last_status)
+    is_same_commit = head_sha == last_sha
+    is_same_status = status_porcelain == last_status
 
     now_ts = int(time.time())
     retry_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RETRY_COOLDOWN", "1800"))
@@ -470,7 +503,9 @@ def run_scanner_gate() -> int:
             idle_cooldown = capacity.get("idle_scan_cooldown_minutes", 15) * 60
 
             if is_idle_scan:
-                print(f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Dispatcher authorized idle scan for board '{board_slug}' (active running={running_count} < {idle_threshold}).")
+                print(
+                    f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Dispatcher authorized idle scan for board '{board_slug}' (active running={running_count} < {idle_threshold})."
+                )
             elif scan_on_idle:
                 # Capacity-driven idle scanning is enabled in settings
                 if running_count >= idle_threshold or todo_count >= max_todo:
@@ -499,18 +534,26 @@ def run_scanner_gate() -> int:
                 # Idle scanning disabled — fall back to strict commit-change suppression
                 # 1. If active in-flight tasks exist in the pipeline, definitely suppress (pipeline busy)
                 if active_in_flight > 0:
-                    print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; active pipeline tasks ({active_in_flight}) on board '{board_slug}'.")
+                    print(
+                        f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; active pipeline tasks ({active_in_flight}) on board '{board_slug}'."
+                    )
                     print(json.dumps({"wakeAgent": False}))
                     return 0
 
                 # 2. If no active tasks exist, check if a task was ever created for this commit
-                commit_time_str = _run_cmd(["git", "log", "-1", "--format=%ct", head_sha], cwd=repo_dir)
+                commit_time_str = _run_cmd(
+                    ["git", "log", "-1", "--format=%ct", head_sha], cwd=repo_dir
+                )
                 commit_time = int(commit_time_str) if commit_time_str.isdigit() else 0
-                has_tasks = board_state.get("task_created") or has_task_on_or_after_commit(board_slug, commit_time)
+                has_tasks = board_state.get(
+                    "task_created"
+                ) or has_task_on_or_after_commit(board_slug, commit_time)
 
                 if has_tasks:
                     # Successfully produced tasks for this commit (which are now completed/closed)
-                    print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; board '{board_slug}' already scanned.")
+                    print(
+                        f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; board '{board_slug}' already scanned."
+                    )
                     print(json.dumps({"wakeAgent": False}))
                     return 0
 
@@ -520,7 +563,9 @@ def run_scanner_gate() -> int:
                 attempts = int(board_state.get("scan_attempts", 1))
 
                 if (now_ts - last_scan_at) < retry_cooldown:
-                    print(f"SCAN_COOLDOWN_ACTIVE: Scan on commit {head_sha[:8]} recently attempted ({now_ts - last_scan_at}s ago < {retry_cooldown}s); waiting for cooldown.")
+                    print(
+                        f"SCAN_COOLDOWN_ACTIVE: Scan on commit {head_sha[:8]} recently attempted ({now_ts - last_scan_at}s ago < {retry_cooldown}s); waiting for cooldown."
+                    )
                     print(json.dumps({"wakeAgent": False}))
                     return 0
 
@@ -530,23 +575,33 @@ def run_scanner_gate() -> int:
                         attempts = 0
                         board_state["scan_attempts"] = 0
                     else:
-                        print(f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged after {attempts} scan attempts without tasks; suppressing.")
+                        print(
+                            f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged after {attempts} scan attempts without tasks; suppressing."
+                        )
                         print(json.dumps({"wakeAgent": False}))
                         return 0
 
                 # Allow retry! Fall through to wake the agent
-                print(f"RETRY_SCAN_TRIGGERED: Previous scan on {head_sha[:8]} produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan.")
+                print(
+                    f"RETRY_SCAN_TRIGGERED: Previous scan on {head_sha[:8]} produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan."
+                )
         else:
-            print(f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has never been scanned. Initiating baseline codebase inspection.")
+            print(
+                f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has never been scanned. Initiating baseline codebase inspection."
+            )
 
     # Pre-flight LLM probe: verify inference endpoint is reachable before committing state and waking agent
     if not is_llm_reachable():
-        print("LLM_UNREACHABLE: Inference endpoint is unreachable; deferring scan without consuming attempts.")
+        print(
+            "LLM_UNREACHABLE: Inference endpoint is unreachable; deferring scan without consuming attempts."
+        )
         print(json.dumps({"wakeAgent": False}))
         return 0
 
     # Changes detected or baseline/retry scan required! Update state
-    new_attempts = (int(board_state.get("scan_attempts", 0)) + 1) if is_same_commit else 1
+    new_attempts = (
+        (int(board_state.get("scan_attempts", 0)) + 1) if is_same_commit else 1
+    )
     board_state["last_scanned_sha"] = head_sha
     board_state["last_status"] = status_porcelain
     board_state["last_scan_at"] = now_ts
@@ -557,10 +612,23 @@ def run_scanner_gate() -> int:
     save_state(state)
 
     # Collect pre-digested intelligence to pass to the LLM
-    excluded_diff_pathspecs = [":!*.lock", ":!*package-lock.json", ":!*pnpm-lock.yaml", ":!*yarn.lock", ":!*.min.*", ":!*.map"]
+    excluded_diff_pathspecs = [
+        ":!*.lock",
+        ":!*package-lock.json",
+        ":!*pnpm-lock.yaml",
+        ":!*yarn.lock",
+        ":!*.min.*",
+        ":!*.map",
+    ]
     log_summary = _run_cmd(["git", "log", "-n", "5", "--oneline"], cwd=repo_dir)
-    diffstat = _run_cmd(["git", "diff", "--stat", "HEAD~1..HEAD", "--", *excluded_diff_pathspecs], cwd=repo_dir)
-    raw_diff = _run_cmd(["git", "diff", "-U2", "HEAD~1..HEAD", "--", *excluded_diff_pathspecs], cwd=repo_dir)
+    diffstat = _run_cmd(
+        ["git", "diff", "--stat", "HEAD~1..HEAD", "--", *excluded_diff_pathspecs],
+        cwd=repo_dir,
+    )
+    raw_diff = _run_cmd(
+        ["git", "diff", "-U2", "HEAD~1..HEAD", "--", *excluded_diff_pathspecs],
+        cwd=repo_dir,
+    )
 
     # Cap diff to prevent prompt overflow
     diff_lines = raw_diff.splitlines()[:80]
@@ -572,13 +640,34 @@ def run_scanner_gate() -> int:
     is_worktree_clean = len(status_porcelain.strip()) == 0
     uncommitted_summary = ""
     if not is_worktree_clean:
-        uncommitted_summary = f"### Uncommitted Changes:\n```\n{status_porcelain[:1000]}\n```\n"
+        uncommitted_summary = (
+            f"### Uncommitted Changes:\n```\n{status_porcelain[:1000]}\n```\n"
+        )
 
     # Search for new TODO / FIXME in tracked files
-    todo_matches = _run_cmd(["git", "grep", "-n", "-E", "TODO|FIXME|HACK", "--", "*.py", "*.ts", "*.js", "*.go", "*.rs"], cwd=repo_dir)
+    todo_matches = _run_cmd(
+        [
+            "git",
+            "grep",
+            "-n",
+            "-E",
+            "TODO|FIXME|HACK",
+            "--",
+            "*.py",
+            "*.ts",
+            "*.js",
+            "*.go",
+            "*.rs",
+        ],
+        cwd=repo_dir,
+    )
     todo_sample = "\n".join(todo_matches.splitlines()[:15]) if todo_matches else "None"
 
-    tasks_block = "\n".join([f"- {t}" for t in existing_tasks]) if existing_tasks else "(No active tasks)"
+    tasks_block = (
+        "\n".join([f"- {t}" for t in existing_tasks])
+        if existing_tasks
+        else "(No active tasks)"
+    )
 
     print("### 🔍 Pre-Screen Intelligence Package (Zero-Token Ingested)")
     print(f"**Repository:** `{repo_dir.name}` (Commit: `{head_sha[:8]}`)")
@@ -605,16 +694,26 @@ def run_scanner_gate() -> int:
     print()
 
     if not existing_tasks:
-        candidate_files = _run_cmd(["git", "ls-files", "*.py", "*.ts", "*.js", "*.mjs"], cwd=repo_dir)
-        files_sample = "\n".join([f"- `{f}`" for f in candidate_files.splitlines()[:20]]) if candidate_files else "(None)"
+        candidate_files = _run_cmd(
+            ["git", "ls-files", "*.py", "*.ts", "*.js", "*.mjs"], cwd=repo_dir
+        )
+        files_sample = (
+            "\n".join([f"- `{f}`" for f in candidate_files.splitlines()[:20]])
+            if candidate_files
+            else "(None)"
+        )
         print("#### Baseline Codebase Source Files to Inspect:")
         print(files_sample)
         print()
         print("---")
-        print(f"Instructions for Agent: Baseline scan for board '{board_slug}' (0 active tasks). Inspect candidate source files above for genuine bugs, missing tests, or error-handling debt. Create exactly 1 task using `hermes zerofactory create \"<issue title>\" --description \"<details>\" --board \"{board_slug}\" --files \"<files>\" --category \"<category>\" --priority P0 --status todo --assignee zf-builder`.")
+        print(
+            f'Instructions for Agent: Baseline scan for board \'{board_slug}\' (0 active tasks). Inspect candidate source files above for genuine bugs, missing tests, or error-handling debt. Create exactly 1 task using `hermes zerofactory create "<issue title>" --description "<details>" --board "{board_slug}" --files "<files>" --category "<category>" --priority P0 --status todo --assignee zf-builder`.'
+        )
     else:
         print("---")
-        print(f"Instructions for Agent: Review the codebase for board '{board_slug}' for genuine code quality improvements, refactoring, performance, architecture, or test debt. If warranted, create AT MOST 1 task in Kanban and finish. Do NOT duplicate open tasks.")
+        print(
+            f"Instructions for Agent: Review the codebase for board '{board_slug}' for genuine code quality improvements, refactoring, performance, architecture, or test debt. If warranted, create AT MOST 1 task in Kanban and finish. Do NOT duplicate open tasks."
+        )
     print()
 
     # Emit wakeAgent: true to invoke LLM with this rich context
