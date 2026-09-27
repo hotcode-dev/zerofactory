@@ -47,7 +47,7 @@ Zero Factory automatically provisions and maintains three specialized agent prof
 |---|---|---|
 | **`zf-orchestrator`** | Pipeline Overseer | Manages the Kanban board, oversees goal decomposition, autonomously scans repositories for tech debt using the Ponytail ladder of laziness, and escalates blockers. |
 | **`zf-builder`** | Senior Software Engineer | Writes clean code and tests using surgical, token-efficient diffs (Ponytail Ladder of Laziness), operates inside automated Git worktrees, and ships features rapidly. |
-| **`zf-reviewer`** | Quality Gatekeeper | Conducts thematic, capped 3-round code reviews on GitHub Pull Requests (Correctness → Performance → Clean Code / Ponytail), verifying test adequacy, performance, and architecture. |
+| **`zf-reviewer`** | Quality Gatekeeper | Conducts thematic code reviews on GitHub Pull Requests (Correctness → Performance → Clean Code / Ponytail, up to 3 rounds), verifying test adequacy, performance, and architecture. |
 
 ---
 
@@ -140,7 +140,7 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 2. **Decomposition & Codebase Scanning (`Todo`)**: `zf-orchestrator` breaks `Triage` goals down into atomic sub-tasks, and runs periodic codebase scans to directly file actionable `Todo` improvement tasks for `zf-builder`.
 3. **Autonomous Execution (`Running`)**: The dispatcher validates dependencies, provisions an isolated Git worktree, and launches `zf-builder` to write code and tests.
    - **Global LLM capacity**: Settings → Global Max Concurrent LLM Workers caps running task agents and in-flight improvement scanners across all boards. For example, with a cap of 3, two running tasks on one board and one on another leave no slot for further tasks or scanners. The per-board running limits and Max Active Tasks (task WIP) apply independently. No-Agent queue checks do not consume LLM capacity.
-4. **PR Creation & Agent Review (`Running`)**: When `zf-builder` finishes, the dispatcher commits the branch, opens a GitHub Pull Request, and routes it to `zf-reviewer` in `Running` across 3 continuous review rounds (Correctness ➔ Performance ➔ Clean Code).
+4. **PR Creation & Agent Review (`Running`)**: When `zf-builder` finishes, the dispatcher commits the branch, opens a GitHub Pull Request, and routes it to `zf-reviewer` in `Running` for thematic review (Correctness ➔ Performance ➔ Clean Code, up to 3 rounds).
 5. **Human Action & Merge (`Blocked`)**: Approved PRs move to `Blocked` awaiting human merge. Any crashed workers or merge conflict escalations also move to `Blocked` for operator review.
 6. **Completion (`Done`)**: The human merges the PR on GitHub, and the dispatcher automatically marks the ticket as `Done` and prunes the worktree.
 

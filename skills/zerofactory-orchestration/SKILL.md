@@ -16,7 +16,7 @@ Zero Factory automatically provisions and maintains the following specialist pro
 | :--- | :--- | :--- |
 | **`zf-orchestrator`** | Pipeline Overseer | Master coordinator — manages the Kanban board, oversees goal decomposition, autonomously scans repositories to generate improvement TODO tasks, manages handoffs, and escalates blockers to human review. |
 | **`zf-builder`** | Senior Software Engineer | Writes clean code and tests, operates inside automated Git worktrees, and ships features rapidly. |
-| **`zf-reviewer`** | Quality Gatekeeper | Conducts thematic, capped 3-round code reviews on GitHub Pull Requests, verifying test adequacy, performance, and architecture. |
+| **`zf-reviewer`** | Quality Gatekeeper | Conducts thematic code reviews on GitHub Pull Requests (up to 3 rounds), verifying test adequacy, performance, and architecture. |
 
 ## Profile Management
 

@@ -1437,8 +1437,8 @@
             },
             {
               icon: "🔍",
-              title: "3-Round Thematic Review",
-              desc: "Layered code review capping at 3 focused rounds (Correctness ➔ Performance ➔ Clean Code / Ponytail) before human merge."
+              title: "Thematic Code Review",
+              desc: "Layered code review (Correctness ➔ Performance ➔ Clean Code / Ponytail), capped at up to 3 rounds before human merge."
             },
             {
               icon: "⚡",
@@ -1543,10 +1543,10 @@
                 },
                 {
                   num: "6",
-                  title: "3-Round Review",
+                  title: "Thematic Review",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "zf-reviewer runs in Running across 3 rounds (Correctness ➔ Performance ➔ Ponytail / Clean Code). Requests changes or approves."
+                  desc: "zf-reviewer runs in Running (Correctness ➔ Performance ➔ Ponytail / Clean Code, up to 3 rounds). Requests changes or approves."
                 },
                 {
                   num: "7",
@@ -3681,7 +3681,7 @@
                 { className: "flex items-center gap-2.5 flex-wrap" },
                 React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 text-indigo-100 border border-indigo-500/60 font-mono shadow-xs" }, "Hermes Plugin"),
                 React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-900/80 text-emerald-100 border border-emerald-500/60 font-mono shadow-xs" }, "Zero-Token Idle Watchdogs"),
-                React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/80 text-purple-100 border border-purple-500/60 font-mono shadow-xs" }, "3-Round Thematic Review")
+                React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/80 text-purple-100 border border-purple-500/60 font-mono shadow-xs" }, "Thematic Review")
               ),
               React.createElement("h2", { className: "text-2xl md:text-3xl font-extrabold text-white tracking-tight m-0" }, "Zero Factory Architecture & User Guide"),
               React.createElement("p", { className: "text-xs md:text-sm text-slate-200 max-w-2xl leading-relaxed m-0 font-normal" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Three specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")

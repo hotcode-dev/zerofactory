@@ -273,7 +273,7 @@ def get_activities(
         known_agents = [
             ("zf-orchestrator", "Orchestrator", "Decomposes goals, designs architecture, coordinates board"),
             ("zf-builder", "Builder", "Executes tasks, tests code, creates PRs in Git worktrees"),
-            ("zf-reviewer", "Reviewer", "Performs thematic 3-round reviews, approves or requests changes"),
+            ("zf-reviewer", "Reviewer", "Performs thematic reviews (up to 3 rounds), approves or requests changes"),
             ("dispatcher", "Dispatcher Engine", "Supervises process lifecycle, auto-unblocks and dispatches workers"),
         ]
 
