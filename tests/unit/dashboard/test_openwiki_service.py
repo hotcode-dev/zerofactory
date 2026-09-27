@@ -81,3 +81,59 @@ def test_openwiki_status_and_task_lifecycle(initialized_db: Path, tmp_path: Path
     assert status3["has_openwiki"] is True
     assert status3["openwiki_path"] == str(ow_dir)
     assert "Repository Architecture Overview" in status3["wiki_index_preview"]
+
+
+def test_openwiki_blocked_task_allows_regenerate(initialized_db: Path, tmp_path: Path):
+    """A setup task blocked awaiting human merge must NOT block regeneration."""
+    from dashboard.db import get_db_conn
+
+    repo_dir = tmp_path / "ow_blocked_repo"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / ".git").mkdir()
+
+    b_res = create_board(
+        BoardCreate(
+            git_url=str(repo_dir),
+            description="Local blocked repo",
+            auto_setup_precommit=False,
+        )
+    )
+    slug = b_res["slug"]
+
+    # First setup run
+    setup_res = create_openwiki_setup_task(slug)
+    assert setup_res["ok"] is True
+    assert setup_res["already_exists"] is False
+    task_id = setup_res["task_id"]
+
+    # Simulate the human merge gate: the setup task sits in `blocked`
+    # awaiting review/merge (dispatcher PR workflow)
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT updated_at FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        cursor.execute(
+            "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
+            (row["updated_at"], task_id),
+        )
+        conn.commit()
+
+    # A blocked task is not active work: no pending task, surfaced as blocked
+    status = check_board_openwiki_status(slug)
+    assert status["ok"] is True
+    assert status["pending_task_id"] is None
+    assert status["pending_task_status"] is None
+    assert status["blocked_task_id"] == task_id
+    assert status["blocked_task_status"] == "blocked"
+
+    # Regenerate must create a FRESH task instead of returning the stale one
+    regen_res = create_openwiki_setup_task(slug)
+    assert regen_res["ok"] is True
+    assert regen_res["already_exists"] is False
+    assert regen_res["task_id"] is not None
+    assert regen_res["task_id"] != task_id
+
+    # The fresh task is reported as active pending work again
+    status2 = check_board_openwiki_status(slug)
+    assert status2["pending_task_id"] == regen_res["task_id"]
+    assert status2["pending_task_status"] == "todo"

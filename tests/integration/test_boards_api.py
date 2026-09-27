@@ -169,3 +169,55 @@ def test_board_openwiki_endpoints(api_client: TestClient):
     assert status_res2.status_code == 200
     status_data2 = status_res2.json()
     assert status_data2["pending_task_id"] == task_id
+
+
+def test_board_openwiki_blocked_task_regenerates(api_client: TestClient):
+    """A setup task blocked awaiting merge must allow a fresh regenerate task."""
+    create_res = api_client.post(
+        "/api/plugins/zerofactory/boards",
+        json={"git_url": "https://github.com/example/openwiki-regen.git"},
+    )
+    assert create_res.status_code == 200
+    slug = create_res.json()["slug"]
+
+    # Initial setup task
+    setup_res = api_client.post(
+        f"/api/plugins/zerofactory/boards/{slug}/setup-openwiki"
+    )
+    assert setup_res.status_code == 200
+    setup_data = setup_res.json()
+    assert setup_data["already_exists"] is False
+    task_id = setup_data["task_id"]
+
+    # Move the setup task to blocked (human merge gate)
+    move_res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "blocked", "actor": "user", "reason": "human review required"},
+    )
+    assert move_res.status_code == 200
+
+    # Status: no active pending task; the blocked task is surfaced separately
+    status_data = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/openwiki-status"
+    ).json()
+    assert status_data["pending_task_id"] is None
+    assert status_data["blocked_task_id"] == task_id
+    assert status_data["blocked_task_status"] == "blocked"
+
+    # Regenerate creates a NEW task instead of deduplicating to the blocked one
+    regen_res = api_client.post(
+        f"/api/plugins/zerofactory/boards/{slug}/setup-openwiki"
+    )
+    assert regen_res.status_code == 200
+    regen_data = regen_res.json()
+    assert regen_data["already_exists"] is False
+    new_task_id = regen_data["task_id"]
+    assert new_task_id is not None
+    assert new_task_id != task_id
+
+    # The fresh task is now the active pending task
+    status_data2 = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/openwiki-status"
+    ).json()
+    assert status_data2["pending_task_id"] == new_task_id
+    assert status_data2["pending_task_status"] == "todo"

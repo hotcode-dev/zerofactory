@@ -6037,12 +6037,16 @@
                                 ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
                                 : openwikiStatus && openwikiStatus.pending_task_id
                                 ? "bg-sky-950/80 text-sky-300 border border-sky-800/60"
+                                : openwikiStatus && openwikiStatus.blocked_task_id
+                                ? "bg-amber-950/60 text-amber-200 border border-amber-800/60"
                                 : "bg-amber-950/80 text-amber-300 border border-amber-800/60")
                           },
                           openwikiStatus && openwikiStatus.has_openwiki
                             ? "Generated ✓"
                             : openwikiStatus && openwikiStatus.pending_task_id
                             ? "Setup in Progress ⏳"
+                            : openwikiStatus && openwikiStatus.blocked_task_id
+                            ? "Awaiting Human Merge 🤝"
                             : "Not Generated ⚠️"
                         )
                       ),

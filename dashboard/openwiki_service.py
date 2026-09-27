@@ -125,11 +125,14 @@ def check_board_openwiki_status(board_slug: str) -> dict[str, Any]:
 
         board = dict(row)
 
-        # Check for pending setup task
+        # Check for a setup task. Only actively-dispatchable statuses count as
+        # pending work: a `blocked` task is awaiting a human action (merge
+        # review) and must not masquerade as in-progress work — otherwise a
+        # blocked setup task would permanently wedge the Setup/Regenerate button.
         cursor.execute(
             """
             SELECT id, status, title FROM tasks
-            WHERE board_slug = ? AND status != 'done'
+            WHERE board_slug = ? AND status IN ('triage', 'todo', 'ready', 'running')
             AND (
                 title LIKE 'chore(repo): setup OpenWiki%'
                 OR metadata LIKE '%setup:openwiki%'
@@ -141,6 +144,24 @@ def check_board_openwiki_status(board_slug: str) -> dict[str, Any]:
         t_row = cursor.fetchone()
         pending_task_id = t_row["id"] if t_row else None
         pending_task_status = t_row["status"] if t_row else None
+
+        # Surface a most-recent blocked setup task as awaiting human merge,
+        # so the UI can show a distinct "awaiting merge" state.
+        cursor.execute(
+            """
+            SELECT id, status, title FROM tasks
+            WHERE board_slug = ? AND status = 'blocked'
+            AND (
+                title LIKE 'chore(repo): setup OpenWiki%'
+                OR metadata LIKE '%setup:openwiki%'
+            )
+            ORDER BY created_at DESC LIMIT 1
+        """,
+            (board_slug,),
+        )
+        b_row = cursor.fetchone()
+        blocked_task_id = b_row["id"] if b_row else None
+        blocked_task_status = b_row["status"] if b_row else None
 
     # Check filesystem for openwiki directory & index.md
     has_openwiki = False
@@ -174,6 +195,8 @@ def check_board_openwiki_status(board_slug: str) -> dict[str, Any]:
         "wiki_index_preview": wiki_index_preview,
         "pending_task_id": pending_task_id,
         "pending_task_status": pending_task_status,
+        "blocked_task_id": blocked_task_id,
+        "blocked_task_status": blocked_task_status,
     }
 
 

@@ -258,7 +258,7 @@ def create_task(req: TaskCreate):
         cursor.execute(
             """
             SELECT id, title, status, metadata FROM tasks 
-            WHERE board_slug = ? AND status != 'done'
+            WHERE board_slug = ? AND status IN ('triage', 'todo', 'ready', 'running')
         """,
             (board_slug,),
         )
