@@ -516,7 +516,14 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                 continue
 
                             if not workspace_path or not Path(workspace_path).exists():
-                                continue
+                                if row["pr_url"]:
+                                    wt = _disp.setup_worktree(cursor, task_id, title, assignee, tenant, db_path, board_slug=board_slug, repo_path=repo_path)
+                                    if wt and Path(wt).exists():
+                                        workspace_path = wt
+                                    else:
+                                        continue
+                                else:
+                                    continue
                             try:
                                 _disp.clean_stale_git_locks(Path(workspace_path))
                                 git_dir = _disp.get_git_dir(Path(workspace_path))
