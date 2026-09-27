@@ -362,3 +362,60 @@ def test_run_dispatch_cycle_logs_conflict_resolved_activity(tmp_path: Path):
         assert "pr_opened" in actions
 
 
+def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(tmp_path: Path):
+    """When a task is blocked for review-required handoff but GitHub still reports CONFLICTING,
+    it falls through to commit/push instead of wiping worktree and re-entering conflict loop."""
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+
+    now = 1000
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO tasks VALUES ('t-rev-conf', 'Fix conflict [PR Opened by zf-builder] [PR Conflict]', 'desc', 'blocked', 'zf-builder', 'P1', '{\"blocked_reason\": \"review-required\"}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
+            (str(tmp_path), now, now)
+        )
+        conn.commit()
+
+    lock_file = tmp_path / "dispatcher.lock"
+    import dispatcher
+
+    def fake_subprocess_run(cmd, *args, **kwargs):
+        if "rev-parse" in cmd:
+            return MagicMock(returncode=0, stdout=str(tmp_path))
+        if "status" in cmd:
+            return MagicMock(returncode=0, stdout="")
+        if "view" in cmd:
+            # PR view returns CONFLICTING to simulate GitHub not yet updated
+            return MagicMock(
+                returncode=0,
+                stdout=json.dumps({"url": "https://github.com/foo/bar/pull/50", "mergeable": "CONFLICTING", "reviewDecision": ""})
+            )
+        return MagicMock(returncode=0, stdout="")
+
+    with patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file), \
+         patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}), \
+         patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path), \
+         patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run), \
+         patch.object(dispatcher, "clean_stale_git_locks"), \
+         patch.object(dispatcher, "get_git_dir", return_value=None), \
+         patch.object(dispatcher, "get_unmerged_status_files", return_value=[]), \
+         patch.object(dispatcher, "check_unresolved_conflicts_safe", return_value=(True, [], "")), \
+         patch.object(dispatcher, "pull_and_merge_main", return_value=(True, [], "")), \
+         patch.object(dispatcher, "_handle_pr_conflict_from_github") as mock_handle_github, \
+         patch.object(dispatcher, "stop_task_worker"), \
+         patch.object(dispatcher, "_remove_worktree"), \
+         patch.object(dispatcher, "setup_worktree"):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+        assert res["prs_opened"] == 1
+        mock_handle_github.assert_not_called()
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        task = conn.execute("SELECT status, assignee, title FROM tasks WHERE id = 't-rev-conf'").fetchone()
+        assert task["status"] == "todo"
+        assert task["assignee"] == "zf-reviewer"
+        assert "[PR Conflict]" not in task["title"]
+
+
+

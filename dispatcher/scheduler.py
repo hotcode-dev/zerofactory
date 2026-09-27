@@ -369,20 +369,40 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
 
                                     if mergeable == "CONFLICTING":
                                         if row["status"] in ("blocked", "done"):
-                                            task_meta = {}
+                                            # If assignee is zf-builder and reason is review-required (worker just finished in worktree),
+                                            # builder has completed conflict resolution and is handing off to dispatcher to commit/push.
+                                            # Do not wipe the worktree; fall through to local commit/merge/push in step 3!
+                                            last_comment_is_review = False
                                             try:
-                                                cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
-                                                m_res = cursor.fetchone()
-                                                if m_res and m_res[0]:
-                                                    task_meta = json.loads(m_res[0])
+                                                cursor.execute("SELECT body FROM task_comments WHERE task_id = ? ORDER BY id DESC LIMIT 1", (task_id,))
+                                                c_row = cursor.fetchone()
+                                                if c_row and any(kw in str(c_row[0] or "").lower() for kw in ("review-required", "review required", "review_required")):
+                                                    last_comment_is_review = True
                                             except Exception:
                                                 pass
-                                            max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
-                                            if int(task_meta.get("conflict_retries", 0)) > max_conflict_retries:
-                                                _log.debug("Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling", task_id, int(task_meta.get("conflict_retries", 0)), max_conflict_retries)
+
+                                            is_review_handoff = (
+                                                assignee not in ("zf-reviewer", "human")
+                                                and (str(meta.get("blocked_reason") or "").lower() in ("review-required", "review required", "review_required") or last_comment_is_review)
+                                                and workspace_path and Path(workspace_path).exists()
+                                            )
+                                            if is_review_handoff:
+                                                pass
                                             else:
-                                                _disp._handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
-                                        continue
+                                                task_meta = {}
+                                                try:
+                                                    cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                                                    m_res = cursor.fetchone()
+                                                    if m_res and m_res[0]:
+                                                        task_meta = json.loads(m_res[0])
+                                                except Exception:
+                                                    pass
+                                                max_conflict_retries = int(os.environ.get("ZEROFACTORY_MAX_CONFLICT_RETRIES", "3"))
+                                                if int(task_meta.get("conflict_retries", 0)) > max_conflict_retries:
+                                                    _log.debug("Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling", task_id, int(task_meta.get("conflict_retries", 0)), max_conflict_retries)
+                                                else:
+                                                    _disp._handle_pr_conflict_from_github(cursor, task_id, title, workspace_path, repo_path, tenant, db_path, board_slug, now)
+                                                continue
 
                                     if assignee not in ("zf-reviewer", "human") and row["status"] in ("done", "blocked"):
                                         pass
