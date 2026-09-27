@@ -43,7 +43,8 @@ def _zf_is_genuine_value_utility(token):
     ``text-[9px]``, ``max-w-[130px]``) that part (b)'s variant-prefixed check
     never inspects — so a stale stylesheet can pass the variant delta while
     silently dropping them. Tailwind v4's dynamic spacing/scale accepts
-    integer or ``.5`` steps, so e.g. ``py-0.2`` is not a real utility (the
+    integer or ``.25``/``.75`` steps, so e.g. ``py-0.2`` is not a real
+    utility (the
     compiler emits nothing for it); we exclude those so the in-sync check
     cannot flag dead classes.
     """
