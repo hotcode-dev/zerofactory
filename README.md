@@ -25,6 +25,16 @@ graph TD
 
 ---
 
+## Repository Architecture & Agent Wiki
+
+For architectural overviews, subsystem maps, and module contracts, consult the
+machine-readable wiki in `openwiki/index.md` before reading individual source
+files. It maps every subsystem (dispatcher, dashboard API, database schema,
+cron automation, CLI, test suite, agent profiles) with file paths and the
+cross-module dependency graph — start there, then open only the pages relevant
+to your task. Keep it current: when a change alters module contracts or the
+lifecycle, update the matching `openwiki/` page in the same change.
+
 ## Core Principles
 
 | Pillar | Description |
@@ -250,6 +260,8 @@ zerofactory/
 ├── dispatcher/                  # Autonomous dispatch engine & worktree manager
 ├── cron/                        # Periodic scanner & reporting engine
 ├── profile_manager.py           # Auto-provisioning for zf-* profiles & scripts
+├── migrations/                  # Versioned SQLite migrations (runner + 0001/0002)
+├── openwiki/                    # Machine-readable agent wiki (index.md + subsystem pages)
 ├── tests/                       # Modular test suite (unit, integration, e2e)
 │   ├── unit/                    # Unit tests for paths, settings, scripts, cron, dispatcher, etc.
 │   ├── integration/             # FastAPI dashboard REST API route integration tests
