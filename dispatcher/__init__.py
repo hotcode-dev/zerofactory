@@ -147,8 +147,10 @@ from .scheduler import (
 from .worktree import (
     resolve_task_repo_path,
     setup_worktree,
+    run_deterministic_precommit,
     _delete_remote_branch,
     _handle_local_merge_conflict,
+    _handle_precommit_failure,
     _handle_pr_conflict_from_github,
     _remove_worktree,
 )
@@ -233,7 +235,9 @@ __all__ = [
     # Worktree
     "resolve_task_repo_path",
     "setup_worktree",
+    "run_deterministic_precommit",
     "_handle_local_merge_conflict",
+    "_handle_precommit_failure",
     "_delete_remote_branch",
     "_remove_worktree",
     "_handle_pr_conflict_from_github",

@@ -191,28 +191,51 @@ def spawn_agent_worker(
                             _cmt_blocks = []
                             for idx, r in enumerate(_rev_rows, 1):
                                 _cmt_blocks.append(f"### Review Comment #{idx} (by @{r['author']}):\n{r['body']}")
-                            review_comments_prompt = (
-                                "🚨 CRITICAL: PULL REQUEST REVIEW COMMENTS TO ADDRESS\n"
-                                "The reviewer / human has submitted the following review comments on your Pull Request.\n"
-                                "You must address EVERY review comment in your implementation:\n\n"
-                                + "\n\n".join(_cmt_blocks)
-                                + "\n\n"
-                            )
+                            is_precommit_fail = any("deterministic precommit failed" in r["body"].lower() for r in _rev_rows)
+                            if is_precommit_fail:
+                                review_comments_prompt = (
+                                    "🚨 CRITICAL: DETERMINISTIC PRECOMMIT CHECKS FAILED\n"
+                                    "The automated precommit checks (.zerofactory/precommit.sh) failed during auto-commit.\n"
+                                    "You must fix the formatting, build/typecheck, or test failures before completing:\n\n"
+                                    + "\n\n".join(_cmt_blocks)
+                                    + "\n\n"
+                                )
+                            else:
+                                review_comments_prompt = (
+                                    "🚨 CRITICAL: PULL REQUEST REVIEW COMMENTS TO ADDRESS\n"
+                                    "The reviewer / human has submitted the following review comments on your Pull Request.\n"
+                                    "You must address EVERY review comment in your implementation:\n\n"
+                                    + "\n\n".join(_cmt_blocks)
+                                    + "\n\n"
+                                )
             except Exception as e:
                 _log.debug("Could not inspect task_comments for worker prompt: %s", e)
 
-            goal_instructions = (
-                f"Your goal as Builder (Fix Review Comments):\n"
-                f"1. Carefully address every review comment listed above in your workspace ({workdir}).\n"
-                f"2. Apply targeted, concise code edits rather than rewriting or bloating files.\n"
-                f"3. Run automated tests and linters in your workspace to verify correctness.\n"
-                f"4. When finished, hand off for re-review:\n"
-                f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n"
-                f"5. Provide a summary of how each review comment was resolved.\n\n"
-                f"NOTE: Do NOT run git commands (git add/commit/push/checkout). The factory dispatcher automatically stages, commits, and pushes your fixes to the PR upon handoff.\n"
-            ) if review_comments_prompt else (
-                f"Your goal:\n"
-                f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
+            if review_comments_prompt and any("deterministic precommit failed" in r["body"].lower() for r in _rev_rows if "_rev_rows" in locals()):
+                goal_instructions = (
+                    f"Your goal as Builder (Fix Precommit Failures):\n"
+                    f"1. Inspect the precommit failure output above.\n"
+                    f"2. Run `./.zerofactory/precommit.sh` in your workspace ({workdir}) to reproduce the failure.\n"
+                    f"3. Fix all issues until `./.zerofactory/precommit.sh` exits cleanly with code 0.\n"
+                    f"4. When verified clean, mark the task as complete using:\n"
+                    f"   hermes zerofactory move {task_id} done\n\n"
+                    f"NOTE: Do NOT run git commands (git add/commit/push). The factory dispatcher automatically verifies precommit and commits upon completion.\n"
+                )
+            elif review_comments_prompt:
+                goal_instructions = (
+                    f"Your goal as Builder (Fix Review Comments):\n"
+                    f"1. Carefully address every review comment listed above in your workspace ({workdir}).\n"
+                    f"2. Apply targeted, concise code edits rather than rewriting or bloating files.\n"
+                    f"3. Run automated tests and linters in your workspace to verify correctness.\n"
+                    f"4. When finished, hand off for re-review:\n"
+                    f"   hermes zerofactory move {task_id} blocked --reason \"review-required\"\n"
+                    f"5. Provide a summary of how each review comment was resolved.\n\n"
+                    f"NOTE: Do NOT run git commands (git add/commit/push/checkout). The factory dispatcher automatically stages, commits, and pushes your fixes to the PR upon handoff.\n"
+                )
+            else:
+                goal_instructions = (
+                    f"Your goal:\n"
+                    f"1. Read the task requirements and explore the codebase in your workspace ({workdir}).\n"
                 f"2. Implement the required changes cleanly, adhering to repository patterns.\n"
                 f"   - TOKEN EFFICIENCY: Apply targeted search/replace or hunk edits instead of rewriting entire files.\n"
                 f"3. Verify your changes with tests, linters, or typechecks.\n"

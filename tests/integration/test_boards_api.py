@@ -73,3 +73,55 @@ def test_delete_board(api_client: TestClient):
     # Should no longer be present
     boards = api_client.get("/api/plugins/zerofactory/boards").json()["boards"]
     assert not any(b["slug"] == "delete-org-repo-del" for b in boards)
+
+
+def test_board_precommit_endpoints(api_client: TestClient):
+    """Verify precommit-status and setup-precommit API endpoints."""
+    # Create board without auto setup
+    create_res = api_client.post(
+        "/api/plugins/zerofactory/boards",
+        json={
+            "git_url": "https://github.com/precommit-org/repo-pc.git",
+            "auto_setup_precommit": False,
+        },
+    )
+    assert create_res.status_code == 200
+    slug = create_res.json()["slug"]
+
+    # Check status
+    status_res = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/precommit-status")
+    assert status_res.status_code == 200
+    status_data = status_res.json()
+    assert status_data["ok"] is True
+    assert status_data["has_precommit"] is False
+    assert status_data["pending_task_id"] is None
+
+    # Trigger setup via API
+    setup_res = api_client.post(f"/api/plugins/zerofactory/boards/{slug}/setup-precommit")
+    assert setup_res.status_code == 200
+    setup_data = setup_res.json()
+    assert setup_data["ok"] is True
+    task_id = setup_data["task_id"]
+    assert task_id is not None
+
+    # Status check should now report pending setup task
+    status_res2 = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/precommit-status")
+    assert status_res2.status_code == 200
+    status_data2 = status_res2.json()
+    assert status_data2["pending_task_id"] == task_id
+
+
+def test_create_board_with_auto_setup(api_client: TestClient):
+    """Verify board creation with auto_setup_precommit=True generates setup task."""
+    res = api_client.post(
+        "/api/plugins/zerofactory/boards",
+        json={
+            "git_url": "https://github.com/auto-setup-org/repo-auto.git",
+            "auto_setup_precommit": True,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["ok"] is True
+    assert "setup_task_id" in data
+    assert data["setup_task_id"] is not None

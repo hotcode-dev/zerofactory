@@ -172,7 +172,8 @@
       target_branch: "",
       max_concurrent_running: 1,
       auto_record_memory: true,
-      additional_reviewer_usernames: ""
+      additional_reviewer_usernames: "",
+      auto_setup_precommit: true
     });
 
     const [editBoardForm, setEditBoardForm] = useState({
@@ -184,6 +185,10 @@
       auto_record_memory: true,
       additional_reviewer_usernames: ""
     });
+
+    const [precommitStatus, setPrecommitStatus] = useState(null);
+    const [isLoadingPrecommit, setIsLoadingPrecommit] = useState(false);
+    const [isSettingUpPrecommit, setIsSettingUpPrecommit] = useState(false);
 
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
@@ -330,6 +335,49 @@
       }
     }, [fetchJSON]);
 
+    // Precommit status loader
+    const loadPrecommitStatus = useCallback(async (boardSlug) => {
+      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      if (!bSlug || bSlug === "all") {
+        setPrecommitStatus(null);
+        return;
+      }
+      setIsLoadingPrecommit(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/precommit-status");
+        if (res && res.ok) {
+          setPrecommitStatus(res);
+        } else {
+          setPrecommitStatus(null);
+        }
+      } catch (err) {
+        setPrecommitStatus(null);
+      } finally {
+        setIsLoadingPrecommit(false);
+      }
+    }, [fetchJSON]);
+
+    const handleTriggerPrecommitSetup = async (boardSlug) => {
+      const bSlug = boardSlug || selectedBoard;
+      if (!bSlug || bSlug === "all") return;
+      setIsSettingUpPrecommit(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-precommit", {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          showToast(res.message || "Created setup task for .zerofactory/precommit.sh!", "success");
+          await Promise.all([loadPrecommitStatus(bSlug), loadTasksAndStats(bSlug)]);
+        } else {
+          showToast((res && (res.detail || res.error || res.message)) || "Failed to trigger precommit setup", "error");
+        }
+      } catch (err) {
+        showToast("Error initiating setup: " + (err.message || String(err)), "error");
+      } finally {
+        setIsSettingUpPrecommit(false);
+      }
+    };
+
     // Load Tasks & Stats
     const loadTasksAndStats = useCallback(async (boardSlug) => {
       const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
@@ -352,12 +400,17 @@
         if (statsData) {
           setStats(statsData);
         }
+        if (bSlug && bSlug !== "all") {
+          loadPrecommitStatus(bSlug);
+        } else {
+          setPrecommitStatus(null);
+        }
       } catch (err) {
         console.error("Failed to load kanban data:", err);
       } finally {
         setLoading(false);
       }
-    }, [fetchJSON]);
+    }, [fetchJSON, loadPrecommitStatus]);
 
     // Cron management handlers
     const loadCronJobs = useCallback(async () => {
@@ -1169,13 +1222,14 @@
             target_branch: (newBoardForm.target_branch || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
-            additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
+            additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
+            auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false)
           })
         });
         const createdSlug = (res && res.slug) ? res.slug : autoSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        setNewBoardForm({ git_url: "", description: "", target_branch: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
+        setNewBoardForm({ git_url: "", description: "", target_branch: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "", auto_setup_precommit: true });
         setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
@@ -1230,6 +1284,7 @@
           auto_record_memory: curr.auto_record_memory !== false,
           additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
         });
+        loadPrecommitStatus(curr.slug);
         setShowEditBoardModal(true);
       }
     };
@@ -4183,6 +4238,49 @@
                       )
                     ),
 
+                    // Smart Precommit Setup Banner
+                    Boolean(selectedBoard && selectedBoard !== "all" && precommitStatus && !precommitStatus.has_precommit) &&
+                    React.createElement(
+                      "div",
+                      {
+                        className: "mb-3.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs"
+                      },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2.5 text-amber-200" },
+                        React.createElement("span", { className: "text-base" }, precommitStatus.pending_task_id ? "⚡" : "⚠️"),
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement(
+                            "div",
+                            { className: "font-semibold text-slate-100" },
+                            precommitStatus.pending_task_id
+                              ? "Precommit Setup Task in Progress"
+                              : "Precommit Verification Not Configured"
+                          ),
+                          React.createElement(
+                            "div",
+                            { className: "text-slate-400 text-[11px]" },
+                            precommitStatus.pending_task_id
+                              ? ("Task " + precommitStatus.pending_task_id + " (" + precommitStatus.pending_task_status + ") is generating .zerofactory/precommit.sh")
+                              : "This board lacks .zerofactory/precommit.sh. Set up standard automated test, build, and format verification for commits."
+                          )
+                        )
+                      ),
+                      !precommitStatus.pending_task_id &&
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all duration-150 cursor-pointer disabled:opacity-50",
+                          disabled: isSettingUpPrecommit,
+                          onClick: () => handleTriggerPrecommitSetup(selectedBoard)
+                        },
+                        isSettingUpPrecommit ? "Initiating Setup..." : "⚡ Setup Repo for Zero Factory"
+                      )
+                    ),
+
                     // Main Kanban Board Grid (Single Row locked across all screens)
                     React.createElement(
                       "div",
@@ -5576,6 +5674,22 @@
                       checked: Boolean(newBoardForm.auto_record_memory !== false),
                       onChange: (e) => setNewBoardForm({ ...newBoardForm, auto_record_memory: e.target.checked })
                     })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-1 flex items-center justify-between" },
+                    React.createElement(
+                      "div",
+                      null,
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "⚡ Auto-Setup Precommit"),
+                      React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Generate .zerofactory/precommit.sh with automated test, build, and format verification.")
+                    ),
+                    React.createElement("input", {
+                      type: "checkbox",
+                      className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                      checked: Boolean(newBoardForm.auto_setup_precommit !== false),
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, auto_setup_precommit: e.target.checked })
+                    })
                   )
                 ),
                 React.createElement(
@@ -5750,6 +5864,61 @@
                       checked: Boolean(editBoardForm.auto_record_memory !== false),
                       onChange: (e) => setEditBoardForm({ ...editBoardForm, auto_record_memory: e.target.checked })
                     })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between" },
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "⚡ Repository Precommit"),
+                        React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Deterministic test, build, and format check script (.zerofactory/precommit.sh).")
+                      ),
+                      React.createElement(
+                        "span",
+                        {
+                          className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " +
+                            (precommitStatus && precommitStatus.has_precommit
+                              ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                              : precommitStatus && precommitStatus.pending_task_id
+                              ? "bg-sky-950/80 text-sky-300 border border-sky-800/60"
+                              : "bg-amber-950/80 text-amber-300 border border-amber-800/60")
+                        },
+                        precommitStatus && precommitStatus.has_precommit
+                          ? "Configured ✓"
+                          : precommitStatus && precommitStatus.pending_task_id
+                          ? "Setup in Progress ⏳"
+                          : "Not Configured ⚠️"
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between gap-2" },
+                      React.createElement(
+                        "span",
+                        { className: "text-[11px] text-slate-400 font-mono truncate" },
+                        precommitStatus && precommitStatus.precommit_path
+                          ? precommitStatus.precommit_path
+                          : ".zerofactory/precommit.sh"
+                      ),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          disabled: isSettingUpPrecommit,
+                          onClick: () => handleTriggerPrecommitSetup(editBoardForm.slug),
+                          className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                        },
+                        isSettingUpPrecommit
+                          ? "Initiating..."
+                          : (precommitStatus && precommitStatus.has_precommit
+                              ? "🔄 Regenerate Precommit"
+                              : "⚡ Setup Repo Precommit")
+                      )
+                    )
                   )
                 ),
                 React.createElement(

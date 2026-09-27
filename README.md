@@ -97,6 +97,7 @@ hermes zerofactory comment <task_id> "Note..."    # Post a comment to a ticket
 hermes zerofactory board list                                          # List all project boards
 hermes zerofactory board create <git_url> [--target-branch <branch>]   # Add a new codebase board with optional target/base branch
 hermes zerofactory board delete <slug>                                 # Delete a board and clear its scanner job
+hermes zerofactory setup-repo --board <slug>                           # File P0 setup task to generate .zerofactory/precommit.sh
 
 # Dispatcher & Background Crons
 hermes zerofactory dispatch                       # Trigger an immediate dispatch cycle
@@ -140,7 +141,7 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 2. **Decomposition & Codebase Scanning (`Todo`)**: `zf-orchestrator` breaks `Triage` goals down into atomic sub-tasks, and runs periodic codebase scans to directly file actionable `Todo` improvement tasks for `zf-builder`.
 3. **Autonomous Execution (`Running`)**: The dispatcher validates dependencies, provisions an isolated Git worktree, and launches `zf-builder` to write code and tests.
    - **Global LLM capacity**: Settings → Global Max Concurrent LLM Workers caps running task agents and in-flight improvement scanners across all boards. For example, with a cap of 3, two running tasks on one board and one on another leave no slot for further tasks or scanners. The per-board running limits and Max Active Tasks (task WIP) apply independently. No-Agent queue checks do not consume LLM capacity.
-4. **PR Creation & Agent Review (`Running`)**: When `zf-builder` finishes, the dispatcher commits the branch, opens a GitHub Pull Request, and routes it to `zf-reviewer` in `Running` for thematic review (Correctness ➔ Performance ➔ Clean Code, up to 3 rounds).
+4. **Deterministic Precommit & PR Creation (`Running`)**: When `zf-builder` finishes, the dispatcher executes `.zerofactory/precommit.sh` in the worktree (format ➔ build ➔ tests). Auto-formatted changes are staged, and if tests fail, the builder receives error logs to auto-fix (up to 3 retries). Once clean, the dispatcher commits, merges with latest main, pushes, opens a GitHub Pull Request, and routes it to `zf-reviewer` in `Running` for thematic review (Correctness ➔ Performance ➔ Clean Code, up to 3 rounds).
 5. **Human Action & Merge (`Blocked`)**: Approved PRs move to `Blocked` awaiting human merge. Any crashed workers or merge conflict escalations also move to `Blocked` for operator review.
 6. **Completion (`Done`)**: The human merges the PR on GitHub, and the dispatcher automatically marks the ticket as `Done` and prunes the worktree.
 

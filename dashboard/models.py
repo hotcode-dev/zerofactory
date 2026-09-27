@@ -56,6 +56,7 @@ class BoardCreate(BaseModel):
     max_concurrent_running: Optional[int] = Field(default=1, ge=1, description="Max tasks running in parallel on this board (default 1)")
     auto_record_memory: Optional[bool] = Field(default=True, description="Enable automatic memory recording from reviewer feedback")
     additional_reviewer_usernames: Optional[List[str]] = Field(default_factory=list, description="Additional GitHub usernames whose PR feedback is trusted")
+    auto_setup_precommit: Optional[bool] = Field(default=False, description="Automatically trigger setup task for .zerofactory/precommit.sh if missing")
 
 
 class BoardUpdate(BaseModel):

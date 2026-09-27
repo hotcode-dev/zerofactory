@@ -360,7 +360,7 @@ def pull_and_merge_main(
             return False, existing_conflicts, f"Worktree has in-progress merge with unresolved conflicts: {', '.join(existing_conflicts)}"
         # All conflicts resolved, conclude the merge before proceeding
         commit_res = subprocess.run(
-            ["git", "commit", "--no-edit"],
+            ["git", "commit", "--no-edit", "--no-verify"],
             cwd=str(workspace_path), capture_output=True, text=True, timeout=30
         )
         if commit_res.returncode != 0:

@@ -450,3 +450,121 @@ def _handle_pr_conflict_from_github(
         )
     except Exception as e:
         _log.debug("Failed to record task comment for conflict: %s", e)
+
+
+def run_deterministic_precommit(workspace_path: Path) -> tuple[bool, str, int]:
+    """Execute .zerofactory/precommit.sh in the workspace if present.
+
+    Returns:
+        (passed, output_or_error, exit_code)
+    """
+    if os.environ.get("ZEROFACTORY_SKIP_PRECOMMIT"):
+        return True, "ZEROFACTORY_SKIP_PRECOMMIT enabled", 0
+
+    script_path = workspace_path / ".zerofactory" / "precommit.sh"
+    if not script_path.is_file():
+        return True, "No .zerofactory/precommit.sh found", 0
+
+    try:
+        current_mode = script_path.stat().st_mode
+        script_path.chmod(current_mode | 0o755)
+    except Exception:
+        pass
+
+    timeout = int(os.environ.get("ZEROFACTORY_PRECOMMIT_TIMEOUT_SECONDS", "300"))
+    env = {**os.environ, "CI": "1", "ZEROFACTORY_PRECOMMIT": "1"}
+
+    try:
+        res = subprocess.run(
+            ["bash", str(script_path)],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
+        out = (res.stdout or "")
+        if res.stderr:
+            out += ("\n" + res.stderr if out else res.stderr)
+        if res.returncode == 0:
+            return True, out.strip(), 0
+        return False, out.strip() or f"Precommit script exited with code {res.returncode}", res.returncode
+    except subprocess.TimeoutExpired as te:
+        out = (te.stdout or "")
+        if te.stderr:
+            out += ("\n" + te.stderr if out else te.stderr)
+        return False, f"Precommit script timed out after {timeout}s.\n{out}".strip(), -1
+    except Exception as e:
+        return False, f"Precommit script execution failed: {e}", -1
+
+
+def _handle_precommit_failure(
+    cursor: sqlite3.Cursor,
+    task_id: str,
+    title: str,
+    workspace_path: str,
+    err_output: str,
+    now: int
+) -> None:
+    """Handle deterministic precommit check failure before git commit/push."""
+    max_retries = int(os.environ.get("ZEROFACTORY_MAX_PRECOMMIT_RETRIES", "3"))
+
+    cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+    row = cursor.fetchone()
+    meta = {}
+    if row and row[0]:
+        try:
+            meta = json.loads(row[0])
+        except Exception:
+            meta = {}
+
+    retries = int(meta.get("precommit_retries", 0)) + 1
+    meta["precommit_retries"] = retries
+    meta["last_precommit_error"] = err_output[:2500]
+
+    snippet = err_output.strip()
+    if len(snippet) > 1500:
+        snippet = snippet[-1500:]
+
+    if retries > max_retries:
+        cursor.execute(
+            "UPDATE tasks SET assignee = 'zf-builder', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(meta), now, task_id)
+        )
+        cursor.execute(
+            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'precommit_failed', ?, ?)",
+            (task_id, f"Deterministic precommit failed after {max_retries} attempts. Moved to blocked.", now)
+        )
+        try:
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    task_id,
+                    "dispatcher",
+                    f"🚨 **Deterministic Precommit Failed**: Execution of `.zerofactory/precommit.sh` failed after {max_retries} attempts.\n\n```\n{snippet}\n```\nMoved task to **blocked** for inspection.",
+                    now
+                )
+            )
+        except Exception as e:
+            _log.warning("Failed to insert precommit failure comment for task %s: %s", task_id, e)
+    else:
+        cursor.execute(
+            "UPDATE tasks SET assignee = 'zf-builder', status = 'running', metadata = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(meta), now, task_id)
+        )
+        cursor.execute(
+            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'precommit_failed_retry', ?, ?)",
+            (task_id, f"Deterministic precommit failed (attempt {retries}/{max_retries}); routing back to zf-builder", now)
+        )
+        try:
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (
+                    task_id,
+                    "dispatcher",
+                    f"🚨 **Deterministic Precommit Failed** (Attempt {retries}/{max_retries})\n\nExecution of `.zerofactory/precommit.sh` failed with output:\n```\n{snippet}\n```\nPlease fix the formatting, build, or test failures and mark done.",
+                    now
+                )
+            )
+        except Exception as e:
+            _log.warning("Failed to insert precommit retry comment for task %s: %s", task_id, e)

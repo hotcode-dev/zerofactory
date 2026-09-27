@@ -17,6 +17,8 @@ try:
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
         list_memories as _list_memories, create_memory as _create_memory, delete_memory as _delete_memory,
+        create_precommit_setup_task as _create_precommit_setup_task,
+        check_board_precommit_status as _check_board_precommit_status,
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate, MemoryCreate,
         ACTIVITY_ACTORS, MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH
     )
@@ -30,6 +32,8 @@ except ImportError:
         get_stats as _get_stats, trigger_dispatch as _trigger_dispatch,
         list_boards as _list_boards, create_board as _create_board, delete_board as _delete_board,
         list_memories as _list_memories, create_memory as _create_memory, delete_memory as _delete_memory,
+        create_precommit_setup_task as _create_precommit_setup_task,
+        check_board_precommit_status as _check_board_precommit_status,
         TaskCreate, TaskUpdate, TaskMove, CommentCreate, BoardCreate, MemoryCreate,
         ACTIVITY_ACTORS, MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH
     )
@@ -151,6 +155,7 @@ def register(ctx: Any):
         p_bcreate.add_argument("git_url", help="Remote Git URL (e.g. https://github.com/owner/repo.git)")
         p_bcreate.add_argument("--description", default="", help="Board description")
         p_bcreate.add_argument("--target-branch", default="", help="Target/base branch to branch off and merge PRs into (e.g. main)")
+        p_bcreate.add_argument("--setup-precommit", action="store_true", help="Automatically trigger setup task for .zerofactory/precommit.sh")
         p_bdelete = board_subs.add_parser("delete", help="Delete a board and clear its cron scanner job")
         p_bdelete.add_argument("slug", help="Board slug to delete")
 
@@ -176,6 +181,11 @@ def register(ctx: Any):
         # migrate
         p_mig = subparsers.add_parser("migrate", help="Run or inspect SQLite database migrations")
         p_mig.add_argument("--status", action="store_true", help="Show migration status without applying")
+
+        # setup-repo
+        p_setupr = subparsers.add_parser("setup-repo", help="Create P0 setup task to generate .zerofactory/precommit.sh for a board")
+        p_setupr.add_argument("--board", required=True, help="Board slug")
+        p_setupr.add_argument("--actor", default=None, help="Actor executing setup (defaults to HERMES_PROFILE or 'user')")
 
     def cmd_run(args: argparse.Namespace):
         init_db()
@@ -386,10 +396,15 @@ def register(ctx: Any):
                 req = BoardCreate(
                     git_url=args.git_url,
                     description=args.description,
-                    target_branch=getattr(args, "target_branch", "") or ""
+                    target_branch=getattr(args, "target_branch", "") or "",
+                    auto_setup_precommit=getattr(args, "setup_precommit", False)
                 )
                 res = _create_board(req)
-                print(f"✓ Created board: {res.get('slug')}")
+                slug = res.get("slug")
+                if res.get("setup_task_id"):
+                    print(f"✓ Created board '{slug}' and initiated precommit setup task '{res.get('setup_task_id')}'.")
+                else:
+                    print(f"✓ Created board: {slug}")
             elif b_act == "delete":
                 res = _delete_board(args.slug)
                 print(f"✓ Deleted board '{args.slug}' and cleared associated cron scanner job.")
@@ -470,6 +485,25 @@ def register(ctx: Any):
                     print()
                 else:
                     print("Database is up to date (no pending migrations).")
+
+        elif action == "setup-repo":
+            board_slug = getattr(args, "board", None)
+            if not board_slug:
+                print("Error: --board <slug> is required.")
+                return
+            actor_val = getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or "user"
+            status_info = _check_board_precommit_status(board_slug)
+            if status_info.get("has_precommit"):
+                print(f"Notice: Board '{board_slug}' already has .zerofactory/precommit.sh at {status_info.get('precommit_path')}.")
+
+            res = _create_precommit_setup_task(board_slug, actor=actor_val)
+            if res.get("ok"):
+                if res.get("already_exists"):
+                    print(f"✓ Precommit setup task already active: {res.get('task_id')} ({res.get('status')})")
+                else:
+                    print(f"✓ Created P0 precommit setup task: {res.get('task_id')}")
+            else:
+                print(f"✗ Failed to initiate setup task: {res.get('error')}")
 
     if hasattr(ctx, "register_cli_command"):
         ctx.register_cli_command(

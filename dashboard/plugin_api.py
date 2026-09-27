@@ -190,6 +190,26 @@ except (ImportError, ValueError):
         resolve_task_session_progress,
     )
 
+# --- Re-export Precommit Service ---------------------------------------------
+try:
+    from .precommit_service import (
+        PRECOMMIT_RELATIVE_PATH,
+        SETUP_TASK_DEDUP_KEY,
+        SETUP_TASK_TITLE,
+        build_precommit_setup_task_prompt,
+        check_board_precommit_status,
+        create_precommit_setup_task,
+    )
+except (ImportError, ValueError):
+    from precommit_service import (  # type: ignore
+        PRECOMMIT_RELATIVE_PATH,
+        SETUP_TASK_DEDUP_KEY,
+        SETUP_TASK_TITLE,
+        build_precommit_setup_task_prompt,
+        check_board_precommit_status,
+        create_precommit_setup_task,
+    )
+
 # --- Routes and Master APIRouter ---------------------------------------------
 try:
     from .routes import (

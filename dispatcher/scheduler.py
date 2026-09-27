@@ -581,11 +581,25 @@ def run_dispatch_cycle(db_path: Optional[Path] = None) -> Dict[str, Any]:
                                     _disp._handle_local_merge_conflict(cursor, task_id, title, workspace_path, initial_conflicts, now, "Unresolved conflicts in worktree")
                                     continue
 
+                                # Deterministic Precommit check
+                                precommit_ok, precommit_out, precommit_code = _disp.run_deterministic_precommit(Path(workspace_path))
+                                if not precommit_ok:
+                                    _log.warning("Task %s deterministic precommit check failed (code %s): %s", task_id, precommit_code, precommit_out)
+                                    _disp._handle_precommit_failure(cursor, task_id, title, workspace_path, precommit_out, now)
+                                    conn.commit()
+                                    continue
+
+                                if meta and ("precommit_retries" in meta or "last_precommit_error" in meta):
+                                    meta.pop("precommit_retries", None)
+                                    meta.pop("last_precommit_error", None)
+                                    cursor.execute("UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?", (json.dumps(meta), now, task_id))
+                                    conn.commit()
+
                                 subject, commit_body = _disp.format_conventional_message(title, task_id)
                                 status_res = _subprocess.run(["git", "status", "--porcelain"], cwd=workspace_path, capture_output=True, text=True, timeout=5)
                                 if status_res.stdout.strip() or is_merging:
                                     _subprocess.run(["git", "add", "."], check=True, cwd=workspace_path, capture_output=True, timeout=60)
-                                    commit_cmd = ["git", "commit"]
+                                    commit_cmd = ["git", "commit", "--no-verify"]
                                     if is_merging:
                                         commit_cmd.extend(["-m", "fix(merge): resolve merge conflicts with main", "-m", f"Task: {task_id}\n\n{title}"])
                                     else:

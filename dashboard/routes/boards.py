@@ -154,7 +154,25 @@ def create_board(req: BoardCreate):
             except Exception as e:
                 _log.warning("Failed to sync cron jobs after creating board %s: %s", slug, e)
 
-    return {"ok": True, "slug": slug}
+    setup_task_id = None
+    if getattr(req, "auto_setup_precommit", True) and not os.environ.get("ZEROFACTORY_SKIP_PRECOMMIT_SETUP"):
+        try:
+            try:
+                from ..precommit_service import check_board_precommit_status, create_precommit_setup_task
+            except (ImportError, ValueError):
+                from precommit_service import check_board_precommit_status, create_precommit_setup_task  # type: ignore
+            status_info = check_board_precommit_status(slug)
+            if not status_info.get("has_precommit"):
+                res = create_precommit_setup_task(slug)
+                if res.get("ok"):
+                    setup_task_id = res.get("task_id")
+        except Exception as e:
+            _log.warning("Failed to auto-trigger precommit setup for board %s: %s", slug, e)
+
+    resp = {"ok": True, "slug": slug}
+    if setup_task_id:
+        resp["setup_task_id"] = setup_task_id
+    return resp
 
 
 @router.post("/boards/test-clone")
@@ -322,4 +340,33 @@ def delete_board(slug: str):
                 _log.warning("Failed to sync cron jobs after deleting board %s: %s", slug, e)
 
     return {"ok": True, "deleted": slug}
+ 
+
+@router.get("/boards/{slug}/precommit-status")
+def get_board_precommit_status_endpoint(slug: str):
+    """Get the precommit script and active setup task status for a board."""
+    try:
+        from ..precommit_service import check_board_precommit_status
+    except (ImportError, ValueError):
+        from precommit_service import check_board_precommit_status  # type: ignore
+
+    res = check_board_precommit_status(slug)
+    if not res.get("ok"):
+        raise HTTPException(status_code=404, detail=res.get("error", f"Board '{slug}' not found"))
+    return res
+
+
+@router.post("/boards/{slug}/setup-precommit")
+def setup_board_precommit_endpoint(slug: str):
+    """Trigger creation of a P0 setup task to generate .zerofactory/precommit.sh."""
+    try:
+        from ..precommit_service import create_precommit_setup_task
+    except (ImportError, ValueError):
+        from precommit_service import create_precommit_setup_task  # type: ignore
+
+    res = create_precommit_setup_task(slug)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to initiate precommit setup task"))
+    return res
+
 

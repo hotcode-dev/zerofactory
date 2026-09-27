@@ -211,6 +211,26 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         out_disp = self._run_cli(["dispatch"])
         self.assertIn("Dispatch result", out_disp)
 
+    def test_06_cli_setup_repo(self):
+        """CLI setup-repo command creates P0 setup task."""
+        # Create board first
+        self._run_cli(["board", "create", "https://github.com/setup-cli/repo-setup.git"])
+
+        # Run setup-repo command
+        out = self._run_cli(["setup-repo", "--board", "setup-cli-repo-setup"])
+        self.assertTrue("Created P0 precommit setup task" in out or "Precommit setup task already active" in out)
+
+        # Verify task in DB
+        with sqlite3.connect(str(self.db_path)) as conn:
+            row = conn.execute(
+                "SELECT title, priority, assignee, status FROM tasks WHERE board_slug = 'setup-cli-repo-setup'"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(row[0], "chore(repo): setup Zero Factory precommit script")
+            self.assertEqual(row[1], "P0")
+            self.assertEqual(row[2], "zf-builder")
+            self.assertEqual(row[3], "todo")
+
 
 if __name__ == "__main__":
     unittest.main()
