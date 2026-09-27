@@ -14,6 +14,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:

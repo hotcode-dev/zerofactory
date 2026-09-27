@@ -40,11 +40,6 @@ from dispatcher import reap_stuck_tasks, run_dispatch_cycle
 
 
 def run_watchdog() -> int:
-    timeout_sec = int(os.environ.get("ZEROFACTORY_TASK_TIMEOUT_SECONDS", "3600"))
-    inactivity_sec = int(
-        os.environ.get("ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS", "900")
-    )
-
     # 1. Check and reap stuck tasks
     reap_res = reap_stuck_tasks()
     reaped_tasks = reap_res.get("reaped_tasks") or reap_res.get("reaped", [])

@@ -15,7 +15,7 @@ if _DASHBOARD_ROOT not in sys.path:
     sys.path.insert(0, _DASHBOARD_ROOT)
 
 try:
-    from .db import get_db_conn, init_db, row_to_dict
+    from .db import get_db_conn, init_db
     from .models import TaskCreate
 except (ImportError, ValueError):
     from db import get_db_conn, init_db  # type: ignore
@@ -76,9 +76,9 @@ Automate and standardize code formatting, building/typechecking, and test execut
    - **First**: Respect existing project commands and scripts (e.g. `package.json` scripts, `pyproject.toml`, `Makefile`, `Taskfile`).
    - **Fallback (Zero Factory Standards)**: If no specific tool or configuration is defined, use the standard modern Zero Factory choices:
      - **Python**:
-       - `run_format`: `ruff format . && ruff check --fix .` (if ruff is available, else fallback cleanly)
+       - `run_format`: `ruff check --fix . && ruff format .` (with `ruff.toml` configuration)
        - `run_build`: `python3 -m compileall -q .` (built-in bytecode compilation)
-       - `run_test`: `python3 -m unittest discover -s .` (built-in; prefer if no framework, or use pytest if installed)
+       - `run_test`: `python3 -m pytest tests/ -q` (or `python3 -m unittest discover -s .`)
      - **Go** (All built-in to Go toolchain):
        - `run_format`: `gofmt -s -w .`
        - `run_build`: `go build -v ./...` (and `go vet ./...`)
@@ -93,7 +93,14 @@ Automate and standardize code formatting, building/typechecking, and test execut
        - Check `Makefile`, `CMakeLists.txt`, `Justfile`.
    - If a step is not applicable (e.g. no build step for a pure Python library), echo an informational notice and exit cleanly (`exit 0`).
 
-2. **Create Directory & Script**:
+2. **Force Install Required Tools to System**:
+   You MUST install all missing commands and tools to the system environment before creating the precommit script. Do NOT skip or bypass tools due to them being missing:
+   - **Python**: Install `ruff` if missing (`uv tool install ruff@latest` or `pip install ruff` / `pip3 install --user ruff`). If tests require pytest, ensure `pytest` is installed. When configuring ruff, write a clean `ruff.toml` with appropriate lint rules and per-file ignores for `__init__.py` and tests so `ruff check --fix .` and `ruff format .` both exit 0 cleanly.
+   - **Node.js / TypeScript**: If `package.json` exists, run `npm install`. Use `npx -y` for on-demand tool execution (Prettier, Vitest, TSC).
+   - **Go / Rust**: Ensure respective compilers and formatters are present in PATH.
+   - If any required tool is missing, install it on the system before completing the task.
+
+3. **Create Directory & Script**:
    Create `.zerofactory/` directory if missing, and write `.zerofactory/precommit.sh`:
    - Must start with `#!/usr/bin/env bash` and `set -e`.
    - Must change directory to the repository root:
@@ -102,9 +109,9 @@ Automate and standardize code formatting, building/typechecking, and test execut
      cd "$ROOT_DIR"
      ```
    - Structure with three phase functions:
-     - `run_format`: In-place code formatting (e.g. `ruff format .`, Prettier, or `gofmt -s -w .`).
+     - `run_format`: In-place code formatting & lint auto-fixing (e.g. `ruff check --fix . && ruff format .`, Prettier, or `gofmt -s -w .`).
      - `run_build`: Compilation or static typechecking (e.g. `python3 -m compileall -q .`, `tsc --noEmit` / `npm run build`, `go build ./...`).
-     - `run_test`: Test suite execution (e.g. `python3 -m unittest discover`, Vitest / `npm test`, `go test -race ./...`).
+     - `run_test`: Test suite execution (e.g. `python3 -m pytest tests/ -q`, Vitest / `npm test`, `go test -race ./...`).
    - Add a subcommand dispatcher supporting individual phases and git hook linking:
      ```bash
      install_hook() {{
@@ -130,13 +137,13 @@ Automate and standardize code formatting, building/typechecking, and test execut
      echo "✓ Zero Factory precommit checks passed!"
      ```
 
-3. **Verify Execution & Git Hook Support**:
+4. **Verify Execution & Git Hook Support**:
    - Make script executable: `chmod +x {PRECOMMIT_RELATIVE_PATH}`.
    - Run `./{PRECOMMIT_RELATIVE_PATH}` inside your workspace to verify that all phases execute and exit with code 0!
    - Verify `./{PRECOMMIT_RELATIVE_PATH} install-hook` allows developers to link `.git/hooks/pre-commit` to this script with one command.
    - If any command fails, adjust the flags or configuration so that it passes cleanly on the repository.
 
-4. **Complete Task**:
+5. **Complete Task**:
    - Once `{PRECOMMIT_RELATIVE_PATH}` is created, executable, and verified working:
      Mark task done via `hermes zerofactory move <task_id> done`.
    - (NOTE: Do NOT run git add/commit/push manually. The dispatcher automatically verifies precommit and stages/commits/opens PR upon task completion).

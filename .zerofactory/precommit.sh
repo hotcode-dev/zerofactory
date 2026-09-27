@@ -21,12 +21,24 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 run_format() {
-  echo "▶ Zero Factory precommit: format"
+  echo "▶ Zero Factory precommit: format & lint"
+  if ! command -v ruff >/dev/null 2>&1; then
+    echo "  (info) ruff not found on PATH — attempting to install ruff..."
+    if command -v uv >/dev/null 2>&1; then
+      uv tool install ruff@latest >/dev/null 2>&1 || true
+    elif command -v pip3 >/dev/null 2>&1; then
+      pip3 install --user ruff >/dev/null 2>&1 || true
+    elif command -v pip >/dev/null 2>&1; then
+      pip install --user ruff >/dev/null 2>&1 || true
+    fi
+  fi
   if command -v ruff >/dev/null 2>&1; then
-    ruff format .
     ruff check --fix .
+    ruff format .
   else
-    echo "  (info) ruff not available — skipping Python format (no formatter configured in package.json)"
+    echo "  (error) ruff is required for Zero Factory precommit verification but could not be found."
+    echo "          Please install ruff: uv tool install ruff@latest (or pip install ruff)"
+    exit 1
   fi
 }
 

@@ -22,7 +22,13 @@ try:
         normalize_assignee,
     )
 except (ImportError, ValueError):
-    pass
+    from paths import (  # type: ignore
+        HUMAN,
+        PROFILE_MAP,
+        UNASSIGNED,
+        VALID_ASSIGNEES,
+        normalize_assignee,
+    )
 
 VALID_STATUSES = {"triage", "todo", "running", "blocked", "done"}
 VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}

@@ -1,0 +1,31 @@
+# Zero Factory — Ruff Linter & Formatter Configuration
+
+target-version = "py311"
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes (syntax, undefined variables, dead code)
+    "W",   # pycodestyle warnings
+]
+
+ignore = [
+    "E501",  # line-too-long (handled automatically by ruff format)
+    "E402",  # module-import-not-at-top-of-file (required for sys.path manipulation before plugin imports)
+    "E731",  # lambda-assignment
+    "E741",  # ambiguous-variable-name
+    "W291",  # trailing-whitespace (handled by ruff format)
+    "W293",  # blank-line-with-whitespace (handled by ruff format)
+]
+
+[lint.per-file-ignores]
+# Re-export and fallback modules intentionally import symbols for public API / package consumers
+"__init__.py" = ["F401", "F403"]
+"*/__init__.py" = ["F401", "F403"]
+"dashboard/plugin_api.py" = ["F401", "F403"]
+"dashboard/models.py" = ["F401"]
+"dispatcher/config.py" = ["F401"]
+"dispatcher/__init__.py" = ["F401", "F403"]
+
+# Test suites frequently unpack variables, use test fixtures, or mock functions
+"tests/**" = ["F401", "F841"]

@@ -152,7 +152,6 @@ def ensure_zf_profiles(
     profiles_dir.mkdir(parents=True, exist_ok=True)
     plugin_root = get_plugin_root()
     templates_dir = plugin_root / "templates"
-    skill_src = plugin_root / "skills" / "zerofactory-orchestration"
 
     root_model = get_root_model_config()
     res = {"created": [], "updated": [], "existing": []}
