@@ -37,6 +37,7 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
             "ZEROFACTORY_SKIP_GIT": os.environ.get("ZEROFACTORY_SKIP_GIT"),
             "HOME": os.environ.get("HOME"),
             "HERMES_PROFILE": os.environ.get("HERMES_PROFILE"),
+            "HERMES_HOME": os.environ.get("HERMES_HOME"),
         }
 
         os.environ["ZEROFACTORY_DB"] = str(self.db_path)
@@ -45,6 +46,12 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         os.environ["ZEROFACTORY_SKIP_WORKER_SPAWN"] = "1"
         os.environ["ZEROFACTORY_SKIP_GIT"] = "1"
         os.environ["HOME"] = str(self.fake_home)
+        # Pop HERMES_HOME (set in factory worker sessions) so get_hermes_home()
+        # falls back to Path.home()/.hermes, which tracks HOME = fake_home.
+        # NOTE: setting it to the scratch path instead would break
+        # get_hermes_root() because TMPDIR itself lives under
+        # ~/.hermes/profiles/<profile>/cache/scratch.
+        os.environ.pop("HERMES_HOME", None)
         init_db(force=True)
 
         # Build real CLI parser via __init__.register
