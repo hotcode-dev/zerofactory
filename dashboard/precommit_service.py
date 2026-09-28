@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,45 +14,22 @@ if _DASHBOARD_ROOT not in sys.path:
     sys.path.insert(0, _DASHBOARD_ROOT)
 
 try:
-    from .db import get_db_conn, init_db
-    from .models import TaskCreate
+    from .setup_common import (
+        check_board_setup_status,
+        create_setup_task,
+        get_repo_resolver,  # noqa: F401  (re-exported for API compatibility)
+    )
 except (ImportError, ValueError):
-    from db import get_db_conn, init_db  # type: ignore
-    from models import TaskCreate  # type: ignore
-
-_log = logging.getLogger(__name__)
+    from setup_common import (  # type: ignore
+        check_board_setup_status,
+        create_setup_task,
+        get_repo_resolver,  # noqa: F401  (re-exported for API compatibility)
+    )
 
 PRECOMMIT_RELATIVE_PATH = ".zerofactory/precommit.sh"
 SETUP_TASK_TITLE = "chore(repo): setup Zero Factory precommit script"
+SETUP_TASK_TITLE_PREFIX = "chore(repo): setup Zero Factory precommit"
 SETUP_TASK_DEDUP_KEY = "setup:precommit"
-
-
-def get_repo_resolver():
-    """Import resolve_board_repo_path safely."""
-    try:
-        from ..builtin_cron import resolve_board_repo_path
-
-        return resolve_board_repo_path
-    except Exception:
-        pass
-    try:
-        from builtin_cron import resolve_board_repo_path  # type: ignore
-
-        return resolve_board_repo_path
-    except Exception:
-        pass
-    try:
-        from ..cron.definitions import resolve_board_repo_path
-
-        return resolve_board_repo_path
-    except Exception:
-        pass
-    try:
-        from cron.definitions import resolve_board_repo_path  # type: ignore
-
-        return resolve_board_repo_path
-    except Exception:
-        return None
 
 
 def build_precommit_setup_task_prompt(
@@ -153,136 +128,28 @@ Automate and standardize code formatting, building/typechecking, and test execut
 
 def check_board_precommit_status(board_slug: str) -> dict[str, Any]:
     """Check if .zerofactory/precommit.sh exists for a board and check active setup task status."""
-    init_db()
-    with get_db_conn() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM boards WHERE slug = ?", (board_slug,))
-        row = cursor.fetchone()
-        if not row:
-            return {
-                "ok": False,
-                "error": f"Board '{board_slug}' not found",
-                "has_precommit": False,
-                "pending_task_id": None,
-                "pending_task_status": None,
-                "script_preview": None,
-            }
-
-        board = dict(row)
-
-        # Check for pending setup task
-        cursor.execute(
-            """
-            SELECT id, status, title FROM tasks
-            WHERE board_slug = ? AND status != 'done'
-            AND (
-                title LIKE 'chore(repo): setup Zero Factory precommit%'
-                OR metadata LIKE '%setup:precommit%'
-            )
-            ORDER BY created_at DESC LIMIT 1
-        """,
-            (board_slug,),
-        )
-        t_row = cursor.fetchone()
-        pending_task_id = t_row["id"] if t_row else None
-        pending_task_status = t_row["status"] if t_row else None
-
-    # Check filesystem for script
-    has_precommit = False
-    script_preview = None
-    precommit_full_path = None
-
-    resolver = get_repo_resolver()
-    if resolver:
-        try:
-            prev = os.environ.get("ZEROFACTORY_SKIP_CLONE")
-            # Read-only status check: never let the resolver auto-clone the remote.
-            os.environ["ZEROFACTORY_SKIP_CLONE"] = "1"
-            try:
-                repo_path = resolver(board)
-            finally:
-                if prev is None:
-                    os.environ.pop("ZEROFACTORY_SKIP_CLONE", None)
-                else:
-                    os.environ["ZEROFACTORY_SKIP_CLONE"] = prev
-            if repo_path and repo_path.is_dir():
-                target = repo_path / PRECOMMIT_RELATIVE_PATH
-                if target.is_file():
-                    has_precommit = True
-                    precommit_full_path = str(target)
-                    try:
-                        content = target.read_text(encoding="utf-8")
-                        script_preview = content[:600]
-                    except Exception:
-                        pass
-        except Exception as e:
-            _log.debug("Failed checking repo path for board %s: %s", board_slug, e)
-
-    return {
-        "ok": True,
-        "board_slug": board_slug,
-        "has_precommit": has_precommit,
-        "precommit_path": precommit_full_path,
-        "script_preview": script_preview,
-        "pending_task_id": pending_task_id,
-        "pending_task_status": pending_task_status,
-    }
+    return check_board_setup_status(
+        board_slug,
+        has_key="has_precommit",
+        path_key="precommit_path",
+        preview_key="script_preview",
+        target_relpath=PRECOMMIT_RELATIVE_PATH,
+        title_prefix=SETUP_TASK_TITLE_PREFIX,
+        dedup_substring=SETUP_TASK_DEDUP_KEY,
+        preview_relpath=PRECOMMIT_RELATIVE_PATH,
+    )
 
 
 def create_precommit_setup_task(board_slug: str, actor: str = "user") -> dict[str, Any]:
     """Create or return an existing setup task to generate .zerofactory/precommit.sh."""
-    init_db()
-
-    # 1. Verify board exists
-    with get_db_conn() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM boards WHERE slug = ?", (board_slug,))
-        row = cursor.fetchone()
-        if not row:
-            return {"ok": False, "error": f"Board '{board_slug}' not found"}
-        board = dict(row)
-
-    # 2. Check if a setup task already exists and is not done
-    status_info = check_board_precommit_status(board_slug)
-    if status_info.get("pending_task_id"):
-        return {
-            "ok": True,
-            "task_id": status_info["pending_task_id"],
-            "status": status_info["pending_task_status"],
-            "already_exists": True,
-            "message": f"Precommit setup task '{status_info['pending_task_id']}' is already in progress ({status_info['pending_task_status']}).",
-        }
-
-    # 3. Resolve repo path for prompt hint
-    resolver = get_repo_resolver()
-    repo_path = resolver(board) if resolver else None
-
-    # 4. Create the P0 task
-    prompt = build_precommit_setup_task_prompt(board_slug, repo_path=repo_path)
-    req = TaskCreate(
+    return create_setup_task(
+        board_slug,
+        status_checker=check_board_precommit_status,
         title=SETUP_TASK_TITLE,
-        description=prompt,
-        status="todo",
-        priority="P0",
-        assignee="zf-builder",
-        board_slug=board_slug,
-        category="config",
+        prompt_builder=build_precommit_setup_task_prompt,
         files=[PRECOMMIT_RELATIVE_PATH],
         dedup_key=SETUP_TASK_DEDUP_KEY,
-        actor=actor or "user",
+        progress_label="Precommit",
+        created_label="precommit",
+        actor=actor,
     )
-
-    try:
-        from .routes.tasks import create_task as _create_task
-    except (ImportError, ValueError):
-        from routes.tasks import create_task as _create_task  # type: ignore
-
-    res = _create_task(req)
-    task_id = res.get("id")
-
-    return {
-        "ok": True,
-        "task_id": task_id,
-        "already_exists": False,
-        "message": f"Created precommit setup task '{task_id}' for board '{board_slug}'.",
-    }
