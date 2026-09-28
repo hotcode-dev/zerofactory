@@ -217,6 +217,7 @@ def fetch_pr_review_comments(
                             or item.get("original_start_line"),
                             "diff_hunk": item.get("diff_hunk"),
                             "suggestion": suggestion,
+                            "in_reply_to": (item.get("in_reply_to_id") or None),
                             "created_at": item.get("created_at") or "",
                         }
                     )
@@ -337,8 +338,11 @@ def format_task_comment_body(comment: dict[str, Any]) -> str:
     line = comment.get("line")
     start_line = comment.get("start_line")
     suggestion = comment.get("suggestion")
+    in_reply_to = comment.get("in_reply_to")
 
     parts = []
+    if in_reply_to:
+        parts.append(f"**[Reply to review comment #{in_reply_to}]**")
     if ctype == "inline_review" and path:
         # GitHub leaves `line` null (keeping only `start_line`/`start_side`) for
         # comments anchored to lines no longer present in the diff. Guard both
@@ -358,6 +362,16 @@ def format_task_comment_body(comment: dict[str, Any]) -> str:
     parts.append(body)
     if suggestion:
         parts.append(f"\n```suggestion\n{suggestion}\n```")
+
+    # Inline review comments support in-thread replies on GitHub; surface the
+    # numeric comment id so a later worker can target a reply
+    # (`gh api repos/<owner>/<repo>/pulls/<n>/comments/replies`).
+    if ctype == "inline_review":
+        comment_id = str(comment.get("comment_id") or "")
+        if comment_id:
+            parts.append(
+                f"_(GitHub review comment id: {comment_id.split('_', 1)[-1]})_"
+            )
 
     return "\n".join(parts)
 
