@@ -27,6 +27,10 @@ except (ImportError, ValueError):
     )
 
 OPENWIKI_RELATIVE_DIR = "openwiki"
+# The openwiki CLI's canonical machine-readable artifact (its PAGE_MANIFEST_PATH
+# constant). Detection and preview key off this JSON ledger, not the Markdown
+# index.md the CLI also writes, so status reflects what the CLI actually produced.
+OPENWIKI_PAGE_MANIFEST_RELPATH = f"{OPENWIKI_RELATIVE_DIR}/.page-manifest.json"
 SETUP_OPENWIKI_TASK_TITLE = (
     "chore(repo): setup OpenWiki machine-readable agent documentation"
 )
@@ -63,8 +67,8 @@ Generate a high-signal, machine-readable architectural knowledge base in `{OPENW
      ```bash
      openwiki --init
      ```
-     Answer the onboarding prompts (provider, credentials, model) so the run completes; the CLI writes the generated wiki to `{OPENWIKI_RELATIVE_DIR}/` (including `{OPENWIKI_RELATIVE_DIR}/index.md` and `quickstart.md`).
-   - Verify the CLI actually produced `{OPENWIKI_RELATIVE_DIR}/index.md` on disk before proceeding.
+     Answer the onboarding prompts (provider, credentials, model) so the run completes; the CLI writes the generated wiki to `{OPENWIKI_RELATIVE_DIR}/`.
+   - **Verify the CLI's machine-readable JSON output on disk** before proceeding: the CLI records its durable page ledger at `{OPENWIKI_PAGE_MANIFEST_RELPATH}` (the `PAGE_MANIFEST_PATH` artifact). Confirm `{OPENWIKI_PAGE_MANIFEST_RELPATH}` exists and is valid JSON (a top-level `pages` object) — this is the JSON artifact the dashboard reads, not the human-facing `{OPENWIKI_RELATIVE_DIR}/index.md` Markdown.
 
 3. **Confirm agent pointers (CLI-managed)**:
    - The `openwiki` CLI maintains the `AGENTS.md` and `CLAUDE.md` managed block (`<!-- OPENWIKI:START --> ... <!-- OPENWIKI:END -->`) at the repository root itself — do NOT edit that block by hand.
@@ -76,7 +80,7 @@ Generate a high-signal, machine-readable architectural knowledge base in `{OPENW
 
 4. **Verify Precommit Checks**:
    - Run `./.zerofactory/precommit.sh` (or `git status`) in the repository to verify that format, build, and test checks execute cleanly.
-   - Ensure the generated markdown is clean, readable, and well-linked.
+   - Re-confirm the CLI wrote the machine-readable JSON ledger at `{OPENWIKI_PAGE_MANIFEST_RELPATH}` (valid JSON with a top-level `pages` object) — the dashboard reads this JSON artifact, so it must be present and well-formed.
 
 5. **Complete Task**:
    - Mark task done via `hermes zerofactory move <task_id> done`.
@@ -94,7 +98,7 @@ def check_board_openwiki_status(board_slug: str) -> dict[str, Any]:
         target_relpath=OPENWIKI_RELATIVE_DIR,
         title_prefix=SETUP_OPENWIKI_TASK_TITLE_PREFIX,
         dedup_substring=SETUP_OPENWIKI_TASK_DEDUP_KEY,
-        preview_relpath=f"{OPENWIKI_RELATIVE_DIR}/index.md",
+        preview_relpath=OPENWIKI_PAGE_MANIFEST_RELPATH,
         target_is_dir=True,
     )
 
@@ -108,7 +112,7 @@ def create_openwiki_setup_task(board_slug: str, actor: str = "user") -> dict[str
         prompt_builder=build_openwiki_setup_task_prompt,
         files=[
             OPENWIKI_RELATIVE_DIR,
-            f"{OPENWIKI_RELATIVE_DIR}/index.md",
+            OPENWIKI_PAGE_MANIFEST_RELPATH,
             "AGENTS.md",
         ],
         dedup_key=SETUP_OPENWIKI_TASK_DEDUP_KEY,
