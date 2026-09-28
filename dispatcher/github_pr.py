@@ -317,6 +317,18 @@ def fetch_pr_review_comments(
     return comments
 
 
+def ai_prefix(text: str) -> str:
+    """Prefix agent-authored GitHub text (PR titles/bodies, review comments) with `[AI]`.
+
+    Idempotent: text that already starts with the marker is returned unchanged so
+    re-writes (e.g. re-opening a PR) never produce a doubled prefix.
+    """
+    stripped = (text or "").lstrip()
+    if not stripped or stripped.startswith("[AI]"):
+        return text or ""
+    return f"[AI] {stripped}"
+
+
 def format_task_comment_body(comment: dict[str, Any]) -> str:
     """Format a GitHub PR comment into a descriptive task comment."""
     ctype = comment.get("type", "")

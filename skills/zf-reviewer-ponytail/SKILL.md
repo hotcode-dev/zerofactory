@@ -47,7 +47,7 @@ When reviewing a PR branch diff (`task/<task_id>`):
 When requesting changes on GitHub (`gh pr review --request-changes`), structure feedback with reference to the Ponytail ladder:
 
 ```markdown
-[Reviewer Feedback] Round 3: Ponytail Simplification
+[AI] [Reviewer Feedback] Round 3: Ponytail Simplification
 
 1. **Unnecessary Dependency (Rung 3/5)**:
    - File: `src/processor.py:12`
