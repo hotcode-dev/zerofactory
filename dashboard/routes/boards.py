@@ -22,9 +22,11 @@ from fastapi import APIRouter, HTTPException
 try:
     from ..db import get_db_conn, init_db, parse_git_url
     from ..models import BoardCreate, BoardTestClone, BoardUpdate
+    from ..setup_common import get_repo_resolver
 except (ImportError, ValueError):
     from db import get_db_conn, init_db, parse_git_url  # type: ignore
     from models import BoardCreate, BoardTestClone, BoardUpdate  # type: ignore
+    from setup_common import get_repo_resolver  # type: ignore
 
 _log = logging.getLogger(__name__)
 
@@ -182,11 +184,10 @@ def create_board(req: BoardCreate):
 
     # Attempt repository clone / resolution immediately upon board creation
     try:
-        try:
-            from ...builtin_cron import resolve_board_repo_path
-        except Exception:
-            from builtin_cron import resolve_board_repo_path  # type: ignore
-        resolve_board_repo_path({"slug": slug, "git_url": git_url, "description": desc})
+        resolver = get_repo_resolver()
+        if resolver is None:
+            raise RuntimeError("resolve_board_repo_path could not be imported")
+        resolver({"slug": slug, "git_url": git_url, "description": desc})
     except Exception as e:
         _log.warning(
             "Failed to auto-clone/resolve repo after creating board %s: %s", slug, e
@@ -253,10 +254,9 @@ def test_clone_board(req: BoardTestClone):
         }
 
     try:
-        try:
-            from ...builtin_cron import resolve_board_repo_path
-        except Exception:
-            from builtin_cron import resolve_board_repo_path  # type: ignore
+        resolve_board_repo_path = get_repo_resolver()
+        if resolve_board_repo_path is None:
+            raise RuntimeError("resolve_board_repo_path could not be imported")
 
         # 1. First check if it's already resolved / cloned locally
         existing_path = resolve_board_repo_path({"slug": slug, "git_url": git_url})
