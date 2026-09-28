@@ -79,6 +79,22 @@ _log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _trigger_async_dispatch(log_context: str) -> None:
+    """Spawn a daemon thread running one dispatch cycle (best-effort, silent on failure)."""
+    try:
+        import threading
+
+        try:
+            from ...dispatcher import run_dispatch_cycle
+        except Exception:
+            from dispatcher import run_dispatch_cycle  # type: ignore
+        threading.Thread(
+            target=run_dispatch_cycle, args=(get_db_path(),), daemon=True
+        ).start()
+    except Exception as disp_err:
+        _log.debug("Async dispatch trigger after %s failed: %s", log_context, disp_err)
+
+
 @router.get("/tasks")
 def list_tasks(
     board: str | None = Query(None, description="Board slug filter"),
@@ -579,21 +595,7 @@ def stop_task_session(task_id: str, to_status: str | None = "blocked"):
             and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
             and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
         ):
-            try:
-                import threading
-
-                try:
-                    from ...dispatcher import run_dispatch_cycle
-                except Exception:
-                    from dispatcher import run_dispatch_cycle  # type: ignore
-                threading.Thread(
-                    target=run_dispatch_cycle, args=(get_db_path(),), daemon=True
-                ).start()
-            except Exception as _disp_err:
-                _log.debug(
-                    "Async dispatch trigger after stop_task_session failed: %s",
-                    _disp_err,
-                )
+            _trigger_async_dispatch("stop_task_session")
 
         return {
             "ok": True,
@@ -836,20 +838,7 @@ def move_task(task_id: str, req: TaskMove):
             and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
             and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
         ):
-            try:
-                import threading
-
-                try:
-                    from ...dispatcher import run_dispatch_cycle
-                except Exception:
-                    from dispatcher import run_dispatch_cycle  # type: ignore
-                threading.Thread(
-                    target=run_dispatch_cycle, args=(get_db_path(),), daemon=True
-                ).start()
-            except Exception as _disp_err:
-                _log.debug(
-                    "Async dispatch trigger after move_task failed: %s", _disp_err
-                )
+            _trigger_async_dispatch("move_task")
 
     return {
         "ok": True,
