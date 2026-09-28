@@ -56,12 +56,15 @@ def get_repo_resolver():
 def _find_pending_setup_task(
     cursor, board_slug: str, title_prefix: str, dedup_substring: str
 ) -> tuple[str | None, str | None]:
-    """Locate the newest actively-dispatchable setup task matching the title prefix or dedup key.
+    """Locate the newest in-progress setup task matching the title prefix or dedup key.
 
-    Only ``triage``/``todo``/``ready``/``running`` count as pending work: a
-    ``blocked`` task is awaiting a human action (merge review), NOT in-progress
-    work — treating it as pending would permanently wedge the
-    Setup/Regenerate path.
+    Every not-done setup task is a *pending* task (all undone = pending), and
+    pending has two sub-states: ``triage``/``todo``/``ready``/``running``
+    (in progress — active work) and ``blocked`` (awaiting a human merge). This
+    query targets only the in-progress sub-state; a ``blocked`` task is
+    surfaced separately by :func:`_find_blocked_setup_task` and must not wedge
+    the Setup/Regenerate path (treating it as in-progress permanently wedged
+    that button).
     """
     cursor.execute(
         """
@@ -85,7 +88,13 @@ def _find_pending_setup_task(
 def _find_blocked_setup_task(
     cursor, board_slug: str, title_prefix: str, dedup_substring: str
 ) -> tuple[str | None, str | None]:
-    """Surface the most-recent blocked setup task as awaiting human merge."""
+    """Surface the most-recent *awaiting-human-merge* (blocked) setup task.
+
+    A ``blocked`` setup task is still a not-done (*pending*) task — it has
+    finished the agent phase and is waiting on a human merge. It is surfaced
+    separately from the in-progress sub-state so the UI can show a distinct
+    "awaiting merge" badge without wedging the Setup/Regenerate button.
+    """
     cursor.execute(
         """
         SELECT id, status, title FROM tasks
