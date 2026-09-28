@@ -109,6 +109,7 @@ from .git_ops import (
     sync_repo_main,
 )
 from .github_pr import (
+    ai_prefix,
     extract_gh_repo_info,
     fetch_pr_review_comments,
     format_task_comment_body,
@@ -208,6 +209,7 @@ __all__ = [
     "digest_reviewer_git_context",
     "digest_board_memories_context",
     "format_conventional_message",
+    "ai_prefix",
     "extract_gh_repo_info",
     "fetch_pr_review_comments",
     "format_task_comment_body",

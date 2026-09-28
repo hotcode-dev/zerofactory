@@ -128,6 +128,7 @@ def spawn_agent_worker(
             f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
             f"2. Run automated test suites and linters in your workspace ({workdir}).\n"
             f"3. Submit your review decision on GitHub (`gh pr review --approve` or `gh pr review --request-changes`).\n"
+            f'   - AI ATTRIBUTION: Every GitHub comment or review you post (review bodies, `gh pr comment`, inline `gh api` comments) MUST begin with `[AI]` (e.g. `"[AI] [Reviewer Feedback] Round 1: ..."`) so humans can distinguish agent output. Do not strip the `[AI]` prefix from the auto-opened PR title or body.\n'
             f"4. Continuous Learning & Repository Knowledge:\n"
             f"   - If you catch a recurring mistake, testing gotcha, or project convention that future tasks should follow, record it!\n"
             f"   - In your review comment or summary, include a line: `GOTCHA: <rule>` or `CONVENTION: <rule>` (the system will auto-record it).\n"
@@ -264,7 +265,8 @@ def spawn_agent_worker(
                     f"3. Run automated tests and linters in your workspace to verify correctness.\n"
                     f"4. When finished, hand off for re-review:\n"
                     f'   hermes zerofactory move {task_id} blocked --reason "review-required"\n'
-                    f"5. Provide a summary of how each review comment was resolved.\n\n"
+                    f"5. Provide a summary of how each review comment was resolved.\n"
+                    f"   - AI ATTRIBUTION: Any GitHub PR comment you post (e.g. `gh pr comment`) MUST begin with `[AI]` so humans can distinguish agent output.\n\n"
                     f"NOTE: Do NOT run git commands (git add/commit/push/checkout). The factory dispatcher automatically stages, commits, and pushes your fixes to the PR upon handoff.\n"
                 )
             else:
@@ -278,7 +280,8 @@ def spawn_agent_worker(
                     f"   hermes zerofactory move {task_id} done\n"
                     f"   (or if human review or external dependencies are required, run:\n"
                     f'   hermes zerofactory move {task_id} blocked --reason "review-required")\n'
-                    f"5. Provide a summary of your changes.\n\n"
+                    f"5. Provide a summary of your changes.\n"
+                    f"   - AI ATTRIBUTION: Any GitHub PR comment you post (e.g. `gh pr comment`) MUST begin with `[AI]` so humans can distinguish agent output.\n\n"
                     f"NOTE: Do NOT run git commands (git add/commit/push/checkout). Your worktree is already synced with latest main. The factory dispatcher automatically stages, commits, and opens PRs upon task completion.\n"
                 )
 
