@@ -31,6 +31,13 @@ def test_build_openwiki_setup_task_prompt():
     # not the Markdown index.md the CLI also writes.
     assert ".page-manifest.json" in prompt
     assert "machine-readable JSON" in prompt
+    # The prompt grounds verification in the CLI's standard artifacts: the
+    # machine-readable JSON page ledger plus the canonical quickstart.md
+    # entry point, and explicitly bars keying off the Markdown index.md.
+    assert "openwiki/quickstart.md" in prompt
+    assert "standard" in prompt
+    assert "Do NOT key off" in prompt
+    assert "index.md" in prompt  # only inside the "Do NOT key off" prohibition
 
 
 def test_openwiki_status_missing_board(initialized_db: Path):
