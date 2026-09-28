@@ -78,8 +78,18 @@ class TestAutomationScriptsE2E(unittest.TestCase):
     ) -> tuple[int, str]:
         cmd = [sys.executable, str(self.scripts_dir / script_name)] + (args or [])
         python_path = os.pathsep.join([str(REPO_ROOT)] + sys.path)
+        # Scrub scanner-gate control vars inherited from the parent (e.g. an
+        # idle-scan cron worker exports ZEROFACTORY_IDLE_SCAN=1) so the
+        # subprocess runs hermetically; tests opt back in via extra_env.
+        scanner_gate_env = {**os.environ}
+        for leaked in (
+            "ZEROFACTORY_IDLE_SCAN",
+            "ZEROFACTORY_FORCE_SCAN",
+            "ZEROFACTORY_SCANNER_STATE",
+        ):
+            scanner_gate_env.pop(leaked, None)
         env = {
-            **os.environ,
+            **scanner_gate_env,
             "HOME": str(self.fake_home),
             "PYTHONPATH": python_path,
             "ZEROFACTORY_DB": str(self.db_path),
