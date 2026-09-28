@@ -31,15 +31,40 @@ def reap_active_scanners() -> int:
 
 
 def _running_cron_llm_jobs() -> int:
-    """Count in-process Zero Factory cron LLM jobs (exclude No-Agent queue checks)."""
-    try:
-        from cron.scheduler import get_running_job_ids  # type: ignore
+    """Count in-process Zero Factory cron LLM jobs (exclude No-Agent queue checks).
 
-        return sum(
-            job_id.startswith("zero-factory-improvement-scanner-")
-            for job_id in get_running_job_ids()
+    The gateway's ``cron.scheduler`` module is loaded by explicit file path — the
+    plugin's own ``cron`` package shadows a bare ``cron.scheduler`` import in every
+    process that loads the plugin, so it must be resolved from the hermes-agent
+    directory (same pattern as ``cron/executor.py`` and ``cron/store.py``).
+    """
+    try:
+        hermes_agent_dir = Path(
+            os.getenv("HERMES_AGENT_DIR", str(Path.home() / ".hermes" / "hermes-agent"))
         )
-    except (ImportError, RuntimeError):
+        sched_py = hermes_agent_dir / "cron" / "scheduler.py"
+        if not sched_py.exists():
+            return 0
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("hermes_cron_scheduler", sched_py)
+        if not spec or not spec.loader:
+            return 0
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        get_running_job_ids = getattr(mod, "get_running_job_ids", None)
+        if get_running_job_ids is None:
+            return 0
+        try:
+            job_ids = get_running_job_ids()
+        except Exception:
+            # Scheduler state may be mid-initialization in the gateway process.
+            return 0
+        return sum(
+            job_id.startswith("zero-factory-improvement-scanner-") for job_id in job_ids
+        )
+    except Exception:
+        # Gateway module absent or unloadable → no gateway-side occupancy.
         return 0
 
 
