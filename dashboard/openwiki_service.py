@@ -71,9 +71,7 @@ Generate a high-signal, machine-readable architectural knowledge base in `{OPENW
    - For future wiki refreshes/updates (after initial setup), use the matching `code` subcommand:
      ```bash
      openwiki code --update
-     openwiki code --update --print
      ```
-     (`--print` / `-p` runs once non-interactively and prints the final assistant output.)
    - **Verify the CLI's standard artifacts on disk** before proceeding — all are written by the CLI itself (never create or edit any of them by hand):
      - `{OPENWIKI_PAGE_MANIFEST_RELPATH}` — the CLI's machine-readable JSON page ledger (its `PAGE_MANIFEST_PATH` constant). Confirm it exists and parses as valid JSON with shape `{{"schemaVersion": 1, "pages": {{...}}}}`.
      - `{OPENWIKI_RELATIVE_DIR}/quickstart.md` — the CLI's standard canonical entry point, which a run must create and must never delete.

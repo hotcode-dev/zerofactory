@@ -22,10 +22,11 @@ def test_build_openwiki_setup_task_prompt():
     # `code` subcommand (not the bare top-level flags).
     assert "openwiki code --init" in prompt
     assert "openwiki --init" not in prompt  # bare top-level form must not be used
-    # Future refreshes/updates use the matching `code` subcommand (+ --print).
+    # Future refreshes/updates use the `code` subcommand; the --print variant
+    # is no longer offered (only `openwiki code --update`).
     assert "openwiki code --update" in prompt
-    assert "openwiki code --update --print" in prompt
-    assert "--print" in prompt
+    assert "openwiki code --update --print" not in prompt
+    assert "--print" not in prompt
     assert "never manually" in prompt
     assert "manually create" in prompt
     # No fallback to hand-authoring the wiki is offered.
