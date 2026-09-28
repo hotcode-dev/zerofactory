@@ -1,5 +1,8 @@
 """Integration tests for Board API endpoints (/api/plugins/zerofactory/boards)."""
 
+import subprocess
+
+import cron.definitions as defs
 from fastapi.testclient import TestClient
 
 
@@ -169,3 +172,53 @@ def test_board_openwiki_endpoints(api_client: TestClient):
     assert status_res2.status_code == 200
     status_data2 = status_res2.json()
     assert status_data2["pending_task_id"] == task_id
+
+
+def test_board_status_endpoints_do_not_clone(api_client: TestClient, monkeypatch):
+    """Read-only status endpoints must not spawn a git clone subprocess.
+
+    The board is created first (board creation is the sanctioned clone point),
+    then ZEROFACTORY_SKIP_GIT / ZEROFACTORY_AUTO_CLONE are cleared and a fake
+    subprocess.run records every spawn: the status endpoints must not clone.
+    """
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *args, **kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=1, stdout=b"", stderr=b""
+        )
+
+    create_res = api_client.post(
+        "/api/plugins/zerofactory/boards",
+        json={
+            "git_url": "https://github.com/no-clone-org/no-clone-endpoints.git",
+            "auto_setup_precommit": False,
+        },
+    )
+    assert create_res.status_code == 200
+    slug = create_res.json()["slug"]
+
+    # With auto-clone enabled, the read-only status endpoints must stay read-only.
+    monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
+    monkeypatch.delenv("ZEROFACTORY_AUTO_CLONE", raising=False)
+    monkeypatch.setattr(defs.subprocess, "run", fake_run)
+
+    precommit_res = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/precommit-status"
+    )
+    assert precommit_res.status_code == 200
+    precommit_data = precommit_res.json()
+    assert precommit_data["ok"] is True
+    assert precommit_data["has_precommit"] is False
+
+    openwiki_res = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/openwiki-status"
+    )
+    assert openwiki_res.status_code == 200
+    openwiki_data = openwiki_res.json()
+    assert openwiki_data["ok"] is True
+    assert openwiki_data["has_openwiki"] is False
+
+    clones = [c for c in calls if len(c) >= 2 and c[1] == "clone"]
+    assert not clones, f"status endpoints triggered git clone: {clones}"
