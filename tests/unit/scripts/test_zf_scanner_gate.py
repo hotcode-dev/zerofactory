@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -294,6 +296,108 @@ class TestZfScannerGateUnit(unittest.TestCase):
             for i in range(20):
                 self.assertIn(f"board-{i}", final_data)
                 self.assertTrue(final_data[f"board-{i}"].get("task_created"))
+
+
+class TestScanCodeMarkers(unittest.TestCase):
+    """Regression: marker scan must match real TODO/FIXME/HACK markers only.
+
+    Guards against the unanchored-substring bug where identifiers such as
+    ``DEFAULT_IDLE_SCAN_MAX_TODO`` / ``idle_scan_max_todo`` (and prose) were
+    picked up by ``git grep -E "TODO|FIXME|HACK"`` and polluted the scanner
+    prompt.
+    """
+
+    #: env vars that must not leak into the fixture repo's git subprocesses
+    ENV_PREFIXES = ("ZEROFACTORY_", "HERMES_", "GIT_")
+
+    def _hermetic_env(self):
+        saved = {}
+        for k in list(os.environ):
+            if k.startswith(self.ENV_PREFIXES):
+                saved[k] = os.environ.pop(k)
+        return saved
+
+    def _restore_env(self, saved):
+        os.environ.update(saved)
+
+    def _init_fixture_repo(self, files: dict[str, str]) -> Path:
+        repo = Path(tempfile.mkdtemp(prefix="zf-gate-fixture-"))
+        for name, content in files.items():
+            (repo / name).write_text(content, encoding="utf-8")
+        for args in (
+            ["init", "-q"],
+            ["config", "user.email", "fixture@test.local"],
+            ["config", "user.name", "fixture"],
+            ["add", "-A"],
+            ["commit", "-q", "-m", "fixture"],
+        ):
+            res = subprocess.run(
+                ["git", *args],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if res.returncode != 0:
+                raise AssertionError(f"git {args} failed: {res.stderr}")
+        return repo
+
+    def test_real_marker_detected_identifiers_ignored(self):
+        saved = self._hermetic_env()
+        repo = None
+        try:
+            repo = self._init_fixture_repo(
+                {
+                    "identifiers.py": (
+                        "DEFAULT_IDLE_SCAN_MAX_TODO = 2\n"
+                        "idle_scan_max_todo = DEFAULT_IDLE_SCAN_MAX_TODO\n"
+                        "FOO_TODO = 1\n"
+                    ),
+                    "real_marker.py": (
+                        "def work():\n"
+                        "    # TODO: real marker that must be found\n"
+                        "    return 0\n"
+                    ),
+                }
+            )
+            mod = _load_gate()
+            out = mod.scan_code_markers(repo)
+            self.assertIn("real_marker.py", out)
+            self.assertIn("# TODO: real marker", out)
+            # identifier false-positives must not leak into the output
+            self.assertNotIn("MAX_TODO", out)
+            self.assertNotIn("idle_scan_max_todo", out)
+            self.assertNotIn("FOO_TODO", out)
+            self.assertNotIn("identifiers.py", out)
+            # only the single real marker line is reported
+            self.assertEqual(len(out.splitlines()), 1)
+        finally:
+            self._restore_env(saved)
+            if repo is not None:
+                shutil.rmtree(repo, ignore_errors=True)
+
+    def test_identifier_only_repo_reports_no_markers(self):
+        saved = self._hermetic_env()
+        repo = None
+        try:
+            repo = self._init_fixture_repo(
+                {
+                    "identifiers.py": (
+                        "DEFAULT_IDLE_SCAN_MAX_TODO = 2\n"
+                        "todo = MAX_TODO  # lowercase todo never matches\n"
+                    ),
+                }
+            )
+            mod = _load_gate()
+            self.assertEqual(
+                mod.scan_code_markers(repo),
+                "",
+                "identifiers/prose must produce zero marker warnings",
+            )
+        finally:
+            self._restore_env(saved)
+            if repo is not None:
+                shutil.rmtree(repo, ignore_errors=True)
 
 
 if __name__ == "__main__":

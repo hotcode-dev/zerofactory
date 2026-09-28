@@ -46,6 +46,32 @@ def _run_cmd(cmd: list[str], cwd: Path | None = None) -> str:
         return ""
 
 
+def scan_code_markers(repo_dir: Path) -> str:
+    """Scan tracked source files for real TODO/FIXME/HACK debt markers.
+
+    The pattern is word-boundary anchored and case-sensitive so identifiers
+    (e.g. ``DEFAULT_IDLE_SCAN_MAX_TODO``) and prose can never match, while
+    genuine comments like ``# TODO:`` / ``// FIXME:`` / ``/* HACK */`` do.
+    Returns the git grep output (file:line:match per line) or "" when clean.
+    """
+    return _run_cmd(
+        [
+            "git",
+            "grep",
+            "-n",
+            "-E",
+            r"\bTODO\b|\bFIXME\b|\bHACK\b",
+            "--",
+            "*.py",
+            "*.ts",
+            "*.js",
+            "*.go",
+            "*.rs",
+        ],
+        cwd=repo_dir,
+    )
+
+
 def get_state_file() -> Path:
     env_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
     return Path(env_override) if env_override else STATE_FILE
@@ -644,23 +670,9 @@ def run_scanner_gate() -> int:
             f"### Uncommitted Changes:\n```\n{status_porcelain[:1000]}\n```\n"
         )
 
-    # Search for new TODO / FIXME in tracked files
-    todo_matches = _run_cmd(
-        [
-            "git",
-            "grep",
-            "-n",
-            "-E",
-            "TODO|FIXME|HACK",
-            "--",
-            "*.py",
-            "*.ts",
-            "*.js",
-            "*.go",
-            "*.rs",
-        ],
-        cwd=repo_dir,
-    )
+    # Search for new TODO / FIXME in tracked files (word-boundary anchored so
+    # identifiers like DEFAULT_IDLE_SCAN_MAX_TODO never match)
+    todo_matches = scan_code_markers(repo_dir)
     todo_sample = "\n".join(todo_matches.splitlines()[:15]) if todo_matches else "None"
 
     tasks_block = (
