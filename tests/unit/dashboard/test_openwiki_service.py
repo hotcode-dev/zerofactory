@@ -1,6 +1,9 @@
 """Unit tests for dashboard/openwiki_service.py."""
 
+import subprocess
 from pathlib import Path
+
+import cron.definitions as defs
 
 from dashboard.openwiki_service import (
     OPENWIKI_RELATIVE_DIR,
@@ -162,3 +165,46 @@ def test_openwiki_blocked_task_allows_regenerate(initialized_db: Path, tmp_path:
     status2 = check_board_openwiki_status(slug)
     assert status2["pending_task_id"] == regen_res["task_id"]
     assert status2["pending_task_status"] == "todo"
+
+
+def test_openwiki_status_check_does_not_auto_clone(initialized_db: Path, monkeypatch):
+    """Read-only openwiki status check must never spawn a git clone subprocess."""
+    import shutil
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *args, **kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=1, stdout=b"", stderr=b""
+        )
+
+    # Clean up any stale directory a previous (unfixed) run may have created,
+    # so the end-of-test home-dir assertion stays hermetic.
+    stale = Path.home() / "git" / "no-clone-org"
+    if stale.exists():
+        shutil.rmtree(stale, ignore_errors=True)
+
+    # Create the board while conftest's ZEROFACTORY_SKIP_GIT is still set so
+    # board creation itself does not enter the auto-clone branch.
+    b_res = create_board(
+        BoardCreate(
+            git_url="https://github.com/no-clone-org/no-clone-repo-ow.git",
+            description="Remote board without a local clone",
+            auto_setup_precommit=False,
+        )
+    )
+    slug = b_res["slug"]
+
+    # Exercise the read-only status check with auto-clone fully enabled.
+    monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
+    monkeypatch.delenv("ZEROFACTORY_AUTO_CLONE", raising=False)
+    monkeypatch.setattr(defs.subprocess, "run", fake_run)
+
+    res = check_board_openwiki_status(slug)
+
+    assert res["ok"] is True
+    assert res["has_openwiki"] is False
+    clones = [c for c in calls if len(c) >= 2 and c[1] == "clone"]
+    assert not clones, f"status check triggered git clone: {clones}"
+    assert not (Path.home() / "git" / "no-clone-org").exists()

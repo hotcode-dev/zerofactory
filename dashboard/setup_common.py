@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable
@@ -156,7 +157,16 @@ def check_board_setup_status(
     resolver = get_repo_resolver()
     if resolver:
         try:
-            repo_path = resolver(board)
+            prev = os.environ.get("ZEROFACTORY_SKIP_CLONE")
+            # Read-only status check: never let the resolver auto-clone the remote.
+            os.environ["ZEROFACTORY_SKIP_CLONE"] = "1"
+            try:
+                repo_path = resolver(board)
+            finally:
+                if prev is None:
+                    os.environ.pop("ZEROFACTORY_SKIP_CLONE", None)
+                else:
+                    os.environ["ZEROFACTORY_SKIP_CLONE"] = prev
             if repo_path and repo_path.is_dir():
                 target = repo_path / target_relpath
                 is_target = target.is_dir() if target_is_dir else target.is_file()
