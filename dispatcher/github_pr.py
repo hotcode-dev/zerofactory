@@ -365,13 +365,25 @@ def format_task_comment_body(comment: dict[str, Any]) -> str:
 
     # Inline review comments support in-thread replies on GitHub; surface the
     # numeric comment id so a later worker can target a reply
-    # (`gh api repos/<owner>/<repo>/pulls/<n>/comments/replies`).
+    # (`gh api repos/<owner>/<repo>/pulls/<n>/comments/<id>/replies`).
+    # GitHub's replies endpoint only accepts a TOP-LEVEL review comment id
+    # (replies to replies 422), so nested replies must expose their
+    # `in_reply_to` (thread root) rather than their own id.
     if ctype == "inline_review":
-        comment_id = str(comment.get("comment_id") or "")
-        if comment_id:
-            parts.append(
-                f"_(GitHub review comment id: {comment_id.split('_', 1)[-1]})_"
-            )
+        anchor_id = (
+            str(in_reply_to)
+            if in_reply_to
+            else str(comment.get("comment_id") or "").split("_", 1)[-1]
+        )
+        if anchor_id:
+            if in_reply_to:
+                parts.append(
+                    f"_(GitHub review comment id: {anchor_id} — thread-root id, "
+                    "target it with the replies endpoint; replies to replies "
+                    "are not supported by GitHub)_"
+                )
+            else:
+                parts.append(f"_(GitHub review comment id: {anchor_id})_")
 
     return "\n".join(parts)
 

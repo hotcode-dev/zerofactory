@@ -95,8 +95,12 @@ class TestFormatTaskCommentBodyReplySupport:
         )
         assert body.startswith("**[Reply to review comment #100]**")
         assert "**[GitHub Review Comment on `src/app.py:L10`]**" in body
-        # Footer exposes the numeric id the agent needs for the replies endpoint.
-        assert "_(GitHub review comment id: 111)_" in body
+        # The replies endpoint 422s on nested comment ids, so the footer must
+        # expose the thread-root (in_reply_to) id, not the comment's own id.
+        assert "_(GitHub review comment id: 100" in body
+        assert "111" not in body
+        assert "thread-root" in body
+        assert "replies to replies" in body.lower()
 
     def test_no_reply_header_for_top_level_comment(self):
         body = format_task_comment_body(
@@ -169,5 +173,9 @@ class TestBuilderPromptInstructsCommentReplies:
             prompt = mock_popen.call_args[0][0][-1]
             assert "REPLY" in prompt.upper() or "reply to" in prompt.lower()
             assert "comments/<comment_id>/replies" in prompt
+            # The prompt must document that the footer id is always a
+            # top-level (thread-root) id: the replies endpoint 422s on nested ids.
+            assert "top-level" in prompt
+            assert "replies to replies are not supported" in prompt
             # AI attribution line must survive the prompt.
             assert "[AI]" in prompt
