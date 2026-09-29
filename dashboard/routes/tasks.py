@@ -271,6 +271,11 @@ def create_task(req: TaskCreate):
         branch_name = req.branch_name or f"task/{task_id}"
 
         dedup_key = req.dedup_key or compute_dedup_key(req.files, req.category)
+        # Dup check targets ONLY active (dispatchable) statuses. A `blocked`
+        # task is pending-but-awaiting-human-merge, not active work: deduping
+        # to it would make the Setup/Regenerate endpoint return the stale
+        # blocked task forever and wedge the button. Blocked tasks are
+        # surfaced separately by setup_common._find_blocked_setup_task.
         cursor.execute(
             """
             SELECT id, title, status, metadata FROM tasks 

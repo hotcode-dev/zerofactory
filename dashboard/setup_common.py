@@ -56,15 +56,21 @@ def get_repo_resolver():
 def _find_pending_setup_task(
     cursor, board_slug: str, title_prefix: str, dedup_substring: str
 ) -> tuple[str | None, str | None]:
-    """Locate the newest in-progress setup task matching the title prefix or dedup key.
+    """Locate the newest *in-progress* (active) setup task for a board.
 
-    Every not-done setup task is a *pending* task (all undone = pending), and
-    pending has two sub-states: ``triage``/``todo``/``ready``/``running``
-    (in progress — active work) and ``blocked`` (awaiting a human merge). This
-    query targets only the in-progress sub-state; a ``blocked`` task is
-    surfaced separately by :func:`_find_blocked_setup_task` and must not wedge
-    the Setup/Regenerate path (treating it as in-progress permanently wedged
-    that button).
+    Pending == every not-done task (all undone means pending). Pending has
+    two sub-states:
+
+    - ``triage``/``todo``/``ready``/``running`` — in progress (active work):
+      what THIS query returns, so the dedup short-circuit only fires for a
+      task that can still be dispatched.
+    - ``blocked`` — pending, but awaiting a human merge. It is a NOT-done
+      pending task, not active work: it is surfaced separately by
+      :func:`_find_blocked_setup_task` and must NOT match here, otherwise
+      the Setup/Regenerate path is permanently wedged (it can never create
+      a fresh task while the stale blocked one exists).
+
+    ``done`` is the only non-pending status and is excluded by the filter.
     """
     cursor.execute(
         """
@@ -90,10 +96,11 @@ def _find_blocked_setup_task(
 ) -> tuple[str | None, str | None]:
     """Surface the most-recent *awaiting-human-merge* (blocked) setup task.
 
-    A ``blocked`` setup task is still a not-done (*pending*) task — it has
-    finished the agent phase and is waiting on a human merge. It is surfaced
-    separately from the in-progress sub-state so the UI can show a distinct
-    "awaiting merge" badge without wedging the Setup/Regenerate button.
+    ``blocked`` is the second sub-state of *pending* (all undone = pending):
+    the agent phase finished and a human merge is outstanding. It is not
+    active work, so it never matches :func:`_find_pending_setup_task` — but
+    it is still pending, so the UI surfaces it as a distinct "awaiting
+    merge" badge instead of pretending no work is pending.
     """
     cursor.execute(
         """
