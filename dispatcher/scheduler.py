@@ -1164,8 +1164,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         except Exception:
                                             pr_url = ""
                                     else:
-                                        pr_title = subject
-                                        pr_body = f"{commit_body}\n\nAutomated PR for task {task_id}\n\nCompleted by: @{assignee}"
+                                        pr_title = _disp.ai_prefix(subject)
+                                        pr_body = _disp.ai_prefix(
+                                            f"{commit_body}\n\nAutomated PR for task {task_id}\n\nCompleted by: @{assignee}"
+                                        )
                                         pr_cmd = [
                                             "gh",
                                             "pr",
