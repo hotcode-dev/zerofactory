@@ -2076,6 +2076,7 @@
               { className: "text-slate-100 text-xs leading-relaxed m-0 pl-4 space-y-1 font-normal list-disc" },
               React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "30–40% Token Savings:"), " Slashes exploratory grep_search, find_by_name, and random file reads by up to 40%."),
               React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "Prevents Context Drift:"), " Prevents agents from hallucinating outdated conventions or diverging from established patterns."),
+              React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "Universal LLM Provider:"), " Runs with any provider configured in Hermes — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Groq, DeepSeek, or local/custom endpoints."),
               React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "Fast Onboarding:"), " New tasks start immediately with full architectural orientation in a single compact markdown read.")
             )
           ),

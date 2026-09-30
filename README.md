@@ -305,6 +305,28 @@ To keep multi-agent software development token-efficient and prevent context deg
   ```
   This dispatches a `P0` setup ticket directing `zf-builder` to install the `openwiki` tool, index the repository, generate `openwiki/index.md` and module docs, and link them directly into `AGENTS.md`.
 
+### LLM Provider Compatibility (Any Hermes-Supported Provider)
+
+Zero Factory and OpenWiki are not restricted to OpenAI. The `openwiki` CLI can run with **any model provider supported by Hermes**:
+
+- **First-Class Native Providers in OpenWiki**:
+  - **Anthropic**: `OPENWIKI_PROVIDER="anthropic"` (uses `ANTHROPIC_API_KEY`)
+  - **OpenAI**: `OPENWIKI_PROVIDER="openai"` (uses `OPENAI_API_KEY`)
+  - **Google Gemini / Vertex AI**: `OPENWIKI_PROVIDER="gemini"` or `"gemini-enterprise"` (uses `GEMINI_API_KEY` or Google Cloud ADC)
+  - **OpenRouter**: `OPENWIKI_PROVIDER="openrouter"` (uses `OPENROUTER_API_KEY`)
+  - **AWS Bedrock**: `OPENWIKI_PROVIDER="bedrock"` (uses AWS credentials)
+- **Universal OpenAI-Compatible Gateway**:
+  - Any other provider configured in Hermes—including **Groq**, **Mistral**, **DeepSeek**, **Together AI**, **Ollama**, or **custom/self-hosted backends** (e.g. vLLM, Spark)—connects via OpenWiki's `openai-compatible` driver:
+    ```bash
+    OPENWIKI_PROVIDER="openai-compatible" \
+    OPENAI_COMPATIBLE_BASE_URL="<provider_base_url>" \
+    OPENAI_COMPATIBLE_API_KEY="<provider_api_key>" \
+    OPENWIKI_MODEL_ID="<model_id>" \
+    openwiki code --init
+    ```
+
+When executing `setup-openwiki`, `zf-builder` inspects its Hermes profile configuration (`~/.hermes/profiles/zf-builder/config.yaml` or `~/.hermes/config.yaml` and `.env`) and exports the corresponding provider variables so that OpenWiki runs headlessly with the builder's active LLM backend.
+
 ---
 
 ## Repository Structure
