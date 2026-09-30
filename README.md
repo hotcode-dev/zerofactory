@@ -303,29 +303,32 @@ To keep multi-agent software development token-efficient and prevent context deg
   ```bash
   hermes zerofactory setup-openwiki --board <slug>
   ```
-  This dispatches a `P0` setup ticket directing `zf-builder` to install the `openwiki` tool, index the repository, generate `openwiki/index.md` and module docs, and link them directly into `AGENTS.md`.
+  This dispatches a `P0` setup ticket directing `zf-builder` to run the OpenWiki MCP lifecycle, generate the architectural taxonomy, create module specs, and link them directly into `AGENTS.md`.
 
-### LLM Provider Compatibility (Any Hermes-Supported Provider)
+### Native MCP Architecture (Zero API Keys or ENV Setup)
 
-Zero Factory and OpenWiki are not restricted to OpenAI. The `openwiki` CLI can run with **any model provider supported by Hermes**:
+Rather than running an external standalone CLI that requires duplicate LLM API keys and manual `export` configurations, Zero Factory integrates OpenWiki as a **native Model Context Protocol (MCP) server**:
 
-- **First-Class Native Providers in OpenWiki**:
-  - **Anthropic**: `OPENWIKI_PROVIDER="anthropic"` (uses `ANTHROPIC_API_KEY`)
-  - **OpenAI**: `OPENWIKI_PROVIDER="openai"` (uses `OPENAI_API_KEY`)
-  - **Google Gemini / Vertex AI**: `OPENWIKI_PROVIDER="gemini"` or `"gemini-enterprise"` (uses `GEMINI_API_KEY` or Google Cloud ADC)
-  - **OpenRouter**: `OPENWIKI_PROVIDER="openrouter"` (uses `OPENROUTER_API_KEY`)
-  - **AWS Bedrock**: `OPENWIKI_PROVIDER="bedrock"` (uses AWS credentials)
-- **Universal OpenAI-Compatible Gateway**:
-  - Any other provider configured in Hermes—including **Groq**, **Mistral**, **DeepSeek**, **Together AI**, **Ollama**, or **custom/self-hosted backends** (e.g. vLLM, Spark)—connects via OpenWiki's `openai-compatible` driver:
-    ```bash
-    OPENWIKI_PROVIDER="openai-compatible" \
-    OPENAI_COMPATIBLE_BASE_URL="<provider_base_url>" \
-    OPENAI_COMPATIBLE_API_KEY="<provider_api_key>" \
-    OPENWIKI_MODEL_ID="<model_id>" \
-    openwiki code --init
-    ```
-
-When executing `setup-openwiki`, `zf-builder` inspects its Hermes profile configuration (`~/.hermes/profiles/zf-builder/config.yaml` or `~/.hermes/config.yaml` and `.env`) and exports the corresponding provider variables so that OpenWiki runs headlessly with the builder's active LLM backend.
+- **Pre-configured in `zf-builder` and `zf-reviewer` (`config.yaml`)**:
+  ```yaml
+  mcp_servers:
+    openwiki:
+      command: npx
+      args:
+        - -y
+        - openwiki
+        - mcp
+        - --host=hermes
+      enabled: true
+  ```
+- **Zero Configuration**: OpenWiki runs locally over stdio as a deterministic queue, Claims validator, and manifest generator. Hermes provides the model intelligence, so **zero external LLM API keys or environment variables (`OPENWIKI_PROVIDER`, `OPENAI_API_KEY`) are needed**.
+- **10 Native MCP Tools Available**:
+  - `openwiki_begin`: Detects repository git diff & staleness; no-ops if already current.
+  - `openwiki_submit_plan`: Submits the canonical page taxonomy and seed paths.
+  - `openwiki_next_page` / `openwiki_submit_page`: Iteratively assigns and writes pages, validating OKF frontmatter and registering SHA256 hashes in `.page-manifest.json`.
+  - `openwiki_finish`: Finalizes the run, stamps `.last-update.json`, and links `AGENTS.md`.
+  - `openwiki_search` / `openwiki_read`: Fast, model-free architectural retrieval for agents mid-task.
+- **Skill Bundling**: The official OpenWiki skill is provided at `skills/openwiki/SKILL.md` and automatically synced into `~/.hermes/skills/` on `hermes zerofactory setup`.
 
 ---
 

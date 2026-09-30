@@ -32,5 +32,14 @@ agent:
 plugins:
   enabled:
     - zerofactory
+mcp_servers:
+  openwiki:
+    command: npx
+    args:
+      - -y
+      - openwiki
+      - mcp
+      - --host=hermes
+    enabled: true
 default:
   temperature: 0.1
