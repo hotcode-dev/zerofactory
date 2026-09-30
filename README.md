@@ -35,6 +35,8 @@ graph TD
 | **Isolated Profiles** | Profiles are cleanly namespaced (`zf-orchestrator`, `zf-builder`, `zf-reviewer`) in `~/.hermes/profiles/` and never clash with personal user profiles. |
 | **Isolated Git Worktrees** | Every task runs in its own dedicated Git worktree (`~/git/<repo>-worktrees/<task_id>`). Agents never touch `main` directly. |
 | **Thematic Continuous Review** | Layered code review capping at 3 focused rounds (Correctness → Performance → Refactoring) before handing off to human merge. |
+| **Deterministic Precommit Gate** | Standardized format ➔ build ➔ test pipeline (`.zerofactory/precommit.sh`) ensuring zero broken builds or lint errors before PRs. |
+| **OpenWiki Context Optimization** | Machine-readable architecture wiki (`openwiki/`) that slashes agent context bloat and exploratory tool calls by 30–40%. |
 | **Durable Kanban Storage** | Embedded SQLite backend with Write-Ahead Logging (`WAL` mode) and a glassmorphic web dashboard UI. |
 
 ---
@@ -98,6 +100,7 @@ hermes zerofactory board list                                          # List al
 hermes zerofactory board create <git_url> [--target-branch <branch>]   # Add a new codebase board with optional target/base branch
 hermes zerofactory board delete <slug>                                 # Delete a board and clear its scanner job
 hermes zerofactory setup-repo --board <slug>                           # File P0 setup task to generate .zerofactory/precommit.sh
+hermes zerofactory setup-openwiki --board <slug>                       # File P0 setup task to generate openwiki/ agent documentation
 
 # Dispatcher & Background Crons
 hermes zerofactory dispatch                       # Trigger an immediate dispatch cycle
@@ -238,6 +241,69 @@ Zero Factory is architected to drastically minimize LLM token consumption (up to
   - Executed by **`zf-orchestrator`** inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py` with independent sessions (`continuity: false`).
   - Guards token consumption: when the board is busy (`running >= 2` or `todo >= 2`) or during the 15-minute cooldown, suppresses execution with `{"wakeAgent": false}` (0 LLM tokens).
   - When the board has spare capacity, wakes `zf-orchestrator` with pre-digested git context, diffstat, and open board tasks to analyze the project for tech debt, refactoring, or missing tests and file at most 1 actionable `Todo` task assigned to `zf-builder`.
+
+---
+
+## Deterministic Precommit Pipeline (`.zerofactory/precommit.sh`)
+
+Zero Factory enforces a strict, deterministic precommit quality gate for every task before git commits are authored or pull requests are opened. Rather than relying on speculative agent checks, the dispatcher executes `.zerofactory/precommit.sh` directly inside the task's isolated Git worktree:
+
+```bash
+.zerofactory/precommit.sh [all|format|build|test|install-hook]
+```
+
+### The 3-Phase Verification Sequence
+
+1. **`format` (Format & Lint)**:
+   - Enforces repository-wide code formatting and deterministic lint fixing (e.g., `ruff check --fix .` and `ruff format .` for Python, `prettier`/`eslint` for JS/TS, `gofmt` for Go, `cargo fmt` for Rust).
+   - **Self-bootstrapping**: If required linter binaries are missing from the environment, the script automatically installs them to the system (e.g., via `uv tool install ruff@latest` or `pip3 install --user ruff`).
+   - Any auto-formatted files are staged automatically by the dispatcher.
+2. **`build` (Static Compilation & Typecheck)**:
+   - Validates that all sources compile cleanly with zero syntax or packaging errors (e.g., `python3 -m compileall`, `tsc --noEmit`, `cargo check`, `go build ./...`).
+3. **`test` (Automated Test Execution)**:
+   - Runs the hermetic project test suite (e.g., `python3 -m pytest tests/ -q`).
+
+### Self-Healing Retry Loop
+If `.zerofactory/precommit.sh` encounters syntax errors or failing unit tests, the dispatcher does **not** abandon the task or open a broken PR. Instead, it captures the exact terminal stdout/stderr failure output and re-spawns `zf-builder` in an automated self-healing feedback loop (up to 3 retries) to fix regressions before proceeding to code review.
+
+### Setting Up Precommit for a Board
+- **Web Dashboard**: When viewing a board that lacks `.zerofactory/precommit.sh`, a high-visibility amber warning banner appears above the Kanban board with a 1-click **⚡ Setup Repo for Zero Factory** button. It can also be initiated from the Board Settings modal (`⚡ Setup Precommit Verification`).
+- **CLI**:
+  ```bash
+  hermes zerofactory setup-repo --board <slug>
+  ```
+  This creates a `P0` ticket assigned to `zf-builder` to inspect the project layout, auto-detect language tooling, and generate an executable `.zerofactory/precommit.sh`.
+
+---
+
+## OpenWiki Context Optimization (`openwiki/`)
+
+To keep multi-agent software development token-efficient and prevent context degradation, Zero Factory integrates the **OpenWiki** architecture pattern:
+
+```text
+<repository_root>/
+├── AGENTS.md                  # High-level entrypoint pointing agents to openwiki/
+└── openwiki/
+    ├── index.md               # Master system index & navigational architectural map
+    ├── architecture.md        # Subsystem contracts, entrypoints & data flows
+    ├── components/            # Detailed module specifications & API schemas
+    └── conventions.md         # Repository patterns, error paradigms & test rules
+```
+
+### Why OpenWiki for Agent Workflows?
+- **30–40% Token Reduction**: Eliminates wasteful exploratory tool calls (repetitive `grep_search`, `list_dir`, and trial-and-error source file reads). Agents read `openwiki/index.md` first to locate exact modules and contracts.
+- **Context Window Hygiene**: Prevents loading hundreds of lines of implementation code into LLM prompts when only architectural contracts and APIs are required.
+- **Multi-Agent Alignment**: Ensures `zf-builder`, `zf-reviewer`, and `zf-orchestrator` share a uniform understanding of the codebase structure, naming conventions, and cross-module boundaries.
+
+### Setting Up OpenWiki for a Board
+- **Web Dashboard**: For any board without `openwiki/`, a glassmorphic sky-blue recommendation banner appears above the Kanban grid:
+  `📖 Recommended: OpenWiki Architecture Docs Not Generated [Context Optimization]`
+  Clicking **📖 Setup OpenWiki** (or triggering via Board Settings modal) dispatches an automated setup task.
+- **CLI**:
+  ```bash
+  hermes zerofactory setup-openwiki --board <slug>
+  ```
+  This dispatches a `P0` setup ticket directing `zf-builder` to install the `openwiki` tool, index the repository, generate `openwiki/index.md` and module docs, and link them directly into `AGENTS.md`.
 
 ---
 

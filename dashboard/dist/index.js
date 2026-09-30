@@ -1637,14 +1637,14 @@
                   title: "Code & Tests",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "zf-builder writes code and automated tests applying the Ponytail Ladder of Laziness (surgical diffs, stdlib-first, zero bloat)."
+                  desc: "zf-builder inspects OpenWiki/AGENTS.md, writes code & tests applying the Ponytail Ladder of Laziness, and executes .zerofactory/precommit.sh."
                 },
                 {
                   num: "5",
-                  title: "PR Handoff",
+                  title: "Precommit & PR",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "Dispatcher commits changes, opens GitHub PR via gh pr create, pre-digests git diff and commit log into reviewer context, and routes ticket to Running assigned to zf-reviewer."
+                  desc: "Dispatcher runs precommit (format ➔ build ➔ tests), stages formatted files, self-heals any test regressions, opens GitHub PR, and routes to zf-reviewer."
                 },
                 {
                   num: "6",
@@ -1918,6 +1918,177 @@
       );
     };
 
+    const renderQualitySection = () => {
+      return React.createElement(
+        "div",
+        { className: "space-y-6" },
+
+        // 1. Precommit Pipeline Card
+        React.createElement(
+          "div",
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 shadow-md" },
+          React.createElement(
+            "div",
+            { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
+            React.createElement(
+              "h3",
+              { className: "text-base font-bold text-white m-0 flex items-center gap-2 tracking-wide" },
+              React.createElement("span", null, "⚡"),
+              "Deterministic Precommit Pipeline (.zerofactory/precommit.sh)"
+            ),
+            React.createElement(
+              "span",
+              { className: "text-xs font-mono px-2.5 py-0.5 rounded-full font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60" },
+              "Automated Quality Gate"
+            )
+          ),
+          React.createElement(
+            "p",
+            { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" },
+            "Zero Factory guarantees that no broken code, unformatted files, or failing tests reach a Pull Request. Before any commit or PR is generated, the dispatcher deterministically executes ",
+            React.createElement("span", { className: "font-mono text-amber-300 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-700 font-semibold" }, ".zerofactory/precommit.sh"),
+            " inside the task's isolated Git worktree across three standard verification phases:"
+          ),
+          React.createElement(
+            "div",
+            { className: "grid grid-cols-1 md:grid-cols-3 gap-4" },
+            [
+              {
+                phase: "1. Format & Lint",
+                icon: "🎨",
+                desc: "Runs automated linters (e.g. ruff check --fix, ruff format for Python; Prettier/ESLint for JS). Auto-installs missing tools to the system automatically and stages all formatted files."
+              },
+              {
+                phase: "2. Build & Typecheck",
+                icon: "🔨",
+                desc: "Performs static syntax verification or bytecode compilation (e.g. python3 -m compileall, tsc --noEmit, cargo check) to guarantee zero syntax or import errors."
+              },
+              {
+                phase: "3. Hermetic Tests",
+                icon: "🧪",
+                desc: "Executes the automated test suite (e.g. python3 -m pytest tests/ -q). Pull Requests are blocked from creation until all unit and integration tests pass cleanly with exit code 0."
+              }
+            ].map((p, idx) =>
+              React.createElement(
+                "div",
+                { key: idx, className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-4.5 space-y-2 shadow-sm" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-2 font-bold text-white text-xs" },
+                  React.createElement("span", null, p.icon),
+                  p.phase
+                ),
+                React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, p.desc)
+              )
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "p-4.5 bg-amber-950/40 border border-amber-600/70 rounded-xl space-y-2 text-xs shadow-sm" },
+            React.createElement("div", { className: "font-bold flex items-center gap-2 text-amber-200 text-sm" }, "🔁 Self-Healing Auto-Fix Feedback Loop:"),
+            React.createElement(
+              "p",
+              { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" },
+              "If precommit checks fail, the dispatcher does ",
+              React.createElement("strong", { className: "text-white" }, "not"),
+              " abandon the task or bother human reviewers. It captures the exact terminal stdout/stderr failure logs and re-spawns ",
+              React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "zf-builder"),
+              " with the error trace to auto-fix regressions (up to 3 retries) before opening the PR."
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 text-xs text-slate-300 font-medium" },
+            React.createElement("span", null, "Setup trigger: 1-click warning banner on Kanban board, Board Settings modal, or CLI:"),
+            React.createElement("span", { className: "font-mono text-amber-300 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-700 select-all shrink-0" }, "hermes zerofactory setup-repo --board <slug>")
+          )
+        ),
+
+        // 2. OpenWiki Context Optimization Card
+        React.createElement(
+          "div",
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 shadow-md" },
+          React.createElement(
+            "div",
+            { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
+            React.createElement(
+              "h3",
+              { className: "text-base font-bold text-white m-0 flex items-center gap-2 tracking-wide" },
+              React.createElement("span", null, "📖"),
+              "OpenWiki Architecture Knowledge Base (openwiki/)"
+            ),
+            React.createElement(
+              "span",
+              { className: "text-xs font-mono px-2.5 py-0.5 rounded-full font-bold bg-sky-950/80 text-sky-300 border border-sky-800/60" },
+              "Context Optimization (30–40% Token Savings)"
+            )
+          ),
+          React.createElement(
+            "p",
+            { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" },
+            "Autonomous coding agents frequently burn thousands of unnecessary tokens by blindly grepping directories and reading irrelevant source files. Zero Factory adopts the ",
+            React.createElement("strong", { className: "text-white" }, "OpenWiki / Docs for Agents"),
+            " standard: a pre-digested, machine-readable architectural knowledge base located in ",
+            React.createElement("span", { className: "font-mono text-sky-300 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-700 font-semibold" }, "openwiki/"),
+            " and referenced in ",
+            React.createElement("span", { className: "font-mono text-sky-300 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-700 font-semibold" }, "AGENTS.md"),
+            "."
+          ),
+          React.createElement(
+            "div",
+            { className: "grid grid-cols-1 md:grid-cols-3 gap-4" },
+            [
+              {
+                title: "openwiki/index.md",
+                icon: "🗺️",
+                desc: "Master system map: Subsystem catalog, database models, background services, API route trees, and cross-module contracts."
+              },
+              {
+                title: "Module Guides",
+                icon: "📦",
+                desc: "High-signal architectural summaries explaining component boundaries, entrypoints, and design decisions without raw source noise."
+              },
+              {
+                title: "AGENTS.md Linking",
+                icon: "🔗",
+                desc: "Explicit instructions directing zf-builder and zf-reviewer to read openwiki/index.md first before performing expensive exploratory tool calls."
+              }
+            ].map((w, idx) =>
+              React.createElement(
+                "div",
+                { key: idx, className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-4.5 space-y-2 shadow-sm" },
+                React.createElement(
+                  "div",
+                  { className: "flex items-center gap-2 font-bold text-white text-xs font-mono" },
+                  React.createElement("span", null, w.icon),
+                  w.title
+                ),
+                React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, w.desc)
+              )
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "p-4.5 bg-sky-950/50 border border-sky-500/70 rounded-xl space-y-2 text-xs shadow-sm" },
+            React.createElement("div", { className: "font-bold flex items-center gap-2 text-sky-200 text-sm" }, "🎯 Key Agent Benefits:"),
+            React.createElement(
+              "ul",
+              { className: "text-slate-100 text-xs leading-relaxed m-0 pl-4 space-y-1 font-normal list-disc" },
+              React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "30–40% Token Savings:"), " Slashes exploratory grep_search, find_by_name, and random file reads by up to 40%."),
+              React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "Prevents Context Drift:"), " Prevents agents from hallucinating outdated conventions or diverging from established patterns."),
+              React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "Fast Onboarding:"), " New tasks start immediately with full architectural orientation in a single compact markdown read.")
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 text-xs text-slate-300 font-medium" },
+            React.createElement("span", null, "Setup trigger: 1-click recommendation banner on Kanban board, Board Settings modal, or CLI:"),
+            React.createElement("span", { className: "font-mono text-sky-300 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-700 select-all shrink-0" }, "hermes zerofactory setup-openwiki --board <slug>")
+          )
+        )
+      );
+    };
+
     const renderCliSection = () => {
       const cliGroups = [
         {
@@ -1944,6 +2115,8 @@
             { cmd: "hermes zerofactory board list", desc: "List all registered project boards" },
             { cmd: "hermes zerofactory board create <git_url>", desc: "Register a new codebase board from Remote Git URL" },
             { cmd: "hermes zerofactory board delete <slug>", desc: "Delete a board and clear its scheduled scanner job" },
+            { cmd: "hermes zerofactory setup-repo --board <slug>", desc: "Create P0 setup task to generate .zerofactory/precommit.sh" },
+            { cmd: "hermes zerofactory setup-openwiki --board <slug>", desc: "Create P0 setup task to generate openwiki/ architecture docs" },
             { cmd: "hermes zerofactory stats", desc: "Show Kanban metrics, throughput, and worker states" },
             { cmd: "hermes zerofactory dispatch", desc: "Trigger an immediate autonomous dispatch cycle" },
             { cmd: "hermes zerofactory check-stuck", desc: "Audit and reap long-running or hung worker processes" }
@@ -3763,6 +3936,7 @@
         { id: "specialists", label: "Agent Specialists", icon: "🤖" },
         { id: "lifecycle", label: "Kanban & PR Lifecycle", icon: "🔄" },
         { id: "worktrees", label: "Git Worktree Isolation", icon: "🌳" },
+        { id: "quality", label: "Precommit & OpenWiki", icon: "🛡️" },
         { id: "cli", label: "CLI Cheat Sheet", icon: "💻" },
         { id: "crons", label: "Scheduled Automation", icon: "⏰" }
       ];
@@ -3834,6 +4008,7 @@
         instructionTab === "specialists" && renderSpecialistsSection(),
         instructionTab === "lifecycle" && renderLifecycleSection(),
         instructionTab === "worktrees" && renderWorktreesSection(),
+        instructionTab === "quality" && renderQualitySection(),
         instructionTab === "cli" && renderCliSection(),
         instructionTab === "crons" && renderCronsSection()
       );
