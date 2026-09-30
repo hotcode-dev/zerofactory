@@ -34,7 +34,12 @@ class TestDispatcherPrCreationUsesAiPrefix:
 
     def test_pr_create_command_captures_ai_prefixed_title_and_body(self):
         """Exercise the scheduler PR-open code path via the fake-gh e2e pattern."""
-        from tests.e2e.test_multi_agent_workflow import TestMultiAgentLifecycleE2E
+        try:
+            from tests.e2e.test_multi_agent_workflow import TestMultiAgentLifecycleE2E
+        except (ImportError, ModuleNotFoundError):
+            from zerofactory.tests.e2e.test_multi_agent_workflow import (
+                TestMultiAgentLifecycleE2E,
+            )
 
         case = TestMultiAgentLifecycleE2E(
             "test_01_full_delivery_cycle_builder_review_rounds_approval_and_merge"

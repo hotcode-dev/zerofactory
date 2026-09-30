@@ -20,8 +20,9 @@ def test_build_openwiki_setup_task_prompt():
     assert "openwiki" in prompt
     assert "AGENTS.md" in prompt
     assert "test-board" in prompt
-    # The wiki is managed via native OpenWiki MCP lifecycle tools.
+    # The wiki is managed via native OpenWiki MCP lifecycle tools in code mode.
     assert "OpenWiki MCP" in prompt
+    assert "code mode" in prompt
     assert "openwiki_begin" in prompt
     assert "openwiki_submit_plan" in prompt
     assert "openwiki_next_page" in prompt

@@ -41,28 +41,30 @@ SETUP_OPENWIKI_TASK_TITLE_PREFIX = "chore(repo): setup OpenWiki"
 def build_openwiki_setup_task_prompt(
     board_slug: str, repo_path: Path | None = None
 ) -> str:
-    """Generate structured instructions for zf-builder to generate OpenWiki agent docs via OpenWiki MCP."""
+    """Generate structured instructions for zf-builder to generate OpenWiki agent docs via OpenWiki MCP in repository code mode."""
     path_hint = f" (`{repo_path}`)" if repo_path else ""
-    return f"""Set up OpenWiki machine-readable agent documentation for this repository{path_hint} on board `{board_slug}`.
+    return f"""Set up OpenWiki machine-readable agent documentation for this repository{path_hint} on board `{board_slug}` in repository code mode.
 
 ## Target
-Directory: `{OPENWIKI_RELATIVE_DIR}/` (managed via OpenWiki MCP)
+Directory: `{OPENWIKI_RELATIVE_DIR}/` (managed via OpenWiki MCP in repository code mode)
 Pointers: `AGENTS.md` / `CLAUDE.md` (managed via OpenWiki)
 
 ## Goal
-Generate a high-signal, machine-readable architectural knowledge base in `{OPENWIKI_RELATIVE_DIR}/` (Docs for Agents pattern) using the **OpenWiki MCP server** and its standard artifacts, so agents consume the wiki instead of re-reading source. This optimizes context windows, slashes exploratory token consumption by 30–40%, and prevents multi-agent hallucination across Zero Factory workers (`zf-builder`, `zf-reviewer`, `zf-orchestrator`).
+Generate a high-signal, machine-readable architectural knowledge base in `{OPENWIKI_RELATIVE_DIR}/` (Docs for Agents pattern) using the **OpenWiki MCP server** (in repository code mode) and its standard artifacts, so agents consume the wiki instead of re-reading source. This optimizes context windows, slashes exploratory token consumption by 30–40%, and prevents multi-agent hallucination across Zero Factory workers (`zf-builder`, `zf-reviewer`, `zf-orchestrator`).
 
 ## Instructions
-1. **OpenWiki MCP Server & Skill**:
+1. **OpenWiki MCP Server & Skill (Repository Code Mode)**:
    - The `openwiki` MCP server is pre-configured in your `zf-builder` profile.
+   - The MCP server operates exclusively in repository **code mode** (targeting `{OPENWIKI_RELATIVE_DIR}/` in the repository root, never personal mode).
    - It exposes native lifecycle tools: `openwiki_begin`, `openwiki_submit_plan`, `openwiki_next_page`, `openwiki_submit_page`, and `openwiki_finish`.
    - **Zero API keys or environment variables (`export OPENWIKI_*`) are needed!** OpenWiki runs purely as a local MCP tool provider over stdio, and Hermes provides the model intelligence.
    - Review your `openwiki` skill (`skills/openwiki/SKILL.md`) for detailed guidance on claims, taxonomy, and frontmatter.
 
 2. **Generate the wiki via OpenWiki MCP Lifecycle — never manually**:
-   - **CRITICAL: the wiki MUST be generated and finalized through the OpenWiki MCP lifecycle. Do NOT hand-write, hand-structure, or manually create `{OPENWIKI_RELATIVE_DIR}/`, `AGENTS.md`, or `CLAUDE.md`.** If MCP tools cannot complete a run in this environment, BLOCK the task (`hermes zerofactory block <task_id> --reason "<MCP error>"`) with the captured error output instead of falling back to manual wiki authoring.
-   - **Step 1: Begin Run**:
+   - **CRITICAL: the wiki MUST be generated and finalized through the OpenWiki MCP lifecycle in repository code mode. Do NOT hand-write, hand-structure, or manually create `{OPENWIKI_RELATIVE_DIR}/`, `AGENTS.md`, or `CLAUDE.md`.** If MCP tools cannot complete a run in this environment, BLOCK the task (`hermes zerofactory block <task_id> --reason "<MCP error>"`) with the captured error output instead of falling back to manual wiki authoring.
+   - **Step 1: Begin Run (Code Mode)**:
      Call `openwiki_begin({{"root": ".", "mode": "init"}})` (or `"mode": "update"` for updates).
+     This runs the repository code documentation lifecycle for the target repository.
      If it returns `status: "noop"`, report that the wiki is up-to-date and complete the task.
    - **Step 2: Submit Plan**:
      Inspect repository manifests, entrypoints, and public interfaces to plan a logical documentation taxonomy. Call `openwiki_submit_plan` with canonical page paths (always include `/openwiki/quickstart.md` for `init`).

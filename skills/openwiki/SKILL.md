@@ -1,9 +1,11 @@
 ---
 name: openwiki
-description: Search and read an existing repository OpenWiki when requested or needed to resolve a concrete architecture or dependency uncertainty, or initialize and update one through the resumable page-job lifecycle.
+description: Search and read an existing repository OpenWiki in code mode when requested or needed to resolve a concrete architecture or dependency uncertainty, or initialize and update one through the resumable page-job lifecycle.
 ---
 
-# OpenWiki
+# OpenWiki (Repository Code Mode)
+
+OpenWiki MCP runs exclusively in repository **code mode** (targeting `openwiki/` in the repository root, never personal mode).
 
 ## Read repository memory
 
