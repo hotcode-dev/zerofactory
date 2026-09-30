@@ -47,7 +47,7 @@ def build_openwiki_setup_task_prompt(
 
 ## Target
 Directory: `{OPENWIKI_RELATIVE_DIR}/` (managed via OpenWiki MCP in repository code mode)
-Pointers: `AGENTS.md` / `CLAUDE.md` (managed via OpenWiki)
+Pointer: `AGENTS.md` (managed via OpenWiki)
 
 ## Goal
 Generate a high-signal, machine-readable architectural knowledge base in `{OPENWIKI_RELATIVE_DIR}/` (Docs for Agents pattern) using the **OpenWiki MCP server** (in repository code mode) and its standard artifacts, so agents consume the wiki instead of re-reading source. This optimizes context windows, slashes exploratory token consumption by 30–40%, and prevents multi-agent hallucination across Zero Factory workers (`zf-builder`, `zf-reviewer`, `zf-orchestrator`).
@@ -61,13 +61,13 @@ Generate a high-signal, machine-readable architectural knowledge base in `{OPENW
    - Review your `openwiki` skill (`skills/openwiki/SKILL.md`) for detailed guidance on claims, taxonomy, and frontmatter.
 
 2. **Generate the wiki via OpenWiki MCP Lifecycle — never manually**:
-   - **CRITICAL: the wiki MUST be generated and finalized through the OpenWiki MCP lifecycle in repository code mode. Do NOT hand-write, hand-structure, or manually create `{OPENWIKI_RELATIVE_DIR}/`, `AGENTS.md`, or `CLAUDE.md`.** If MCP tools cannot complete a run in this environment, BLOCK the task (`hermes zerofactory block <task_id> --reason "<MCP error>"`) with the captured error output instead of falling back to manual wiki authoring.
+   - **CRITICAL: the wiki MUST be generated and finalized through the OpenWiki MCP lifecycle in repository code mode. Do NOT hand-write, hand-structure, or manually create `{OPENWIKI_RELATIVE_DIR}/` or `AGENTS.md`.** If MCP tools cannot complete a run in this environment, BLOCK the task (`hermes zerofactory block <task_id> --reason "<MCP error>"`) with the captured error output instead of falling back to manual wiki authoring.
    - **Step 1: Begin Run (Code Mode)**:
      Call `openwiki_begin({{"root": ".", "mode": "init"}})` (or `"mode": "update"` for updates).
      This runs the repository code documentation lifecycle for the target repository.
      If it returns `status: "noop"`, report that the wiki is up-to-date and complete the task.
    - **Step 2: Submit Plan**:
-     Inspect repository manifests, entrypoints, and public interfaces to plan a logical documentation taxonomy. Call `openwiki_submit_plan` with canonical page paths (always include `/openwiki/quickstart.md` for `init`).
+     Inspect repository manifests, entrypoints, and public interfaces to plan a logical documentation taxonomy. Keep the initial taxonomy focused and consolidated (4–6 pages, e.g. quickstart, architecture, subsystems, operations, conventions). Call `openwiki_submit_plan` with canonical page paths (always include `/openwiki/quickstart.md` for `init`).
    - **Step 3: Page Loop**:
      Repeatedly call `openwiki_next_page`. For each assigned page job:
      - Research that specific page topic using native repository tools.
@@ -76,11 +76,12 @@ Generate a high-signal, machine-readable architectural knowledge base in `{OPENW
    - **Step 4: Finish Run**:
      When `openwiki_next_page` returns `status: "complete"`, call `openwiki_finish`. This finalizes the run, writes the machine-readable ledger at `{OPENWIKI_PAGE_MANIFEST_RELPATH}`, stamps `.last-update.json`, and links `AGENTS.md`.
 
-3. **Verify Standard Artifacts on Disk**:
+3. **Verify Standard Artifacts on Disk & Clean Up**:
    - `{OPENWIKI_PAGE_MANIFEST_RELPATH}` — the machine-readable JSON page ledger (its `PAGE_MANIFEST_PATH` constant). Confirm it exists and parses as valid JSON with shape `{{"schemaVersion": 1, "pages": {{...}}}}`.
    - `{OPENWIKI_RELATIVE_DIR}/quickstart.md` — the canonical entry point, which must exist and must never be deleted.
    - Do NOT key off `{OPENWIKI_RELATIVE_DIR}/index.md` or hand-write any Markdown page in `{OPENWIKI_RELATIVE_DIR}/` — the machine-readable JSON ledger is the source of truth.
    - `AGENTS.md` — confirm the managed block (`<!-- OPENWIKI:START --> ... <!-- OPENWIKI:END -->`) points at `{OPENWIKI_RELATIVE_DIR}/quickstart.md`.
+   - **Do NOT commit `.github/workflows/openwiki-update.yml` or `CLAUDE.md`**: Zero Factory manages wiki updates natively via Hermes background cron, NOT external GitHub Actions. If OpenWiki's `init` created them, delete them (`rm -rf .github CLAUDE.md`).
 
 4. **Verify Precommit Checks**:
    - Run `./.zerofactory/precommit.sh` (or `git status`) in the repository to verify that format, build, and test checks execute cleanly.
