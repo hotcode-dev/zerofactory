@@ -22,6 +22,54 @@ def _zf_css_selectors(tokens):
     return out
 
 
+_ZF_VARIANT_STACK = re.compile(
+    r"^(?:hover|focus|focus-within|active|disabled|group-hover|md|lg|sm|xl|2xl):"
+)
+_ZF_NAMED_COLORS = {
+    "black",
+    "white",
+    "transparent",
+    "currentColor",
+    "inherit",
+    "initial",
+    "unset",
+}
+
+
+def _zf_is_genuine_value_utility(token):
+    """True if a non-variant class token is a value-bearing Tailwind utility.
+
+    These are the plain utilities (``bg-sky-950/20``, ``mb-3.5``,
+    ``text-[9px]``, ``max-w-[130px]``) that part (b)'s variant-prefixed check
+    never inspects — so a stale stylesheet can pass the variant delta while
+    silently dropping them. Tailwind v4's dynamic spacing/scale accepts
+    integer or ``.25``/``.75`` steps, so e.g. ``py-0.2`` is not a real
+    utility (the
+    compiler emits nothing for it); we exclude those so the in-sync check
+    cannot flag dead classes.
+    """
+    if _ZF_VARIANT_STACK.match(token):
+        return False
+    body = token
+    if "/" in token:
+        pre, post = token.rsplit("/", 1)
+        if not re.fullmatch(r"\d{1,3}", post):
+            return False  # opacity / not a Tailwind value ratio
+        body = pre
+    m = re.search(r"\[([^\[\]]+)\]$", body)
+    if m:
+        v = m.group(1)
+        return bool(re.search(r"\d", v)) or v in _ZF_NAMED_COLORS
+    m = re.match(r"^(-?[A-Za-z][A-Za-z0-9-]*?)-(\d+(?:\.\d+)?)$", body)
+    if m:
+        # v4 dynamic spacing/scale accepts whole numbers and .25 steps.
+        return re.fullmatch(r"\d+|\d+\.(25|5|75)", m.group(2)) is not None
+    m = re.match(r"^([A-Za-z][A-Za-z0-9-]*?)-([a-zA-Z]+)$", body)
+    if m:
+        return m.group(2) in _ZF_NAMED_COLORS
+    return False
+
+
 def _zf_js_class_tokens(source):
     token_charset = re.compile(r"[A-Za-z0-9_:\[\]/%#!.-]+")
     strings = []
@@ -78,16 +126,27 @@ def test_dashboard_css_is_portable_and_in_sync_with_js():
 
     # (b) Every variant-prefixed class token has a selector
     tokens = _zf_js_class_tokens(js_src)
-    variant_stack = re.compile(
-        r"^(?:hover|focus|focus-within|active|disabled|group-hover|md|lg|sm|xl|2xl):"
-    )
-    variant_tokens = [t for t in tokens if variant_stack.match(t)]
+    variant_tokens = [t for t in tokens if _ZF_VARIANT_STACK.match(t)]
     assert len(variant_tokens) >= 10, "Expected UI to reference variant classes"
 
     missing = [
         t for t in sorted(variant_tokens) if _zf_css_selectors((t,))[0] not in style_css
     ]
     assert missing == [], f"dist/style.css missing selectors for: {missing[:10]}"
+
+    # (b2) Every plain (non-variant) value utility has a selector. Pure text
+    # comparison (no node/tailwind required) and non-skippable: this is the
+    # guard that catches a stale committed stylesheet even when node_modules
+    # is absent, so drift can no longer ship silently.
+    value_tokens = [t for t in tokens if _zf_is_genuine_value_utility(t)]
+    assert len(value_tokens) >= 100, "Expected UI to reference plain value utilities"
+    missing_value = [
+        t for t in sorted(value_tokens) if _zf_css_selectors((t,))[0] not in style_css
+    ]
+    assert missing_value == [], (
+        "dist/style.css is stale — missing selectors for plain utilities: "
+        f"{missing_value[:10]}"
+    )
 
     # Smoke: each interaction state family must be present at least once
     for family in (
