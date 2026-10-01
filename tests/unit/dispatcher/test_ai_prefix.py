@@ -9,11 +9,16 @@ from dispatcher import ai_prefix
 class TestAiPrefix:
     def test_plain_text_is_prefixed(self):
         assert ai_prefix("feat(auth): add JWT token generator") == (
-            "[AI] feat(auth): add JWT token generator"
+            "[AI:zf-builder] feat(auth): add JWT token generator"
         )
 
     def test_idempotent_on_existing_prefix(self):
+        assert ai_prefix("[AI:zf-builder] Fix bug") == "[AI:zf-builder] Fix bug"
         assert ai_prefix("[AI] Fix bug") == "[AI] Fix bug"
+        assert ai_prefix("[AI:zf-reviewer] Fix bug") == "[AI:zf-reviewer] Fix bug"
+
+    def test_custom_role(self):
+        assert ai_prefix("review notes", role="zf-reviewer") == "[AI:zf-reviewer] review notes"
 
     def test_empty_and_blank_input_unchanged(self):
         assert ai_prefix("") == ""
@@ -22,11 +27,11 @@ class TestAiPrefix:
     def test_multiline_pr_body_prefixed_once(self):
         body = "chore: fix tests\n\nAutomated PR for task zf-abc\n\nCompleted by: @zf-builder"
         prefixed = ai_prefix(body)
-        assert prefixed == "[AI] " + body
-        assert prefixed.count("[AI]") == 1
+        assert prefixed == "[AI:zf-builder] " + body
+        assert prefixed.count("[AI:zf-builder]") == 1
 
     def test_leading_whitespace_stripped_before_prefix(self):
-        assert ai_prefix("\n  indented body") == "[AI] indented body"
+        assert ai_prefix("\n  indented body") == "[AI:zf-builder] indented body"
 
 
 class TestDispatcherPrCreationUsesAiPrefix:
@@ -120,10 +125,10 @@ class TestDispatcherPrCreationUsesAiPrefix:
             cmd = create_cmds[0]
             title = cmd[cmd.index("--title") + 1]
             body = cmd[cmd.index("--body") + 1]
-            assert title.startswith("[AI]"), f"PR title missing [AI] prefix: {title!r}"
-            assert body.startswith("[AI] "), f"PR body missing [AI] prefix: {body!r}"
-            assert title.count("[AI]") == 1
-            assert body.count("[AI]") == 1
+            assert title.startswith("[AI:zf-builder]"), f"PR title missing [AI:zf-builder] prefix: {title!r}"
+            assert body.startswith("[AI:zf-builder] "), f"PR body missing [AI:zf-builder] prefix: {body!r}"
+            assert title.count("[AI:zf-builder]") == 1
+            assert body.count("[AI:zf-builder]") == 1
 
             t_info2 = get_task(task_id)["task"]
             assert t_info2["assignee"] == "zf-reviewer"

@@ -170,4 +170,4 @@ class TestBuilderPromptInstructsCommentReplies:
             assert "REPLY" in prompt.upper() or "reply to" in prompt.lower()
             assert "comments/<comment_id>/replies" in prompt
             # AI attribution line must survive the prompt.
-            assert "[AI]" in prompt
+            assert "[AI:zf-builder]" in prompt

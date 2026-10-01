@@ -1162,9 +1162,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         except Exception:
                                             pr_url = ""
                                     else:
-                                        pr_title = _disp.ai_prefix(subject)
+                                        pr_title = _disp.ai_prefix(subject, role=assignee or "zf-builder")
                                         pr_body = _disp.ai_prefix(
-                                            f"{commit_body}\n\nAutomated PR for task {task_id}\n\nCompleted by: @{assignee}"
+                                            f"{commit_body}\n\nAutomated PR for task {task_id}\n\nCompleted by: @{assignee}",
+                                            role=assignee or "zf-builder",
                                         )
                                         pr_cmd = [
                                             "gh",

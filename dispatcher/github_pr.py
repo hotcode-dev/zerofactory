@@ -318,16 +318,21 @@ def fetch_pr_review_comments(
     return comments
 
 
-def ai_prefix(text: str) -> str:
-    """Prefix agent-authored GitHub text (PR titles/bodies, review comments) with `[AI]`.
+AI_PREFIX_RE = re.compile(r"^\[AI(?::[a-zA-Z0-9_-]+)?\]")
 
-    Idempotent: text that already starts with the marker is returned unchanged so
-    re-writes (e.g. re-opening a PR) never produce a doubled prefix.
+
+def ai_prefix(text: str, role: str = "zf-builder") -> str:
+    """Prefix agent-authored GitHub text (PR titles/bodies, review comments) with `[AI:zf-builder]`.
+
+    Idempotent: text that already starts with an AI attribution marker (e.g. `[AI:zf-builder]`,
+    `[AI:zf-reviewer]`, or legacy `[AI]`) is returned unchanged so re-writes (e.g. re-opening
+    a PR) never produce a doubled prefix.
     """
     stripped = (text or "").lstrip()
-    if not stripped or stripped.startswith("[AI]"):
+    if not stripped or AI_PREFIX_RE.match(stripped):
         return text or ""
-    return f"[AI] {stripped}"
+    tag = f"[AI:{role}]" if role else "[AI]"
+    return f"{tag} {stripped}"
 
 
 def format_task_comment_body(comment: dict[str, Any]) -> str:
