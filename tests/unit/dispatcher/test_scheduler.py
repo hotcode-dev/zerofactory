@@ -564,7 +564,11 @@ def test_run_dispatch_cycle_per_board_idle_scanning(tmp_path: Path):
         patch.object(dispatcher, "spawn_board_scanner", side_effect=mock_spawn),
         patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
         patch.object(dispatcher, "clean_stale_git_locks"),
-        patch.object(dispatcher, "get_scanner_cron_config", side_effect=mock_get_scanner_cron_config),
+        patch.object(
+            dispatcher,
+            "get_scanner_cron_config",
+            side_effect=mock_get_scanner_cron_config,
+        ),
     ):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
@@ -572,5 +576,3 @@ def test_run_dispatch_cycle_per_board_idle_scanning(tmp_path: Path):
         assert "idle-board-enabled" in spawned_slugs
         assert "idle-board-disabled" not in spawned_slugs
         assert res["scans_triggered"] == 1
-
-

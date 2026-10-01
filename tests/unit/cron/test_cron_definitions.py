@@ -141,7 +141,10 @@ class TestCronDefinitionsUnit(unittest.TestCase):
 
             import builtin_cron
 
-            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file), "ZEROFACTORY_SCAN_ON_IDLE": "0"}):
+            with patch.dict(
+                os.environ,
+                {"ZEROFACTORY_DB": str(db_file), "ZEROFACTORY_SCAN_ON_IDLE": "0"},
+            ):
                 orig_bc = getattr(builtin_cron, "get_db_path", None)
                 builtin_cron.get_db_path = lambda: db_file
                 try:
@@ -163,18 +166,23 @@ class TestCronDefinitionsUnit(unittest.TestCase):
             cron_dir = Path(td) / "cron"
             cron_dir.mkdir(parents=True)
             jobs_file = cron_dir / "jobs.json"
-            jobs_file.write_text(json.dumps({
-                "jobs": [
+            jobs_file.write_text(
+                json.dumps(
                     {
-                        "id": "zero-factory-improvement-scanner-my-project",
-                        "enabled": True,
-                        "scan_on_idle": True,
-                        "idle_scan_cooldown_minutes": 20,
-                        "idle_scan_max_todo": 4,
-                        "schedule": {"kind": "interval", "minutes": 10080}
+                        "jobs": [
+                            {
+                                "id": "zero-factory-improvement-scanner-my-project",
+                                "enabled": True,
+                                "scan_on_idle": True,
+                                "idle_scan_cooldown_minutes": 20,
+                                "idle_scan_max_todo": 4,
+                                "schedule": {"kind": "interval", "minutes": 10080},
+                            }
+                        ]
                     }
-                ]
-            }), encoding="utf-8")
+                ),
+                encoding="utf-8",
+            )
 
             with patch.dict(os.environ, {"ZEROFACTORY_CRON_JOBS_FILE": str(jobs_file)}):
                 cfg = get_scanner_cron_config("my-project")

@@ -14,13 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from .config import (
-    DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
     DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
     DEFAULT_IDLE_SCAN_MAX_TODO,
     DEFAULT_MAX_ACTIVE_TASKS,
     DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
     DEFAULT_MAX_CONCURRENT_WORKERS,
-    DEFAULT_SCAN_ON_IDLE,
     DISPATCH_INTERVAL_SECONDS,
     _active_scanners,
     _d,
@@ -1314,9 +1312,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     for td_row in cursor.execute(
                         "SELECT board_slug, COUNT(*) AS cnt FROM tasks WHERE status = 'todo' GROUP BY board_slug"
                     ).fetchall():
-                        todo_per_board[str(td_row["board_slug"] or "")] = td_row[
-                            "cnt"
-                        ]
+                        todo_per_board[str(td_row["board_slug"] or "")] = td_row["cnt"]
                 except Exception:
                     pass
 
@@ -1345,16 +1341,16 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     board_mcr = max(
                         1,
                         int(b_row["max_concurrent_running"])
-                        if ("max_concurrent_running" in b_row.keys() and b_row["max_concurrent_running"])
+                        if (
+                            "max_concurrent_running" in b_row.keys()
+                            and b_row["max_concurrent_running"]
+                        )
                         else DEFAULT_MAX_CONCURRENT_WORKERS,
                     )
                     board_active_running = running_per_board.get(board_slug, 0)
                     board_todo_count = todo_per_board.get(board_slug, 0)
 
-                    if (
-                        board_active_running < board_mcr
-                        and board_todo_count < max_todo
-                    ):
+                    if board_active_running < board_mcr and board_todo_count < max_todo:
                         if board_slug not in _active_scanners:
                             last_scan = _last_idle_scan_times.get(board_slug, 0)
                             if (now - last_scan) >= cooldown_seconds:

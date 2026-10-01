@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:0fe2c3a0fa21e442c197b3e8e86de2b1d0345cbc1356a9dc5915745e8b08ac2c",
+  "claims": [
+    {
+      "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
+      "statement": "The dashboard is a Hermes gateway route declared by dashboard/manifest.json, mounted at the /zerofactory tab, rendered by dist/index.js + dist/style.css, with its REST backend in dashboard/plugin_api.py.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/manifest.json#L1-L14",
+          "version": "repo-lines-v1:sha256:a0c92f33eb0733253dc7ba8055ac4de32f12f783cdab52bd4ebd5a44807a46d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9060e072199645c0a12cb1eaaa05bdbd",
+      "statement": "plugin_api.py assembles a master FastAPI APIRouter that aggregates eight sub-routers: boards, tasks, stats, settings, dispatch, cron, memories, and agents.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/__init__.py#L23-L46",
+          "version": "repo-lines-v1:sha256:14163b5616a4781c70589dddfc5f548dbb460710b5df57d593251d5bb6a5e7e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0MGNhNmRkMzU5NmEyOTVhNzgwZDk5ZDQ4ZjZkYzNkZWI3ZjkyYTk5MTY5NWQ4MDk0YzI4NWY1NmU1NzZlNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyNjA0MjYxYWM4MGM5ZDIzYjk2ZmNmMjZjOTVmNDNmMzMxZWY5NTU2NjJlNWYyNjY1ZmVhYmVjYjM4YzVmNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4MGM4MjlhYzRkY2RjOWZkMGVjMjJkNDZlNDg4MWVhMWFmMGI2ODRkYjEzNzY1MzFkNTUwNzUyMzg2OTZmNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiMTM2Zjk3ZjcwYmM2MjM0OGQ4MWU3YTgxODliM2RjMGY1NzMzNWU2YjVmZTAyZTZhNTQ3YTM3YTkxZTg5YTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2bbf4cdf833e47c18a2589ebac54d4d4",
+      "statement": "openwiki_service detects a board missing openwiki/ and keys off the machine-readable ledger openwiki/.page-manifest.json (its PAGE_MANIFEST_PATH), not the generated index.md, so status reflects what the CLI actually produced.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/openwiki_service.py#L29-L41",
+          "version": "repo-lines-v1:sha256:7124c471d4bc0889d3de5fa48410a4c8c1e7dbd345a8909715c92e2fe3d15da8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NzFjY2M3MzFjMDcxNzdiMWNjMWYwMGJiMTM1ZWE4YjZhOTE0ZWU2ZmZlOGI2OTJhYTQ5MDk4ODcwNDhhZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNDU2NWMzZDk0NzIzZjBhNmMzZWFmZGExMmNmZTcxZmI1ZDg2N2UzZmYyZWE5ZjZlNzcyODE0OTQ1M2ZhNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0MzE0OTUzZDJkNzQ2NGQwZDNhZmNjNTZkMWQ3Yzc2NDg1M2FjYmEyMDA3ZmU1ZmFjMjRiMjYyY2YzMjc5MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3ODAzYjQ1YjNhOGEwZTU4YTEyN2RiODFmOWRhODdkYjg0ODIzMjZkNTdiNTJlMWY5Yjg2M2MzYWYxN2M4NGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f83f57188d2e4577936508dce90c3230",
+      "statement": "precommit_service and openwiki_service both route through the shared setup_common helpers (check_board_setup_status, create_setup_task) with a setup: dedup key so a superseded setup task is replaced rather than duplicated.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/precommit_service.py#L29-L32",
+          "version": "repo-lines-v1:sha256:02ce65b8cd1a453c4fc4411b1a140a9107080b9bca460b96c687eabc5875ef9d:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDkzNmRhYzE3OGQyZGE0MWJkYWM3NTg0NjQ1NTNkZDI2MTFkYzBhOGU3YjgxMzVhZmJhZjliYWI1Njk0YWM3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWFjMDgxOTJmMzY5MTQzYjFmMWIwMGQzMmMxOWUyY2M1ODRmZDUwNjZhYzJkMTE5MzM3YzhlZGMwMWVkMWZmNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDQzMTQ5NTNkMmQ3NDY0ZDBkM2FmY2M1NmQxZDdjNzY0ODUzYWNiYTIwMDdmZTVmYWMyNGIyNjJjZjMyNzkyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTFmYmU3YzE5ODYyOTAyMzFhZDdjZTgxM2I1YTgxMzZhYjg4NzJjMWMyOWE4YmExNjNhOWUyNjk1M2UzNjI1OSJ9"
+        },
+        {
+          "resource": "repo://dashboard/setup_common.py#L28-L45",
+          "version": "repo-lines-v1:sha256:dbb4ad6c011c4be60f369999f77e40632c88f13d686ead74703157be71759fe6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjNjkxOTVlZDUyMTY1YWM5NDA3MzZlZmFmMTYzYjM0YzQ1NjQwMjg1YTg1YjI3ZjIwMGM4ODY2M2FiNWQ0ZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjNmQ1NDJiYmJlNjVlYjE2NDYxYzEwYjgyYjU1MTYzZmE0YWJhZDkzMGVjMmJmZTM4ZGNhYzViYTg3NzU1NzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmMDhhNjZhMDY5MTIzZWZmMTM5NTY3ZjQ5ZDQ4Y2YxMzAxY2ZkMDE2NGY3MzFhODRlMTZjNjlkZTBmMTliZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4MWUzZGU0ZGIzMmJhYThkMDNjZDdkNTRlOWNmNmFiODVmZTg2ZmY1MjgwNWE5ODg2Y2QzOTU5NGIyZThkZDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_796c59060d4b4d59815fe0dff24a4bfb",
+      "statement": "The setup services file a P0 zf-builder task that runs natively through the Zero Factory dispatcher and Hermes background cron; they do not emit external .github/workflows or CLAUDE.md, so any tool-produced GitHub Actions wiki-update path is out of scope and must be deleted.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/openwiki_service.py#L110-L127",
+          "version": "repo-lines-v1:sha256:57238759e782d6413dbadd207f06b15430e061ce527c319de34fcf0131ebb391:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2NDk0NjNiMmUyOTgzMDVmOGE0M2QwNTBlZDAwZTNlYTdkZDFmM2Y4NDc5ODVhZmIzYjM2Yjc0NDA5MjMyNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://dashboard/precommit_service.py#L129-L140",
+          "version": "repo-lines-v1:sha256:a54f11aaf7629221a76152690b8e690c5a5899e301e045f316604f955a338de7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4MGRlNzczZDA1ZmIwMTE2MWRmN2FlNzVkNjEzOWY5NDk3MWNjMDg0ZjFlZTk4YTZkNGE5OTZjYTMyYWUwZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4YWU2MGEwOWE3ODRiNDdlYTA4NTMxNmJmZjkyYzY4MDExZGQ2NzBkODlmMjhkYWY1ZGE5YmI2YWU0MWJjNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2MDdmM2QzOWMyZmMyZGI3MDM1MDc0NTczODliMTVlYTI3NTRhNjJhNDlmYWNkYTY1MzQ3ODc3YjVjN2JkODgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ac9e3af9a36f45c58b6a05e347281d05",
+      "statement": "cron/definitions.py defines zero-factory-task-queue-check as a no_agent: True job on a 120-minute interval that runs pure Python with no LLM to reap stuck workers and trigger the dispatch cycle.",
+      "evidence": [
+        {
+          "resource": "repo://cron/definitions.py#L207-L222",
+          "version": "repo-lines-v1:sha256:05a77a6eb407c98ca081701c574fd4786847864628322fb6b0edd2a70e7c73aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOTVmZmE1Mzg5OGY5OGJlNTc0YWEzYjdmMTgyNDIyMDJhN2RlZDdmYWU1OWNiMDFhMGFhMzljYWIxNDljYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2NTQxMTFkMzIwZDFiZjZhZGEzNjE2Nzk2ODYzMDY0ZTFkMDNmOWZjODhiMzJlNzE4NTcwNDNlMzdjODA4NDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzN2Q5ZTRiYzJlZjg4NjVkOWYzODhiMGI0MmYwOTllNDE2NDE0OTFhNTIxNGM1ZjAyODk4YjM5NGY4YmNmNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3OGQxYzRkOGI1YWVkOWE3NWRmM2JiMTQxZjI1NDc5NjBhNjk3MGI0ZWNlNDBkNGNhYTdkYmQ2NGMxNzVmMGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_368f13698deb4f37ad35f581404ac5e0",
+      "statement": "cron/definitions.py defines a per-board zero-factory-improvement-scanner-<slug> job that runs on idle and wakes zf-orchestrator to scan the repo for tech debt and file at most one zf-builder Todo task.",
+      "evidence": [
+        {
+          "resource": "repo://cron/definitions.py#L272-L322",
+          "version": "repo-lines-v1:sha256:1f999563151e1c795dad27be7c4aeb0a237f53ef8533fb0f680b5ac7f6edae14:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZDRmMjI4NmE3ZDdjNTI3YzFhNTExYjM5OTEzYTRlMTQzZWQwNjY1NWVhZGNiMmFmYjlhNjhiYTQ1MmU0MzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NjU1OTgzNDcyOGE5ODg1YjQyNDVjODJjNzBiOTZjNzgwZmJhOGUxMmU1OTRjMWQ2ZmI1ZjNmZjFlMjI4Y2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhNGYyZjMzNDYwYjVmMTkyMTEzZjI5Mzc1MjYwYWZjOGJjOWUxZjA1YzUzMTNjZTYwMjY5YWUwNTY5ZTcxZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2YzYyMDE1NDg2NDA3ODYyNGU1NjJhM2RiYjRmNmJmOTdiOTFiODg2MzI5ZmJjMWExZWE2YWE3ZjUxMTE5MWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4447c57c3df0493db1509e09bcc6a6d4",
+      "statement": "zf_queue_watchdog.py is a No-Agent Mode watchdog that reaps stuck workers (reap_stuck_tasks), triggers run_dispatch_cycle, and pulls get_stats; it emits {\"wakeAgent\": false} when healthy (0 tokens) and a markdown alert when it finds a bottleneck.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/zf_queue_watchdog.py#L1-L20",
+          "version": "repo-lines-v1:sha256:13bd7a4be7fd302326f5d7670ce006aaf2ce26b9a1ab54cc78605a82b32633ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlYzFiMDk3Y2MwMGEzOTc3NTQ1MGE4NTQ3YTYxNzAwYjVmN2VmNTBhYjQ2MDgxMWMyYTFlNzg4ZDg2ZmY5YTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhNzk2YzcwYWM3N2RiYWJkYzllYTU2ZjEyYTBmZDMxMGExOGQ3NzQ4YmJiM2MzMjRmNTljMmNiYmEzZWVmN2EifQ"
+        },
+        {
+          "resource": "repo://scripts/zf_queue_watchdog.py#L44-L60",
+          "version": "repo-lines-v1:sha256:1f67240385fb36c0edbbe4287a0d643155cab0bb197ca323a62c9d2148943e98:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViZDQzMDk2ZTA5YTRiOGFlMzczOTM2MjQyOTk3Njk2NTE5NmE0ZGZlNzhmMjdhYzg4YzZmZGQyMTkxM2E4M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyY2I3ODhjZjA2ZTAxOGZjN2U4OGZjN2U3ZTcyY2RlMTZlNjBhZWYxMTY3NWQzYzczMjgyOTBhMmM4MThmZTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNzBjNDAyOThiNTIwNjM0NjlhODNlMzAzYjE2MTMxODFlNDQ1N2RjOTI1OGExZTI0MDZiODM5YWRiMWU3ZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4YTRhNmRiOThiNjVjM2U0NWEzMmYxOGZmYzRiYTFkODRjY2I5ZjYzNjY4MzY5MjMzZjMyMjdlY2NhZmZkZjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c70c70668e24ac9883dcbd2487a2aeb",
+      "statement": "zf_scanner_gate.py is the scanner wake-gate: it compares current Git HEAD/working tree against ~/.hermes/scanner_state.json and counts active pipeline tasks (running, todo) plus the board concurrency cap, emitting {\"wakeAgent\": false} to suppress the LLM scan when nothing material changed or the board is busy/cooldown, and {\"wakeAgent\": true} with pre-digested git context otherwise.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/zf_scanner_gate.py#L299-L351",
+          "version": "repo-lines-v1:sha256:1cf21d17c42576b882fc7a414fbb3bea190f7accd2962a270365cd86b83b9172:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhMjFkNzIxNTdiMTI1YTRlZDIzOWQ0Y2M4MWY5MDJlZTE4MmU4MDQ4MmE1Y2RkNzliODZjOTBjMzBmNzYwODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkMGZiNDlkZWFjNmFlNzZjZmU0YTE4MDI2MjdjOGQ5NjFmNjljZmVhNWRhYTRkMzg1MWQ5ODQ2Y2U5ZTQxYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhMjhmMzA0MGRmYmViNjhjYzk0NjA4NDdiODVkYjU5ZDNlMGFkNzA5Nzk5NzFhNzM0YzQ5NWEyMTBiOWViN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyODg2OTliMzliYzM3N2RmOTIzN2NkMTdmMTg0MDM3OGNjZTdiNzg3YjBlZmU1YTg0Mjk3YzJhM2IzZWNmODkifQ"
+        },
+        {
+          "resource": "repo://scripts/zf_scanner_gate.py#L5-L11",
+          "version": "repo-lines-v1:sha256:dd502660472993f5384f0c674bb35a2144c299b719b4d86deb37b7c8bbe2baad:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODY0MWM2NTA3NjBlNmYxNTZhOTI0Mjc3ZDMxZjE5YjU5MTQ3MTQwYTlhMGQzYzg0N2QwNjJhYTY2ZTc5ZWJmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjhhZTgzNjY3YTMwNjg2NzRkNDVjMWYwNTE3MjI0NTRhYzE3ZTQ1MWRmNmI1ODk4NmFiZDNhNGQ2NDhiODI2OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWEyMWIyMDQ4NTdlMjg1MmYyMGFiZDZlNDRkNzIzY2Y3Y2JiZTg2NmRiYjc2MDQzODQ0NjlhZjRhYjQyNTQ5NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDJlYjQzYzIyY2NkNGNlZDU0Mzg0MjQ1ZWExMTBmZDQ0M2QwMjhkYjIxMmNjYzU3ZGIxMmZjYzk0MzQ5ZDViZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a0f6482c9a0e41edb5b3a3cbaaf0e929",
+      "statement": "zf_daily_stats.py is a deterministic 24-hour metrics and velocity calculator with no LLM involvement.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/zf_daily_stats.py",
+          "version": "repo-file-v1:sha256:2086ce47a8a8c155befecde44023ab7946a661d0514bcde3a3e29199197b5d69"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-10-01T13:01:50.039Z"
+  }
+}

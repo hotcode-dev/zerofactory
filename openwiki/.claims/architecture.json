@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:baf51f057747fcfa1984fa4327b855daad4613bcb672c7a88138eae25e7cb4bb",
+  "claims": [
+    {
+      "id": "claim_80cf282ecc34488f9bf7da2c69151cc1",
+      "statement": "Zero Factory is a self-contained Hermes Agent plugin (zerofactory, v1.1.0) that runs a 24/7 multi-agent software factory of three specialist profiles — zf-orchestrator, zf-builder, zf-reviewer — on a durable Kanban board.",
+      "evidence": [
+        {
+          "resource": "repo://plugin.yaml#L1-L8",
+          "version": "repo-lines-v1:sha256:1524812f41a07e883d94c88f5a00af042a1e39a6edad5c03d3fcc3682fefbd82:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjYyYjc3ZTFkNjQzOWU4ZThmYmM0MjcxY2ZhZjQ5Y2VhNzcxMDc5OTBiNDUwZTU5YWNkZGZiZGQ1ZDNhMjkzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzNmNGZhZjA0YzM3OWM5NDExYjRmN2E3NDRmNzQ0OGEzMTk4OTEzYWEwZmExZTQ0ZWYwYzZiMWEyZTAyYzM2NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGRhODZlYmQzMWMzNDg1Mzg4ODNjOTZkNDM2OWRjMjc3ODE3NmZiMWE1Y2JlNTI4MWJhNTE5MDFiZTRkMWE5ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e88291ffc8a845e3b33658fed8c5a034",
+      "statement": "The core loop, run_dispatch_cycle, acquires a process-level exclusive file lock (fcntl.flock LOCK_EX | LOCK_NB) before mutating board state, serializing concurrent dispatch cycles.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L36-L70",
+          "version": "repo-lines-v1:sha256:b4fd3be1aa917f89135128534a6c882ac9a14c6a98183626ca7f939c3736eb71:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkOGFlZDM0ZGYwNWY5NGVlNDUzZmMyMzQxMDQ3ZTBlYzZjZTRhZGM4YjNmODI1ZjQ3NDJhNzVmZWZhNjU0YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYmQwN2JjYWIxYmJmMjgwY2U4ZWRhMGI5ZGY2Mzc2Yjg1ZWMzZWNlOGQwYzdjODc0MzliYTNhMTU0NGMyOTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5OGIwNjNkOWI0N2U2NTM3OTYyNTU3MmNjZTE5NzY2OWQ1NzY3ZTEyYzE4YmUwNzU2NTJiOGNkOTgxY2U4ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyOGM3NDRmYzdhNWJlZTc4M2Q4ODJmOTBjNmJiZTA0ODFkYWU3MTcwMTdjZTQ0YTUyZDliNTgyYjc2ODVjNDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aeb90b89f2914bc6ae14fd74eaf4b099",
+      "statement": "Worker spawning is isolated: spawn_agent_worker launches `hermes -p <assignee> ... --yolo --accept-hooks chat -q <prompt>` as a detached subprocess with the worker's HERMES_HOME pinned to the profile's home, then correlates the new session_id against the profile's state.db.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/worker_spawner.py#L303-L378",
+          "version": "repo-lines-v1:sha256:c184badbfcacac7c84dd9cd038221478e41d92c0577396b80a4a4e1f00fd8e3a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3OGY4Nzk4NjkzZTdkOTc0MGYyZDQyNTU1MWE2YzY1MDcyYWYzZGNhOGQxNzc4YTQ4N2RlMTY5ODEzMzY0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhZDg1NTQxYjdkNDdkYjFlY2RkMmU3N2U1YzQ0NjI2MDdkZDUwYjAzNGE0MzM4ZmU5OGQzOGU5NDQyNzVjZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzMDlhMmEzZjgxMjlkYmU2MmVmNjRkMTU3ZmRkYjg0OWZjNGY3ODEwOGI1ZTk2YzllYjljN2JhNjIzMmJlZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExODM5MjFmNTNmMTE0ZGNlOWQwMThkMjQyMGUzZWU5OTExYzVkZTc4MGIwMDhjNjc1MzgzYWFmODc0YTEwODkifQ"
+        },
+        {
+          "resource": "repo://dispatcher/worker_spawner.py#L67-L86",
+          "version": "repo-lines-v1:sha256:5b9352a3441ad5d1fd02dd6ff4e404f51abd7d3f09f3d90fa8f178e5eec04fea:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0NWIzZmQyODNlN2RmYjVlOTI4ZjI4NzEwNWUwNGU0YmNjNGE3M2UxNmY2ODNiZGY5OWRiODYwZDU1N2I3OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxOGQwMGI0NWIwZTNmYWEzY2NjMzA3MjczMGMwNGVjMGM4MmU0NGU5N2Q4ZmQwMDk1YjUzZmJhYWYzNjcwZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NTAzMDQyNDNhNDdkM2JiNTA0OTYyNmFkNjliMGRiNDIwMzI2ZTgwNTU0YjkyMWUyYWVjN2RkMjA5MDBhNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmNDEyMzQzZTQ5YTU5YWNiYWEyNmFkOTJhYjgxNjhmZDIyZTFkYWY4YTlkMmJlZDg2YjJkMGMyNzBkMTc5MTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_977216a210934faa92eaa6897f799d6e",
+      "statement": "Agent prompts are pre-digested in Python before the agent wakes: digest_reviewer_git_context pre-computes the git log, diffstat, and a bounded diff (max 100 lines / 4000 chars) so the reviewer avoids exploratory git tool calls.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/context_builder.py#L15-L88",
+          "version": "repo-lines-v1:sha256:9ad410f118872d399ae9ee11510c1d1d9dd64869b74ecd7647ab979253d77b56:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhZmE0NTJjMjk2MjgyMDAwMzE3YzY3YTk4Y2ZmMDRjZjhhMWFiNzU5NmNkZjk0ZDYxOGMwZGM5MDM5ZWM3NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYTVjNjZlMTdiMTQ1Mzk3ODM0YjhjODU0ZGM0MTkzZTIxMjUxODBhODk5NmExNGMzMTg4MzMyNmIyZWZiY2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxNmJkMWRhZWY5OTBhOTU2YzkxNTYzYWUxMmMxM2QxNzMwNzAxNzdmYTY4NDE3ZGI2YjQxODdmNzU3MTRkNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1N2ViMmUxN2MyOGMyMjYzMTg2NzIyZDVhNWU4NDdhY2YyNzdhYWZmYjEzMDlmZDE0OTE5NGUwZDJiNTI5ZDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0a9c31282a1b469097af3ac793a4d7b8",
+      "statement": "All durable state is an embedded SQLite database in WAL mode with foreign_keys=ON and busy_timeout=5000 enabled on every connection.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/db.py#L151-L152",
+          "version": "repo-lines-v1:sha256:c18186b6d339abea15d5c66581d9c007fb0fa28e82e6cc478613d2d7e3b85dca:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODYwYjgxNmI5NDhiYjEwOWE2ZDFjMmUyYTY5YjZlNzc5Yjk1ZGZiOTYxMjg0YTZkYTA1NjljNGRmMTMzMGIwZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTc4Zjc0NzhiMzI5M2YxOGRlMmZkYmE5YTg0Mjg3YzFmY2M4YWEwNDdmOWYyNjM3MGRiYzNjYWRjZGZhZTY2MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTBiYjM2MjIxODQ0Yjk0OTJiMzYzN2IyODA4NGY1ZmQxN2VkNTkxMTk3NTA0YjM4ZTU4ZDUyY2MxYzc5YjFmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmFmNDRiMDM5ODRhNzM3YzVlYTRmZDJhYTZlZmI4NTk3YzM5YThlMWFhYWEzODA2NDIxMTZiYzAyYmY3Y2UwZCJ9"
+        },
+        {
+          "resource": "repo://dashboard/db.py#L225-L225",
+          "version": "repo-lines-v1:sha256:f0a06d47efe721e92249cbb46a826030fc66d7bf49c093c2994cd0c864022082:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjBhMDZkNDdlZmU3MjFlOTIyNDljYmI0NmE4MjYwMzBmYzY2ZDdiZjQ5YzA5M2MyOTk0Y2QwYzg2NDAyMjA4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjBhMDZkNDdlZmU3MjFlOTIyNDljYmI0NmE4MjYwMzBmYzY2ZDdiZjQ5YzA5M2MyOTk0Y2QwYzg2NDAyMjA4MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODE1NGI4ODQxZjdiZmNjMTQ3YTA4NjYxYjdmOGZlODc1OTRlZDEwNmViYTliZjMwMmMyOGFhZGY4NmVmZmVkNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWRhYTQ1OTY1Y2QzMjcxZDdjZTU0Y2I0MDAyYzMxMmYyZWE0ZTAzNDQ5NzNkZjBiNTkxNjJlMDA0MjBhZGRkOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3da58f29c5dc42999a0e4739e7b4179f",
+      "statement": "The schema is created by numbered migrations (NNNN_name.sql/.py) executed sequentially and tracked in a schema_migrations table.",
+      "evidence": [
+        {
+          "resource": "repo://migrations/runner.py#L26-L40",
+          "version": "repo-lines-v1:sha256:f07214fee1cb15a545a212c64fb175562640b10d5b651f06edc8f8f626c8ff79:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1ZDhhZGVjMGRmNGY0MWUzZGVjN2QwZjc1YTUyNTNhZmE4Y2NiZGQwYTdkNzY5ZGY1NDA0NzQ2MzdjOGRmMGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmMGM1MjE5ODg3N2FjNjcwZDk1NjYwZDEwOTg3ZTY1MWMwNzYwODY1NGFiYWQ5N2Q4NTUyM2NjZjE4OWZjZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkMDAzYjgyNTJiZjY1ZjM4YTZiNTM1NDFiYTBlOTM3ZmFhYmVlZDI1N2NhYzdhNWE5NTBmMzgzNDY2MDNmNmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_960a580e4fc745c38c3d34afcb9bafed",
+      "statement": "board_memories is the per-board repository-knowledge substrate (category, content, tags, author) that the dispatcher pre-digests into every spawned worker's prompt so agents avoid repeating past mistakes.",
+      "evidence": [
+        {
+          "resource": "repo://migrations/0001_initial_schema.sql#L71-L96",
+          "version": "repo-lines-v1:sha256:4bf8ca2049154e4446144ec66fd91e18b8d44afa80761d7c3d9b8ee93bd0a911:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2ODgzMzdiODczYzBiNWE3OWYwZTJjNWI0MGZjZjg2N2RiZTI5NGUzN2RhNDliNDhiMTViY2E4ZTVjNmEzMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1Yjc3ODhmNjY2ZTkxY2ZmMWFmODc0NDY4MjQ3OGJiOTcwNTM4MDRiM2ZjNmQzOGQ0ZDBmMGI1MmJjMTI0ODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyYWNiZTY0ZGE2NTE2MWYzZTIyMmRjZjFhMmZhYjI4NTk2ZWQzYjgyZDEyYmFlZTI5MTYzNjU0MWU1ODZlMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fd1c99c3dfb64ba7aed8805bba52b0ea",
+      "statement": "The system follows a session-per-handoff model: each handoff (implementation → review → changes-requested) spawns a new agent session for the next profile with a pre-digested current delta rather than the full implementation history, keeping context windows small and token cost flat across review rounds.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/context_builder.py#L15-L88",
+          "version": "repo-lines-v1:sha256:9ad410f118872d399ae9ee11510c1d1d9dd64869b74ecd7647ab979253d77b56:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhZmE0NTJjMjk2MjgyMDAwMzE3YzY3YTk4Y2ZmMDRjZjhhMWFiNzU5NmNkZjk0ZDYxOGMwZGM5MDM5ZWM3NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYTVjNjZlMTdiMTQ1Mzk3ODM0YjhjODU0ZGM0MTkzZTIxMjUxODBhODk5NmExNGMzMTg4MzMyNmIyZWZiY2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxNmJkMWRhZWY5OTBhOTU2YzkxNTYzYWUxMmMxM2QxNzMwNzAxNzdmYTY4NDE3ZGI2YjQxODdmNzU3MTRkNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1N2ViMmUxN2MyOGMyMjYzMTg2NzIyZDVhNWU4NDdhY2YyNzdhYWZmYjEzMDlmZDE0OTE5NGUwZDJiNTI5ZDgifQ"
+        },
+        {
+          "resource": "repo://dispatcher/worker_spawner.py#L67-L86",
+          "version": "repo-lines-v1:sha256:5b9352a3441ad5d1fd02dd6ff4e404f51abd7d3f09f3d90fa8f178e5eec04fea:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0NWIzZmQyODNlN2RmYjVlOTI4ZjI4NzEwNWUwNGU0YmNjNGE3M2UxNmY2ODNiZGY5OWRiODYwZDU1N2I3OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxOGQwMGI0NWIwZTNmYWEzY2NjMzA3MjczMGMwNGVjMGM4MmU0NGU5N2Q4ZmQwMDk1YjUzZmJhYWYzNjcwZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NTAzMDQyNDNhNDdkM2JiNTA0OTYyNmFkNjliMGRiNDIwMzI2ZTgwNTU0YjkyMWUyYWVjN2RkMjA5MDBhNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmNDEyMzQzZTQ5YTU5YWNiYWEyNmFkOTJhYjgxNjhmZDIyZTFkYWY4YTlkMmJlZDg2YjJkMGMyNzBkMTc5MTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_52afeeb2adc94efdb2be253c7acbd2f3",
+      "statement": "A deterministic precommit pipeline (.zerofactory/precommit.sh: format → build → test) is enforced by the dispatcher between a worker's output and a real PR, so a broken build or lint error never reaches a human.",
+      "evidence": [
+        {
+          "resource": "repo://.zerofactory/precommit.sh",
+          "version": "repo-file-v1:sha256:226de700a54e54364a8ba3c72357d249105fb9996b03fb53696c211a087488c3"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-10-01T13:01:50.039Z"
+  }
+}

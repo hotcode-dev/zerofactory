@@ -260,9 +260,7 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
             with sqlite3.connect(str(db_path), timeout=5.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT * FROM boards ORDER BY created_at ASC"
-                )
+                cursor.execute("SELECT * FROM boards ORDER BY created_at ASC")
                 boards = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             _log.warning("Failed to query boards for cron generation: %s", e)
@@ -284,7 +282,11 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
         default_scan_on_idle = True
         env_scan_on_idle = os.environ.get("ZEROFACTORY_SCAN_ON_IDLE")
         if env_scan_on_idle is not None:
-            default_scan_on_idle = env_scan_on_idle.strip().lower() in ("1", "true", "yes")
+            default_scan_on_idle = env_scan_on_idle.strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            )
 
         if default_scan_on_idle:
             sched = {
@@ -373,10 +375,12 @@ def get_scanner_cron_config(board_slug: str) -> dict[str, Any]:
                     sched_disp = str(
                         j.get("schedule_display") or sched.get("display") or ""
                     )
-                    minutes = (
-                        sched.get("minutes") if isinstance(sched, dict) else None
+                    minutes = sched.get("minutes") if isinstance(sched, dict) else None
+                    is_idle_sched = (
+                        sched.get("kind") == "idle"
+                        or minutes == 10080
+                        or "on idle" in sched_disp
                     )
-                    is_idle_sched = sched.get("kind") == "idle" or minutes == 10080 or "on idle" in sched_disp
 
                     if "scan_on_idle" in j and j["scan_on_idle"] is not None:
                         soi = bool(j["scan_on_idle"])

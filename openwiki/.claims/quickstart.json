@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:d72beaf2ebd7b0d8959d0dd18c45c82bc94485128b6cecbd7ebcfa449785793f",
+  "claims": [
+    {
+      "id": "claim_390ae1a0b32941e4b5bf337f7061ffa7",
+      "statement": "Zero Factory is a self-contained Hermes Agent plugin (no external Node.js daemon or profile-manager) that runs a 24/7 multi-agent software factory of three specialist profiles — zf-orchestrator, zf-builder, zf-reviewer — on a durable Kanban board, installed via `hermes plugins install hotcode-dev/zerofactory` and operated via the dashboard at http://localhost:9119/zerofactory.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L56-L76",
+          "version": "repo-lines-v1:sha256:04fbde9585af90b2efe2285e6efb3cf554792e02c0ee1c256e5165d578f9fabc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzMmQzMjE5ZmVjMmQ0MDViYWU1MmYyZTk0MDRhOWUwNmE0ZGMxMzNlY2RiNzAxZmI3YmE1N2QzYmNjOGQ3MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNTcxOGQ4NjQ3Mjc0NDlmODIyZjQ3MThjYzIwZDhkODFlZGE2ZDFkMWJhZTM2YmQ0Y2I3OTgwNGQ0ODcxZmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://plugin.yaml#L1-L8",
+          "version": "repo-lines-v1:sha256:1524812f41a07e883d94c88f5a00af042a1e39a6edad5c03d3fcc3682fefbd82:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjYyYjc3ZTFkNjQzOWU4ZThmYmM0MjcxY2ZhZjQ5Y2VhNzcxMDc5OTBiNDUwZTU5YWNkZGZiZGQ1ZDNhMjkzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzNmNGZhZjA0YzM3OWM5NDExYjRmN2E3NDRmNzQ0OGEzMTk4OTEzYWEwZmExZTQ0ZWYwYzZiMWEyZTAyYzM2NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGRhODZlYmQzMWMzNDg1Mzg4ODNjOTZkNDM2OWRjMjc3ODE3NmZiMWE1Y2JlNTI4MWJhNTE5MDFiZTRkMWE5ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_55cba743db45461c90c48d4dcd76975a",
+      "statement": "Every task's output is gated by .zerofactory/precommit.sh before a commit or PR: three phases in order (format: `ruff check --fix .` + `ruff format .`; build: `python3 -m compileall -q .`; test: `python3 -m pytest tests/ -q`), exiting non-zero on first failure, and the dispatcher re-spawns zf-builder with the exact error output (up to 3 precommit retries) before work may become a PR.",
+      "evidence": [
+        {
+          "resource": "repo://.zerofactory/precommit.sh",
+          "version": "repo-file-v1:sha256:226de700a54e54364a8ba3c72357d249105fb9996b03fb53696c211a087488c3"
+        }
+      ]
+    },
+    {
+      "id": "claim_6a3f00c0a18a4915afd6b4bfae29ae09",
+      "statement": "The test suite is hermetic: tests/conftest.py sets ZEROFACTORY_SKIP_GIT, ZEROFACTORY_SKIP_CRON_SYNC, ZEROFACTORY_DISABLE_DISPATCHER, and ZEROFACTORY_SKIP_WORKER_SPAWN before any test runs so the suite executes without a live factory.",
+      "evidence": [
+        {
+          "resource": "repo://tests/conftest.py#L18-L22",
+          "version": "repo-lines-v1:sha256:28d6c1885a24cb7fb9ff8f86d4cd94eca4426b0776e064cfb5276f6c5fe7de2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZiN2RiZGM0ODU4NTAxZmNmNmY2NWI3MmUzZThlYWJmOTVlY2NmZjI4MTJiOGRhYzk1MzA5ZjJiY2I1ODFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGZlNTA2ODM2MjQxMWVjYWY4ZjUzOWRmOWVhNDg5MDI3MTM3OTc1MTZjNTFmOTg2MzJiYmNiZWZmYzViNDA3YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiYzk3YWVjOWM5YTM5NmI0ZDcxMjExYzIzOGJkNDQ4MmMxNDRmYzc4ZDg2YTI0MzIwMjgzZjJhMmJmNjkzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODFjMTQyNmJlYTdmYWJhMDVhMTJjMWUxYzg2MGRhNjdjNjE3MzhmZmNjY2NhNGY2NzZlNGI5MjZkZWE2NmUwMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e020c865291e476ca3be6d06cd5dd2ba",
+      "statement": "As of this commit the full pytest suite is green at 179 passed, 1 skipped (verified by running `python3 -m pytest tests/ -q` / `.zerofactory/precommit.sh`), organized in three tiers: tests/unit, tests/integration (FastAPI REST), and tests/e2e (multi-agent workflow + resilience).",
+      "evidence": [
+        {
+          "resource": "repo://.zerofactory/precommit.sh",
+          "version": "repo-file-v1:sha256:226de700a54e54364a8ba3c72357d249105fb9996b03fb53696c211a087488c3"
+        },
+        {
+          "resource": "repo://tests/conftest.py#L1-L49",
+          "version": "repo-lines-v1:sha256:d60fb1b5bbc110ed641d1734b79dffb04fba37b3644e2c297dbf52329b144fa6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1ZjFhMTRjMWUyNmFlMzlkYTg0YTljMjA1ZTU3YWEwYWYzODg5NjZkNGEyZDY5NTZjMGUwOTFmZWVlODEwMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3MzlhMjc2NDU4ZGE3ODkzYmEzYmQ1MjU3MTI0M2JkZTA3Y2ZkYzVlMTc3NzFkNjI0MWZhNGIyYjkyZTZmYTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxYzE0MjZiZWE3ZmFiYTA1YTEyYzFlMWM4NjBkYTY3YzYxNzM4ZmZjY2NjYTRmNjc2ZTRiOTI2ZGVhNjZlMDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1906a2bc184e4200a0a241800b250366",
+      "statement": "The core CLI surface is registered under `hermes zerofactory`: setup / sync-profiles for profiles; list / create / move / block / comment for tasks; board list / create / delete plus setup-repo and setup-openwiki for boards; memory list / add / delete for the per-board knowledge substrate; and dispatch / check-stuck / cron list / cron sync / cron run for automation.",
+      "evidence": [
+        {
+          "resource": "repo://__init__.py#L202-L470",
+          "version": "repo-lines-v1:sha256:2b4e76819ec4804219f985a7af7893d18e477cddf8dade361f41ed241b5dc967:eyJzZWxlY3RlZExpbmVDb3VudCI6MjY5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MTc3Y2IxODMxZjJmZGI1MGFkMzk0NDM4NzQ3ZWQ0OGRlY2Q2YjkwMmQ5NjExZThhMTZlNjQzMDZkOTQ2MjAyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1MzkzYjRhNjAzYTMwZmIwMjE3YThhOTE0YjAzYTI2ZjRkNjQyYzU3ZmJlYjk1N2RmMjZmMjNkNjQwZTY4ZDllIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5NGFmZTBjMmU5YjQ4MjUxZDhhZjcwYjY2N2FhZjNhZjQwOGRkYmM1MjFkYmJlZWY3NzRhZGI3Yzk4MmUxZDMyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjYWIxZWRhNjYwOWE0ODI0ODExMzEwNzM3NGE2NWMyNTFmZjcxNWM3NGYxMjA0MGQ1MDYwMTc4Zjk0NWU0ZDlmIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_ca56a4799c454660bca2a960b3ecb0e0",
+      "statement": "A board is one repository the factory works on; `hermes zerofactory board create <git_url>` adds a board, and the companion P0 setup commands `setup-repo` and `setup-openwiki` file zf-builder tasks that generate .zerofactory/precommit.sh and openwiki/ agent documentation respectively.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L56-L76",
+          "version": "repo-lines-v1:sha256:04fbde9585af90b2efe2285e6efb3cf554792e02c0ee1c256e5165d578f9fabc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzMmQzMjE5ZmVjMmQ0MDViYWU1MmYyZTk0MDRhOWUwNmE0ZGMxMzNlY2RiNzAxZmI3YmE1N2QzYmNjOGQ3MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNTcxOGQ4NjQ3Mjc0NDlmODIyZjQ3MThjYzIwZDhkODFlZGE2ZDFkMWJhZTM2YmQ0Y2I3OTgwNGQ0ODcxZmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://__init__.py#L447-L470",
+          "version": "repo-lines-v1:sha256:f5a209846a408ae18f79329399964892bdff5c974764579df8bdee9894883452:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3ZTU4OTBiYjY4ODM3MDIyNzFhZTAwZTUzMGJlZjA1Y2Y0ODQ2ZDZkZTllNDcxZjRiNjNkODZjZDM2MGNjZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzOTNiNGE2MDNhMzBmYjAyMTdhOGE5MTRiMDNhMjZmNGQ2NDJjNTdmYmViOTU3ZGYyNmYyM2Q2NDBlNjhkOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2ZDc4MWFjODA1ODQ1ZTdmNTQyOGM3NTM3OWEyNTQ4NmZjZWVjYWNiZTU2YmIwYjhiYWNkNTEzOGQzOWI4ZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhYjFlZGE2NjA5YTQ4MjQ4MTEzMTA3Mzc0YTY1YzI1MWZmNzE1Yzc0ZjEyMDQwZDUwNjAxNzhmOTQ1ZTRkOWYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-10-01T13:01:50.039Z"
+  }
+}

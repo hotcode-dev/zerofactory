@@ -138,27 +138,21 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
                 is_scanner = str(job_id).startswith("zero-factory-improvement-scanner-")
                 curr_sched = curr.get("schedule", {})
                 curr_display = str(
-                    curr_sched.get("display")
-                    or curr.get("schedule_display")
-                    or ""
+                    curr_sched.get("display") or curr.get("schedule_display") or ""
                 )
                 curr_minutes = (
-                    curr_sched.get("minutes")
-                    if isinstance(curr_sched, dict)
-                    else None
+                    curr_sched.get("minutes") if isinstance(curr_sched, dict) else None
                 )
 
-                # Check if scanner is using a standard system schedule (idle mode or default periodic 60m)
-                is_system_scanner_sched = is_scanner and (
+                if is_scanner and (
                     curr.get("scan_on_idle")
                     or curr_sched.get("kind") == "idle"
                     or curr_minutes == 10080
-                    or curr_display.startswith("on idle")
-                    or (curr_minutes == 60 and curr_display == "every 60m")
-                )
-
-                if is_scanner and (curr.get("scan_on_idle") or curr_sched.get("kind") == "idle" or curr_minutes == 10080):
-                    if curr_sched.get("minutes") == 10080 or (curr.get("scan_on_idle") and curr_sched.get("kind") == "interval"):
+                ):
+                    if curr_sched.get("minutes") == 10080 or (
+                        curr.get("scan_on_idle")
+                        and curr_sched.get("kind") == "interval"
+                    ):
                         curr_sched.pop("minutes", None)
                         curr_sched["kind"] = "idle"
                         curr_sched["display"] = "on idle"
@@ -315,8 +309,14 @@ def list_builtin_jobs() -> list[dict[str, Any]]:
     results = []
     for job_id, builtin_def in current_builtin_jobs.items():
         curr = existing_by_id.get(job_id, builtin_def)
-        sched_disp = curr.get("schedule_display") or curr.get("schedule", {}).get("display", "configured")
-        if curr.get("scan_on_idle") or curr.get("schedule", {}).get("minutes") == 10080 or sched_disp == "every 10080m":
+        sched_disp = curr.get("schedule_display") or curr.get("schedule", {}).get(
+            "display", "configured"
+        )
+        if (
+            curr.get("scan_on_idle")
+            or curr.get("schedule", {}).get("minutes") == 10080
+            or sched_disp == "every 10080m"
+        ):
             sched_disp = "on idle"
         results.append(
             {
@@ -349,9 +349,22 @@ def list_builtin_jobs() -> list[dict[str, Any]]:
                 "last_run_at": curr.get("last_run_at"),
                 "next_run_at": curr.get("next_run_at"),
                 "last_error": curr.get("last_error"),
-                "scan_on_idle": curr.get("scan_on_idle", builtin_def.get("scan_on_idle", True if job_id.startswith("zero-factory-improvement-scanner-") else False)),
-                "idle_scan_cooldown_minutes": curr.get("idle_scan_cooldown_minutes", builtin_def.get("idle_scan_cooldown_minutes", 15)),
-                "idle_scan_max_todo": curr.get("idle_scan_max_todo", builtin_def.get("idle_scan_max_todo", 2)),
+                "scan_on_idle": curr.get(
+                    "scan_on_idle",
+                    builtin_def.get(
+                        "scan_on_idle",
+                        True
+                        if job_id.startswith("zero-factory-improvement-scanner-")
+                        else False,
+                    ),
+                ),
+                "idle_scan_cooldown_minutes": curr.get(
+                    "idle_scan_cooldown_minutes",
+                    builtin_def.get("idle_scan_cooldown_minutes", 15),
+                ),
+                "idle_scan_max_todo": curr.get(
+                    "idle_scan_max_todo", builtin_def.get("idle_scan_max_todo", 2)
+                ),
             }
         )
     return results
@@ -370,9 +383,14 @@ def _apply_job_field_updates(job: dict[str, Any], updates: dict[str, Any]) -> No
             job["paused_at"] = None
         job["custom_config"] = True
 
-    if "idle_scan_cooldown_minutes" in updates and updates["idle_scan_cooldown_minutes"] is not None:
+    if (
+        "idle_scan_cooldown_minutes" in updates
+        and updates["idle_scan_cooldown_minutes"] is not None
+    ):
         try:
-            job["idle_scan_cooldown_minutes"] = max(1, int(updates["idle_scan_cooldown_minutes"]))
+            job["idle_scan_cooldown_minutes"] = max(
+                1, int(updates["idle_scan_cooldown_minutes"])
+            )
             job["custom_config"] = True
         except (ValueError, TypeError):
             pass
@@ -414,7 +432,11 @@ def _apply_job_field_updates(job: dict[str, Any], updates: dict[str, Any]) -> No
             if m > 0:
                 if m != 10080 and "scan_on_idle" not in updates:
                     job["scan_on_idle"] = False
-                disp = "on idle" if (job.get("scan_on_idle") or m == 10080) else f"every {m}m"
+                disp = (
+                    "on idle"
+                    if (job.get("scan_on_idle") or m == 10080)
+                    else f"every {m}m"
+                )
                 job["schedule"] = {
                     "kind": "interval",
                     "minutes": m,
@@ -448,7 +470,13 @@ def _apply_job_field_updates(job: dict[str, Any], updates: dict[str, Any]) -> No
             job["schedule"]["display"] = disp_val
 
     # Final normalization: if scan_on_idle or kind == "idle", ensure clean schedule without minutes
-    if job.get("scan_on_idle") or (isinstance(job.get("schedule"), dict) and (job["schedule"].get("kind") == "idle" or job["schedule"].get("minutes") == 10080)):
+    if job.get("scan_on_idle") or (
+        isinstance(job.get("schedule"), dict)
+        and (
+            job["schedule"].get("kind") == "idle"
+            or job["schedule"].get("minutes") == 10080
+        )
+    ):
         job["scan_on_idle"] = True
         job["schedule_display"] = "on idle"
         if isinstance(job.get("schedule"), dict):

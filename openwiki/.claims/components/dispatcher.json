@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:aabbea4f5e339aaf3dc28822f78ef32e99f62d3c39af1d7f5b16f5dda20ae80c",
+  "claims": [
+    {
+      "id": "claim_c2147ad6765547fc8b36019ed25959a4",
+      "statement": "run_dispatch_cycle is the single unit of work the dispatcher, queue watchdog, and CLI `dispatch` command all trigger; it runs behind a process-level exclusive file lock so concurrent cycles never corrupt board state, and a background thread drives it every DISPATCH_INTERVAL_SECONDS (30s).",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L1412-L1444",
+          "version": "repo-lines-v1:sha256:7c3c22fe0a38eac8757441c414d7a6b747bff1c6ba465e8bdee5ab7d0011fa9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ODY2OTIxMDhjNWJiZDVkOWVmZTRiZWNhY2RiZDU3ZWI5MDZkZTBjZGYxMWZiMTJiZjE3NTdmYTBiM2M2NTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxNzM1MDZlNzk4OWEzYzlhNjgyYjAzNWE0MzUyN2UyMmIzOGE4YzE1N2MyYTE3Yjk4YzAzZDM3NDk2ZjljMGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2N2Q0Mjc2ZjQ0MzA4N2VkOTFlZTUxYzdmMDYwNTk1MTQ1MDVkZDMzOTI4ZTkzNGViMjNlYmM4ZjUwNWUzM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5ODRhYWJjNDRkNjBiMzkzYmJkNmJiMDQ4ODJmYTI3NDc4MjA3ZTcwZDFiYjM1ODc5MGZmM2M0ZGU0OWQxYmEifQ"
+        },
+        {
+          "resource": "repo://dispatcher/scheduler.py#L36-L70",
+          "version": "repo-lines-v1:sha256:b4fd3be1aa917f89135128534a6c882ac9a14c6a98183626ca7f939c3736eb71:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkOGFlZDM0ZGYwNWY5NGVlNDUzZmMyMzQxMDQ3ZTBlYzZjZTRhZGM4YjNmODI1ZjQ3NDJhNzVmZWZhNjU0YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYmQwN2JjYWIxYmJmMjgwY2U4ZWRhMGI5ZGY2Mzc2Yjg1ZWMzZWNlOGQwYzdjODc0MzliYTNhMTU0NGMyOTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5OGIwNjNkOWI0N2U2NTM3OTYyNTU3MmNjZTE5NzY2OWQ1NzY3ZTEyYzE4YmUwNzU2NTJiOGNkOTgxY2U4ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyOGM3NDRmYzdhNWJlZTc4M2Q4ODJmOTBjNmJiZTA0ODFkYWU3MTcwMTdjZTQ0YTUyZDliNTgyYjc2ODVjNDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9679acaedd20479ebea365651adfda16",
+      "statement": "The dispatcher claims ready tasks under per-board max_concurrent_running plus global DEFAULT_MAX_CONCURRENT_WORKERS and DEFAULT_MAX_CONCURRENT_LLM_WORKERS caps, and enforces a 1-hour per-task max running time and a 15-minute inactivity timeout.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/config.py#L79-L111",
+          "version": "repo-lines-v1:sha256:25f588921fcc8cbbb8763e6220074821688fd6b070dce1420a88bf1c8030d0d5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2ZDAxZWY2ODg4YmJhMTIwMzFiZWJkNTNhZGYwMzViZjUzYjVhYTQ2NzY5YzVhNjQ5ZDk0Y2RiODdhYjBjMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNTYyN2RhMDVjNGRmMzY3MWEwMDIxYzA5NGYzMTA3NzhiNDUxY2I3YTA0MTYyMzUyMTk2MWQyYTRiNTQ1ZWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkY2I0OGRhOTdjZmZhYTJhOTllMDQ4YWEyMWM2YzkxMTU2OGQ5YzQyYzI2MTA2ZGE5MmJhYmI3ODNhNWM2MWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2ZmFlM2IwZjhjODExNDE2MzJkNThmMGYwNDVlYTU5MDAxZjY0NTU4ZGIxODk0ZTI2MWM1M2RiNjA2MmIzOGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3df9c00b1980410b912370115c7db67e",
+      "statement": "Every task executes in its own isolated Git worktree on a task/<task_id> branch (setup_worktree creates <reponame>-worktrees/<task_id>), so a worker never touches main directly — the worktree + branch are the durable substrate that survives a worker crash.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/worktree.py#L90-L140",
+          "version": "repo-lines-v1:sha256:6ec1d1bf58a2e3b2ec33a745e1a67f670b3a6dd43da621f05fc42186e6e5339c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5MjhlZDQwNzhlMGRjOGJhYjg5ZTdjMmI0OTNkNzUwYjg3MjNiYmIyY2NiYmQyNjEwZTNhMTc2ZmZjNmFkNjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5YjFiNGQxYWNmZWZiOTBmMTI3NTdjNThhOGViYzA0OGRkZTk5NTY5MGUxODNhMTA4Njc4YmQyZmEyMzVlY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwZjUyYTJiYjlmNTI3NTkxYmU2ODI2MzgwZGM2NTQ5NDc4MDc3YTVjNWViODUwZmI1NjFlYmMzMDMyOGE4YjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwNDZiNjY5YWIwNGIyZGQyNWViZTc4MmNiYzBkODNlMWI1Mzc5ZDFmZTVmYzI5ODgyYzZkMTJjMWI5OTRmNzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_80f8d8227b894a108e24654926256456",
+      "statement": "When a task completes or is abandoned, _remove_worktree and _delete_remote_branch prune the worktree and the remote task/<task_id> branch.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/worktree.py#L388-L425",
+          "version": "repo-lines-v1:sha256:377c5fef488e19f5f26948872599e43dd638e081c74ed09f15b8809b24aea69f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxYWMyOWRmYjZjM2M3OTViMDk1MTBhZDU0MjNmNjgxNDM2OWQzZmQwN2VmZDg3ZDg2MmQ3MTM0NjVhYzJlY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlZjlmYWNmNTQwZGZmMTYxZDY1Mzg5NWFiZTBlNDQ1YWYyOTFlOThiNzFlMjM4NzIyMjIyZmFhMmJjOTAyN2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2OWZlNjZmYmU1OTdlNGZjYjM1ZTE1ZjVlNDg3ZTNmNTA1ZmJkZWIwYzE3MGFkMmQ0MDFhODJhNDQyZDU4YTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlMTQyNGI3NDhiMGNhOGQyMmE4ZjJiMTViNGMzZGQzMzNiNzlhMTliZDg2OTc1YWNlZDBhZTJjOWM2N2JkOGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4b77e0178b414430b01b006e7076efae",
+      "statement": "Merge conflicts are routed, not swallowed: _handle_local_merge_conflict and _handle_pr_conflict_from_github send a conflicted task back to zf-builder for conflict resolution rather than aborting.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/worktree.py#L292-L607",
+          "version": "repo-lines-v1:sha256:808fe3d023a9c61ccd02ca6cb349a5d4a52e96d36ade852b930ab658bc8f4ce1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzE2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxY2FmMjIwYjUwMmI0MmRkNzI1MWMyY2QyYzcyNDIyOGJkMDc0NjFhMWVhZTQyNjBhZTk1YWQ4YTZlNGJhMzdmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MzNlODQ4N2M4NWRmZGNmOWZhN2I5M2M3NDZjOTQ2MjVhZTQ3ZTEyMGM3OTdlNzkxZTczN2Y5ZWQ3ZmZjNzNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OTc3MzcwMzUzM2JiMDk4OGMzMzk0YWY4N2JiM2IyYzBlYTQzYjMxN2IxMjg3NDM1MDczNTQ5MjlhMjQ4ZWJmIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_fb69dd025a184af283a5a439061a1f49",
+      "statement": "spawn_agent_worker launches the assigned specialist as a detached hermes -p <assignee> subprocess with stdin=DEVNULL and stderr=STDOUT merged into the worker log, pinning HERMES_HOME to the profile's home, then correlates the new session_id against the profile's state.db via resolve_profile_state_db.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/worker_spawner.py#L303-L342",
+          "version": "repo-lines-v1:sha256:d776318b1fc00c598f2e0e33e8a020146472d5e8504467db48db207520ba0369:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3OGY4Nzk4NjkzZTdkOTc0MGYyZDQyNTU1MWE2YzY1MDcyYWYzZGNhOGQxNzc4YTQ4N2RlMTY5ODEzMzY0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NmI0MzQzMDFlMTJhODE2MjY3NmM0ZTE4NmQyYTY5ZGJlOTgwYzBmNmZiMmVhMTM0YjBiMWI5MzI0ZTU0YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzMDlhMmEzZjgxMjlkYmU2MmVmNjRkMTU3ZmRkYjg0OWZjNGY3ODEwOGI1ZTk2YzllYjljN2JhNjIzMmJlZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NWU2ZTJhNjMzYzRkZjJjM2FhY2I0ODJlZGRjZjg3MWZjNmFkY2M2MGQxMTE3OWQzNGMyYzZkNzgzZjU3Y2MifQ"
+        },
+        {
+          "resource": "repo://dispatcher/worker_spawner.py#L356-L378",
+          "version": "repo-lines-v1:sha256:f37a46aef3109be6fc1d9b3d59d9ea0a00cb539eff8ac3780304c4db076c499a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMDk2ZjY5NmU2ZTQzOWMxODQyMmE5ZDc0YTQ5MWU1ZTBhMDRhYjZmZmRmODc3N2E4YmVjZTdlNzQ3MWQ0MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhZDg1NTQxYjdkNDdkYjFlY2RkMmU3N2U1YzQ0NjI2MDdkZDUwYjAzNGE0MzM4ZmU5OGQzOGU5NDQyNzVjZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5ODZhNjhkZGZkZTlkYWVlY2M4ZjRkODJjODYzOGE0Y2VjY2RjMTVjNGE3OTMwNDBmZjUzNjUwMGRjYzQ1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExODM5MjFmNTNmMTE0ZGNlOWQwMThkMjQyMGUzZWU5OTExYzVkZTc4MGIwMDhjNjc1MzgzYWFmODc0YTEwODkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a6c6b542927d4966835096f27d47849d",
+      "statement": "Before any commit/PR, run_deterministic_precommit runs the worktree's .zerofactory/precommit.sh (format → build → test) with CI=1 and a timeout, capturing the full stdout/stderr and skipping only when ZEROFACTORY_SKIP_PRECOMMIT is set.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/worktree.py#L608-L656",
+          "version": "repo-lines-v1:sha256:f8ad6ca35114510007ba9b4f7787ca4f25c0086c44e47f425172053b4e3fdcd9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlMjIxOTRlODU1YzQ2MThmMTZmNjI2MTI0OWU5NzQ3NDVjNDBmNGQ3ZjU2ZjA5MDcwN2RiZjdmMTA0ZjdkNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2OWZlNjZmYmU1OTdlNGZjYjM1ZTE1ZjVlNDg3ZTNmNTA1ZmJkZWIwYzE3MGFkMmQ0MDFhODJhNDQyZDU4YTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkMTYzYjdlMTdhM2Y4ZWE5ZGRjYTM0YzQzYTEzY2M3NmE5OWVmYThjYTM1M2RmNzQzYjhmYjA4NDY4NjY1MmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_536bb4ec7e714e93bcd2cb95f9359445",
+      "statement": "_handle_precommit_failure implements the self-healing loop: it increments metadata[precommit_retries] and, within ZEROFACTORY_MAX_PRECOMMIT_RETRIES (default 3), routes the task back to zf-builder in running status with the exact failing output; once retries are exhausted it moves the task to blocked for human inspection and posts a failure comment.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/worktree.py#L658-L700",
+          "version": "repo-lines-v1:sha256:9e0232b69564fbc9480f6d71f346c07bedbd2a2f4f3e558ffb691e8f010c2b58:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4ODY5YjMyNGE5OTU4ZjEwYmE1NjZhNTczYzZmMGQwNGYyZTJhNGFjOTVlNzE0N2M3N2QzZjY3MjNiMDVjMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMDhjZjZlMDA3ZjdiNTdkNWVhNDVjMGExNWFmNTBjNTc3ZjA1MzY5NDE1NTM3MDhhZDJiMzJlYjMyZGIwNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OGViMTc0OWUwMjAxYWNkOGMwNTcxYzU3NWEyY2YyYjM5OWM4MTcwNTBlNTRiZTEyYjBmMzBjYWYxYTQ4OGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4MjdkYWZjZmU4OWVkMDJiNmM4ZWRlOGYwYzE1NWRjM2M1ZTA4ZGI2NzQwYzNhYTNkNzBkMTEyMzczMmM3MGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4ec1676debc1419e854d9bbad4e879e3",
+      "statement": "git_ops.py provides low-level git plumbing: resolving the default branch, syncing main, detecting unresolved conflict markers, and cleaning stale git locks.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/git_ops.py#L14-L416",
+          "version": "repo-lines-v1:sha256:36bb7decd4b3c63f7d293cac57e68acf78d69d875e41348ffbf79fac2b839284:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZWE0YWM4NjlmZmViNDMwYzc0Yjg2N2M1MGZkNjU0YmU4YmVkMWZmOTg0ZjMwYzgwMjM1OGI5ZjU4YWU1ZjViIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzYjVjMTAxMjliZDExMzM5OGQ2ZGVjNmI5YTdkMjA1ZjAxZDQ1ZmNkODQ4MjVjYmFmOTQxNTkxM2NkNGFmYTRlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzZjEyYjg5MDk2MTM1ZDgzNGEyOGY3OGQ2Njk0ZDRmNjIyNTAzYjdiMTRhOWVmOGU1NTRjODgxMzViMzlmMzBjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhOTg2ZjZhNWE3MDM3ZTM4MzhiYzU5ZGE5ZjQyYWY4OWJiNDgwN2NjMmQxMGRjYjhkYmIzNWFlM2E5NTc4NjdlIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_5bfad96eee7646e8953599b022c3a02c",
+      "statement": "github_pr.py fetches PR review comments and formats them into task comments; ai_prefix prepends [AI] to any agent-authored GitHub comment so humans can distinguish agent output from human output.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/github_pr.py#L25-L380",
+          "version": "repo-lines-v1:sha256:c41d01775494874b184a9de30656b1c0b7c969a8c54e8b08268a1de1ec52f120:eyJzZWxlY3RlZExpbmVDb3VudCI6MzU2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxN2ZkYmY5NGIwOThmYzQwNWNmOTEwYzM2MWMwNmJhYjljMzA3NDE2NDA2NzNkNWIzNWNlMjc0YWIyMWM3NzBkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjZWVjMjlhNjQwMjMyN2JhNzk2MmY1YjBjYjVlNDZkZGYxMTA3MTNlNGI2NWRlNzVhM2YzMTc5Yjg5MWFjMWY5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMGZkM2YyYzIwOWY0ZGVjZDJhNmVlOTc3NDdmOGVjOTdjNzRmZWViZmZiNzQ3NDg2MDgyNjcxZTgwZTIwMGZiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5OTU4NGU5OTA5ODk2OTUzMWY3NzYxNDI2YjBiZTFhMTM5ZDI4NmM1OTkzYTBhMDZkNjhkZDZmMDM0M2NiNTllIn0"
+        },
+        {
+          "resource": "repo://dispatcher/github_pr.py#L321-L321",
+          "version": "repo-lines-v1:sha256:033af0a0bf3606c9277b65c0e157f7f129562fcdf7425f9fe42ee63958a9ee9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzYWYwYTBiZjM2MDZjOTI3N2I2NWMwZTE1N2Y3ZjEyOTU2MmZjZGY3NDI1ZjlmZTQyZWU2Mzk1OGE5ZWU5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzYWYwYTBiZjM2MDZjOTI3N2I2NWMwZTE1N2Y3ZjEyOTU2MmZjZGY3NDI1ZjlmZTQyZWU2Mzk1OGE5ZWU5ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTJkNmQyNTZiY2ZhYTU1YmI1NGJjYzdmMzMxYTI3ZjM1Yjg3ZmEyZTk3NTZhNjllOTY1Y2VlYmM0ZjYxN2Q5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2M1MWFkNTc2YzljZTE0YTk3NGRlNzFiMjUzYmFmNjdhMTIxNjU2MTc2YjE3OWNkNzFhMWJkMjZhNjAxMzNhYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7414caddf45c4549ae10dc50ac6b83c1",
+      "statement": "reaper.py detects hung workers using a per-task max running time and an inactivity timeout: reap_active_workers terminates a worker that exceeded its budget and records the session end, and reap_stuck_tasks is the entry point the queue watchdog and the check-stuck CLI use.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/reaper.py#L94-L453",
+          "version": "repo-lines-v1:sha256:c8f6fd2b0e59600619aacad2a543a7d430374add7ca8ca418b2df0f99e8912dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNzBjZTE5OWZhOWExOTNkZmQ3NDRiNGYyNGUwNjE0NWU1NDQ5MjdhN2RjZDg2OTEzOTE5Y2ViMTdiNjY1NjEwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzM2JjM2MyMmI5N2ExMTExM2IwMmEwZjQ5ZWEzZDI1NDVlOWI5M2JkZmNlOTIxOGY3ZGViZDg4ZTkwMTkyZjUwIn0"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-10-01T13:01:50.039Z"
+  }
+}
