@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from cron.definitions import (
     CORE_CRON_JOBS,
+    build_board_openwiki_prompt,
     build_board_scanner_prompt,
     get_all_builtin_cron_jobs,
     resolve_board_repo_path,
@@ -37,6 +38,17 @@ class TestCronDefinitionsUnit(unittest.TestCase):
         self.assertIn("/tmp/repo", prompt)
         self.assertIn("hermes zerofactory create", prompt)
         self.assertIn("Fingerprint Safeguard", prompt)
+
+    def test_build_board_openwiki_prompt(self):
+        """Prompt contains board slug, openwiki instructions, and commit steps."""
+        board = {"slug": "my-service", "description": "Backend API"}
+        prompt = build_board_openwiki_prompt(board, workdir="/tmp/repo")
+        self.assertIn("my-service", prompt)
+        self.assertIn("/tmp/repo", prompt)
+        self.assertIn("openwiki_begin", prompt)
+        self.assertIn("openwiki_finish", prompt)
+        self.assertIn("OpenWiki MCP Server", prompt)
+        self.assertIn("git add openwiki/", prompt)
 
     def test_resolve_board_repo_path_http_and_ssh(self):
         """resolve_board_repo_path handles HTTP, SSH, and description fallbacks."""
@@ -122,6 +134,38 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                     self.assertEqual(job["schedule"]["kind"], "idle")
                     self.assertNotIn("minutes", job["schedule"])
                     self.assertIn("on idle", job["schedule_display"])
+                finally:
+                    if orig_bc:
+                        builtin_cron.get_db_path = orig_bc
+
+    def test_openwiki_update_job_schema(self):
+        """Dynamic OpenWiki update job is generated with daily schedule, zf_openwiki_gate.py, and zf-builder."""
+        with tempfile.TemporaryDirectory() as td:
+            db_file = Path(td) / "test.db"
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute(
+                    "CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)"
+                )
+                conn.execute(
+                    "INSERT INTO boards (slug, description, git_url, created_at, updated_at) VALUES ('test-board', 'Test', '', 1, 1)"
+                )
+                conn.commit()
+
+            import builtin_cron
+
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}):
+                orig_bc = getattr(builtin_cron, "get_db_path", None)
+                builtin_cron.get_db_path = lambda: db_file
+                try:
+                    jobs = get_all_builtin_cron_jobs()
+                    job = jobs.get("zero-factory-openwiki-update-test-board")
+                    self.assertIsNotNone(job)
+                    self.assertEqual(job["script"], "zf_openwiki_gate.py")
+                    self.assertEqual(job["profile"], "zf-builder")
+                    self.assertEqual(job["schedule"]["kind"], "interval")
+                    self.assertEqual(job["schedule"]["minutes"], 1440)
+                    self.assertEqual(job["schedule_display"], "daily")
+                    self.assertFalse(job["no_agent"])
                 finally:
                     if orig_bc:
                         builtin_cron.get_db_path = orig_bc

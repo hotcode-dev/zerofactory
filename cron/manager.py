@@ -93,9 +93,13 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
                 continue
             jid = str(j.get("id", ""))
 
-            # Explicit check: If it is an improvement scanner job, prune if slug is not an active board
+            # Explicit check: If it is an improvement scanner or openwiki job, prune if slug is not an active board
             if jid.startswith("zero-factory-improvement-scanner-"):
                 board_slug = jid[len("zero-factory-improvement-scanner-") :]
+                if board_slug not in active_board_slugs:
+                    continue
+            if jid.startswith("zero-factory-openwiki-update-"):
+                board_slug = jid[len("zero-factory-openwiki-update-") :]
                 if board_slug not in active_board_slugs:
                     continue
 
@@ -270,16 +274,26 @@ def prune_board_cron_job(slug: str) -> None:
     load_jobs_from_file_fn = getattr(disp, "load_jobs_from_file", load_jobs_from_file)
     save_jobs_to_file_fn = getattr(disp, "save_jobs_to_file", save_jobs_to_file)
 
-    job_id = f"zero-factory-improvement-scanner-{slug}"
+    scanner_job_id = f"zero-factory-improvement-scanner-{slug}"
+    wiki_job_id = f"zero-factory-openwiki-update-{slug}"
     for target in get_target_jobs_files_fn():
         if not target.exists():
             continue
         jobs = load_jobs_from_file_fn(target)
         initial_len = len(jobs)
-        filtered = [j for j in jobs if isinstance(j, dict) and j.get("id") != job_id]
+        filtered = [
+            j
+            for j in jobs
+            if isinstance(j, dict) and j.get("id") not in (scanner_job_id, wiki_job_id)
+        ]
         if len(filtered) != initial_len:
             save_jobs_to_file_fn(target, filtered)
-            _log.info("Pruned scanner cron job %s from %s", job_id, target)
+            _log.info(
+                "Pruned board cron jobs (%s, %s) from %s",
+                scanner_job_id,
+                wiki_job_id,
+                target,
+            )
 
 
 def list_builtin_jobs() -> list[dict[str, Any]]:

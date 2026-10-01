@@ -20,6 +20,7 @@ from .config import (
 from .definitions import (
     BUILTIN_CRON_JOBS,
     CORE_CRON_JOBS,
+    build_board_openwiki_prompt,
     build_board_scanner_prompt,
     get_all_builtin_cron_jobs,
     get_scanner_cron_config,
@@ -56,6 +57,7 @@ __all__ = [
     "_apply_job_field_updates",
     "_c",
     "_load_env_defaults",
+    "build_board_openwiki_prompt",
     "build_board_scanner_prompt",
     "cleanup_duplicate_root_jobs",
     "compute_job_next_run",

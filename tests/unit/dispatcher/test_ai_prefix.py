@@ -18,7 +18,10 @@ class TestAiPrefix:
         assert ai_prefix("[AI:zf-reviewer] Fix bug") == "[AI:zf-reviewer] Fix bug"
 
     def test_custom_role(self):
-        assert ai_prefix("review notes", role="zf-reviewer") == "[AI:zf-reviewer] review notes"
+        assert (
+            ai_prefix("review notes", role="zf-reviewer")
+            == "[AI:zf-reviewer] review notes"
+        )
 
     def test_empty_and_blank_input_unchanged(self):
         assert ai_prefix("") == ""
@@ -125,8 +128,12 @@ class TestDispatcherPrCreationUsesAiPrefix:
             cmd = create_cmds[0]
             title = cmd[cmd.index("--title") + 1]
             body = cmd[cmd.index("--body") + 1]
-            assert title.startswith("[AI:zf-builder]"), f"PR title missing [AI:zf-builder] prefix: {title!r}"
-            assert body.startswith("[AI:zf-builder] "), f"PR body missing [AI:zf-builder] prefix: {body!r}"
+            assert title.startswith("[AI:zf-builder]"), (
+                f"PR title missing [AI:zf-builder] prefix: {title!r}"
+            )
+            assert body.startswith("[AI:zf-builder] "), (
+                f"PR body missing [AI:zf-builder] prefix: {body!r}"
+            )
             assert title.count("[AI:zf-builder]") == 1
             assert body.count("[AI:zf-builder]") == 1
 

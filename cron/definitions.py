@@ -89,6 +89,49 @@ Write your detailed context to a temporary file (e.g. `/tmp/task_desc.md`) and r
 - End the run after delivery."""
 
 
+def build_board_openwiki_prompt(board: dict[str, Any], workdir: str | None) -> str:
+    """Generate prompt for daily post-merge OpenWiki update for a board."""
+    slug = board.get("slug") or "default"
+    workdir_desc = f"`{workdir}`" if workdir else "the repository root"
+
+    return f"""Update the OpenWiki architecture documentation (`openwiki/`) for the '{slug}' board to reflect recent merged changes using the OpenWiki MCP lifecycle.
+
+## Context:
+- Target Board: `{slug}`
+- Repository Root: {workdir_desc}
+
+## STEP 1: Inspect Recent Changes
+1. Check recent commits on the default branch:
+   Run: `git log -n 5 --oneline`
+2. Note any newly introduced modules, public functions, configuration keys, or major architectural shifts.
+
+## STEP 2: Update Documentation via OpenWiki MCP Server (Code Mode)
+Use the pre-configured `openwiki` MCP server lifecycle tools (do NOT use the openwiki CLI):
+1. **Begin Update**:
+   Call `openwiki_begin({{"root": ".", "mode": "update"}})`
+   If it returns `status: "noop"`, the documentation is already up to date; proceed to summary.
+2. **Page Loop**:
+   Repeatedly call `openwiki_next_page`. For each assigned page job:
+   - Review the diffs relevant to that topic.
+   - Update the Markdown page content with valid OKF frontmatter (`type`, `title`, `description`, `tags`).
+   - Call `openwiki_submit_page` with your page decisions.
+3. **Finish Run**:
+   When `openwiki_next_page` returns `status: "complete"`, call `openwiki_finish`. This finalizes the run, updates `.page-manifest.json`, stamps `.last-update.json`, and links `AGENTS.md`.
+
+## STEP 3: Clean up & Commit
+1. Verify `openwiki/` documentation and `openwiki/.page-manifest.json` are clean and properly updated.
+2. If OpenWiki created `.github/workflows/openwiki-update.yml` or `CLAUDE.md`, remove them:
+   `rm -rf .github/workflows/openwiki-update.yml CLAUDE.md`
+3. Stage and commit updated documentation directly on the default branch:
+   `git add openwiki/ AGENTS.md`
+   `git commit -m "docs(openwiki): sync architecture documentation with recent changes"`
+   `git push origin HEAD 2>/dev/null || true`
+
+## STEP 4: Summary
+Provide a brief summary of the documentation changes synchronized via the OpenWiki MCP server.
+"""
+
+
 def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
     """Resolve the local repository path for a given Kanban board."""
     slug = (board.get("slug") or "").strip()
@@ -332,6 +375,47 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
             "scan_on_idle": default_scan_on_idle,
             "idle_scan_cooldown_minutes": default_cooldown,
             "idle_scan_max_todo": default_max_todo,
+        }
+
+        # Daily Post-Merge OpenWiki documentation update job with deterministic wake-gate
+        wiki_job_id = f"zero-factory-openwiki-update-{slug}"
+        wiki_prompt = build_board_openwiki_prompt(board, workdir)
+        wiki_interval = int(
+            os.environ.get("ZEROFACTORY_OPENWIKI_INTERVAL_MINUTES", "1440")
+        )
+        wiki_sched = {
+            "kind": "interval",
+            "minutes": wiki_interval,
+            "display": f"every {wiki_interval}m" if wiki_interval != 1440 else "daily",
+        }
+        wiki_sched_disp = (
+            f"every {wiki_interval}m" if wiki_interval != 1440 else "daily"
+        )
+
+        jobs[wiki_job_id] = {
+            "id": wiki_job_id,
+            "name": f"Zero Factory OpenWiki update ({slug})",
+            "prompt": wiki_prompt,
+            "skills": [],
+            "skill": None,
+            "model": eff_model,
+            "provider": eff_provider,
+            "base_url": eff_base_url,
+            "script": "zf_openwiki_gate.py",
+            "no_agent": False,
+            "context_from": None,
+            "continuity": False,
+            "schedule": wiki_sched,
+            "schedule_display": wiki_sched_disp,
+            "enabled": True,
+            "state": "scheduled",
+            "paused_at": None,
+            "paused_reason": None,
+            "deliver": None,
+            "origin": "zerofactory",
+            "enabled_toolsets": ["terminal", "file", "web"],
+            "workdir": workdir,
+            "profile": "zf-builder",
         }
 
     BUILTIN_CRON_JOBS.clear()
