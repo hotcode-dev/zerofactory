@@ -175,6 +175,7 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
                     "schedule_display",
                     "enabled_toolsets",
                     "origin",
+                    "category",
                     "model",
                     "provider",
                     "base_url",
@@ -378,6 +379,17 @@ def list_builtin_jobs() -> list[dict[str, Any]]:
                 ),
                 "idle_scan_max_todo": curr.get(
                     "idle_scan_max_todo", builtin_def.get("idle_scan_max_todo", 2)
+                ),
+                "category": curr.get(
+                    "category",
+                    builtin_def.get(
+                        "category",
+                        "scanner"
+                        if job_id.startswith("zero-factory-improvement-scanner-")
+                        else "openwiki"
+                        if job_id.startswith("zero-factory-openwiki-update-")
+                        else "core",
+                    ),
                 ),
             }
         )

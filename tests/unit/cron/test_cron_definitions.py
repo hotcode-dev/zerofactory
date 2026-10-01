@@ -235,6 +235,42 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                 self.assertEqual(cfg["idle_scan_max_todo"], 4)
                 self.assertTrue(cfg["enabled"])
 
+    def test_cron_job_categories(self):
+        """Core, scanner, and openwiki jobs define their respective category attribute."""
+        with tempfile.TemporaryDirectory() as td:
+            db_file = Path(td) / "test.db"
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute(
+                    "CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)"
+                )
+                conn.execute(
+                    "INSERT INTO boards (slug, description, git_url, created_at, updated_at) VALUES ('demo-board', 'Demo', '', 1, 1)"
+                )
+                conn.commit()
+
+            import builtin_cron
+
+            with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}):
+                orig_bc = getattr(builtin_cron, "get_db_path", None)
+                builtin_cron.get_db_path = lambda: db_file
+                try:
+                    jobs = get_all_builtin_cron_jobs()
+                    core_job = jobs.get("zero-factory-task-queue-check")
+                    scanner_job = jobs.get("zero-factory-improvement-scanner-demo-board")
+                    openwiki_job = jobs.get("zero-factory-openwiki-update-demo-board")
+
+                    self.assertIsNotNone(core_job)
+                    self.assertEqual(core_job.get("category"), "core")
+
+                    self.assertIsNotNone(scanner_job)
+                    self.assertEqual(scanner_job.get("category"), "scanner")
+
+                    self.assertIsNotNone(openwiki_job)
+                    self.assertEqual(openwiki_job.get("category"), "openwiki")
+                finally:
+                    if orig_bc:
+                        builtin_cron.get_db_path = orig_bc
+
 
 if __name__ == "__main__":
     unittest.main()

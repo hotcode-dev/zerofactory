@@ -1020,9 +1020,11 @@
     // Filtered Cron Jobs
     const filteredCronJobs = useMemo(() => {
       return cronJobs.filter((job) => {
-        const isScanner = job.id.startsWith("zero-factory-improvement-scanner-");
-        if (cronFilterTab === "core" && isScanner) return false;
+        const isScanner = job.id.startsWith("zero-factory-improvement-scanner-") || job.category === "scanner";
+        const isOpenWiki = job.id.startsWith("zero-factory-openwiki-update-") || job.category === "openwiki";
+        if (cronFilterTab === "core" && (isScanner || isOpenWiki)) return false;
         if (cronFilterTab === "scanners" && !isScanner) return false;
+        if (cronFilterTab === "openwiki" && !isOpenWiki) return false;
         if (cronSearchQuery.trim()) {
           const q = cronSearchQuery.toLowerCase();
           const matchName = (job.name || "").toLowerCase().includes(q);
@@ -6696,7 +6698,7 @@
                       className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "core" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
                       onClick: () => setCronFilterTab("core")
                     },
-                    "Core (" + cronJobs.filter(j => !j.id.startsWith("zero-factory-improvement-scanner-")).length + ")"
+                    "Core (" + cronJobs.filter(j => !j.id.startsWith("zero-factory-improvement-scanner-") && !j.id.startsWith("zero-factory-openwiki-update-") && j.category !== "scanner" && j.category !== "openwiki").length + ")"
                   ),
                   React.createElement(
                     "button",
@@ -6704,7 +6706,15 @@
                       className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "scanners" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
                       onClick: () => setCronFilterTab("scanners")
                     },
-                    "Scanners (" + cronJobs.filter(j => j.id.startsWith("zero-factory-improvement-scanner-")).length + ")"
+                    "Scanners (" + cronJobs.filter(j => j.id.startsWith("zero-factory-improvement-scanner-") || j.category === "scanner").length + ")"
+                  ),
+                  React.createElement(
+                    "button",
+                    {
+                      className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "openwiki" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                      onClick: () => setCronFilterTab("openwiki")
+                    },
+                    "OpenWiki (" + cronJobs.filter(j => j.id.startsWith("zero-factory-openwiki-update-") || j.category === "openwiki").length + ")"
                   )
                 ),
                 React.createElement(
@@ -6726,8 +6736,11 @@
                 !loadingCron && filteredCronJobs.map(job => {
                   const isEditing = editingCronId === job.id;
                   const form = cronEditForms[job.id] || {};
-                  const isScanner = job.id.startsWith("zero-factory-improvement-scanner-");
-                  const boardSlug = isScanner ? job.id.replace("zero-factory-improvement-scanner-", "") : null;
+                  const isScanner = job.id.startsWith("zero-factory-improvement-scanner-") || job.category === "scanner";
+                  const isOpenWiki = job.id.startsWith("zero-factory-openwiki-update-") || job.category === "openwiki";
+                  const boardSlug = isScanner
+                    ? job.id.replace("zero-factory-improvement-scanner-", "")
+                    : (isOpenWiki ? job.id.replace("zero-factory-openwiki-update-", "") : null);
                   const isRunning = runningCronId === job.id;
 
                   return React.createElement(
@@ -6745,8 +6758,15 @@
                         { className: "flex items-start gap-2.5" },
                         React.createElement(
                           "span",
-                          { className: "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0 mt-0.5 " + (isScanner ? "bg-purple-950/80 text-purple-300 border border-purple-800/60" : "bg-indigo-950/80 text-indigo-300 border border-indigo-800/60") },
-                          isScanner ? "Scanner" : "Core"
+                          {
+                            className: "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0 mt-0.5 " +
+                              (isScanner
+                                ? "bg-purple-950/80 text-purple-300 border border-purple-800/60"
+                                : isOpenWiki
+                                  ? "bg-sky-950/80 text-sky-300 border border-sky-800/60"
+                                  : "bg-indigo-950/80 text-indigo-300 border border-indigo-800/60")
+                          },
+                          isScanner ? "Scanner" : isOpenWiki ? "OpenWiki" : "Core"
                         ),
                         React.createElement(
                           "div",
@@ -6886,6 +6906,7 @@
                             { label: "Every 30m", kind: "interval", minutes: 30 },
                             { label: "Every 60m", kind: "interval", minutes: 60 },
                             { label: "Every 120m", kind: "interval", minutes: 120 },
+                            { label: "Daily (24h)", kind: "interval", minutes: 1440 },
                             { label: "Daily 09:00", kind: "cron", expr: "0 9 * * *" },
                             { label: "Custom Interval", kind: "interval", custom: true },
                             { label: "Custom Cron", kind: "cron", custom: true },
