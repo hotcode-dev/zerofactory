@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:e423fa4858b1573ee779ea816ce75d231daafd2c58e9c94255dfcc48e2c5ceb0",
+  "claims": [
+    {
+      "id": "claim_f5049d3391c7479baf38776d89ce8a5a",
+      "statement": "Every internal module that imports a sibling uses a try/except relative-to-absolute import fallback (try `from ..mod`, then `from mod  # type: ignore`), because code is loaded both as a plugin subpackage and as top-level modules when a script bootstraps sys.path; preserve this exact shape when adding cross-module imports.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/db.py#L24-L30",
+          "version": "repo-lines-v1:sha256:58e747869a85465860cf86397af60dfc102c027ce33e8dbb654a20ac936e10ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzFjNWFlYjViYzA2ODQwNGFhNWY0YjU1MDE3NDRjMzFiZTIyZDg1ZjY1NDhkYWYwYmI3NWU2OTEwODMyMmM2OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjMxZmUxMmExMmFiMWI0OWM5NmEzYjc5NDQ1NDQ3N2QwZDg1N2QxZDMzYzg0YWNhNWFlY2E0M2RlNmE5YmQyOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjllN2NhNzM3MWEwNmIzMzNmMGQ5MmZjMzE5NWJlMzNlZWM5OGU2YmQzZDFjNzJiYjg5ZTkyNjg5YzM2NzVkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGYyNDViZWYzZDUzYzAzMjFlYjQ2ZmEwYWYzNDY2ZWJmZjU0ZmRlYjFmZDU1MzM4Njc0MWVkNTY0MzM0ZmUxNiJ9"
+        },
+        {
+          "resource": "repo://dashboard/routes/__init__.py#L23-L46",
+          "version": "repo-lines-v1:sha256:14163b5616a4781c70589dddfc5f548dbb460710b5df57d593251d5bb6a5e7e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0MGNhNmRkMzU5NmEyOTVhNzgwZDk5ZDQ4ZjZkYzNkZWI3ZjkyYTk5MTY5NWQ4MDk0YzI4NWY1NmU1NzZlNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyNjA0MjYxYWM4MGM5ZDIzYjk2ZmNmMjZjOTVmNDNmMzMxZWY5NTU2NjJlNWYyNjY1ZmVhYmVjYjM4YzVmNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4MGM4MjlhYzRkY2RjOWZkMGVjMjJkNDZlNDg4MWVhMWFmMGI2ODRkYjEzNzY1MzFkNTUwNzUyMzg2OTZmNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiMTM2Zjk3ZjcwYmM2MjM0OGQ4MWU3YTgxODliM2RjMGY1NzMzNWU2YjVmZTAyZTZhNTQ3YTM3YTkxZTg5YTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ace87e633ea142178e97dc9bc4d27fef",
+      "statement": "Modules that may be loaded directly (scripts, cron/definitions.py, dashboard/*) insert the plugin root onto sys.path before importing internal modules; ruff.toml ignores E402 specifically so this required import-before-top ordering is legal, and the test suite does the same in conftest.py.",
+      "evidence": [
+        {
+          "resource": "repo://cron/definitions.py#L14-L16",
+          "version": "repo-lines-v1:sha256:fff927f804ab7245ec09091d0d38c8668b395ae45a8a3b70efe3e6287136e772:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDlhOWRiNzc2N2JkMjA1OTMyNDI0NGJiZDk5MzVjZGNlZGIyMWMwM2VjNDZhNjdjOTE4NmI0MWQ1YzI5ZDdiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTQyZmVkNmRlMDJlMWU2ZjgyNmEzZTNiZTVjMTNlYTc2MzM4NzJjOTNhOWFjYTRkZjIxZmE0NDgwNjUxZDFhMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmM2NWQ5ZGQ3OTQyOTk0MjY0N2QxYzYwMWQ3MzA5OWRlMDc3MjZhMjM5M2VhYzc2NzE1MGJjNGVhNDFlNGIwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWZkOTE2ZDQzNTc4NzczMjE4Y2U2NGEzMGI2ZWIwOTZjOWE3YzcxMTI5Yjg0MTk1YTYzMjkzYzVkNTUwNjM1YSJ9"
+        },
+        {
+          "resource": "repo://ruff.toml#L14-L14",
+          "version": "repo-lines-v1:sha256:aa4185279e29f64d29ae43909d2584613537737ac9910a605bbfc463eebc73a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE0MTg1Mjc5ZTI5ZjY0ZDI5YWU0MzkwOWQyNTg0NjEzNTM3NzM3YWM5OTEwYTYwNWJiZmM0NjNlZWJjNzNhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE0MTg1Mjc5ZTI5ZjY0ZDI5YWU0MzkwOWQyNTg0NjEzNTM3NzM3YWM5OTEwYTYwNWJiZmM0NjNlZWJjNzNhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjM4YjJkMGI2NzhjYWI5MGFiODlhYTM1NjJmZTg5ZThmNGNiY2FkNzc2NjYxYTc4MTYwNzUyNGYyYTE0YjMzOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzkzOWQ3NTU2OTNiOGI3OGEzNDIyM2Q5YjcyZjE5NTY5ZTI2YWVhYWQxNzQzNzNkYmE2ZjM3MmVhNzFmMDFmZiJ9"
+        },
+        {
+          "resource": "repo://tests/conftest.py#L13-L16",
+          "version": "repo-lines-v1:sha256:5f90a41cd2828d2e1081179ead633deb71053f53946be5d64a76925fc00f134b:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzc1ODI4NTJhYzIwMjA4NWU5NjMwZjY3NjJlNTZlNTRhY2E1ZTI5NjZhODNmMmYwMTFjMmIxZmUxM2FhYmFiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY1YTQzM2NmNGFjZTYwZjg5YjY0YjFmNjgwNDFjZGM3MGU0NWI5ZmMxZWNkMzE3MmE2ZjA1NGViZTE3OTU4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGY2OWM0MDQwZDg0NmFlYTM4OGVhNTY0YjNiMjc1MDMwZTU5ODcxMzAwMTVjNTM5ODkwMzgwY2M0M2M4MjRiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODIzOTZiNGVlNWFiYmM3NDFlZWU2YjQ3ZjhjZTA2YzJiODBjM2UzOGQ3OWQ2MjA4OWJiZTMwODAwNGMwY2NhZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f68da9f1e33c49fc9ce65a869db2c817",
+      "statement": "Loggers are namespaced under zerofactory.* per subsystem (e.g. zerofactory.cron, zerofactory.migrations) via logging.getLogger(\"zerofactory.<subsystem>\"); use the matching namespace for new modules rather than the root logger.",
+      "evidence": [
+        {
+          "resource": "repo://cron/definitions.py#L28-L28",
+          "version": "repo-lines-v1:sha256:cec37842afb825f5988dc4ade60fc5e8711ca156acd7fc424e1f976989a15010:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2VjMzc4NDJhZmI4MjVmNTk4OGRjNGFkZTYwZmM1ZTg3MTFjYTE1NmFjZDdmYzQyNGUxZjk3Njk4OWExNTAxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2VjMzc4NDJhZmI4MjVmNTk4OGRjNGFkZTYwZmM1ZTg3MTFjYTE1NmFjZDdmYzQyNGUxZjk3Njk4OWExNTAxMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDYwMjcwMTEyNDgwZDYxZTkxMGU1YWNhY2I1MDllYzZhM2NhMzA0OGQ2NzFiMzAxNjg4NjZlNzU3YWM0YmYxOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDhmNWI3MjJhOTNjZjdjNDdmYTJiOGVkM2RlMmE4NWNiMjg1ODA4OTgwY2UxOTc4MjZkODAxNmMxMzc1MzFhYSJ9"
+        },
+        {
+          "resource": "repo://migrations/runner.py#L23-L23",
+          "version": "repo-lines-v1:sha256:30637724d7a3e42e89e729a39655bee477a30098e739893cb480dad9aa19739f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA2Mzc3MjRkN2EzZTQyZTg5ZTcyOWEzOTY1NWJlZTQ3N2EzMDA5OGU3Mzk4OTNjYjQ4MGRhZDlhYTE5NzM5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA2Mzc3MjRkN2EzZTQyZTg5ZTcyOWEzOTY1NWJlZTQ3N2EzMDA5OGU3Mzk4OTNjYjQ4MGRhZDlhYTE5NzM5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjllN2NhNzM3MWEwNmIzMzNmMGQ5MmZjMzE5NWJlMzNlZWM5OGU2YmQzZDFjNzJiYjg5ZTkyNjg5YzM2NzVkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWEwYjc1ZWY2NDczZTU1NjMyNTcwOGU3NTc3NGM0MWY5ODQ4NjIwZTlmNzFkMjIwYjk0MGYzOTU2NzgxYjE5NiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c92dcaf2c6a044bdbaab23e8b75d16a2",
+      "statement": "ruff.toml targets py311 and enables the E, F, and W lint rule sets; E501, W291, and W293 are ignored because ruff format owns line length and trailing-whitespace handling.",
+      "evidence": [
+        {
+          "resource": "repo://ruff.toml#L1-L19",
+          "version": "repo-lines-v1:sha256:395b0256aa71db217b37959786a66a99cc1926216b6d7a1541f3a07384736070:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkZTBkYTU2ZGM4Y2ViY2JlOTQ2MzJjNGY4OGVhMGU1MTZhZTFmMzI0NWVlNTZlYjVhYmI5YzZkY2IwNzRhMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NDE2ZTA5Zjc4YmEzMTZjMDMyNTY4MjEzYjg1NWVlNzU2ZTQxNTY1ZDkxOGYwOTUxOWM4MWZkNjIwZjQwNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhZjNmMDlkNWVkNTkzM2E3OGUxZDJlMzQzZGI4MGUwMDM1NGVmZjZiYzdhOTZjN2RmOGJiODJhN2Q4YzI2NDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5f088909d4064117adde047c7f592cd2",
+      "statement": "ruff.toml defines per-file ignores that allow intentional re-exports and unused test variables: __init__.py, dashboard/plugin_api.py, dashboard/models.py, and dispatcher/config.py allow F401/F403, and tests/** allows F401/F841.",
+      "evidence": [
+        {
+          "resource": "repo://ruff.toml#L21-L31",
+          "version": "repo-lines-v1:sha256:c2cbaa1a491ae7433ec2e2114b0338cd9915e6c68438bd0b1e8fdc8f4d9c1f19:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmNjkwY2FlYzFmZjY4YzgxYzQ4ZmY5YWJhZDI4YjkzOWU3YmE5OWUzMGUwYWM3ODllZmUyY2NmNTY0ODE2YzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwODFiNmJmZDJhZTRjNzA1M2Q1ZGMxYjc0ZTkxMjg5Zjg4YmU1NmQ3YTJlODRjNmFhZmFlNWI2ZDJhYzVlOTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3MDczOGE0MjllNjRkMDAyZWE5YmVjYzE1ZTlkZTIyMDZmNWVmYzBhMmZlNjVkOWVkYjhlNzFjY2Q5ZmE5NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e244654233ea4553a219a0f9a7e4a1a0",
+      "statement": "The deterministic precommit gate runs `ruff check --fix .` then `ruff format .` (format phase) and `python3 -m compileall -q .` (build phase) and `python3 -m pytest tests/ -q` (test phase), and the dispatcher re-runs the gate and re-spawns the builder on any failure.",
+      "evidence": [
+        {
+          "resource": "repo://.zerofactory/precommit.sh",
+          "version": "repo-file-v1:sha256:226de700a54e54364a8ba3c72357d249105fb9996b03fb53696c211a087488c3"
+        }
+      ]
+    },
+    {
+      "id": "claim_35ce9462b0b2440b9bd4668e07ec32cd",
+      "statement": "tests/conftest.py sets hermetic environment defaults before any test runs — ZEROFACTORY_SKIP_GIT, ZEROFACTORY_SKIP_CRON_SYNC, ZEROFACTORY_DISABLE_DISPATCHER, and ZEROFACTORY_SKIP_WORKER_SPAWN — so the suite runs safely without a real factory.",
+      "evidence": [
+        {
+          "resource": "repo://tests/conftest.py#L18-L22",
+          "version": "repo-lines-v1:sha256:28d6c1885a24cb7fb9ff8f86d4cd94eca4426b0776e064cfb5276f6c5fe7de2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZiN2RiZGM0ODU4NTAxZmNmNmY2NWI3MmUzZThlYWJmOTVlY2NmZjI4MTJiOGRhYzk1MzA5ZjJiY2I1ODFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGZlNTA2ODM2MjQxMWVjYWY4ZjUzOWRmOWVhNDg5MDI3MTM3OTc1MTZjNTFmOTg2MzJiYmNiZWZmYzViNDA3YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiYzk3YWVjOWM5YTM5NmI0ZDcxMjExYzIzOGJkNDQ4MmMxNDRmYzc4ZDg2YTI0MzIwMjgzZjJhMmJmNjkzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODFjMTQyNmJlYTdmYWJhMDVhMTJjMWUxYzg2MGRhNjdjNjE3MzhmZmNjY2NhNGY2NzZlNGI5MjZkZWE2NmUwMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d1007d46866044ccad499264fd65c089",
+      "statement": "tests/conftest.py provides shared fixtures (test_db_path/initialized_db, git_repo, api_client, default_board); the suite is organized in three tiers — tests/unit (per-subsystem), tests/integration (FastAPI REST via api_client), and tests/e2e (hermetic multi-agent workflow and resilience simulations).",
+      "evidence": [
+        {
+          "resource": "repo://tests/conftest.py#L36-L106",
+          "version": "repo-lines-v1:sha256:f4c4eeac38de4c77e7fb578daa4cdf530e24908a18d97e7c0bd05fc3c5b436e4:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZjM2NmI5YmQ5YThkMGYzNDBhMmJjMGJlMWUyMmVlYTIwNTY4ZGQ3OGE0NTI4MWI3MjFiMzBmMjJkMDg3ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwYjA4NzgzMjUyMDUwNmU4NzkyNjJjMzBlNzM1ZGE2MWU2YzBiMzE4NDVmNWFjMjZkYzA1NjFhZWRkYzA0OTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2OGZkNmUyZmM5NmU1NTRkODc5YWU0MWQzNmI5YTQ5MmE4YWM3YjI3YWE4MjE3NjYzYjIwMDMyMmRlZjljZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_81fb1bd210de4a6f80cf27aa9d1b15f6",
+      "statement": "Any change to dashboard/dist/index.js or dashboard/input.css must end with `npm install && node dashboard/build_css.mjs` to regenerate dist/style.css byte-consistently before committing; build_css.mjs is portable (resolves tailwindcss from node_modules or ZEROFACTORY_TAILWIND_DIR, no machine-specific paths), scopes the stylesheet in @scope (.zerofactory-root), and test_dashboard_css.py guards reproducibility and asserts the stylesheet carries selectors for every referenced (including variant-prefixed) utility class.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/build_css.mjs",
+          "version": "repo-file-v1:sha256:5d57e37a833a963c161190b7a00896031186eb4109798e8ff86a6fb45687bcf6"
+        },
+        {
+          "resource": "repo://tests/unit/dashboard/test_dashboard_css.py",
+          "version": "repo-file-v1:sha256:112914f27e9a0168ca09e94a36869841bd4f67b1f070dfb000971d92c5a39164"
+        }
+      ]
+    },
+    {
+      "id": "claim_a4b0e064b0b24b6cb9d38a663929af1c",
+      "statement": "Any agent-authored GitHub PR comment must begin with [AI] (enforced by ai_prefix in github_pr.py) so humans can distinguish agent output from human output.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/github_pr.py#L321-L321",
+          "version": "repo-lines-v1:sha256:033af0a0bf3606c9277b65c0e157f7f129562fcdf7425f9fe42ee63958a9ee9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzYWYwYTBiZjM2MDZjOTI3N2I2NWMwZTE1N2Y3ZjEyOTU2MmZjZGY3NDI1ZjlmZTQyZWU2Mzk1OGE5ZWU5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzYWYwYTBiZjM2MDZjOTI3N2I2NWMwZTE1N2Y3ZjEyOTU2MmZjZGY3NDI1ZjlmZTQyZWU2Mzk1OGE5ZWU5ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTJkNmQyNTZiY2ZhYTU1YmI1NGJjYzdmMzMxYTI3ZjM1Yjg3ZmEyZTk3NTZhNjllOTY1Y2VlYmM0ZjYxN2Q5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2M1MWFkNTc2YzljZTE0YTk3NGRlNzFiMjUzYmFmNjdhMTIxNjU2MTc2YjE3OWNkNzFhMWJkMjZhNjAxMzNhYSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-10-01T13:01:50.039Z"
+  }
+}

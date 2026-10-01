@@ -106,4 +106,3 @@ def test_cron_job_update_fields():
     assert c.idle_scan_cooldown_minutes == 20
     assert c.idle_scan_max_todo == 4
     assert c.minutes == 10080
-
