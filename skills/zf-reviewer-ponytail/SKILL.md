@@ -15,7 +15,7 @@ metadata:
 
 > **"The best code is the code you never wrote."**
 
-This skill equips `zf-reviewer` with the **Ponytail review rubric**: catching over-engineering, diff bloat, and redundant dependencies during Pull Request reviews (especially during **Round 3: Refactoring & Clean Code**).
+This skill equips `zf-reviewer` with the **Ponytail review rubric**: actively catching over-engineering, diff bloat, and redundant dependencies across **all Pull Request reviews** (starting immediately in **Round 1: Initial Review** and verifying fixes in **Round 2: Re-Verification**).
 
 The core decision framework is defined in the shared **[7-Rung Ladder of Laziness](./LADDER.md)**.
 
@@ -26,10 +26,10 @@ The core decision framework is defined in the shared **[7-Rung Ladder of Lazines
 When reviewing a PR branch diff (`task/<task_id>`):
 
 ### 1. Diff Scope & Hygiene (Rung 7: Minimum Viable Solution)
-- **Zero Drive-By Churn**: Did the author reformat unrelated code, reorder imports, or touch files outside the task scope? Reject diff bloat.
+- **Zero Drive-By Churn**: Did the author reformat unrelated code, reorder imports, or touch files outside the task scope? Reject diff bloat immediately in Round 1.
 - **Leftover Artifacts**: Ensure no commented-out code, temporary debug logs, or unused variables were committed.
 
-### 2. Dependency Veto (Rung 5: Installed Dependencies)
+### 2. Dependency Veto (Rung 3 & 5: Standard Library & Installed Dependencies)
 - Check `package.json`, `poetry.lock`, `requirements.txt`, etc.
 - If a new external package was added, verify whether:
   - A standard library module could have handled it (Rung 3).
@@ -47,14 +47,19 @@ When reviewing a PR branch diff (`task/<task_id>`):
 When reviewing on GitHub (`gh pr review --comment`), structure feedback with reference to the Ponytail ladder:
 
 ```markdown
-[AI:zf-reviewer] [Reviewer Feedback] Round 3: Ponytail Simplification
+[AI:zf-reviewer] [Reviewer Feedback] Round 1: Ponytail Gatekeeping & Correctness
 
 1. **Unnecessary Dependency (Rung 3/5)**:
    - File: `src/processor.py:12`
    - Problem: Added `requests` when the repo already standardizes on native `urllib.request` / `httpx`.
    - Action: Remove `requests` from `requirements.txt` and use native stdlib.
 
-2. **Over-Engineered Factory (Rung 1/6)**:
+2. **Diff Bloat & Drive-by Churn (Rung 7)**:
+   - File: `src/utils.py:1-40`
+   - Problem: Re-ordered imports and reformatted comments unrelated to the task.
+   - Action: Revert changes to `src/utils.py` to keep the PR focused on the task scope.
+
+3. **Over-Engineered Factory (Rung 1/6)**:
    - File: `src/auth.py:45-80`
    - Problem: Introduced `AbstractTokenValidatorFactory` with only one concrete implementation.
    - Action: Collapse into a single `validate_token(token)` function.

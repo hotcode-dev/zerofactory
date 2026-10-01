@@ -113,6 +113,7 @@ from .github_pr import (
     extract_gh_repo_info,
     fetch_pr_review_comments,
     format_task_comment_body,
+    is_actionable_review_comment,
     is_reviewer_approval_comment,
 )
 from .process_manager import (
@@ -214,6 +215,7 @@ __all__ = [
     "extract_gh_repo_info",
     "fetch_pr_review_comments",
     "format_task_comment_body",
+    "is_actionable_review_comment",
     "is_reviewer_approval_comment",
     # Worker & Process
     "is_pid_alive",

@@ -394,28 +394,23 @@ def is_reviewer_approval_comment(comment_body: str, state: str | None = None) ->
         return False
     lower = body.lower()
 
-    has_approval_signal = any(
-        phrase in lower
-        for phrase in [
-            "[reviewer feedback]",
-            "reviewer feedback",
-            "verdict: approve",
-            "verdict: approved",
-            "verdict: **approve**",
-            "approved — no changes requested",
-            "approved - no changes requested",
-            "approved for human review",
-            "no changes requested",
-            "approving for human review",
-            "status: approved",
-        ]
-    ) or lower.startswith("approved")
-
+    # Pre-clean non-blocking negations before searching for changes requested
+    # e.g. "no test changes needed", "no code changes needed", "no changes needed", "no changes requested"
+    clean_for_changes = re.sub(
+        r"\b(no|without|zero)\s+[\w\s]{0,25}?\s*(changes\s+requested|changes\s+needed|action\s+required)",
+        "",
+        lower,
+    )
     clean_for_changes = (
-        lower.replace("no changes requested", "")
+        clean_for_changes
+        .replace("no test changes needed", "")
+        .replace("no code changes needed", "")
+        .replace("no changes needed", "")
+        .replace("no changes requested", "")
         .replace("without changes requested", "")
         .replace("zero changes requested", "")
     )
+
     has_changes_requested = any(
         phrase in clean_for_changes
         for phrase in [
@@ -429,5 +424,109 @@ def is_reviewer_approval_comment(comment_body: str, state: str | None = None) ->
             "unresolved conflict",
         ]
     )
+    if has_changes_requested:
+        return False
 
-    return has_approval_signal and not has_changes_requested
+    # Positive approval indicators
+    approval_phrases = [
+        "verdict: approve",
+        "verdict: approved",
+        "verdict: **approve**",
+        "verdict: **approved**",
+        "status: approved",
+        "status: approve",
+        "approved for human review",
+        "approved — no changes requested",
+        "approved - no changes requested",
+        "approved — no changes needed",
+        "approved - no changes needed",
+        "approved for human merge",
+        "approving for human review",
+        "approving for human merge",
+        "ready for human review",
+        "ready for human merge",
+        "ready to merge",
+        "no changes requested",
+        "looks good to me",
+        "lgtm",
+    ]
+    if any(phrase in lower for phrase in approval_phrases):
+        return True
+
+    # Check for approval prefix / headline: e.g.
+    # "[AI] [Reviewer Feedback] Round 1: Correctness & Tests — APPROVED for human review"
+    # or "Approved for human review." or "Approved."
+    clean_prefix = re.sub(
+        r"^(\[ai(?::[a-zA-Z0-9_-]+)?\]|\s|\[reviewer feedback\]|[#*`~✅🎉\-\:—]|\bround\s+\d+:?)*",
+        "",
+        lower,
+    ).strip()
+    if clean_prefix.startswith("approved") or clean_prefix.startswith("approve"):
+        return True
+
+    # Check for explicit approved marker anywhere in verdict/header lines
+    if re.search(
+        r"(\bverdict\b|\bstatus\b|\bround\s+\d+\b).*?(\bapproved\b|\bapprove\b)",
+        lower,
+    ):
+        return True
+
+    return False
+
+
+def is_actionable_review_comment(
+    comment: dict[str, Any],
+    builder_assignee: str | None = None,
+) -> bool:
+    """Return True if a comment is an actionable review critique requiring builder action.
+
+    Filters out:
+    - Reviewer approval verdicts (they approve, not critique)
+    - Builder-authored comments, verification notes, and resolution summaries
+    - Automated PR notifications, dedup notes, and status updates
+    - Empty or whitespace-only comments
+    """
+    body = (comment.get("body") or "").strip()
+    if not body:
+        return False
+
+    state = comment.get("state")
+    if state == "APPROVED":
+        return False
+
+    # If the comment is an approval verdict, it is not an actionable critique
+    if is_reviewer_approval_comment(body, state):
+        return False
+
+    author = (comment.get("author") or "").strip().lower()
+    norm_builder = (builder_assignee or "").strip().lower()
+    if norm_builder and norm_builder not in ("zf-reviewer", "reviewer", "human"):
+        if author == norm_builder:
+            return False
+
+    if author in ("zf-builder", "builder", "github-actions[bot]", "web-flow"):
+        return False
+
+    lower_body = body.lower()
+
+    # Informational or builder-authored notes
+    builder_markers = [
+        "[ai:zf-builder]",
+        "[ai:builder]",
+        "[ai:zf-task-planner]",
+        "[ai:planner]",
+        "[ai] builder verification",
+        "builder verification",
+        "resolution summary:",
+        "dedup note:",
+        "automated pr for task",
+    ]
+    if any(marker in lower_body for marker in builder_markers):
+        return False
+
+    # Explicit change requests from GitHub PR review state
+    if state == "CHANGES_REQUESTED":
+        return True
+
+    # Inline diff review comments or PR comments from reviewer/human with substance
+    return True

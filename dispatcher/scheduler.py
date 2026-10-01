@@ -441,7 +441,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         "view",
                                         f"task/{task_id}",
                                         "--json",
-                                        "reviewDecision,state,url,mergeable",
+                                        "reviewDecision,state,url,mergeable,headRefOid",
                                     ],
                                     capture_output=True,
                                     text=True,
@@ -456,7 +456,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             "view",
                                             row["pr_url"],
                                             "--json",
-                                            "reviewDecision,state,url,mergeable",
+                                            "reviewDecision,state,url,mergeable,headRefOid",
                                         ],
                                         capture_output=True,
                                         text=True,
@@ -655,11 +655,21 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             if c["comment_id"] not in processed_cmt_ids
                                         ]
 
+                                        match = re.search(
+                                            r"\[PR Opened by (.*?)\]", title
+                                        )
+                                        builder_author = (
+                                            match.group(1)
+                                            if match
+                                            else "zf-builder"
+                                        )
+                                        builder_author = normalize_assignee(builder_author)
+
                                         actionable_comments = [
                                             c
                                             for c in new_pr_comments
-                                            if not _disp.is_reviewer_approval_comment(
-                                                c.get("body", ""), c.get("state")
+                                            if _disp.is_actionable_review_comment(
+                                                c, builder_assignee=builder_author
                                             )
                                         ]
                                         approval_comments = [
@@ -736,30 +746,106 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                                 "processed_review_comment_ids"
                                             ] = list(processed_cmt_ids)
 
+                                            head_commit_sha = (
+                                                pr_data.get("headRefOid") or ""
+                                            ).strip()
+                                            if not head_commit_sha and repo_path:
+                                                try:
+                                                    rev_res = _subprocess.run(
+                                                        [
+                                                            "git",
+                                                            "rev-parse",
+                                                            f"origin/task/{task_id}",
+                                                        ],
+                                                        cwd=str(repo_path),
+                                                        capture_output=True,
+                                                        text=True,
+                                                        timeout=5,
+                                                    )
+                                                    if rev_res.returncode == 0:
+                                                        head_commit_sha = (
+                                                            rev_res.stdout.strip()
+                                                        )
+                                                except Exception:
+                                                    pass
+
+                                            last_reviewed_commit = task_meta.get(
+                                                "last_reviewed_commit"
+                                            )
+                                            commit_review_count = int(
+                                                task_meta.get("commit_review_count", 0)
+                                            )
+                                            if (
+                                                head_commit_sha
+                                                and last_reviewed_commit != head_commit_sha
+                                            ):
+                                                commit_review_count = 0
+                                                task_meta["last_reviewed_commit"] = (
+                                                    head_commit_sha
+                                                )
+
+                                            commit_review_count += 1
+                                            task_meta["commit_review_count"] = (
+                                                commit_review_count
+                                            )
+                                            task_meta["review_round"] = (
+                                                commit_review_count
+                                            )
+
+                                            max_review_rounds = int(
+                                                os.environ.get(
+                                                    "ZEROFACTORY_MAX_REVIEW_ROUNDS", "2"
+                                                )
+                                            )
+
                                             _disp.stop_task_worker(task_id, cursor)
                                             _disp._remove_worktree(
                                                 workspace_path, repo_path
                                             )
-                                            match = re.search(
-                                                r"\[PR Opened by (.*?)\]", title
-                                            )
-                                            author = (
-                                                match.group(1)
-                                                if match
-                                                else "zf-builder"
-                                            )
-                                            author = normalize_assignee(author)
+
                                             clean_title = (
                                                 title.replace(" [Human Review]", "")
                                                 .replace("[Human Review]", "")
                                                 .strip()
                                             )
 
+                                            if commit_review_count > max_review_rounds:
+                                                commit_tag = (
+                                                    f" on commit {head_commit_sha[:7]}"
+                                                    if head_commit_sha
+                                                    else ""
+                                                )
+                                                task_meta["blocked_reason"] = (
+                                                    f"Review cap reached ({max_review_rounds} rounds{commit_tag}); escalating to human review."
+                                                )
+                                                task_meta["review_cap_reached"] = True
+                                                new_title = (
+                                                    f"{clean_title} [Human Review]"
+                                                )
+                                                cursor.execute(
+                                                    "UPDATE tasks SET title = ?, assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                                    (
+                                                        new_title,
+                                                        json.dumps(task_meta),
+                                                        now,
+                                                        task_id,
+                                                    ),
+                                                )
+                                                cursor.execute(
+                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'review_cap_reached', ?, ?)",
+                                                    (
+                                                        task_id,
+                                                        f"Review cap reached ({max_review_rounds} review rounds on commit); escalating to human review and merge decision",
+                                                        now,
+                                                    ),
+                                                )
+                                                continue
+
                                             cursor.execute(
                                                 "UPDATE tasks SET title = ?, assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
                                                 (
                                                     clean_title,
-                                                    author,
+                                                    builder_author,
                                                     json.dumps(task_meta),
                                                     now,
                                                     task_id,
@@ -769,21 +855,47 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                                 cursor,
                                                 task_id,
                                                 clean_title,
-                                                author,
+                                                builder_author,
                                                 tenant,
                                                 db_path,
                                                 board_slug=board_slug,
                                             )
                                             reason_text = (
-                                                f"Review feedback received ({len(actionable_comments)} actionable comment(s)), routed back to {author}"
+                                                f"Review feedback received (Round {commit_review_count}/{max_review_rounds}, {len(actionable_comments)} actionable comment(s)), routed back to {builder_author}"
                                                 if actionable_comments
-                                                else "Changes requested by reviewer, routed back to author"
+                                                else f"Changes requested by reviewer (Round {commit_review_count}/{max_review_rounds}), routed back to {builder_author}"
                                             )
                                             cursor.execute(
                                                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', ?, ?)",
                                                 (task_id, reason_text, now),
                                             )
                                             continue
+                                        elif not is_approved and new_pr_comments:
+                                            for c in new_pr_comments:
+                                                cmt_body = (
+                                                    _disp.format_task_comment_body(c)
+                                                )
+                                                cursor.execute(
+                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                                                    (
+                                                        task_id,
+                                                        c["author"],
+                                                        cmt_body,
+                                                        now,
+                                                    ),
+                                                )
+                                                processed_cmt_ids.add(c["comment_id"])
+                                            task_meta[
+                                                "processed_review_comment_ids"
+                                            ] = list(processed_cmt_ids)
+                                            cursor.execute(
+                                                "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                                                (
+                                                    json.dumps(task_meta),
+                                                    now,
+                                                    task_id,
+                                                ),
+                                            )
                                         elif is_approved and row["status"] in (
                                             "blocked",
                                             "todo",
