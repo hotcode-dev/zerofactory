@@ -1302,83 +1302,85 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                 ).fetchone()[0]
                 llm_workers = _disp._global_llm_occupancy(active_count)
 
-                scan_on_idle = bool(settings.get("scan_on_idle", DEFAULT_SCAN_ON_IDLE))
-                idle_active_threshold = int(
-                    settings.get(
-                        "idle_scan_active_threshold", DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD
-                    )
-                )
-                cooldown_seconds = (
-                    int(
-                        settings.get(
+                try:
+                    b_rows = cursor.execute(
+                        "SELECT slug, git_url, max_concurrent_running FROM boards"
+                    ).fetchall()
+                except Exception:
+                    b_rows = []
+
+                todo_per_board: dict[str, int] = {}
+                try:
+                    for td_row in cursor.execute(
+                        "SELECT board_slug, COUNT(*) AS cnt FROM tasks WHERE status = 'todo' GROUP BY board_slug"
+                    ).fetchall():
+                        todo_per_board[str(td_row["board_slug"] or "")] = td_row[
+                            "cnt"
+                        ]
+                except Exception:
+                    pass
+
+                for b_row in b_rows:
+                    if llm_workers >= max_llm_workers:
+                        break
+                    board_slug = str(b_row["slug"] or "")
+                    if not board_slug:
+                        continue
+
+                    cron_cfg = _disp.get_scanner_cron_config(board_slug)
+                    if not cron_cfg.get("scan_on_idle"):
+                        continue
+
+                    cooldown_minutes = int(
+                        cron_cfg.get(
                             "idle_scan_cooldown_minutes",
                             DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
                         )
                     )
-                    * 60
-                )
-                max_todo = int(
-                    settings.get("idle_scan_max_todo", DEFAULT_IDLE_SCAN_MAX_TODO)
-                )
+                    cooldown_seconds = cooldown_minutes * 60
+                    max_todo = int(
+                        cron_cfg.get("idle_scan_max_todo", DEFAULT_IDLE_SCAN_MAX_TODO)
+                    )
 
-                if scan_on_idle:
-                    try:
-                        b_rows = cursor.execute(
-                            "SELECT slug, git_url FROM boards"
-                        ).fetchall()
-                    except Exception:
-                        b_rows = []
+                    board_mcr = max(
+                        1,
+                        int(b_row["max_concurrent_running"])
+                        if ("max_concurrent_running" in b_row.keys() and b_row["max_concurrent_running"])
+                        else DEFAULT_MAX_CONCURRENT_WORKERS,
+                    )
+                    board_active_running = running_per_board.get(board_slug, 0)
+                    board_todo_count = todo_per_board.get(board_slug, 0)
 
-                    todo_per_board: dict[str, int] = {}
-                    try:
-                        for td_row in cursor.execute(
-                            "SELECT board_slug, COUNT(*) AS cnt FROM tasks WHERE status = 'todo' GROUP BY board_slug"
-                        ).fetchall():
-                            todo_per_board[str(td_row["board_slug"] or "")] = td_row[
-                                "cnt"
-                            ]
-                    except Exception:
-                        pass
-
-                    for b_row in b_rows:
-                        if llm_workers >= max_llm_workers:
-                            break
-                        board_slug = str(b_row["slug"] or "")
-                        if not board_slug:
-                            continue
-                        board_active_running = running_per_board.get(board_slug, 0)
-                        board_todo_count = todo_per_board.get(board_slug, 0)
-
-                        if (
-                            board_active_running < idle_active_threshold
-                            and board_todo_count < max_todo
-                        ):
-                            if board_slug not in _active_scanners:
-                                last_scan = _last_idle_scan_times.get(board_slug, 0)
-                                if (now - last_scan) >= cooldown_seconds:
-                                    repo_for_task = _disp.resolve_task_repo_path(
-                                        cursor, board_slug, None
+                    if (
+                        board_active_running < board_mcr
+                        and board_todo_count < max_todo
+                    ):
+                        if board_slug not in _active_scanners:
+                            last_scan = _last_idle_scan_times.get(board_slug, 0)
+                            if (now - last_scan) >= cooldown_seconds:
+                                repo_for_task = _disp.resolve_task_repo_path(
+                                    cursor, board_slug, None
+                                )
+                                pid = _disp.spawn_board_scanner(
+                                    board_slug, repo_for_task
+                                )
+                                if pid is not None:
+                                    _last_idle_scan_times[board_slug] = now
+                                    scans_triggered += 1
+                                    llm_workers += 1
+                                    _log.info(
+                                        "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %d)",
+                                        board_slug,
+                                        board_active_running,
+                                        board_mcr,
+                                        board_todo_count,
+                                        pid,
                                     )
-                                    pid = _disp.spawn_board_scanner(
-                                        board_slug, repo_for_task
+                                else:
+                                    _log.warning(
+                                        "Idle improvement scan spawn failed for board '%s'; cooldown NOT consumed, will retry next cycle",
+                                        board_slug,
                                     )
-                                    if pid is not None:
-                                        _last_idle_scan_times[board_slug] = now
-                                        scans_triggered += 1
-                                        llm_workers += 1
-                                        _log.info(
-                                            "Triggered idle improvement scan for board '%s' (running: %d < %d, todo: %d, PID: %d)",
-                                            board_slug,
-                                            board_active_running,
-                                            idle_active_threshold,
-                                            board_todo_count,
-                                            pid,
-                                        )
-                                    else:
-                                        _log.warning(
-                                            "Idle improvement scan spawn failed for board '%s'; cooldown NOT consumed, will retry next cycle",
-                                            board_slug,
-                                        )
 
                 conn.commit()
 

@@ -22,6 +22,7 @@ from .definitions import (
     CORE_CRON_JOBS,
     build_board_scanner_prompt,
     get_all_builtin_cron_jobs,
+    get_scanner_cron_config,
     resolve_board_repo_path,
 )
 from .executor import tick_builtin_cron, trigger_builtin_job
@@ -60,6 +61,7 @@ __all__ = [
     "compute_job_next_run",
     "ensure_builtin_cron_jobs",
     "get_all_builtin_cron_jobs",
+    "get_scanner_cron_config",
     "get_db_path",
     "get_target_jobs_files",
     "is_cron_scheduler_enabled",

@@ -26,22 +26,6 @@ class TestSettingsUnit(unittest.TestCase):
             str(S.DEFAULT_MAX_CONCURRENT_LLM_WORKERS),
         )
         self.assertEqual(
-            S.DEFAULT_SETTING_VALUES["scan_on_idle"],
-            "true" if S.DEFAULT_SCAN_ON_IDLE else "false",
-        )
-        self.assertEqual(
-            S.DEFAULT_SETTING_VALUES["idle_scan_active_threshold"],
-            str(S.DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD),
-        )
-        self.assertEqual(
-            S.DEFAULT_SETTING_VALUES["idle_scan_cooldown_minutes"],
-            str(S.DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES),
-        )
-        self.assertEqual(
-            S.DEFAULT_SETTING_VALUES["idle_scan_max_todo"],
-            str(S.DEFAULT_IDLE_SCAN_MAX_TODO),
-        )
-        self.assertEqual(
             S.DEFAULT_SETTING_VALUES["activity_retention_days"],
             str(S.DEFAULT_ACTIVITY_RETENTION_DAYS),
         )
@@ -62,14 +46,6 @@ class TestSettingsUnit(unittest.TestCase):
         self.assertEqual(
             res["max_concurrent_llm_workers"], S.DEFAULT_MAX_CONCURRENT_LLM_WORKERS
         )
-        self.assertEqual(res["scan_on_idle"], S.DEFAULT_SCAN_ON_IDLE)
-        self.assertEqual(
-            res["idle_scan_active_threshold"], S.DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD
-        )
-        self.assertEqual(
-            res["idle_scan_cooldown_minutes"], S.DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES
-        )
-        self.assertEqual(res["idle_scan_max_todo"], S.DEFAULT_IDLE_SCAN_MAX_TODO)
         self.assertEqual(
             res["activity_retention_days"], S.DEFAULT_ACTIVITY_RETENTION_DAYS
         )
@@ -86,11 +62,7 @@ class TestSettingsUnit(unittest.TestCase):
             [
                 ("max_active_tasks", "-5"),
                 ("max_concurrent_llm_workers", "0"),
-                ("idle_scan_active_threshold", "-1"),
-                ("idle_scan_cooldown_minutes", "0"),
-                ("idle_scan_max_todo", "-3"),
                 ("activity_retention_days", "0"),
-                ("scan_on_idle", "true"),
                 ("enable_cron_scheduler", "1"),
                 ("auto_record_memory", "yes"),
             ],
@@ -101,13 +73,8 @@ class TestSettingsUnit(unittest.TestCase):
         # Clamped to >= 1
         self.assertEqual(res["max_active_tasks"], 1)
         self.assertEqual(res["max_concurrent_llm_workers"], 1)
-        self.assertEqual(res["idle_scan_active_threshold"], 1)
-        self.assertEqual(res["idle_scan_cooldown_minutes"], 1)
         self.assertEqual(res["activity_retention_days"], 1)
-        # Clamped to >= 0
-        self.assertEqual(res["idle_scan_max_todo"], 0)
         # Boolean parsing
-        self.assertTrue(res["scan_on_idle"])
         self.assertTrue(res["enable_cron_scheduler"])
         self.assertTrue(res["auto_record_memory"])
         conn.close()
@@ -119,7 +86,6 @@ class TestSettingsUnit(unittest.TestCase):
         conn.executemany(
             "INSERT INTO settings VALUES (?, ?)",
             [
-                ("scan_on_idle", "false"),
                 ("enable_cron_scheduler", "0"),
                 ("auto_record_memory", "no"),
             ],
@@ -127,7 +93,6 @@ class TestSettingsUnit(unittest.TestCase):
         conn.commit()
 
         res = S.load_settings(conn)
-        self.assertFalse(res["scan_on_idle"])
         self.assertFalse(res["enable_cron_scheduler"])
         self.assertFalse(res["auto_record_memory"])
         conn.close()

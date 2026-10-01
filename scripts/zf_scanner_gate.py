@@ -324,56 +324,46 @@ def get_board_pipeline_capacity(board_slug: str) -> dict[str, Any]:
     res = {
         "running": 0,
         "todo": 0,
+        "max_concurrent_running": 1,
         "scan_on_idle": False,
-        "idle_scan_active_threshold": 2,
         "idle_scan_cooldown_minutes": 15,
         "idle_scan_max_todo": 2,
     }
-    if not db_path.exists():
-        return res
-    try:
-        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT status, COUNT(*) FROM tasks WHERE board_slug = ? AND status IN ('running', 'todo') GROUP BY status",
-                (board_slug,),
-            )
-            for row in cursor.fetchall():
-                if row[0] == "running":
-                    res["running"] = int(row[1])
-                elif row[0] == "todo":
-                    res["todo"] = int(row[1])
-
-            try:
+    if db_path.exists():
+        try:
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT key, value FROM settings WHERE key IN ('scan_on_idle', 'idle_scan_active_threshold', 'idle_scan_cooldown_minutes', 'idle_scan_max_todo')"
+                    "SELECT max_concurrent_running FROM boards WHERE slug = ?",
+                    (board_slug,),
                 )
-                for key, val in cursor.fetchall():
-                    if key == "scan_on_idle":
-                        res["scan_on_idle"] = str(val).strip().lower() in (
-                            "true",
-                            "1",
-                            "yes",
-                        )
-                    elif key == "idle_scan_active_threshold":
-                        try:
-                            res["idle_scan_active_threshold"] = max(1, int(val))
-                        except ValueError:
-                            pass
-                    elif key == "idle_scan_cooldown_minutes":
-                        try:
-                            res["idle_scan_cooldown_minutes"] = max(1, int(val))
-                        except ValueError:
-                            pass
-                    elif key == "idle_scan_max_todo":
-                        try:
-                            res["idle_scan_max_todo"] = max(0, int(val))
-                        except ValueError:
-                            pass
-            except Exception:
-                pass
+                b_row = cursor.fetchone()
+                if b_row and b_row[0]:
+                    res["max_concurrent_running"] = max(1, int(b_row[0]))
+                cursor.execute(
+                    "SELECT status, COUNT(*) FROM tasks WHERE board_slug = ? AND status IN ('running', 'todo') GROUP BY status",
+                    (board_slug,),
+                )
+                for row in cursor.fetchall():
+                    if row[0] == "running":
+                        res["running"] = int(row[1])
+                    elif row[0] == "todo":
+                        res["todo"] = int(row[1])
+        except Exception:
+            pass
+
+    try:
+        from cron.definitions import get_scanner_cron_config
+
+        cron_cfg = get_scanner_cron_config(board_slug)
+        res["scan_on_idle"] = bool(cron_cfg.get("scan_on_idle", False))
+        res["idle_scan_cooldown_minutes"] = int(
+            cron_cfg.get("idle_scan_cooldown_minutes", 15)
+        )
+        res["idle_scan_max_todo"] = int(cron_cfg.get("idle_scan_max_todo", 2))
     except Exception:
         pass
+
     return res
 
 
@@ -524,20 +514,20 @@ def run_scanner_gate() -> int:
             scan_on_idle = capacity.get("scan_on_idle", False)
             running_count = capacity.get("running", 0)
             todo_count = capacity.get("todo", 0)
-            idle_threshold = capacity.get("idle_scan_active_threshold", 2)
+            max_concurrent = capacity.get("max_concurrent_running", 1)
             max_todo = capacity.get("idle_scan_max_todo", 2)
             idle_cooldown = capacity.get("idle_scan_cooldown_minutes", 15) * 60
 
             if is_idle_scan:
                 print(
-                    f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Dispatcher authorized idle scan for board '{board_slug}' (active running={running_count} < {idle_threshold})."
+                    f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Dispatcher authorized idle scan for board '{board_slug}' (active running={running_count} < {max_concurrent})."
                 )
             elif scan_on_idle:
-                # Capacity-driven idle scanning is enabled in settings
-                if running_count >= idle_threshold or todo_count >= max_todo:
+                # Capacity-driven idle scanning is enabled on cron job
+                if running_count >= max_concurrent or todo_count >= max_todo:
                     print(
                         f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged; "
-                        f"pipeline busy on board '{board_slug}' (running={running_count}/{idle_threshold}, todo={todo_count}/{max_todo})."
+                        f"pipeline busy on board '{board_slug}' (running={running_count}/{max_concurrent}, todo={todo_count}/{max_todo})."
                     )
                     print(json.dumps({"wakeAgent": False}))
                     return 0
@@ -545,7 +535,7 @@ def run_scanner_gate() -> int:
                 last_scan_at = int(board_state.get("last_scan_at", 0))
                 if (now_ts - last_scan_at) < idle_cooldown:
                     print(
-                        f"SCAN_COOLDOWN_ACTIVE: Board '{board_slug}' is idle (running={running_count} < {idle_threshold}), "
+                        f"SCAN_COOLDOWN_ACTIVE: Board '{board_slug}' is idle (running={running_count} < {max_concurrent}), "
                         f"but cooldown active ({now_ts - last_scan_at}s < {idle_cooldown}s); waiting."
                     )
                     print(json.dumps({"wakeAgent": False}))
@@ -553,7 +543,7 @@ def run_scanner_gate() -> int:
 
                 print(
                     f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Board '{board_slug}' is idle "
-                    f"(running={running_count} < {idle_threshold}, todo={todo_count} < {max_todo}); "
+                    f"(running={running_count} < {max_concurrent}, todo={todo_count} < {max_todo}); "
                     f"cooldown elapsed ({now_ts - last_scan_at}s >= {idle_cooldown}s). Initiating idle improvement scan."
                 )
             else:

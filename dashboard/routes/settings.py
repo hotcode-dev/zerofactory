@@ -70,30 +70,6 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('max_concurrent_llm_workers', ?, ?)",
                 (str(req.max_concurrent_llm_workers), now),
             )
-        if req.scan_on_idle is not None:
-            val = "true" if req.scan_on_idle else "false"
-            cursor.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('scan_on_idle', ?, ?)",
-                (val, now),
-            )
-        if req.idle_scan_active_threshold is not None:
-            val = str(max(1, int(req.idle_scan_active_threshold)))
-            cursor.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_active_threshold', ?, ?)",
-                (val, now),
-            )
-        if req.idle_scan_cooldown_minutes is not None:
-            val = str(max(1, int(req.idle_scan_cooldown_minutes)))
-            cursor.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_cooldown_minutes', ?, ?)",
-                (val, now),
-            )
-        if req.idle_scan_max_todo is not None:
-            val = str(max(0, int(req.idle_scan_max_todo)))
-            cursor.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('idle_scan_max_todo', ?, ?)",
-                (val, now),
-            )
         if req.activity_retention_days is not None:
             val = str(max(1, int(req.activity_retention_days)))
             cursor.execute(

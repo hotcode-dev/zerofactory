@@ -129,6 +129,7 @@ from .reaper import (
     reap_active_workers,
     reap_stuck_tasks,
 )
+from cron.definitions import get_scanner_cron_config
 from .scanner import (
     _global_llm_occupancy,
     _running_cron_llm_jobs,
@@ -229,6 +230,7 @@ __all__ = [
     "check_stuck_tasks",
     "reap_stuck_tasks",
     # Scanner
+    "get_scanner_cron_config",
     "reap_active_scanners",
     "_running_cron_llm_jobs",
     "_global_llm_occupancy",
