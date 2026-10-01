@@ -127,7 +127,7 @@ def spawn_agent_worker(
             f"Your goal as Reviewer:\n"
             f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
             f"2. Run automated test suites and linters in your workspace ({workdir}).\n"
-            f"3. Submit your review decision on GitHub (`gh pr review --approve` or `gh pr review --request-changes`).\n"
+            f"3. Submit your review feedback on GitHub as a comment (`gh pr review --comment -b \"[AI:zf-reviewer] [Reviewer Feedback] ...\"` or inline via `gh api`). Do not use `--approve` or `--request-changes` as GitHub prevents authors/tokens from approving their own PRs.\n"
             f'   - AI ATTRIBUTION: Every GitHub comment or review you post (review bodies, `gh pr comment`, inline `gh api` comments) MUST begin with `[AI:zf-reviewer]` (e.g. `"[AI:zf-reviewer] [Reviewer Feedback] Round 1: ..."`) so humans can distinguish agent output. Do not strip the `[AI:zf-builder]` prefix from the auto-opened PR title or body.\n'
             f"4. Continuous Learning & Repository Knowledge:\n"
             f"   - If you catch a recurring mistake, testing gotcha, or project convention that future tasks should follow, record it!\n"

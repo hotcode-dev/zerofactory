@@ -44,7 +44,7 @@ When reviewing a PR branch diff (`task/<task_id>`):
 
 ## Actionable Review Feedback Format
 
-When requesting changes on GitHub (`gh pr review --request-changes`), structure feedback with reference to the Ponytail ladder:
+When reviewing on GitHub (`gh pr review --comment`), structure feedback with reference to the Ponytail ladder:
 
 ```markdown
 [AI:zf-reviewer] [Reviewer Feedback] Round 3: Ponytail Simplification
