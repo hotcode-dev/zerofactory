@@ -83,10 +83,6 @@ DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES * 60
 SETTING_KEYS = (
     "max_active_tasks",
     "max_concurrent_llm_workers",
-    "scan_on_idle",
-    "idle_scan_active_threshold",
-    "idle_scan_cooldown_minutes",
-    "idle_scan_max_todo",
     "activity_retention_days",
     "enable_cron_scheduler",
     "langfuse_enabled",
@@ -103,10 +99,6 @@ SETTING_KEYS = (
 DEFAULT_SETTING_VALUES: dict[str, str] = {
     "max_active_tasks": str(DEFAULT_MAX_ACTIVE_TASKS),
     "max_concurrent_llm_workers": str(DEFAULT_MAX_CONCURRENT_LLM_WORKERS),
-    "scan_on_idle": "true" if DEFAULT_SCAN_ON_IDLE else "false",
-    "idle_scan_active_threshold": str(DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD),
-    "idle_scan_cooldown_minutes": str(DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES),
-    "idle_scan_max_todo": str(DEFAULT_IDLE_SCAN_MAX_TODO),
     "activity_retention_days": str(DEFAULT_ACTIVITY_RETENTION_DAYS),
     "enable_cron_scheduler": "true" if DEFAULT_ENABLE_CRON_SCHEDULER else "false",
     "langfuse_enabled": "true" if DEFAULT_LANGFUSE_ENABLED else "false",
@@ -147,10 +139,6 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
     settings: dict[str, Any] = {
         "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
         "max_concurrent_llm_workers": DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
-        "scan_on_idle": DEFAULT_SCAN_ON_IDLE,
-        "idle_scan_active_threshold": DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
-        "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-        "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
         "activity_retention_days": DEFAULT_ACTIVITY_RETENTION_DAYS,
         "enable_cron_scheduler": DEFAULT_ENABLE_CRON_SCHEDULER,
         "langfuse_enabled": DEFAULT_LANGFUSE_ENABLED,
@@ -185,21 +173,6 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
             c = _clamp_int(v, 1)
             if c is not None:
                 settings["max_concurrent_llm_workers"] = c
-        elif k == "scan_on_idle":
-            # Bool is unconditional (matches prior behavior: a present row always wins).
-            settings["scan_on_idle"] = _parse_bool(v)
-        elif k == "idle_scan_active_threshold":
-            c = _clamp_int(v, 1)
-            if c is not None:
-                settings["idle_scan_active_threshold"] = c
-        elif k == "idle_scan_cooldown_minutes":
-            c = _clamp_int(v, 1)
-            if c is not None:
-                settings["idle_scan_cooldown_minutes"] = c
-        elif k == "idle_scan_max_todo":
-            c = _clamp_int(v, 0)
-            if c is not None:
-                settings["idle_scan_max_todo"] = c
         elif k == "activity_retention_days":
             # Clamp to >= 1 so a stored "0"/garbage can never wipe the whole log;
             # 0 only disables pruning when passed programmatically to prune_old_activity.

@@ -352,7 +352,6 @@ def update_board(slug: str, req: BoardUpdate):
             )
             updates.append("additional_reviewer_usernames = ?")
             params.append(json.dumps(reviewer_usernames))
-
         if updates:
             updates.append("updated_at = ?")
             params.append(now)

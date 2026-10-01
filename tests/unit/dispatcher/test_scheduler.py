@@ -75,7 +75,8 @@ def _init_test_db(db_path: Path):
                 name TEXT,
                 description TEXT,
                 git_url TEXT,
-                target_branch TEXT
+                target_branch TEXT,
+                max_concurrent_running INTEGER DEFAULT 1
             )
             """
         )
@@ -514,3 +515,62 @@ def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(
         assert task["status"] == "todo"
         assert task["assignee"] == "zf-reviewer"
         assert "[PR Conflict]" not in task["title"]
+
+
+def test_run_dispatch_cycle_per_board_idle_scanning(tmp_path: Path):
+    """Dispatcher respects each board scanner cron's scan_on_idle config when triggering idle scanners."""
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+
+    lock_file = tmp_path / "dispatcher.lock"
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            """
+            INSERT INTO boards (slug, name, git_url, target_branch)
+            VALUES 
+                ('idle-board-enabled', 'Enabled', '', 'main'),
+                ('idle-board-disabled', 'Disabled', '', 'main')
+            """
+        )
+        conn.commit()
+
+    import dispatcher
+
+    spawned_slugs = []
+
+    def mock_spawn(board_slug, repo_path):
+        spawned_slugs.append(board_slug)
+        return 99999
+
+    def mock_get_scanner_cron_config(board_slug):
+        if board_slug == "idle-board-enabled":
+            return {
+                "scan_on_idle": True,
+                "idle_scan_cooldown_minutes": 15,
+                "idle_scan_max_todo": 2,
+                "enabled": True,
+            }
+        return {
+            "scan_on_idle": False,
+            "idle_scan_cooldown_minutes": 15,
+            "idle_scan_max_todo": 2,
+            "enabled": True,
+        }
+
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.object(dispatcher, "reap_active_scanners"),
+        patch.object(dispatcher, "spawn_board_scanner", side_effect=mock_spawn),
+        patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
+        patch.object(dispatcher, "clean_stale_git_locks"),
+        patch.object(dispatcher, "get_scanner_cron_config", side_effect=mock_get_scanner_cron_config),
+    ):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+        # Enabled board triggers scanner, disabled board does not
+        assert "idle-board-enabled" in spawned_slugs
+        assert "idle-board-disabled" not in spawned_slugs
+        assert res["scans_triggered"] == 1
+
+

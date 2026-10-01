@@ -261,7 +261,7 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT slug, description, git_url FROM boards ORDER BY created_at ASC"
+                    "SELECT * FROM boards ORDER BY created_at ASC"
                 )
                 boards = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
@@ -278,6 +278,31 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
         )
         prompt = build_board_scanner_prompt(board, workdir)
 
+        # Default capacity-driven idle improvement scanning config on the cron job
+        default_cooldown = 15
+        default_max_todo = 2
+        default_scan_on_idle = True
+        env_scan_on_idle = os.environ.get("ZEROFACTORY_SCAN_ON_IDLE")
+        if env_scan_on_idle is not None:
+            default_scan_on_idle = env_scan_on_idle.strip().lower() in ("1", "true", "yes")
+
+        if default_scan_on_idle:
+            sched = {
+                "kind": "idle",
+                "display": "on idle",
+            }
+            sched_disp = "on idle"
+        else:
+            scanner_interval = int(
+                os.environ.get("ZEROFACTORY_SCANNER_INTERVAL_MINUTES", "60")
+            )
+            sched = {
+                "kind": "interval",
+                "minutes": scanner_interval,
+                "display": f"every {scanner_interval}m",
+            }
+            sched_disp = f"every {scanner_interval}m"
+
         jobs[job_id] = {
             "id": job_id,
             "name": f"Zero Factory improvement scanner ({slug})",
@@ -291,12 +316,8 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
             "no_agent": False,
             "context_from": None,
             "continuity": False,
-            "schedule": {
-                "kind": "interval",
-                "minutes": 10080,
-                "display": "on idle (active < 2)",
-            },
-            "schedule_display": "on idle (active < 2)",
+            "schedule": sched,
+            "schedule_display": sched_disp,
             "enabled": True,
             "state": "scheduled",
             "paused_at": None,
@@ -306,11 +327,77 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
             "enabled_toolsets": ["terminal", "file", "web"],
             "workdir": workdir,
             "profile": "zf-orchestrator",
+            "scan_on_idle": default_scan_on_idle,
+            "idle_scan_cooldown_minutes": default_cooldown,
+            "idle_scan_max_todo": default_max_todo,
         }
 
     BUILTIN_CRON_JOBS.clear()
     BUILTIN_CRON_JOBS.update(jobs)
     return jobs
+
+
+def get_scanner_cron_config(board_slug: str) -> dict[str, Any]:
+    """Retrieve the scanner cron configuration for a board slug from jobs.json or builtin defaults."""
+    disp = _c()
+    target_fn = getattr(disp, "get_scanner_cron_config", None)
+    if target_fn and target_fn is not get_scanner_cron_config:
+        return target_fn(board_slug)
+
+    job_id = f"zero-factory-improvement-scanner-{board_slug}"
+    defaults = {
+        "enabled": True,
+        "scan_on_idle": True,
+        "idle_scan_cooldown_minutes": 15,
+        "idle_scan_max_todo": 2,
+    }
+    env_soi = os.environ.get("ZEROFACTORY_SCAN_ON_IDLE")
+    if env_soi is not None:
+        defaults["scan_on_idle"] = env_soi.strip().lower() in ("1", "true", "yes")
+
+    from .store import get_target_jobs_files, load_jobs_from_file
+
+    get_target_jobs_files_fn = getattr(
+        disp, "get_target_jobs_files", get_target_jobs_files
+    )
+    load_jobs_from_file_fn = getattr(disp, "load_jobs_from_file", load_jobs_from_file)
+
+    try:
+        for target in get_target_jobs_files_fn():
+            if not target.exists():
+                continue
+            for j in load_jobs_from_file_fn(target):
+                if isinstance(j, dict) and j.get("id") == job_id:
+                    enabled = j.get("enabled", True)
+                    sched = j.get("schedule") or {}
+                    sched_disp = str(
+                        j.get("schedule_display") or sched.get("display") or ""
+                    )
+                    minutes = (
+                        sched.get("minutes") if isinstance(sched, dict) else None
+                    )
+                    is_idle_sched = sched.get("kind") == "idle" or minutes == 10080 or "on idle" in sched_disp
+
+                    if "scan_on_idle" in j and j["scan_on_idle"] is not None:
+                        soi = bool(j["scan_on_idle"])
+                    else:
+                        soi = is_idle_sched
+
+                    if env_soi is not None:
+                        soi = env_soi.strip().lower() in ("1", "true", "yes")
+
+                    return {
+                        "enabled": bool(enabled),
+                        "scan_on_idle": soi and bool(enabled),
+                        "idle_scan_cooldown_minutes": int(
+                            j.get("idle_scan_cooldown_minutes") or 15
+                        ),
+                        "idle_scan_max_todo": int(j.get("idle_scan_max_todo") or 2),
+                    }
+    except Exception as e:
+        _log.debug("Error reading scanner cron config for %s: %s", board_slug, e)
+
+    return defaults
 
 
 # Initial populate on import

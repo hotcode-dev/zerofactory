@@ -135,6 +135,41 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
                 curr = existing_by_id[job_id]
                 changed = False
                 is_custom = bool(curr.get("custom_config"))
+                is_scanner = str(job_id).startswith("zero-factory-improvement-scanner-")
+                curr_sched = curr.get("schedule", {})
+                curr_display = str(
+                    curr_sched.get("display")
+                    or curr.get("schedule_display")
+                    or ""
+                )
+                curr_minutes = (
+                    curr_sched.get("minutes")
+                    if isinstance(curr_sched, dict)
+                    else None
+                )
+
+                # Check if scanner is using a standard system schedule (idle mode or default periodic 60m)
+                is_system_scanner_sched = is_scanner and (
+                    curr.get("scan_on_idle")
+                    or curr_sched.get("kind") == "idle"
+                    or curr_minutes == 10080
+                    or curr_display.startswith("on idle")
+                    or (curr_minutes == 60 and curr_display == "every 60m")
+                )
+
+                if is_scanner and (curr.get("scan_on_idle") or curr_sched.get("kind") == "idle" or curr_minutes == 10080):
+                    if curr_sched.get("minutes") == 10080 or (curr.get("scan_on_idle") and curr_sched.get("kind") == "interval"):
+                        curr_sched.pop("minutes", None)
+                        curr_sched["kind"] = "idle"
+                        curr_sched["display"] = "on idle"
+                        changed = True
+                    if curr_display == "every 10080m" or not curr_display:
+                        curr["schedule_display"] = "on idle"
+                        if isinstance(curr_sched, dict):
+                            curr_sched["display"] = "on idle"
+                        changed = True
+
+                schedule_updated = False
                 for field in (
                     "name",
                     "prompt",
@@ -150,6 +185,9 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
                     "no_agent",
                     "context_from",
                     "continuity",
+                    "scan_on_idle",
+                    "idle_scan_cooldown_minutes",
+                    "idle_scan_max_todo",
                 ):
                     if is_custom and field in (
                         "name",
@@ -164,11 +202,16 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
                         "no_agent",
                         "context_from",
                         "continuity",
+                        "scan_on_idle",
+                        "idle_scan_cooldown_minutes",
+                        "idle_scan_max_todo",
                     ):
                         continue
                     if curr.get(field) != builtin_def.get(field):
                         curr[field] = builtin_def.get(field)
                         changed = True
+                        if field == "schedule":
+                            schedule_updated = True
 
                 # Re-activate any scanner job that was retired as a one-shot completed job (only if scheduler enabled)
                 # Note: NEVER re-activate "paused" jobs here — if a job is paused, it was disabled by configuration or user.
@@ -183,9 +226,11 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
                     curr["paused_reason"] = None
                     changed = True
 
-                # Ensure next_run_at is populated for active scheduled jobs
+                # Ensure next_run_at is populated for active scheduled jobs (recomputed if schedule updated)
                 sched = curr.get("schedule", builtin_def.get("schedule", {}))
-                if curr.get("enabled", True) and not curr.get("next_run_at"):
+                if schedule_updated or (
+                    curr.get("enabled", True) and not curr.get("next_run_at")
+                ):
                     curr["next_run_at"] = compute_job_next_run_fn(
                         sched, curr.get("last_run_at")
                     )
@@ -270,13 +315,15 @@ def list_builtin_jobs() -> list[dict[str, Any]]:
     results = []
     for job_id, builtin_def in current_builtin_jobs.items():
         curr = existing_by_id.get(job_id, builtin_def)
+        sched_disp = curr.get("schedule_display") or curr.get("schedule", {}).get("display", "configured")
+        if curr.get("scan_on_idle") or curr.get("schedule", {}).get("minutes") == 10080 or sched_disp == "every 10080m":
+            sched_disp = "on idle"
         results.append(
             {
                 "id": job_id,
                 "name": curr.get("name", builtin_def.get("name")),
                 "schedule": curr.get("schedule", builtin_def.get("schedule")),
-                "schedule_display": curr.get("schedule_display")
-                or curr.get("schedule", {}).get("display", "configured"),
+                "schedule_display": sched_disp,
                 "enabled": curr.get("enabled", True),
                 "state": curr.get("state", "scheduled"),
                 "prompt": curr.get("prompt", builtin_def.get("prompt")),
@@ -302,6 +349,9 @@ def list_builtin_jobs() -> list[dict[str, Any]]:
                 "last_run_at": curr.get("last_run_at"),
                 "next_run_at": curr.get("next_run_at"),
                 "last_error": curr.get("last_error"),
+                "scan_on_idle": curr.get("scan_on_idle", builtin_def.get("scan_on_idle", True if job_id.startswith("zero-factory-improvement-scanner-") else False)),
+                "idle_scan_cooldown_minutes": curr.get("idle_scan_cooldown_minutes", builtin_def.get("idle_scan_cooldown_minutes", 15)),
+                "idle_scan_max_todo": curr.get("idle_scan_max_todo", builtin_def.get("idle_scan_max_todo", 2)),
             }
         )
     return results
@@ -320,23 +370,65 @@ def _apply_job_field_updates(job: dict[str, Any], updates: dict[str, Any]) -> No
             job["paused_at"] = None
         job["custom_config"] = True
 
+    if "idle_scan_cooldown_minutes" in updates and updates["idle_scan_cooldown_minutes"] is not None:
+        try:
+            job["idle_scan_cooldown_minutes"] = max(1, int(updates["idle_scan_cooldown_minutes"]))
+            job["custom_config"] = True
+        except (ValueError, TypeError):
+            pass
+
+    if "idle_scan_max_todo" in updates and updates["idle_scan_max_todo"] is not None:
+        try:
+            job["idle_scan_max_todo"] = max(0, int(updates["idle_scan_max_todo"]))
+            job["custom_config"] = True
+        except (ValueError, TypeError):
+            pass
+
     # Schedule updates
+    if "scan_on_idle" in updates and updates["scan_on_idle"] is not None:
+        soi = bool(updates["scan_on_idle"])
+        job["scan_on_idle"] = soi
+        job["custom_config"] = True
+        if soi:
+            job["schedule"] = {
+                "kind": "idle",
+                "display": "on idle",
+            }
+            job["schedule_display"] = "on idle"
+        else:
+            # If turning off idle scan and no explicit minutes/cron_expr given, set to 60m
+            if not updates.get("minutes") and not updates.get("cron_expr"):
+                scanner_interval = int(
+                    os.environ.get("ZEROFACTORY_SCANNER_INTERVAL_MINUTES", "60")
+                )
+                job["schedule"] = {
+                    "kind": "interval",
+                    "minutes": scanner_interval,
+                    "display": f"every {scanner_interval}m",
+                }
+                job["schedule_display"] = f"every {scanner_interval}m"
+
     if updates.get("minutes"):
         try:
             m = int(updates["minutes"])
             if m > 0:
+                if m != 10080 and "scan_on_idle" not in updates:
+                    job["scan_on_idle"] = False
+                disp = "on idle" if (job.get("scan_on_idle") or m == 10080) else f"every {m}m"
                 job["schedule"] = {
                     "kind": "interval",
                     "minutes": m,
-                    "display": f"every {m}m",
+                    "display": disp,
                 }
-                job["schedule_display"] = f"every {m}m"
+                job["schedule_display"] = disp
                 job["custom_config"] = True
         except (ValueError, TypeError):
             pass
     elif updates.get("cron_expr"):
         expr = str(updates["cron_expr"]).strip()
         if expr:
+            if "scan_on_idle" not in updates:
+                job["scan_on_idle"] = False
             job["schedule"] = {"kind": "cron", "expr": expr, "display": expr}
             job["schedule_display"] = expr
             job["custom_config"] = True
@@ -345,7 +437,24 @@ def _apply_job_field_updates(job: dict[str, Any], updates: dict[str, Any]) -> No
         job["schedule_display"] = updates.get("schedule_display") or updates[
             "schedule"
         ].get("display", "configured")
+        if job["schedule"].get("kind") == "idle" and "scan_on_idle" not in updates:
+            job["scan_on_idle"] = True
         job["custom_config"] = True
+
+    if updates.get("schedule_display"):
+        disp_val = str(updates["schedule_display"])
+        job["schedule_display"] = disp_val
+        if isinstance(job.get("schedule"), dict):
+            job["schedule"]["display"] = disp_val
+
+    # Final normalization: if scan_on_idle or kind == "idle", ensure clean schedule without minutes
+    if job.get("scan_on_idle") or (isinstance(job.get("schedule"), dict) and (job["schedule"].get("kind") == "idle" or job["schedule"].get("minutes") == 10080)):
+        job["scan_on_idle"] = True
+        job["schedule_display"] = "on idle"
+        if isinstance(job.get("schedule"), dict):
+            job["schedule"]["kind"] = "idle"
+            job["schedule"]["display"] = "on idle"
+            job["schedule"].pop("minutes", None)
 
     # Model / workdir / prompt updates
     if "model" in updates and updates["model"] is not None:
@@ -399,11 +508,10 @@ def update_builtin_job(job_id: str, updates: dict[str, Any]) -> dict[str, Any]:
                 "id": job_id,
                 "name": f"Zero Factory improvement scanner ({slug})",
                 "schedule": {
-                    "kind": "interval",
-                    "minutes": 10080,
-                    "display": "on idle (active < 2)",
+                    "kind": "idle",
+                    "display": "on idle",
                 },
-                "schedule_display": "on idle (active < 2)",
+                "schedule_display": "on idle",
                 "enabled": True,
                 "state": "scheduled",
                 "custom_config": True,
@@ -510,6 +618,12 @@ def reset_builtin_job(job_id: str) -> dict[str, Any]:
                 j["state"] = "scheduled" if j["enabled"] else "paused"
                 j["paused_at"] = None
                 j["custom_config"] = False
+                compute_job_next_run_fn = getattr(
+                    disp, "compute_job_next_run", compute_job_next_run
+                )
+                j["next_run_at"] = compute_job_next_run_fn(
+                    j.get("schedule", {}), j.get("last_run_at")
+                )
                 reset_count += 1
                 break
         save_jobs_to_file_fn(target, jobs)

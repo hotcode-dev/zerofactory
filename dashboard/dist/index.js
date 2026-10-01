@@ -89,10 +89,6 @@
     const [settingsForm, setSettingsForm] = useState({
       max_active_tasks: 10,
       max_concurrent_llm_workers: 10,
-      scan_on_idle: true,
-      idle_scan_active_threshold: 2,
-      idle_scan_cooldown_minutes: 15,
-      idle_scan_max_todo: 2,
       langfuse_enabled: false,
       langfuse_base_url: "https://cloud.langfuse.com",
       langfuse_public_key: "",
@@ -202,7 +198,15 @@
     const handleOpenNewBoardModal = () => {
       setCreateBoardError("");
       setCloneTestResult(null);
-      setNewBoardForm({ git_url: "", description: "", target_branch: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "" });
+      setNewBoardForm({
+        git_url: "",
+        description: "",
+        target_branch: "",
+        max_concurrent_running: 1,
+        auto_record_memory: true,
+        additional_reviewer_usernames: "",
+        auto_setup_precommit: true
+      });
       setShowNewBoardModal(true);
     };
 
@@ -214,10 +218,6 @@
           setSettingsForm({
             max_active_tasks: data.settings.max_active_tasks ?? 10,
             max_concurrent_llm_workers: data.settings.max_concurrent_llm_workers ?? 10,
-            scan_on_idle: data.settings.scan_on_idle ?? true,
-            idle_scan_active_threshold: data.settings.idle_scan_active_threshold ?? 2,
-            idle_scan_cooldown_minutes: data.settings.idle_scan_cooldown_minutes ?? 15,
-            idle_scan_max_todo: data.settings.idle_scan_max_todo ?? 2,
             langfuse_enabled: Boolean(data.settings.langfuse_enabled),
             langfuse_base_url: data.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
             langfuse_public_key: data.settings.langfuse_public_key ?? "",
@@ -240,10 +240,6 @@
         const payload = {
           max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
           max_concurrent_llm_workers: Math.max(1, parseInt(settingsForm.max_concurrent_llm_workers, 10) || 10),
-          scan_on_idle: Boolean(settingsForm.scan_on_idle),
-          idle_scan_active_threshold: Math.max(1, parseInt(settingsForm.idle_scan_active_threshold, 10) || 2),
-          idle_scan_cooldown_minutes: Math.max(1, parseInt(settingsForm.idle_scan_cooldown_minutes, 10) || 15),
-          idle_scan_max_todo: Math.max(0, parseInt(settingsForm.idle_scan_max_todo, 10) || 0),
           langfuse_enabled: Boolean(settingsForm.langfuse_enabled),
           langfuse_base_url: String(settingsForm.langfuse_base_url || "").trim(),
           langfuse_public_key: String(settingsForm.langfuse_public_key || "").trim(),
@@ -262,10 +258,6 @@
           setSettingsForm({
             max_active_tasks: res.settings.max_active_tasks ?? 10,
             max_concurrent_llm_workers: res.settings.max_concurrent_llm_workers ?? 10,
-            scan_on_idle: res.settings.scan_on_idle ?? true,
-            idle_scan_active_threshold: res.settings.idle_scan_active_threshold ?? 2,
-            idle_scan_cooldown_minutes: res.settings.idle_scan_cooldown_minutes ?? 15,
-            idle_scan_max_todo: res.settings.idle_scan_max_todo ?? 2,
             langfuse_enabled: Boolean(res.settings.langfuse_enabled),
             langfuse_base_url: res.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
             langfuse_public_key: res.settings.langfuse_public_key ?? "",
@@ -476,14 +468,17 @@
             data.jobs.forEach(j => {
               const sched = j.schedule || {};
               forms[j.id] = {
-                minutes: sched.kind === "interval" ? sched.minutes : 60,
+                minutes: (sched.kind === "interval" && sched.minutes && sched.minutes !== 10080) ? sched.minutes : 60,
                 cron_expr: sched.kind === "cron" ? sched.expr : "0 9 * * *",
-                schedule_kind: sched.kind || "interval",
+                schedule_kind: sched.kind === "idle" ? "idle" : (sched.kind || "interval"),
                 prompt: j.prompt || "",
                 model: j.model || "",
                 workdir: j.workdir || "",
                 name: j.name || "",
-                enabled: j.enabled !== false
+                enabled: j.enabled !== false,
+                scan_on_idle: j.scan_on_idle !== undefined ? Boolean(j.scan_on_idle) : true,
+                idle_scan_cooldown_minutes: j.idle_scan_cooldown_minutes !== undefined ? j.idle_scan_cooldown_minutes : 15,
+                idle_scan_max_todo: j.idle_scan_max_todo !== undefined ? j.idle_scan_max_todo : 2
               };
             });
             setCronEditForms(forms);
@@ -568,10 +563,28 @@
           workdir: form.workdir || null,
           enabled: form.enabled !== false
         };
-        if (form.schedule_kind === "interval") {
-          payload.minutes = parseInt(form.minutes, 10) || 60;
+        if (form.scan_on_idle !== undefined) {
+          payload.scan_on_idle = Boolean(form.scan_on_idle);
+        }
+        if (form.idle_scan_cooldown_minutes !== undefined) {
+          payload.idle_scan_cooldown_minutes = parseInt(form.idle_scan_cooldown_minutes, 10) || 15;
+        }
+        if (form.idle_scan_max_todo !== undefined) {
+          payload.idle_scan_max_todo = parseInt(form.idle_scan_max_todo, 10) >= 0 ? parseInt(form.idle_scan_max_todo, 10) : 0;
+        }
+        if (form.scan_on_idle) {
+          payload.scan_on_idle = true;
+          payload.schedule = { kind: "idle", display: "on idle" };
+          payload.schedule_display = "on idle";
         } else {
-          payload.cron_expr = form.cron_expr;
+          if (form.scan_on_idle !== undefined) {
+            payload.scan_on_idle = false;
+          }
+          if (form.schedule_kind === "interval") {
+            payload.minutes = parseInt(form.minutes, 10) || 60;
+          } else {
+            payload.cron_expr = form.cron_expr;
+          }
         }
         const res = await fetchJSON(API_BASE + `/cron/${jobId}`, {
           method: "PUT",
@@ -6356,75 +6369,7 @@
                     }),
                     React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")
                   ),
-                  React.createElement(
-                    "div",
-                    { className: "pt-2 border-t border-slate-800/80 space-y-3" },
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center justify-between" },
-                      React.createElement(
-                        "div",
-                        null,
-                        React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Capacity-Driven Idle Improvement Scanning"),
-                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Autonomously scan codebases when running agent workers drop below threshold.")
-                      ),
-                      React.createElement(
-                        "input",
-                        {
-                          type: "checkbox",
-                          className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-                          checked: Boolean(settingsForm.scan_on_idle),
-                          onChange: (e) => setSettingsForm({ ...settingsForm, scan_on_idle: e.target.checked })
-                        }
-                      )
-                    ),
-                    settingsForm.scan_on_idle && React.createElement(
-                      "div",
-                      { className: "grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1" },
-                      React.createElement(
-                        "div",
-                        { className: "space-y-1" },
-                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Active Threshold (< N)"),
-                        React.createElement("input", {
-                          type: "number",
-                          min: 1,
-                          step: 1,
-                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
-                          value: settingsForm.idle_scan_active_threshold ?? 2,
-                          onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_active_threshold: e.target.value })
-                        }),
-                        React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Triggers when running workers < this (e.g. 1 or 2).")
-                      ),
-                      React.createElement(
-                        "div",
-                        { className: "space-y-1" },
-                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Cooldown (Minutes)"),
-                        React.createElement("input", {
-                          type: "number",
-                          min: 1,
-                          step: 1,
-                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
-                          value: settingsForm.idle_scan_cooldown_minutes ?? 15,
-                          onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_cooldown_minutes: e.target.value })
-                        }),
-                        React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Minimum interval between scans per board.")
-                      ),
-                      React.createElement(
-                        "div",
-                        { className: "space-y-1" },
-                        React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Max Todo Limit"),
-                        React.createElement("input", {
-                          type: "number",
-                          min: 0,
-                          step: 1,
-                          className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
-                          value: settingsForm.idle_scan_max_todo ?? 2,
-                          onChange: (e) => setSettingsForm({ ...settingsForm, idle_scan_max_todo: e.target.value })
-                        }),
-                        React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Suppresses scan if todo backlog >= this.")
-                      )
-                    )
-                  ),
+
                   React.createElement(
                     "div",
                     { className: "pt-2 border-t border-slate-800/80 space-y-3" },
@@ -6847,7 +6792,11 @@
                         React.createElement(
                           "span",
                           { className: "px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 font-mono text-[11px] text-indigo-300 font-medium" },
-                          "⏱️ " + (job.schedule_display || "On Idle")
+                          "⏱️ " + (
+                            (job.scan_on_idle || job.schedule_display === "every 10080m" || (job.schedule && job.schedule.minutes === 10080))
+                              ? "on idle"
+                              : (job.schedule_display || "on idle")
+                          )
                         ),
                         // Status pill
                         React.createElement(
@@ -6932,6 +6881,7 @@
                           "div",
                           { className: "flex flex-wrap gap-1.5" },
                           [
+                            ...(isScanner ? [{ label: "⚡ On Idle", kind: "idle" }] : []),
                             { label: "Every 15m", kind: "interval", minutes: 15 },
                             { label: "Every 30m", kind: "interval", minutes: 30 },
                             { label: "Every 60m", kind: "interval", minutes: 60 },
@@ -6943,9 +6893,11 @@
                           ].map((preset, pIdx) => {
                             const isSel = preset.kind === "pause_toggle"
                               ? form.enabled === false
-                              : form.enabled !== false && (preset.custom
-                                ? form.schedule_kind === preset.kind && form.is_custom_mode === preset.kind
-                                : form.schedule_kind === preset.kind && (preset.kind === "interval" ? parseInt(form.minutes, 10) === preset.minutes : form.cron_expr === preset.expr));
+                              : preset.kind === "idle"
+                                ? form.enabled !== false && form.scan_on_idle === true
+                                : form.enabled !== false && (!isScanner || form.scan_on_idle !== true) && (preset.custom
+                                  ? form.schedule_kind === preset.kind && form.is_custom_mode === preset.kind
+                                  : form.schedule_kind === preset.kind && (preset.kind === "interval" ? parseInt(form.minutes, 10) === preset.minutes : form.cron_expr === preset.expr));
                             return React.createElement(
                               "button",
                               {
@@ -6953,28 +6905,33 @@
                                 type: "button",
                                 className: "px-2.5 py-1 rounded-md text-xs font-medium border transition-colors cursor-pointer " +
                                   (isSel
-                                    ? (preset.kind === "pause_toggle" ? "bg-rose-600 text-white border-rose-500 shadow-xs" : "bg-indigo-600 text-white border-indigo-500 shadow-xs")
-                                    : (preset.kind === "pause_toggle" ? "bg-rose-950/40 text-rose-300 border-rose-900/60 hover:bg-rose-900/60" : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800")),
+                                    ? (preset.kind === "pause_toggle" ? "bg-rose-600 text-white border-rose-500 shadow-xs" : preset.kind === "idle" ? "bg-purple-600 text-white border-purple-500 shadow-xs" : "bg-indigo-600 text-white border-indigo-500 shadow-xs")
+                                    : (preset.kind === "pause_toggle" ? "bg-rose-950/40 text-rose-300 border-rose-900/60 hover:bg-rose-900/60" : preset.kind === "idle" ? "bg-purple-950/40 text-purple-300 border-purple-800/60 hover:bg-purple-500/30" : "bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800")),
                                 onClick: () => {
                                   if (preset.kind === "pause_toggle") {
                                     setCronEditForms({
                                       ...cronEditForms,
                                       [job.id]: { ...form, enabled: form.enabled === false }
                                     });
+                                  } else if (preset.kind === "idle") {
+                                    setCronEditForms({
+                                      ...cronEditForms,
+                                      [job.id]: { ...form, scan_on_idle: true, schedule_kind: "idle", is_custom_mode: null, enabled: true }
+                                    });
                                   } else if (preset.custom) {
                                     setCronEditForms({
                                       ...cronEditForms,
-                                      [job.id]: { ...form, schedule_kind: preset.kind, is_custom_mode: preset.kind, enabled: true }
+                                      [job.id]: { ...form, scan_on_idle: false, schedule_kind: preset.kind, is_custom_mode: preset.kind, enabled: true }
                                     });
                                   } else if (preset.kind === "interval") {
                                     setCronEditForms({
                                       ...cronEditForms,
-                                      [job.id]: { ...form, schedule_kind: "interval", minutes: preset.minutes, is_custom_mode: null, enabled: true }
+                                      [job.id]: { ...form, scan_on_idle: false, schedule_kind: "interval", minutes: preset.minutes, is_custom_mode: null, enabled: true }
                                     });
                                   } else {
                                     setCronEditForms({
                                       ...cronEditForms,
-                                      [job.id]: { ...form, schedule_kind: "cron", cron_expr: preset.expr, is_custom_mode: null, enabled: true }
+                                      [job.id]: { ...form, scan_on_idle: false, schedule_kind: "cron", cron_expr: preset.expr, is_custom_mode: null, enabled: true }
                                     });
                                   }
                                 }
@@ -6985,37 +6942,40 @@
                         )
                       ),
                       // Specific schedule inputs
-                      form.schedule_kind === "interval"
-                        ? React.createElement(
-                          "div",
-                          { className: "space-y-1" },
-                          React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Interval (Minutes)"),
-                          React.createElement("input", {
-                            type: "number",
-                            min: 1,
-                            max: 10080,
-                            className: "w-full max-w-xs bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
-                            value: form.minutes || 60,
-                            onChange: (e) => setCronEditForms({
-                              ...cronEditForms,
-                              [job.id]: { ...form, minutes: e.target.value }
+                      (isScanner && form.scan_on_idle === true)
+                        ? null
+                        : (form.schedule_kind === "interval"
+                          ? React.createElement(
+                            "div",
+                            { className: "space-y-1" },
+                            React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Interval (Minutes)"),
+                            React.createElement("input", {
+                              type: "number",
+                              min: 1,
+                              max: 10080,
+                              className: "w-full max-w-xs bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                              value: form.minutes || 60,
+                              onChange: (e) => setCronEditForms({
+                                ...cronEditForms,
+                                [job.id]: { ...form, minutes: e.target.value }
+                              })
                             })
-                          })
-                        )
-                        : React.createElement(
-                          "div",
-                          { className: "space-y-1" },
-                          React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Standard Cron Expression (minute hour dom month dow)"),
-                          React.createElement("input", {
-                            type: "text",
-                            placeholder: "e.g. 0 9 * * *",
-                            className: "w-full max-w-xs bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500",
-                            value: form.cron_expr || "0 9 * * *",
-                            onChange: (e) => setCronEditForms({
-                              ...cronEditForms,
-                              [job.id]: { ...form, cron_expr: e.target.value }
+                          )
+                          : React.createElement(
+                            "div",
+                            { className: "space-y-1" },
+                            React.createElement("label", { className: "block text-xs font-medium text-slate-400" }, "Standard Cron Expression (minute hour dom month dow)"),
+                            React.createElement("input", {
+                              type: "text",
+                              placeholder: "e.g. 0 9 * * *",
+                              className: "w-full max-w-xs bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-indigo-500",
+                              value: form.cron_expr || "0 9 * * *",
+                              onChange: (e) => setCronEditForms({
+                                ...cronEditForms,
+                                [job.id]: { ...form, cron_expr: e.target.value }
+                              })
                             })
-                          })
+                          )
                         ),
                       // Model override & Workdir
                       React.createElement(
@@ -7076,6 +7036,68 @@
                             })
                           },
                           form.enabled !== false ? "✓ Scheduled (Active)" : "⏸ Paused (Disabled)"
+                        )
+                      ),
+                      // Capacity-Driven Idle Scanning (only for improvement scanner jobs)
+                      isScanner && React.createElement(
+                        "div",
+                        { className: "p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3" },
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center justify-between" },
+                          React.createElement(
+                            "div",
+                            null,
+                            React.createElement("label", { className: "block text-xs font-semibold text-purple-300" }, "⚡ Capacity-Driven Idle Scanning"),
+                            React.createElement("p", { className: "text-[11px] text-slate-400 m-0" }, "Autonomously scan codebase when running agent workers are below board capacity.")
+                          ),
+                          React.createElement("input", {
+                            type: "checkbox",
+                            className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                            checked: Boolean(form.scan_on_idle !== false),
+                            onChange: (e) => setCronEditForms({
+                              ...cronEditForms,
+                              [job.id]: {
+                                ...form,
+                                scan_on_idle: e.target.checked,
+                                schedule_kind: e.target.checked ? "idle" : (form.schedule_kind === "idle" ? "interval" : form.schedule_kind)
+                              }
+                            })
+                          })
+                        ),
+                        form.scan_on_idle !== false && React.createElement(
+                          "div",
+                          { className: "grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-800/80" },
+                            React.createElement("div", { className: "space-y-1" },
+                              React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Cooldown (Minutes)"),
+                              React.createElement("input", {
+                                type: "number",
+                                min: 1,
+                                step: 1,
+                                className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                                value: form.idle_scan_cooldown_minutes ?? 15,
+                                onChange: (e) => setCronEditForms({
+                                  ...cronEditForms,
+                                  [job.id]: { ...form, idle_scan_cooldown_minutes: e.target.value }
+                                })
+                              }),
+                              React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Minimum interval between scans.")
+                            ),
+                            React.createElement("div", { className: "space-y-1" },
+                              React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Max Todo Limit"),
+                              React.createElement("input", {
+                                type: "number",
+                                min: 0,
+                                step: 1,
+                                className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500",
+                                value: form.idle_scan_max_todo ?? 2,
+                              onChange: (e) => setCronEditForms({
+                                ...cronEditForms,
+                                [job.id]: { ...form, idle_scan_max_todo: e.target.value }
+                              })
+                            }),
+                            React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Suppresses scan if todo backlog >= this.")
+                          )
                         )
                       ),
                       // Prompt Editor

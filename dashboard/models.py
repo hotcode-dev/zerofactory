@@ -179,6 +179,9 @@ class CronJobUpdate(BaseModel):
     no_agent: bool | None = None
     context_from: str | list[str] | None = None
     continuity: bool | None = None
+    scan_on_idle: bool | None = None
+    idle_scan_cooldown_minutes: int | None = None
+    idle_scan_max_todo: int | None = None
 
 
 class CronToggleRequest(BaseModel):
@@ -195,25 +198,6 @@ class SettingsUpdate(BaseModel):
         default=None,
         ge=1,
         description="Max concurrent task and scanner LLM workers across all boards",
-    )
-    scan_on_idle: bool | None = Field(
-        default=None,
-        description="Automatically trigger improvement scans when active workers are below threshold",
-    )
-    idle_scan_active_threshold: int | None = Field(
-        default=None,
-        ge=1,
-        description="Max active running workers on a board to trigger idle scan",
-    )
-    idle_scan_cooldown_minutes: int | None = Field(
-        default=None,
-        ge=1,
-        description="Minimum cooldown in minutes between idle improvement scans per board",
-    )
-    idle_scan_max_todo: int | None = Field(
-        default=None,
-        ge=0,
-        description="Max todo backlog tasks on board before suppressing idle scan",
     )
     activity_retention_days: int | None = Field(
         default=None,

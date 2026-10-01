@@ -7,6 +7,7 @@ from dashboard.models import (
     MEMORY_CONTENT_MAX_LENGTH,
     VALID_STATUSES,
     BoardCreate,
+    CronJobUpdate,
     MemoryCreate,
     SettingsUpdate,
     TaskCreate,
@@ -91,3 +92,18 @@ def test_settings_update_fields():
     )
     assert s.max_active_tasks == 5
     assert s.enable_cron_scheduler is False
+
+
+def test_cron_job_update_fields():
+    """CronJobUpdate allows idle scanning configuration."""
+    c = CronJobUpdate(
+        scan_on_idle=True,
+        idle_scan_cooldown_minutes=20,
+        idle_scan_max_todo=4,
+        minutes=10080,
+    )
+    assert c.scan_on_idle is True
+    assert c.idle_scan_cooldown_minutes == 20
+    assert c.idle_scan_max_todo == 4
+    assert c.minutes == 10080
+
