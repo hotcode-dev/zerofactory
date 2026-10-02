@@ -418,7 +418,7 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
             "category": "openwiki",
             "enabled_toolsets": ["terminal", "file", "web"],
             "workdir": workdir,
-            "profile": "zf-builder",
+            "profile": "zf-orchestrator",
         }
 
     BUILTIN_CRON_JOBS.clear()

@@ -227,6 +227,88 @@ class TestAutomationScriptsE2E(unittest.TestCase):
         self.assertIn("Tasks Completed in Last 24h", out)
         self.assertIn("Active Blockers (1 tasks)", out)
 
+    def test_04_openwiki_gate_suppression_and_wake(self):
+        """zf_openwiki_gate: missing openwiki/ or dirty tree or unchanged repo suppresses; new commits wake agent."""
+        wiki_repo = Path(self.td) / "wiki_repo"
+        wiki_repo.mkdir()
+        subprocess.run(
+            ["git", "init", "-b", "main"],
+            cwd=str(wiki_repo),
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Wiki E2E"],
+            cwd=str(wiki_repo),
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "wiki@zerofactory.ai"],
+            cwd=str(wiki_repo),
+            check=True,
+        )
+        (wiki_repo / "README.md").write_text("# Wiki Repo\n")
+        subprocess.run(["git", "add", "."], cwd=str(wiki_repo), check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "chore: initial commit"],
+            cwd=str(wiki_repo),
+            check=True,
+        )
+
+        create_board(BoardCreate(git_url=str(wiki_repo)))
+
+        # 1. Missing openwiki/ dir: suppresses with wakeAgent: false
+        rc1, out1 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
+        self.assertEqual(rc1, 0)
+        self.assertIn("OpenWiki not initialized", out1)
+        self.assertIn('"wakeagent": false', out1.lower())
+
+        # 2. Add openwiki/ dir with docs and commit
+        (wiki_repo / "openwiki").mkdir()
+        (wiki_repo / "openwiki" / "architecture.md").write_text("# Arch\n")
+        subprocess.run(["git", "add", "."], cwd=str(wiki_repo), check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "docs(openwiki): initialize architecture"],
+            cwd=str(wiki_repo),
+            check=True,
+        )
+
+        # 3. Clean repo with no non-openwiki changes: suppresses with wakeAgent: false
+        rc2, out2 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
+        self.assertEqual(rc2, 0)
+        self.assertIn('"wakeagent": false', out2.lower())
+        self.assertIn("OpenWiki is up to date", out2)
+
+        # 4. Dirty working tree: suppresses with wakeAgent: false
+        (wiki_repo / "uncommitted.txt").write_text("wip\n")
+        rc3, out3 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
+        self.assertEqual(rc3, 0)
+        self.assertIn("has uncommitted changes", out3)
+        self.assertIn('"wakeagent": false', out3.lower())
+
+        # Remove uncommitted file
+        (wiki_repo / "uncommitted.txt").unlink()
+
+        # 5. Add new non-openwiki code commit: wakes agent with wakeAgent: true
+        (wiki_repo / "app.py").write_text("def run(): pass\n")
+        subprocess.run(["git", "add", "."], cwd=str(wiki_repo), check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "feat: core app runner"],
+            cwd=str(wiki_repo),
+            check=True,
+        )
+
+        rc4, out4 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
+        self.assertEqual(rc4, 0)
+        self.assertIn("branch update(s)", out4)
+        self.assertIn('"wakeagent": true', out4.lower())
+
+        # 6. Run again without new changes: suppresses with wakeAgent: false
+        rc5, out5 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
+        self.assertEqual(rc5, 0)
+        self.assertIn('"wakeagent": false', out5.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
+

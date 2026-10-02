@@ -139,7 +139,7 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                         builtin_cron.get_db_path = orig_bc
 
     def test_openwiki_update_job_schema(self):
-        """Dynamic OpenWiki update job is generated with daily schedule, zf_openwiki_gate.py, and zf-builder."""
+        """Dynamic OpenWiki update job is generated with daily schedule, zf_openwiki_gate.py, and zf-orchestrator."""
         with tempfile.TemporaryDirectory() as td:
             db_file = Path(td) / "test.db"
             with sqlite3.connect(str(db_file)) as conn:
@@ -161,7 +161,7 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                     job = jobs.get("zero-factory-openwiki-update-test-board")
                     self.assertIsNotNone(job)
                     self.assertEqual(job["script"], "zf_openwiki_gate.py")
-                    self.assertEqual(job["profile"], "zf-builder")
+                    self.assertEqual(job["profile"], "zf-orchestrator")
                     self.assertEqual(job["schedule"]["kind"], "interval")
                     self.assertEqual(job["schedule"]["minutes"], 1440)
                     self.assertEqual(job["schedule_display"], "daily")

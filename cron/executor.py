@@ -87,6 +87,8 @@ def trigger_builtin_job(job_id: str) -> dict[str, Any]:
     try:
         job_def = current_builtin_jobs.get(target_job_id) or {}
         profile = job_def.get("profile") or "zf-orchestrator"
+        if target_job_id.startswith("zero-factory-"):
+            profile = "zf-orchestrator"
 
         log_dir = Path.home() / ".hermes" / "logs"
         try:

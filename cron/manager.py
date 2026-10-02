@@ -212,6 +212,12 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
                         if field == "schedule":
                             schedule_updated = True
 
+                # Profile must always match canonical profile (zf-orchestrator)
+                canonical_profile = builtin_def.get("profile", "zf-orchestrator")
+                if curr.get("profile") != canonical_profile:
+                    curr["profile"] = canonical_profile
+                    changed = True
+
                 # Re-activate any scanner job that was retired as a one-shot completed job (only if scheduler enabled)
                 # Note: NEVER re-activate "paused" jobs here — if a job is paused, it was disabled by configuration or user.
                 if (
