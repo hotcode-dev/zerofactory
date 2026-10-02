@@ -2,6 +2,10 @@
 
 A 24/7 AI multi-agent orchestration system built as a native **Hermes Agent Plugin**. Three specialized agents form an autonomous software factory — from goal decomposition to implementation, testing, and continuous code review.
 
+> [!WARNING]
+> **Active Beta & High-Frequency Changes**  
+> Zero Factory is currently in **active beta** and subject to **high-frequency changes**. APIs, CLI commands, agent prompt templates, and internal orchestration mechanics evolve rapidly. Please keep your installation up to date and check the repository regularly for updates.
+
 ```mermaid
 graph TD
     classDef kanban fill:#f9d0c4,stroke:#333,stroke-width:2px,color:#000;
@@ -91,6 +95,7 @@ hermes zerofactory list                           # List all tasks
 hermes zerofactory list --status running          # Filter tasks by status
 hermes zerofactory list --assignee zf-builder     # Filter tasks by assignee
 hermes zerofactory create "Implement Feature X"   # Create a new ticket
+hermes zerofactory import-gh-issue 42             # Deterministically import GitHub issue #42
 hermes zerofactory move <task_id> running          # Transition task status
 hermes zerofactory block <task_id> --reason "..." # Block a task
 hermes zerofactory comment <task_id> "Note..."    # Post a comment to a ticket

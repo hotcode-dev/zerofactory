@@ -173,6 +173,11 @@ try:
 except ImportError:
     from profile_manager import ZF_PROFILES, ensure_zf_profiles  # type: ignore
 
+try:
+    from .issues import GitHubIssueClient, import_external_issue
+except ImportError:
+    from issues import GitHubIssueClient, import_external_issue  # type: ignore
+
 
 def register(ctx: Any):
     """Register plugin CLI commands, profiles bootstrap, and lifecycle hooks with Hermes."""
@@ -273,6 +278,48 @@ def register(ctx: Any):
             "--actor",
             default=None,
             help="Actor creating the task (defaults to HERMES_PROFILE or 'user')",
+        )
+
+        # import-gh-issue
+        p_import_gh = subparsers.add_parser(
+            "import-gh-issue",
+            help="Import a GitHub issue into Zero Factory Kanban deterministically",
+        )
+        p_import_gh.add_argument(
+            "issue",
+            help="GitHub issue number (e.g. 42, #42), URL (https://github.com/owner/repo/issues/42), or owner/repo#42",
+        )
+        p_import_gh.add_argument(
+            "--repo",
+            default=None,
+            help="GitHub repository (owner/repo). Inferred from board git_url or git remote if omitted.",
+        )
+        p_import_gh.add_argument(
+            "--board",
+            default=None,
+            help="Target board slug. Inferred from repository if omitted.",
+        )
+        p_import_gh.add_argument(
+            "--status",
+            default="triage",
+            choices=["triage", "todo", "running", "blocked", "done"],
+            help="Initial Kanban column (default: triage)",
+        )
+        p_import_gh.add_argument(
+            "--priority",
+            default=None,
+            choices=["P0", "P1", "P2", "P3"],
+            help="Priority override (inferred deterministically from issue labels if omitted)",
+        )
+        p_import_gh.add_argument(
+            "--assignee",
+            default="unassigned",
+            help="Assignee (default: unassigned)",
+        )
+        p_import_gh.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing import (defaults to HERMES_PROFILE or 'user')",
         )
 
         # move
@@ -553,6 +600,45 @@ def register(ctx: Any):
                 )
             else:
                 print(f"Created task {res['id']}: {args.title}")
+
+        elif action == "import-gh-issue":
+            client = GitHubIssueClient(default_repo=getattr(args, "repo", None))
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            try:
+                issue = client.fetch_issue(
+                    args.issue, repo=getattr(args, "repo", None)
+                )
+                res = import_external_issue(
+                    issue=issue,
+                    board_slug=getattr(args, "board", None),
+                    status=getattr(args, "status", "triage"),
+                    priority=getattr(args, "priority", None),
+                    assignee=getattr(args, "assignee", "unassigned"),
+                    actor=actor,
+                )
+                if res.get("duplicate"):
+                    print(
+                        f"\n[Duplicate Skipped] {res.get('message', 'Task already exists')}"
+                    )
+                    print(f"  Task ID:  {res['id']}")
+                    print(f"  Issue:    {res['issue_key']} ({res['issue_url']})\n")
+                else:
+                    print(f"\n✓ Successfully imported GitHub issue {res['issue_key']}")
+                    print(f"  Task ID:  {res['id']}")
+                    print(f"  Board:    {res['board_slug']}")
+                    print(f"  Status:   {res['status']}")
+                    print(f"  Priority: {res['priority']}")
+                    print(f"  Title:    {res['title']}")
+                    if res.get("issue_url"):
+                        print(f"  URL:      {res['issue_url']}")
+                    print()
+            except Exception as e:
+                print(f"\nError importing GitHub issue '{args.issue}': {e}\n", file=sys.stderr)
+                sys.exit(1)
 
         elif action == "move":
             actor = (

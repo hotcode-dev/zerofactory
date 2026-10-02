@@ -267,8 +267,19 @@ def create_task(req: TaskCreate):
             row = cursor.fetchone()
             board_slug = row[0] if row else ""
 
-        task_id = generate_task_id(board_slug)
+        task_id = req.task_id or generate_task_id(board_slug)
         branch_name = req.branch_name or f"task/{task_id}"
+
+        if req.task_id:
+            cursor.execute("SELECT id, title, status FROM tasks WHERE id = ?", (req.task_id,))
+            existing_row = cursor.fetchone()
+            if existing_row:
+                return {
+                    "ok": True,
+                    "id": existing_row["id"],
+                    "duplicate": True,
+                    "message": f"Task already exists ({existing_row['id']}) in status '{existing_row['status']}': {existing_row['title']}",
+                }
 
         dedup_key = req.dedup_key or compute_dedup_key(req.files, req.category)
         cursor.execute(
@@ -305,6 +316,8 @@ def create_task(req: TaskCreate):
                 }
 
         meta: dict[str, Any] = {}
+        if req.metadata:
+            meta.update(req.metadata)
         if dedup_key:
             meta["dedup_key"] = dedup_key
         if req.files:

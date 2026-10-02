@@ -22,6 +22,10 @@ generated: { by: "hermes", at: "2026-10-01T13:01:50.039Z" }
 
 # Quickstart
 
+> [!WARNING]
+> **Active Beta & High-Frequency Changes**  
+> Zero Factory is currently in **active beta** and subject to **high-frequency changes**. APIs, CLI commands, agent prompt templates, and internal orchestration mechanics evolve rapidly. Please keep your installation up to date.
+
 This is the canonical entry point to the Zero Factory knowledge base. Use it to
 get the factory running and to navigate to the deeper pages. The architecture
 lives in [Architecture](/openwiki/architecture.md); the moving parts in

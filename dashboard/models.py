@@ -130,6 +130,8 @@ class TaskCreate(BaseModel):
     category: str | None = "bug-fix"
     dedup_key: str | None = None
     actor: str | None = None
+    task_id: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class TaskUpdate(BaseModel):

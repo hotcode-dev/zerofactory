@@ -3974,6 +3974,7 @@
               React.createElement(
                 "div",
                 { className: "flex items-center gap-2.5 flex-wrap" },
+                React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-950/80 text-amber-300 border border-amber-600/70 font-mono shadow-xs" }, "⚡ Active Beta"),
                 React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 text-indigo-100 border border-indigo-500/60 font-mono shadow-xs" }, "Hermes Plugin"),
                 React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-900/80 text-emerald-100 border border-emerald-500/60 font-mono shadow-xs" }, "Zero-Token Idle Watchdogs"),
                 React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/80 text-purple-100 border border-purple-500/60 font-mono shadow-xs" }, "Thematic Review")
@@ -3994,6 +3995,19 @@
                 "📋 Return to Kanban Board"
               )
             )
+          )
+        ),
+
+        // Beta Notice & High-Frequency Change Warning Banner
+        React.createElement(
+          "div",
+          { className: "flex items-start gap-3.5 p-4 md:p-6 rounded-2xl bg-amber-950/40 border border-amber-600/70 text-amber-200 text-xs md:text-sm leading-relaxed shadow-lg" },
+          React.createElement("span", { className: "text-2xl shrink-0 select-none mt-0.5" }, "⚠️"),
+          React.createElement(
+            "div",
+            { className: "space-y-1" },
+            React.createElement("p", { className: "font-bold text-amber-200 text-sm m-0 flex items-center gap-2" }, "Beta Notice & High-Frequency Changes"),
+            React.createElement("p", { className: "text-amber-300 text-xs md:text-sm m-0 leading-normal" }, "Zero Factory is currently in active beta and undergoing rapid evolution with high-frequency changes. APIs, CLI flags, configuration schemas, agent prompt templates, and internal orchestration mechanics evolve frequently. Please keep your plugin updated regularly.")
           )
         ),
 

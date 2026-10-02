@@ -1277,8 +1277,17 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         pr_title = _disp.ai_prefix(
                                             subject, role=assignee or "zf-builder"
                                         )
+                                        ext_issue = (meta or {}).get("external_issue") or {}
+                                        issue_ref = ""
+                                        if ext_issue.get("source") == "github" and ext_issue.get("id"):
+                                            issue_ref = f"\n\nFixes #{ext_issue['id']}"
+                                        elif ext_issue.get("source") == "jira" and ext_issue.get("key"):
+                                            j_key = ext_issue["key"]
+                                            j_url = ext_issue.get("url")
+                                            issue_ref = f"\n\nResolves: [{j_key}]({j_url})" if j_url else f"\n\nResolves: {j_key}"
+
                                         pr_body = _disp.ai_prefix(
-                                            f"{commit_body}\n\nAutomated PR for task {task_id}\n\nCompleted by: @{assignee}",
+                                            f"{commit_body}\n\nAutomated PR for task {task_id}{issue_ref}\n\nCompleted by: @{assignee}",
                                             role=assignee or "zf-builder",
                                         )
                                         pr_cmd = [
