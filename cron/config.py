@@ -18,7 +18,8 @@ _log = logging.getLogger("zerofactory.cron")
 DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
 
 # Bounded synchronous wait for `hermes cron run` triggered via trigger_builtin_job.
-CRON_RUN_TIMEOUT = 300
+# Default to 900s (15m) to accommodate multi-step local LLM agent execution (scanners and openwiki doc sync).
+CRON_RUN_TIMEOUT = int(os.environ.get("ZEROFACTORY_CRON_RUN_TIMEOUT", "900"))
 CRON_RUN_OUTPUT_TAIL_CHARS = 2048
 
 # Registry tracking active on-demand cron-run child processes keyed by job_id:
