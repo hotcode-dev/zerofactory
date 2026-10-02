@@ -40,15 +40,17 @@ class TestCronDefinitionsUnit(unittest.TestCase):
         self.assertIn("Fingerprint Safeguard", prompt)
 
     def test_build_board_openwiki_prompt(self):
-        """Prompt contains board slug, openwiki instructions, and commit steps."""
+        """Prompt contains board slug, pre-flight check, and task creation for zf-builder."""
         board = {"slug": "my-service", "description": "Backend API"}
         prompt = build_board_openwiki_prompt(board, workdir="/tmp/repo")
         self.assertIn("my-service", prompt)
         self.assertIn("/tmp/repo", prompt)
+        self.assertIn("hermes zerofactory list", prompt)
+        self.assertIn("hermes zerofactory create", prompt)
+        self.assertIn("zf-builder", prompt)
+        self.assertIn("todo", prompt)
         self.assertIn("openwiki_begin", prompt)
         self.assertIn("openwiki_finish", prompt)
-        self.assertIn("OpenWiki MCP Server", prompt)
-        self.assertIn("git add openwiki/", prompt)
 
     def test_resolve_board_repo_path_http_and_ssh(self):
         """resolve_board_repo_path handles HTTP, SSH, and description fallbacks."""

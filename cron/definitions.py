@@ -94,42 +94,40 @@ def build_board_openwiki_prompt(board: dict[str, Any], workdir: str | None) -> s
     slug = board.get("slug") or "default"
     workdir_desc = f"`{workdir}`" if workdir else "the repository root"
 
-    return f"""Update the OpenWiki architecture documentation (`openwiki/`) for the '{slug}' board to reflect recent merged changes using the OpenWiki MCP lifecycle.
+    return f"""Synchronize the OpenWiki architecture documentation (`openwiki/`) for the '{slug}' board with recent merged changes.
 
 ## Context:
 - Target Board: `{slug}`
 - Repository Root: {workdir_desc}
 
-## STEP 1: Inspect Recent Changes
+## STEP 1: Pre-Flight Board Check (CRITICAL)
+Before inspecting files or creating tasks, review existing tasks on the board:
+Run: `hermes zerofactory list --board "{slug}"`
+1. Check all open tasks in `todo`, `ready`, `running`, `blocked`, or `triage`.
+2. If an OpenWiki update or setup task already exists (e.g., title containing 'OpenWiki' or 'openwiki'):
+   STOP immediately and report:
+   "An active OpenWiki task is already queued or in progress on board '{slug}'. Skipping task creation."
+   DO NOT create a duplicate task. Finish the run cleanly.
+
+## STEP 2: Inspect Recent Changes
 1. Check recent commits on the default branch:
    Run: `git log -n 5 --oneline`
-2. Note any newly introduced modules, public functions, configuration keys, or major architectural shifts.
+2. Identify recent modules, features, public APIs, or architectural changes that need documentation.
 
-## STEP 2: Update Documentation via OpenWiki MCP Server (Code Mode)
-Use the pre-configured `openwiki` MCP server lifecycle tools (do NOT use the openwiki CLI):
-1. **Begin Update**:
-   Call `openwiki_begin({{"root": ".", "mode": "update"}})`
-   If it returns `status: "noop"`, the documentation is already up to date; proceed to summary.
-2. **Page Loop**:
-   Repeatedly call `openwiki_next_page`. For each assigned page job:
-   - Review the diffs relevant to that topic.
-   - Update the Markdown page content with valid OKF frontmatter (`type`, `title`, `description`, `tags`).
-   - Call `openwiki_submit_page` with your page decisions.
-3. **Finish Run**:
-   When `openwiki_next_page` returns `status: "complete"`, call `openwiki_finish`. This finalizes the run, updates `.page-manifest.json`, stamps `.last-update.json`, and links `AGENTS.md`.
+## STEP 3: Create Task in Kanban Board for zf-builder
+If no active OpenWiki task exists and recent commits require documentation updates:
+Create a task on the board for `zf-builder`:
+`hermes zerofactory create "docs(openwiki): sync architecture documentation with recent changes" --board "{slug}" --category "documentation" --priority P2 --status todo --assignee zf-builder --description "Sync OpenWiki architecture documentation (openwiki/) with recent commits on the default branch.\n\nKey Recent Commits:\n- Review git log since last OpenWiki commit.\n\nInstructions for zf-builder:\n1. Inspect recent commits and identify changes to public interfaces and architecture.\n2. Use the openwiki MCP server lifecycle tools (openwiki_begin, openwiki_next_page, openwiki_submit_page, openwiki_finish) to update relevant markdown pages.\n3. Verify openwiki/ documentation and .page-manifest.json are clean and valid.\n4. Commit documentation changes with 'git add openwiki/ AGENTS.md && git commit -m \\\"docs(openwiki): sync architecture documentation with recent changes\\\"'."`
 
-## STEP 3: Clean up & Commit
-1. Verify `openwiki/` documentation and `openwiki/.page-manifest.json` are clean and properly updated.
-2. If OpenWiki created `.github/workflows/openwiki-update.yml` or `CLAUDE.md`, remove them:
-   `rm -rf .github/workflows/openwiki-update.yml CLAUDE.md`
-3. Stage and commit updated documentation directly on the default branch:
-   `git add openwiki/ AGENTS.md`
-   `git commit -m "docs(openwiki): sync architecture documentation with recent changes"`
-   `git push origin HEAD 2>/dev/null || true`
+## STEP 4: Deliver to user
+Provide a brief summary confirming that the task has been created in the Todo column for `zf-builder` (or that an existing task was detected and duplicate creation was skipped).
 
-## STEP 4: Summary
-Provide a brief summary of the documentation changes synchronized via the OpenWiki MCP server.
-"""
+## IMPORTANT:
+- DO NOT use native kanban_* tools. Use exclusively 'hermes zerofactory create ...' and 'hermes zerofactory list ...'.
+- DO NOT create more than 1 task per run.
+- Do NOT directly perform the full documentation rewrite in this orchestrator cron run; create the task for zf-builder in `todo` status so the dispatcher provisions the worker.
+- End the run after delivery."""
+
 
 
 def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:

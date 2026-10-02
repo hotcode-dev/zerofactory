@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -142,3 +143,92 @@ class TestOpenWikiGate(unittest.TestCase):
             # Verify updated state file
             saved = json.loads(self.state_file.read_text(encoding="utf-8"))
             self.assertEqual(saved["test-board"]["last_scanned_sha"], "new67890")
+
+    def test_active_task_in_todo_suppresses_wake(self):
+        (self.tmp / ".git").mkdir()
+        (self.tmp / "openwiki").mkdir()
+        db_file = self.tmp / "zerofactory.db"
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute(
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, status TEXT, created_at REAL)"
+            )
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, created_at) VALUES ('task-1', 'test-board', 'docs(openwiki): sync architecture documentation', 'todo', 100)"
+            )
+            conn.commit()
+
+        with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}):
+            wake, reason = self.gate.check_openwiki_gate(
+                self.tmp, board_slug="test-board"
+            )
+            self.assertFalse(wake)
+            self.assertIn("already has an active OpenWiki task 'task-1'", reason)
+            self.assertIn("status 'todo'", reason)
+
+    def test_active_task_in_running_and_blocked_suppresses_wake(self):
+        (self.tmp / ".git").mkdir()
+        (self.tmp / "openwiki").mkdir()
+        db_file = self.tmp / "zerofactory.db"
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute(
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, status TEXT, created_at REAL)"
+            )
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, created_at) VALUES ('task-run', 'test-board', 'docs(openwiki): sync architecture documentation', 'running', 100)"
+            )
+            conn.commit()
+
+        with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}):
+            wake, reason = self.gate.check_openwiki_gate(
+                self.tmp, board_slug="test-board"
+            )
+            self.assertFalse(wake)
+            self.assertIn("status 'running'", reason)
+
+            # Change to blocked
+            with sqlite3.connect(str(db_file)) as conn:
+                conn.execute("UPDATE tasks SET status = 'blocked' WHERE id = 'task-run'")
+                conn.commit()
+
+            wake, reason = self.gate.check_openwiki_gate(
+                self.tmp, board_slug="test-board"
+            )
+            self.assertFalse(wake)
+            self.assertIn("status 'blocked'", reason)
+
+    def test_completed_task_in_done_allows_wake_on_new_commits(self):
+        (self.tmp / ".git").mkdir()
+        (self.tmp / "openwiki").mkdir()
+        db_file = self.tmp / "zerofactory.db"
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute(
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, status TEXT, created_at REAL)"
+            )
+            conn.execute(
+                "INSERT INTO tasks (id, board_slug, title, status, created_at) VALUES ('task-done', 'test-board', 'docs(openwiki): sync architecture documentation', 'done', 100)"
+            )
+            conn.commit()
+
+        self.state_file.write_text(
+            json.dumps({"test-board": {"last_scanned_sha": "old12345"}}),
+            encoding="utf-8",
+        )
+        with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}):
+            with patch.object(self.gate, "_run_cmd") as mock_cmd:
+
+                def _fake_run(cmd, cwd=None):
+                    if "status" in cmd:
+                        return ""
+                    if "rev-parse" in cmd:
+                        return "new67890"
+                    if "log" in cmd and ":(exclude)openwiki" in cmd:
+                        return "new67890 feat: new feature"
+                    return ""
+
+                mock_cmd.side_effect = _fake_run
+                wake, reason = self.gate.check_openwiki_gate(
+                    self.tmp, board_slug="test-board"
+                )
+                self.assertTrue(wake)
+                self.assertIn("Detected 1 branch update(s)", reason)
+

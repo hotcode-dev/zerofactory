@@ -99,6 +99,36 @@ def resolve_board_slug(repo_dir: Path) -> str:
     return repo_dir.name
 
 
+def has_active_openwiki_task(board_slug: str) -> tuple[bool, str]:
+    """Check if an OpenWiki setup or update task is already active on the board."""
+    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    if not db_path.exists():
+        return False, ""
+    try:
+        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, title, status FROM tasks
+                WHERE board_slug = ?
+                  AND status IN ('todo', 'ready', 'running', 'blocked', 'triage')
+                  AND LOWER(title) LIKE '%openwiki%'
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (board_slug,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return (
+                    True,
+                    f"Board '{board_slug}' already has an active OpenWiki task '{row['id']}' ({row['title']}) in status '{row['status']}'; skipping.",
+                )
+    except Exception:
+        pass
+    return False, ""
+
+
 def check_openwiki_gate(
     repo_dir: Path, board_slug: str | None = None
 ) -> tuple[bool, str]:
@@ -127,10 +157,16 @@ def check_openwiki_gate(
             f"OpenWiki not initialized for board '{slug}' (no openwiki/ directory found); skipping.",
         )
 
+    # 4. Check if active OpenWiki task already exists on the board (TODO, Running, Blocked, Ready, Triage)
+    if not force_update:
+        has_active, active_reason = has_active_openwiki_task(slug)
+        if has_active:
+            return False, active_reason
+
     if force_update:
         return True, f"Force update requested for board '{slug}'."
 
-    # 4. Check git working tree cleanliness
+    # 5. Check git working tree cleanliness
     status_porcelain = _run_cmd(["git", "status", "--porcelain"], cwd=repo_dir)
     if status_porcelain:
         return (
