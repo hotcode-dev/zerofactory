@@ -98,6 +98,9 @@
       auto_record_memory: true
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
+    const [syncProfilesResult, setSyncProfilesResult] = useState(null);
+    const [syncForce, setSyncForce] = useState(false);
     const [isTestingLangfuse, setIsTestingLangfuse] = useState(false);
     const [langfuseTestResult, setLangfuseTestResult] = useState(null);
     const [showLangfuseSecret, setShowLangfuseSecret] = useState(false);
@@ -298,6 +301,40 @@
         setLangfuseTestResult({ ok: false, message: err.message || String(err) });
       } finally {
         setIsTestingLangfuse(false);
+      }
+    };
+
+    const handleSyncProfiles = async () => {
+      setIsSyncingProfiles(true);
+      setSyncProfilesResult(null);
+      try {
+        const queryParams = syncForce ? "?force=true" : "";
+        const res = await fetchJSON(API_BASE + "/settings/profiles/sync" + queryParams, {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          const detail = res.result;
+          let msg = res.message || "Profiles synced successfully!";
+          if (detail) {
+            const parts = [];
+            if (detail.updated && detail.updated.length) parts.push("Updated: " + detail.updated.join(", "));
+            if (detail.created && detail.created.length) parts.push("Created: " + detail.created.join(", "));
+            if (detail.existing && detail.existing.length) parts.push("Verified: " + detail.existing.join(", "));
+            if (parts.length) msg = parts.join(" | ");
+          }
+          setSyncProfilesResult({ ok: true, message: msg });
+          showToast("Agent profiles synchronized successfully!", "success");
+        } else {
+          const errMsg = (res && res.error) || "Failed to sync profiles";
+          setSyncProfilesResult({ ok: false, message: errMsg });
+          showToast(errMsg, "error");
+        }
+      } catch (err) {
+        const errMsg = err.message || String(err);
+        setSyncProfilesResult({ ok: false, message: errMsg });
+        showToast("Error syncing profiles: " + errMsg, "error");
+      } finally {
+        setIsSyncingProfiles(false);
       }
     };
 
@@ -6414,6 +6451,73 @@
                       )
                     )
                   ),
+
+                  // Agent Profiles Sync Section (Equivalent to `hermes zerofactory sync-profiles`)
+                  React.createElement(
+                    "div",
+                    { className: "pt-2 border-t border-slate-800/80 space-y-3" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-start justify-between gap-3" },
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-1.5" },
+                          React.createElement("span", { className: "text-sm" }, "🤖"),
+                          React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Agent Profiles & Skills")
+                        ),
+                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Synchronize SOUL.md system prompts, skills, and templates across zf-orchestrator, zf-builder, and zf-reviewer in ~/.hermes/profiles/.")
+                      ),
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          disabled: isSyncingProfiles,
+                          onClick: handleSyncProfiles,
+                          className: "px-3 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-600 text-white font-medium text-xs border border-indigo-500/30 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shrink-0 shadow-xs shadow-indigo-600/20"
+                        },
+                        isSyncingProfiles ? React.createElement(
+                          "span",
+                          { className: "animate-spin text-xs inline-block" },
+                          "⏳"
+                        ) : React.createElement("span", { className: "text-xs" }, "🔄"),
+                        isSyncingProfiles ? "Syncing..." : "Sync Profiles"
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between text-[11px] text-slate-400 pt-0.5" },
+                      React.createElement(
+                        "label",
+                        { className: "flex items-center gap-1.5 cursor-pointer hover:text-slate-300 transition-colors" },
+                        React.createElement("input", {
+                          type: "checkbox",
+                          className: "h-3.5 w-3.5 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                          checked: Boolean(syncForce),
+                          onChange: (e) => setSyncForce(e.target.checked)
+                        }),
+                        React.createElement("span", null, "Force overwrite config.yaml with defaults")
+                      ),
+                      React.createElement(
+                        "span",
+                        { className: "text-[10px] text-slate-500 font-mono" },
+                        "hermes zerofactory sync-profiles"
+                      )
+                    ),
+                    syncProfilesResult && React.createElement(
+                      "div",
+                      {
+                        className: `text-[11px] px-2.5 py-1.5 rounded border ${syncProfilesResult.ok
+                          ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                          : "bg-rose-950/40 border-rose-800/60 text-rose-300"
+                          }`
+                      },
+                      (syncProfilesResult.ok ? "✓ " : "✕ ") + syncProfilesResult.message
+                    )
+                  ),
+
                   React.createElement(
                     "div",
                     { className: "pt-2 border-t border-slate-800/80 space-y-3" },

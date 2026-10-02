@@ -25,11 +25,12 @@ except (ImportError, ValueError):
     from settings import load_settings  # type: ignore
 
 try:
-    from ...profile_manager import sync_langfuse_profiles  # type: ignore
+    from ...profile_manager import ensure_zf_profiles, sync_langfuse_profiles  # type: ignore
 except (ImportError, ValueError):
     try:
-        from profile_manager import sync_langfuse_profiles  # type: ignore
+        from profile_manager import ensure_zf_profiles, sync_langfuse_profiles  # type: ignore
     except (ImportError, ValueError):
+        ensure_zf_profiles = None  # type: ignore
         sync_langfuse_profiles = None  # type: ignore
 
 try:
@@ -237,3 +238,31 @@ def test_langfuse_connection(req: LangfuseTestRequest):
         "ok": False,
         "error": f"Unexpected health status {status_code} from {base_url}.",
     }
+
+
+@router.post("/settings/profiles/sync")
+def sync_profiles(force: bool = False):
+    """Synchronize Zero Factory agent profiles (~/.hermes/profiles) with templates and skills.
+
+    Equivalent to `hermes zerofactory sync-profiles` (ensure_zf_profiles(force=force, update_prompts=True)).
+    """
+    if not callable(ensure_zf_profiles):
+        return {
+            "ok": False,
+            "error": "Profile manager is not available in the current environment.",
+        }
+
+    try:
+        res = ensure_zf_profiles(force=force, update_prompts=True)
+        return {
+            "ok": True,
+            "message": "Zero Factory profiles synchronized successfully.",
+            "result": res,
+        }
+    except Exception as e:
+        _log.exception("Error syncing Zero Factory profiles: %s", e)
+        return {
+            "ok": False,
+            "error": f"Failed to sync profiles: {e}",
+        }
+

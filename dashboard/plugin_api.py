@@ -289,6 +289,7 @@ try:
     )
     from .routes.settings import (
         get_settings,
+        sync_profiles,
         test_langfuse_connection,
         update_settings,
     )
@@ -362,6 +363,7 @@ except (ImportError, ValueError):
     )
     from routes.settings import (  # type: ignore
         get_settings,
+        sync_profiles,
         test_langfuse_connection,
         update_settings,
     )
