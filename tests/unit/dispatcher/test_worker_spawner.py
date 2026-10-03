@@ -111,3 +111,39 @@ def test_spawn_agent_worker_cmd_and_session_isolation():
             assert "--yolo" in cmd
             assert kwargs.get("start_new_session") is True
             assert env.get("HERMES_PROFILE") == "zf-reviewer"
+
+
+def test_spawn_agent_worker_orchestrator_grill_with_docs():
+    """Verify zf-orchestrator spawns with Grill-with-Docs triage protocol prompt."""
+    with (
+        patch("subprocess.Popen") as mock_popen,
+        patch.dict(os.environ, {}, clear=False),
+    ):
+        os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+        mock_proc = MagicMock()
+        mock_proc.pid = 12345
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        pid, sess = spawn_agent_worker(
+            task_id="zf-triage-1",
+            title="[Triage] [Feature] Implement Webhook Support",
+            assignee="zf-orchestrator",
+            priority="P1",
+            description="Add webhook dispatch on task complete",
+            workspace_path="/tmp",
+            branch_name="task/zf-triage-1",
+        )
+
+        assert pid == 12345
+        assert mock_popen.called
+        args, kwargs = mock_popen.call_args
+        cmd = args[0]
+        prompt = cmd[-1]
+
+        assert "Grill-with-Docs Triage Protocol" in prompt
+        assert "stateless workers, stateful substrate" in prompt
+        assert "### 🎯 Grill-with-Docs: Decision Required" in prompt
+        assert "Option A:" in prompt
+        assert kwargs.get("env", {}).get("HERMES_PROFILE") == "zf-orchestrator"
+

@@ -40,6 +40,7 @@ try:
         VALID_STATUSES,
         CommentCreate,
         DependencyLink,
+        InterviewReply,
         TaskCreate,
         TaskMove,
         TaskUpdate,
@@ -67,6 +68,7 @@ except (ImportError, ValueError):
         VALID_STATUSES,
         CommentCreate,
         DependencyLink,
+        InterviewReply,
         TaskCreate,
         TaskMove,
         TaskUpdate,
@@ -988,3 +990,125 @@ def remove_dependency(task_id: str, parent_id: str):
         )
         conn.commit()
     return {"ok": True, "removed": f"{parent_id} -> {task_id}"}
+
+
+@router.post("/tasks/{task_id}/triage")
+def triage_task(task_id: str):
+    """Trigger Grill-with-Docs triage dispatch for a task by zf-orchestrator."""
+    init_db()
+    now = int(time.time())
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(task_row)
+
+        raw_meta = task.get("metadata") or "{}"
+        try:
+            meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta)
+        except Exception:
+            meta = {}
+
+        meta.pop("blocked_reason", None)
+        target_status = "triage"
+        assignee = "zf-orchestrator"
+
+        cursor.execute(
+            "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+            (target_status, assignee, json.dumps(meta), now, task_id),
+        )
+        log_activity(
+            conn,
+            task_id,
+            "user",
+            "triage_dispatched",
+            "Dispatched task to zf-orchestrator for Grill-with-Docs triage",
+        )
+        conn.commit()
+
+        if (
+            not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
+            and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        ):
+            _trigger_async_dispatch("triage_task")
+
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "status": target_status,
+        "assignee": assignee,
+        "message": "Task queued for Grill-with-Docs triage by zf-orchestrator.",
+    }
+
+
+@router.post("/tasks/{task_id}/interview-reply")
+def reply_interview(task_id: str, req: InterviewReply):
+    """Submit human reply / option selection for a Grill-with-Docs interview question."""
+    init_db()
+    now = int(time.time())
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(task_row)
+
+        reply_lines = [
+            f"🎯 **[Grill-with-Docs Human Response]**\n**Selection:** {req.selection.strip()}"
+        ]
+        if req.notes and req.notes.strip():
+            reply_lines.append(f"**Additional Notes / Constraints:**\n{req.notes.strip()}")
+        comment_body = "\n\n".join(reply_lines)
+
+        author_val = os.environ.get("HERMES_PROFILE") or "human"
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+            (task_id, author_val, comment_body, now),
+        )
+        comment_id = cursor.lastrowid
+        log_activity(
+            conn,
+            task_id,
+            author_val,
+            "interview_reply",
+            f"Submitted interview response: {req.selection[:60]}",
+        )
+
+        raw_meta = task.get("metadata") or "{}"
+        try:
+            meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta)
+        except Exception:
+            meta = {}
+
+        meta["last_interview_reply"] = {
+            "selection": req.selection.strip(),
+            "notes": (req.notes or "").strip(),
+            "replied_at": now,
+        }
+        meta.pop("blocked_reason", None)
+
+        target_status = "triage"
+        assignee = "zf-orchestrator"
+        cursor.execute(
+            "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+            (target_status, assignee, json.dumps(meta), now, task_id),
+        )
+        conn.commit()
+
+        if (
+            req.advance
+            and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
+            and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        ):
+            _trigger_async_dispatch("interview_reply")
+
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "comment_id": comment_id,
+        "status": target_status,
+        "message": "Interview response recorded. Triage resuming with zf-orchestrator.",
+    }

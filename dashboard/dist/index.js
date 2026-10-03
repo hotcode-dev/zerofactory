@@ -386,7 +386,13 @@ var ZeroFactoryDashboard = (function(exports) {
 						return React.createElement("div", { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border border-slate-800/80 bg-slate-900/50 text-slate-400 text-xs" }, React.createElement("span", { className: "text-[0.6875rem] truncate font-medium flex items-center gap-1 text-slate-300" }, React.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0" }), tSessions.length + " AI session" + (tSessions.length > 1 ? "s" : "") + ": " + iconsStr), t.session_progress && t.session_progress.turn_count ? React.createElement("span", { className: "text-[0.625rem] text-slate-500 font-mono shrink-0" }, t.session_progress.turn_count + "t") : null);
 					}
 					return null;
-				})(), t.status === "blocked" && React.createElement("div", { className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")) ? "bg-amber-500/15 border-amber-500/30 text-amber-300" : t.title && t.title.includes("[Human Review]") ? "bg-teal-500/15 border-teal-500/30 text-teal-300" : t.blocking_parent_count > 0 ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-rose-500/15 border-rose-500/30 text-rose-300") }, React.createElement("span", { className: "w-2 h-2 rounded-full shrink-0 " + (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")) ? "bg-amber-400" : t.title && t.title.includes("[Human Review]") ? "bg-teal-400" : t.blocking_parent_count > 0 ? "bg-slate-400" : "bg-rose-400") }), React.createElement("span", { className: "text-[0.6875rem] truncate font-medium" }, t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")) ? "🟠 Merge Conflict" : t.title && t.title.includes("[Human Review]") ? "🟢 Awaiting Human Merge" : t.blocking_parent_count > 0 ? "⏳ Blocked by Parent Task" : "🛑 Action Required / Stuck")), React.createElement("div", { className: "flex items-center justify-between pt-1 border-t border-slate-700/40 text-[0.6875rem] text-slate-400" }, React.createElement("span", { className: "text-[0.6875rem] text-slate-500" }, timeAgo(t.updated_at || t.created_at)), React.createElement("div", { className: "flex items-center gap-1.5" }, t.comment_count > 0 && React.createElement("span", {
+				})(), t.status === "blocked" && (() => {
+					const isGrillBlocked = t.metadata && (t.metadata.includes("Grill-with-Docs") || t.metadata.includes("Awaiting Human Input")) || t.description && t.description.includes("Grill-with-Docs") || t.title && t.title.toLowerCase().includes("grill");
+					const badgeClass = isGrillBlocked ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-200" : t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")) ? "bg-amber-500/15 border-amber-500/30 text-amber-300" : t.title && t.title.includes("[Human Review]") ? "bg-teal-500/15 border-teal-500/30 text-teal-300" : t.blocking_parent_count > 0 ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-rose-500/15 border-rose-500/30 text-rose-300";
+					const dotClass = isGrillBlocked ? "bg-indigo-400 zfk-pulse-active" : t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")) ? "bg-amber-400" : t.title && t.title.includes("[Human Review]") ? "bg-teal-400" : t.blocking_parent_count > 0 ? "bg-slate-400" : "bg-rose-400";
+					const labelText = isGrillBlocked ? "🎯 Human Decision Needed (Grill)" : t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")) ? "🟠 Merge Conflict" : t.title && t.title.includes("[Human Review]") ? "🟢 Awaiting Human Merge" : t.blocking_parent_count > 0 ? "⏳ Blocked by Parent Task" : "🛑 Action Required / Stuck";
+					return React.createElement("div", { className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + badgeClass }, React.createElement("span", { className: "w-2 h-2 rounded-full shrink-0 " + dotClass }), React.createElement("span", { className: "text-[0.6875rem] truncate font-medium" }, labelText));
+				})(), React.createElement("div", { className: "flex items-center justify-between pt-1 border-t border-slate-700/40 text-[0.6875rem] text-slate-400" }, React.createElement("span", { className: "text-[0.6875rem] text-slate-500" }, timeAgo(t.updated_at || t.created_at)), React.createElement("div", { className: "flex items-center gap-1.5" }, t.comment_count > 0 && React.createElement("span", {
 					className: "inline-flex items-center px-1.5 py-0.5 rounded text-[0.6875rem] bg-slate-700/50 text-slate-300 hover:text-white cursor-pointer",
 					title: t.comment_count + " comments"
 				}, "💬 " + t.comment_count), React.createElement("button", {
@@ -1647,6 +1653,166 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, "✕"))) : null, subHeader, React.createElement("div", { className: bodyClassName }, children), footer && React.createElement("div", { className: footerClassName }, footer)));
 	}
 	//#endregion
+	//#region dashboard/src/utils/grillParser.js
+	/**
+	* Parser for Grill-with-Docs interview questions and human replies.
+	*/
+	function parseActiveGrillQuestion(comments = [], task = {}) {
+		if (!comments || comments.length === 0) {
+			const meta = typeof task.metadata === "string" ? safeJsonParse(task.metadata) : task.metadata || {};
+			if (meta.active_interview && !meta.last_interview_reply) return {
+				questionText: meta.active_interview.question || "Technical Decision Required",
+				options: meta.active_interview.options || [],
+				contextText: meta.active_interview.context || "",
+				hasReplied: false
+			};
+			return null;
+		}
+		for (let i = comments.length - 1; i >= 0; i--) {
+			const c = comments[i];
+			const body = c.body || "";
+			if (body.includes("Grill-with-Docs: Decision Required") || body.includes("Grill-with-Docs") && (body.includes("Option A") || body.includes("Question:"))) {
+				const replyComment = comments.slice(i + 1).find((sub) => (sub.body || "").includes("[Grill-with-Docs Human Response]") || (sub.body || "").includes("Grill-with-Docs Response") || sub.author === "human" || sub.author === "user");
+				const hasReplied = Boolean(replyComment);
+				let questionText = "";
+				const qMatch = body.match(/\*\*Question:\*\*\s*(.+?)(?=\n\s*[-*0-9]|\n\*\*|$)/s);
+				if (qMatch) questionText = qMatch[1].trim();
+				else {
+					const qLine = body.split("\n").find((l) => l.toLowerCase().includes("question:") || l.startsWith("###"));
+					questionText = qLine ? qLine.replace(/^###\s*|^\*\*Question:\*\*\s*/i, "").trim() : "Technical & Architectural Decision Required";
+				}
+				const options = [];
+				const optionRegex = /(?:[-*]\s*(?:\[[\sXx]?\]\s*)?|\d+\.\s*)\*\*Option\s+([A-Z0-9]+):\*\*\s*([^\n]+)/gi;
+				let optMatch;
+				while ((optMatch = optionRegex.exec(body)) !== null) options.push({
+					id: optMatch[1].trim(),
+					key: `Option ${optMatch[1].trim()}`,
+					label: `Option ${optMatch[1].trim()}: ${optMatch[2].trim()}`,
+					details: optMatch[2].trim()
+				});
+				if (options.length === 0) {
+					const fallbackRegex = /(?:[-*]\s*|\d+\.\s*)Option\s+([A-Z0-9]+)[:\s-]+([^\n]+)/gi;
+					let fbMatch;
+					while ((fbMatch = fallbackRegex.exec(body)) !== null) options.push({
+						id: fbMatch[1].trim(),
+						key: `Option ${fbMatch[1].trim()}`,
+						label: `Option ${fbMatch[1].trim()}: ${fbMatch[2].trim()}`,
+						details: fbMatch[2].trim()
+					});
+				}
+				let contextText = "";
+				const ctxMatch = body.match(/\*\*Documentation Context:\*\*\s*(.+?)(?=\n\n|$)/s);
+				if (ctxMatch) contextText = ctxMatch[1].trim();
+				return {
+					commentId: c.id,
+					author: c.author,
+					createdAt: c.created_at,
+					questionText,
+					options,
+					contextText,
+					rawBody: body,
+					hasReplied,
+					lastReply: replyComment ? replyComment.body : null
+				};
+			}
+		}
+		return null;
+	}
+	function safeJsonParse(val) {
+		try {
+			return JSON.parse(val);
+		} catch {
+			return {};
+		}
+	}
+	//#endregion
+	//#region dashboard/src/components/GrillInterviewPanel.jsx
+	function GrillInterviewPanel({ task, loadTaskDetails, loadTasksAndStats, showToast = () => {} }) {
+		if (!task) return null;
+		const interview = parseActiveGrillQuestion(task.comments || [], task);
+		const isTriage = task.status === "triage";
+		interview && !interview.hasReplied || task.status === "blocked" && (task.description?.includes("Grill-with-Docs") || task.metadata && task.metadata.includes("Grill-with-Docs"));
+		const [selectedOption, setSelectedOption] = useState("");
+		const [customNotes, setCustomNotes] = useState("");
+		const [isSubmitting, setIsSubmitting] = useState(false);
+		const [isDispatchingTriage, setIsDispatchingTriage] = useState(false);
+		const handleStartTriage = async () => {
+			setIsDispatchingTriage(true);
+			try {
+				await fetchJSON(`${API_BASE}/tasks/${task.id}/triage`, { method: "POST" });
+				showToast("🧭 Grill-with-Docs triage dispatched to zf-orchestrator", "success");
+				await loadTaskDetails(task.id);
+				loadTasksAndStats();
+			} catch (err) {
+				showToast(`Failed to dispatch triage: ${err.message}`, "error");
+			} finally {
+				setIsDispatchingTriage(false);
+			}
+		};
+		const handleSubmitReply = async (e) => {
+			if (e) e.preventDefault();
+			if (!selectedOption && !customNotes.trim()) {
+				showToast("Please choose an option or enter notes before submitting", "warning");
+				return;
+			}
+			setIsSubmitting(true);
+			try {
+				const finalSelection = selectedOption || customNotes.trim();
+				await fetchJSON(`${API_BASE}/tasks/${task.id}/interview-reply`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						selection: finalSelection,
+						notes: customNotes.trim(),
+						advance: true
+					})
+				});
+				showToast("Selection submitted! zf-orchestrator resuming triage...", "success");
+				setSelectedOption("");
+				setCustomNotes("");
+				await loadTaskDetails(task.id);
+				loadTasksAndStats();
+			} catch (err) {
+				showToast(`Failed to submit response: ${err.message}`, "error");
+			} finally {
+				setIsSubmitting(false);
+			}
+		};
+		if (interview) return React.createElement("div", { className: "rounded-xl border p-4 space-y-4 shadow-sm transition-all " + (interview.hasReplied ? "bg-slate-950/60 border-slate-800" : "bg-indigo-950/30 border-indigo-500/40 shadow-indigo-950/20") }, React.createElement("div", { className: "flex items-center justify-between gap-2 flex-wrap" }, React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("span", { className: "text-base" }, "🧭"), React.createElement("span", { className: "font-semibold text-xs text-indigo-200 tracking-wide uppercase" }, "Grill-with-Docs • Requirements & Design Interview")), React.createElement("span", { className: "inline-flex items-center gap-1.5 text-[0.6875rem] font-semibold px-2.5 py-0.5 rounded-full border " + (interview.hasReplied ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300" : "bg-amber-500/20 border-amber-500/40 text-amber-300 animate-pulse") }, React.createElement("span", { className: "w-2 h-2 rounded-full " + (interview.hasReplied ? "bg-emerald-400" : "bg-amber-400") }), interview.hasReplied ? "Decision Recorded" : "Awaiting Human Input")), React.createElement("div", { className: "bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-2 text-xs text-slate-200" }, React.createElement("div", { className: "font-semibold text-indigo-300 flex items-center gap-1.5" }, React.createElement("span", null, "🎯"), React.createElement("span", null, "Design Decision / Clarification Question:")), React.createElement("div", { className: "text-xs text-slate-100 font-medium leading-relaxed pl-5 whitespace-pre-wrap" }, interview.questionText), interview.contextText && React.createElement("div", { className: "mt-2 pt-2 border-t border-slate-800 text-[0.6875rem] text-slate-400 flex items-center gap-1.5" }, React.createElement("span", null, "📚"), React.createElement("span", { className: "font-mono" }, interview.contextText))), interview.hasReplied && React.createElement("div", { className: "p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-300 flex items-center justify-between gap-2" }, React.createElement("span", { className: "truncate" }, "✓ Latest choice submitted. zf-orchestrator is grounding decisions into repository documentation."), React.createElement("button", {
+			type: "button",
+			onClick: handleStartTriage,
+			disabled: isDispatchingTriage,
+			className: "shrink-0 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[0.6875rem] text-slate-200 border border-slate-700 cursor-pointer"
+		}, isDispatchingTriage ? "Running..." : "Re-run Triage ↻")), !interview.hasReplied && React.createElement("form", {
+			onSubmit: handleSubmitReply,
+			className: "space-y-3"
+		}, interview.options && interview.options.length > 0 && React.createElement("div", { className: "space-y-2" }, React.createElement("label", { className: "block text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400" }, "Select Recommended Option:"), React.createElement("div", { className: "grid grid-cols-1 gap-2" }, interview.options.map((opt) => {
+			const isSelected = selectedOption === opt.label || selectedOption === opt.key;
+			return React.createElement("div", {
+				key: opt.id,
+				onClick: () => setSelectedOption(opt.label),
+				className: "flex items-start gap-3 p-3 rounded-lg border text-xs cursor-pointer transition-all duration-150 " + (isSelected ? "bg-indigo-600/20 border-indigo-400 text-white shadow-xs ring-1 ring-indigo-400/50" : "bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white")
+			}, React.createElement("div", { className: "pt-0.5 shrink-0" }, React.createElement("div", { className: "w-4 h-4 rounded-full border flex items-center justify-center " + (isSelected ? "border-indigo-400 bg-indigo-500 text-white font-bold text-[10px]" : "border-slate-600 bg-slate-800") }, isSelected ? "✓" : "")), React.createElement("div", { className: "flex-1 space-y-0.5" }, React.createElement("div", { className: "font-semibold text-slate-100 flex items-center gap-2" }, React.createElement("span", { className: "px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[0.625rem] border border-indigo-500/30" }, opt.key), React.createElement("span", null, opt.details))));
+		}))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400" }, "Custom Notes, Modifications, or Alternative Choice (Optional):"), React.createElement("textarea", {
+			rows: 2,
+			value: customNotes,
+			onChange: (e) => setCustomNotes(e.target.value),
+			placeholder: "e.g. Prefer Option A, but ensure backwards compatibility with legacy API endpoints...",
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors zfk-scrollbar"
+		})), React.createElement("div", { className: "flex items-center justify-between gap-2 pt-1" }, React.createElement("span", { className: "text-[0.6875rem] text-slate-400" }, selectedOption ? "Selected: " + selectedOption.split(":")[0] : "Click an option above or type notes"), React.createElement("button", {
+			type: "submit",
+			disabled: isSubmitting || !selectedOption && !customNotes.trim(),
+			className: "px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition-colors cursor-pointer shadow-md shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+		}, isSubmitting ? "Submitting..." : "Submit Selection & Continue Triage →"))));
+		if (isTriage) return React.createElement("div", { className: "rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3.5 flex items-center justify-between gap-3 flex-wrap" }, React.createElement("div", { className: "space-y-0.5 min-w-0" }, React.createElement("div", { className: "text-xs font-semibold text-indigo-300 flex items-center gap-1.5" }, React.createElement("span", null, "🧭"), React.createElement("span", null, "Grill-with-Docs Triage Available")), React.createElement("div", { className: "text-[0.6875rem] text-slate-400 leading-snug" }, "Dispatch zf-orchestrator to inspect repo docs, interview trade-offs, and formulate acceptance criteria for zf-builder.")), React.createElement("button", {
+			type: "button",
+			onClick: handleStartTriage,
+			disabled: isDispatchingTriage,
+			className: "shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-xs shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+		}, React.createElement("span", null, "🧭"), React.createElement("span", null, isDispatchingTriage ? "Dispatching..." : "Triage with Grill-with-Docs")));
+		return null;
+	}
+	//#endregion
 	//#region dashboard/src/modals/TaskDetailModal.jsx
 	function TaskDetailModal(props) {
 		const { selectedTask, setSelectedTask, boards = [], handleUpdateTask, handleDeleteTask, handleRunAgent, handleStopTaskSession, stoppingSessionId, activeRunningTaskId, newCommentText, setNewCommentText, handleAddComment, handleAddCommentSubmit = handleAddComment, loadTasksAndStats, loadTaskDetails, showToast = () => {}, selectedSessionIdx = null, setSelectedSessionIdx = () => {}, refreshSessionProgress = () => {}, handleAdvanceTask = () => {} } = props;
@@ -1661,11 +1827,24 @@ var ZeroFactoryDashboard = (function(exports) {
 				type: "button",
 				className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
 				onClick: () => handleDeleteTask(selectedTask.id)
-			}, "Delete Task"), React.createElement("button", {
+			}, "Delete Task"), React.createElement("div", { className: "flex items-center gap-2" }, selectedTask.status === "triage" && React.createElement("button", {
+				type: "button",
+				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+				onClick: async () => {
+					try {
+						await fetchJSON("/api/plugins/zerofactory/tasks/" + selectedTask.id + "/triage", { method: "POST" });
+						showToast("🧭 Grill-with-Docs triage dispatched to zf-orchestrator", "success");
+						loadTaskDetails(selectedTask.id);
+						loadTasksAndStats();
+					} catch (err) {
+						showToast("Triage dispatch failed: " + err.message, "error");
+					}
+				}
+			}, "🧭 Grill Triage"), React.createElement("button", {
 				type: "button",
 				className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
 				onClick: () => handleAdvanceTask(selectedTask)
-			}, "Advance Stage →"))
+			}, "Advance Stage →")))
 		}, React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"), React.createElement("select", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
 			value: selectedTask.status,
@@ -1773,7 +1952,12 @@ var ZeroFactoryDashboard = (function(exports) {
 			onKeyDown: (e) => {
 				if (e.key === "Enter") e.target.blur();
 			}
-		}))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"), React.createElement("div", { className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap" }, selectedTask.description || "(No description provided)")), selectedTask.workspace_path && React.createElement("div", { className: "p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs space-y-1" }, React.createElement("strong", { className: "text-emerald-400 font-semibold" }, "Git Worktree Active: "), React.createElement("span", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path), selectedTask.branch_name && React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)), selectedTask.pr_url && React.createElement("div", { className: "p-3.5 bg-purple-500/10 border border-purple-500/25 rounded-lg text-xs space-y-2 shadow-xs" }, React.createElement("div", { className: "flex items-center justify-between gap-2 flex-wrap" }, React.createElement("div", { className: "flex items-center gap-2 text-purple-300 font-semibold" }, renderPrIcon("w-4 h-4 text-purple-400 shrink-0"), React.createElement("span", null, "Pull Request:"), React.createElement("span", { className: "font-mono font-bold bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30 text-purple-200" }, formatPrLabel(selectedTask.pr_url))), React.createElement("a", {
+		}))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"), React.createElement("div", { className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap" }, selectedTask.description || "(No description provided)")), React.createElement(GrillInterviewPanel, {
+			task: selectedTask,
+			loadTaskDetails,
+			loadTasksAndStats,
+			showToast
+		}), selectedTask.workspace_path && React.createElement("div", { className: "p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs space-y-1" }, React.createElement("strong", { className: "text-emerald-400 font-semibold" }, "Git Worktree Active: "), React.createElement("span", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path), selectedTask.branch_name && React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)), selectedTask.pr_url && React.createElement("div", { className: "p-3.5 bg-purple-500/10 border border-purple-500/25 rounded-lg text-xs space-y-2 shadow-xs" }, React.createElement("div", { className: "flex items-center justify-between gap-2 flex-wrap" }, React.createElement("div", { className: "flex items-center gap-2 text-purple-300 font-semibold" }, renderPrIcon("w-4 h-4 text-purple-400 shrink-0"), React.createElement("span", null, "Pull Request:"), React.createElement("span", { className: "font-mono font-bold bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30 text-purple-200" }, formatPrLabel(selectedTask.pr_url))), React.createElement("a", {
 			href: selectedTask.pr_url,
 			target: "_blank",
 			rel: "noopener noreferrer",

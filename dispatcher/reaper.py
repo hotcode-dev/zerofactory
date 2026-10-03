@@ -133,20 +133,34 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             if retcode is not None:
                 _active_workers.pop(task_id, None)
                 if retcode == 0:
+                    cursor.execute("SELECT assignee, status FROM tasks WHERE id = ?", (task_id,))
+                    t_check = cursor.fetchone()
+                    curr_asgn = t_check["assignee"] if t_check else ""
+                    curr_stat = t_check["status"] if t_check else ""
+
                     meta = _d()._mark_task_session_ended(meta, now, "finished")
                     meta.pop("worker_failure_retries", None)
                     meta.pop("last_worker_failure", None)
+
+                    if curr_stat in ("blocked", "todo", "triage"):
+                        target_status = curr_stat
+                    elif curr_asgn == "zf-orchestrator":
+                        target_status = "todo"
+                    else:
+                        target_status = "done"
+
                     cursor.execute(
-                        "UPDATE tasks SET status = 'done', metadata = ?, updated_at = ? WHERE id = ?",
-                        (json.dumps(meta), now, task_id),
+                        "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                        (target_status, json.dumps(meta), now, task_id),
                     )
                     cursor.execute(
-                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', 'Worker process completed successfully (exit 0)', ?)",
-                        (task_id, now),
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', ?, ?)",
+                        (task_id, f"Worker process completed successfully (exit 0); status set to {target_status}", now),
                     )
                     _log.info(
-                        "Worker for task %s finished successfully (exit 0); moved to done",
+                        "Worker for task %s finished successfully (exit 0); moved to %s",
                         task_id,
+                        target_status,
                     )
                 else:
                     meta = _d()._mark_task_session_ended(meta, now, "failed")

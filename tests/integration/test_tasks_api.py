@@ -106,3 +106,71 @@ def test_task_dependencies(api_client: TestClient, default_board: str):
         "task"
     ]
     assert not any(parent["id"] == t1_id for parent in child_after.get("parents", []))
+
+
+def test_task_grill_with_docs_triage_and_interview_reply(
+    api_client: TestClient, default_board: str
+):
+    """Verify Grill-with-Docs triage dispatch and human interview reply workflow."""
+    # 1. Create a task in blocked awaiting input
+    create_res = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={
+            "title": "Add Database Sharding",
+            "description": "Partition tenant database across nodes",
+            "board_slug": default_board,
+            "status": "blocked",
+            "assignee": "zf-builder",
+        },
+    )
+    assert create_res.status_code == 200
+    task_id = create_res.json()["id"]
+
+    # 2. Trigger Grill-with-Docs triage dispatch
+    triage_res = api_client.post(f"/api/plugins/zerofactory/tasks/{task_id}/triage")
+    assert triage_res.status_code == 200
+    assert triage_res.json()["status"] == "triage"
+    assert triage_res.json()["assignee"] == "zf-orchestrator"
+
+    # Verify task state in database
+    task_details = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()[
+        "task"
+    ]
+    assert task_details["status"] == "triage"
+    assert task_details["assignee"] == "zf-orchestrator"
+
+    # 3. Simulate zf-orchestrator posting a Grill-with-Docs question
+    question_body = (
+        "### 🎯 Grill-with-Docs: Decision Required\n"
+        "**Question:** Which partitioning key should be used for sharding?\n"
+        "- [ ] **Option A:** Tenant ID hash (even distribution)\n"
+        "- [ ] **Option B:** Geographic Region (latency optimized)\n"
+        "**Documentation Context:** openwiki/architecture.md recommends tenant isolation."
+    )
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/comments",
+        json={"author": "zf-orchestrator", "body": question_body},
+    )
+
+    # 4. Human replies via interactive interview endpoint
+    reply_res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/interview-reply",
+        json={
+            "selection": "Option A: Tenant ID hash (even distribution)",
+            "notes": "Ensure consistent hashing is used with 128 virtual nodes.",
+            "advance": False,
+        },
+    )
+    assert reply_res.status_code == 200
+    assert reply_res.json()["ok"] is True
+    assert reply_res.json()["status"] == "triage"
+
+    # 5. Verify the comment and metadata were recorded
+    task_after = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()[
+        "task"
+    ]
+    comments = task_after.get("comments", [])
+    assert any("[Grill-with-Docs Human Response]" in c["body"] for c in comments)
+    assert any("Option A" in c["body"] for c in comments)
+    assert any("consistent hashing" in c["body"] for c in comments)
+

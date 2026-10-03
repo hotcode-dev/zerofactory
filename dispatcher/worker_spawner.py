@@ -142,6 +142,85 @@ def spawn_agent_worker(
             f"   - If changes are requested: run `hermes zerofactory block {task_id} --reason 'changes-requested'` (the dispatcher will route it back to the builder).\n"
             f"7. Provide a clear review summary.\n"
         )
+    elif assignee == "zf-orchestrator":
+        # Extract task comments and human replies for orchestrator context
+        task_comments_context = ""
+        try:
+            _db = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
+            if _db.exists():
+                with sqlite3.connect(str(_db)) as _c:
+                    _c.row_factory = sqlite3.Row
+                    _cur = _c.cursor()
+                    _cur.execute(
+                        "SELECT author, body, created_at FROM task_comments WHERE task_id = ? ORDER BY created_at ASC",
+                        (task_id,),
+                    )
+                    _cmt_rows = _cur.fetchall()
+                    if _cmt_rows:
+                        _cmt_blocks = []
+                        for idx, r in enumerate(_cmt_rows, 1):
+                            _cmt_blocks.append(
+                                f"### Comment #{idx} (by @{r['author']}):\n{r['body']}"
+                            )
+                        task_comments_context = (
+                            "### 💬 Previous Discussion & Human Responses:\n"
+                            + "\n\n".join(_cmt_blocks)
+                            + "\n\n"
+                        )
+        except Exception as e:
+            _log.debug("Could not inspect task_comments for orchestrator prompt: %s", e)
+
+        openwiki_info = ""
+        wiki_dir = Path(workdir) / "openwiki"
+        if wiki_dir.exists() and wiki_dir.is_dir():
+            wiki_files = [f.name for f in wiki_dir.glob("*.md") if f.is_file()]
+            if wiki_files:
+                openwiki_info = f"Documentation substrate available in openwiki/: {', '.join(sorted(wiki_files))}\n\n"
+
+        prompt = (
+            f"Task ID: {task_id}\n"
+            f"Title: {title}\n"
+            f"Priority: {priority}\n"
+            f"Assigned Role: {assignee}\n\n"
+            f"Description / Initial Goal:\n{description or 'No description provided.'}\n\n"
+            f"Workspace: {workdir}\n"
+            f"Git Branch: {branch_name or 'main'}\n\n"
+            f"{memories_block}"
+            f"{openwiki_info}"
+            f"{task_comments_context}"
+            f"Your goal as Orchestrator (Grill-with-Docs Triage Protocol):\n"
+            f"Execute the Grill-with-Docs triage protocol to break down this task, resolve architectural trade-offs, and ground all decisions in repository documentation.\n"
+            f"Zero Factory adheres to 'stateless workers, stateful substrate': all decisions must be recorded in durable documentation (openwiki/, memory, and task description) so downstream workers (zf-builder) operate without ambiguity.\n\n"
+            f"1. GROUND IN DOCUMENTATION & REPOSITORY PATTERNS:\n"
+            f"   - Inspect repository documentation (openwiki/, README.md, architecture docs) and code in {workdir}.\n"
+            f"   - Ensure proposed designs, APIs, and libraries conform to existing conventions.\n\n"
+            f"2. EVALUATE HUMAN INPUT & AMBIGUITY (DECISION GATE):\n"
+            f"   - Check the discussion comments above for any prior questions and human responses.\n"
+            f"   - If there are unresolved architectural choices, design trade-offs, scope ambiguities, or missing acceptance criteria:\n"
+            f"     * Formulate a structured interview question with clear, mutually exclusive options (Option A, Option B, etc.).\n"
+            f"     * Format your comment EXACTLY with this structure so the UI renders interactive selection buttons for the human:\n"
+            f"       ### 🎯 Grill-with-Docs: Decision Required\n"
+            f"       **Question:** <Clear, targeted question>\n"
+            f"       - [ ] **Option A:** <Details, trade-offs, pros/cons>\n"
+            f"       - [ ] **Option B:** <Details, trade-offs, pros/cons>\n"
+            f"       - [ ] **Option C:** <Details, trade-offs, pros/cons>\n"
+            f"       **Documentation Context:** <Citations to openwiki/ or codebase patterns>\n\n"
+            f"     * Post the question to the task discussion:\n"
+            f"       hermes zerofactory comment {task_id} \"<formatted interview question>\"\n"
+            f"     * Move the task to blocked awaiting human input:\n"
+            f"       hermes zerofactory block {task_id} --reason \"Awaiting Human Input (Grill-with-Docs)\"\n"
+            f"     * Finish your turn cleanly.\n\n"
+            f"   - If all decisions have been resolved (or the human has replied with their selection in the comments):\n"
+            f"     * Record any new conventions or architectural decisions into board memory:\n"
+            f'       hermes zerofactory memory add --board {board_slug or "default"} "<rule or decision>" --category decision\n'
+            f"     * If needed, update openwiki/ documentation or ADRs in {workdir}.\n"
+            f"     * Update the task description with the finalized specification, acceptance criteria, and test plan:\n"
+            f"       hermes zerofactory update {task_id} --description \"<comprehensive specification & acceptance criteria>\"\n"
+            f"     * Promote the task to Todo and reassign to zf-builder:\n"
+            f"       hermes zerofactory move {task_id} todo\n"
+            f"       hermes zerofactory update {task_id} --assignee zf-builder\n"
+            f"     * Provide a clear triage summary confirming the handoff to zf-builder.\n"
+        )
     else:
         # Fail-closed: if the worktree cannot be verified clean, treat it as a
         # potential conflict and route to the conflict-resolution prompt rather

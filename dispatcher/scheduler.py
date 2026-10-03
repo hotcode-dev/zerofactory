@@ -153,8 +153,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                 if active_count < max_active_tasks and llm_workers < max_llm_workers:
                     cursor.execute("""
-                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug FROM tasks
-                        WHERE status IN ('todo', 'ready')
+                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug, status FROM tasks
+                        WHERE status IN ('todo', 'ready') OR (status = 'triage' AND assignee = 'zf-orchestrator')
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
                     """)
                     for row in cursor.fetchall():
@@ -268,8 +268,9 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             continue
 
                         # Atomic claim to prevent double-dispatch across processes
+                        task_orig_status = str(row["status"]) if "status" in row.keys() else "todo"
                         cursor.execute(
-                            "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND status IN ('todo', 'ready')",
+                            "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND (status IN ('todo', 'ready') OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
                             (now, task_id),
                         )
                         if cursor.rowcount == 0:
@@ -291,9 +292,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             _log.error(
                                 "Failed to spawn agent worker for %s: %s", task_id, e
                             )
+                            revert_status = "triage" if task_orig_status == "triage" else "todo"
                             cursor.execute(
-                                "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?",
-                                (now, task_id),
+                                "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
+                                (revert_status, now, task_id),
                             )
                             conn.commit()
                             continue

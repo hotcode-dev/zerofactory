@@ -4,6 +4,7 @@ import { renderPrIcon } from "../utils/icons.js";
 import { API_BASE, COLUMNS } from "../constants.js";
 import { fetchJSON } from "../sdk.js";
 import { Modal } from "../components/Modal.jsx";
+import { GrillInterviewPanel } from "../components/GrillInterviewPanel.jsx";
 
 export function TaskDetailModal(props) {
   const {
@@ -57,13 +58,36 @@ export function TaskDetailModal(props) {
           "Delete Task"
         ),
         React.createElement(
-          "button",
-          {
-            type: "button",
-            className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
-            onClick: () => handleAdvanceTask(selectedTask)
-          },
-          "Advance Stage →"
+          "div",
+          { className: "flex items-center gap-2" },
+          selectedTask.status === "triage" &&
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+                onClick: async () => {
+                  try {
+                    await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/triage", { method: "POST" });
+                    showToast("🧭 Grill-with-Docs triage dispatched to zf-orchestrator", "success");
+                    loadTaskDetails(selectedTask.id);
+                    loadTasksAndStats();
+                  } catch (err) {
+                    showToast("Triage dispatch failed: " + err.message, "error");
+                  }
+                }
+              },
+              "🧭 Grill Triage"
+            ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
+              onClick: () => handleAdvanceTask(selectedTask)
+            },
+            "Advance Stage →"
+          )
         )
       )
     },
@@ -235,6 +259,14 @@ export function TaskDetailModal(props) {
                     selectedTask.description || "(No description provided)"
                   )
                 ),
+
+                // Grill-with-Docs Interactive Requirements & Decision Panel
+                React.createElement(GrillInterviewPanel, {
+                  task: selectedTask,
+                  loadTaskDetails,
+                  loadTasksAndStats,
+                  showToast
+                }),
 
                 // Worktree & Branch Info
                 selectedTask.workspace_path &&
