@@ -56,9 +56,9 @@ def _zf_is_genuine_value_utility(token):
         if not re.fullmatch(r"\d{1,3}", post):
             return False  # opacity / not a Tailwind value ratio
         body = pre
-    m = re.search(r"\[([^\[\]]+)\]$", body)
+    m = re.match(r"^(-?[A-Za-z][A-Za-z0-9-]*?)-\[([^\[\]]+)\]$", body)
     if m:
-        v = m.group(1)
+        v = m.group(2)
         return bool(re.search(r"\d", v)) or v in _ZF_NAMED_COLORS
     m = re.match(r"^(-?[A-Za-z][A-Za-z0-9-]*?)-(\d+(?:\.\d+)?)$", body)
     if m:

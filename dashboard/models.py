@@ -169,6 +169,7 @@ class TaskMove(BaseModel):
     status: str = Field(..., pattern="^(triage|todo|running|blocked|done)$")
     actor: str | None = "user"
     reason: str | None = None
+    assignee: str | None = None
 
 
 class CommentCreate(BaseModel):
