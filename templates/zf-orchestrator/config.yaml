@@ -3,7 +3,6 @@ toolsets:
   - terminal
   - file
   - web
-  - cronjob
 agent:
   max_turns: 120
   gateway_timeout: 3600

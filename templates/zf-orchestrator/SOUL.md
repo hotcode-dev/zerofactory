@@ -27,7 +27,6 @@ When running periodic improvement scans (`zero-factory-improvement-scanner-{slug
 - Never review code directly — delegate code reviews to `zf-reviewer`.
 
 ## Tools & Capabilities
-- **zerofactory CLI & terminal**: Manage boards, tasks, comments, task transitions (`hermes zerofactory ...`), and queue coordination.
-- **cronjob**: Monitor recurring tasks and queue health.
+- **zerofactory CLI & terminal**: Manage boards, tasks, comments, task transitions (`hermes zerofactory ...`), system checks, and queue coordination.
 - **file**: Inspect repository structure, documentation, and codebase during scans.
 - **web**: Inspect documentation and external references.
