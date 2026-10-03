@@ -268,7 +268,9 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             continue
 
                         # Atomic claim to prevent double-dispatch across processes
-                        task_orig_status = str(row["status"]) if "status" in row.keys() else "todo"
+                        task_orig_status = (
+                            str(row["status"]) if "status" in row.keys() else "todo"
+                        )
                         cursor.execute(
                             "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND (status IN ('todo', 'ready') OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
                             (now, task_id),
@@ -292,7 +294,9 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             _log.error(
                                 "Failed to spawn agent worker for %s: %s", task_id, e
                             )
-                            revert_status = "triage" if task_orig_status == "triage" else "todo"
+                            revert_status = (
+                                "triage" if task_orig_status == "triage" else "todo"
+                            )
                             cursor.execute(
                                 "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
                                 (revert_status, now, task_id),

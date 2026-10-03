@@ -133,7 +133,9 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             if retcode is not None:
                 _active_workers.pop(task_id, None)
                 if retcode == 0:
-                    cursor.execute("SELECT assignee, status FROM tasks WHERE id = ?", (task_id,))
+                    cursor.execute(
+                        "SELECT assignee, status FROM tasks WHERE id = ?", (task_id,)
+                    )
                     t_check = cursor.fetchone()
                     curr_asgn = t_check["assignee"] if t_check else ""
                     curr_stat = t_check["status"] if t_check else ""
@@ -155,7 +157,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', ?, ?)",
-                        (task_id, f"Worker process completed successfully (exit 0); status set to {target_status}", now),
+                        (
+                            task_id,
+                            f"Worker process completed successfully (exit 0); status set to {target_status}",
+                            now,
+                        ),
                     )
                     _log.info(
                         "Worker for task %s finished successfully (exit 0); moved to %s",

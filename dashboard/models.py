@@ -177,9 +177,15 @@ class CommentCreate(BaseModel):
 
 
 class InterviewReply(BaseModel):
-    selection: str = Field(..., min_length=1, description="Selected option or response text")
-    notes: str | None = Field(default="", description="Optional additional clarifications or modifications")
-    advance: bool | None = Field(default=True, description="Whether to immediately resume triage dispatch")
+    selection: str = Field(
+        ..., min_length=1, description="Selected option or response text"
+    )
+    notes: str | None = Field(
+        default="", description="Optional additional clarifications or modifications"
+    )
+    advance: bool | None = Field(
+        default=True, description="Whether to immediately resume triage dispatch"
+    )
 
 
 class DependencyLink(BaseModel):

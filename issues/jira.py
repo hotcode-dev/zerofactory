@@ -105,7 +105,9 @@ class JiraIssueClient(BaseIssueClient):
         self.base_url = (base_url or os.environ.get("JIRA_BASE_URL", "")).strip()
         self.email = (email or os.environ.get("JIRA_EMAIL", "")).strip()
         self.api_token = (api_token or os.environ.get("JIRA_API_TOKEN", "")).strip()
-        self.default_project = (default_project or os.environ.get("JIRA_PROJECT", "")).strip()
+        self.default_project = (
+            default_project or os.environ.get("JIRA_PROJECT", "")
+        ).strip()
         self.board_slug = board_slug
         if not self.base_url and board_slug:
             self.base_url = self._resolve_board_jira_url(board_slug)
@@ -245,12 +247,16 @@ class JiraIssueClient(BaseIssueClient):
                 return self._parse_jira_payload(effective_project, issue_key, data)
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                raise ValueError(f"Jira issue '{issue_key}' not found at {api_url}") from e
+                raise ValueError(
+                    f"Jira issue '{issue_key}' not found at {api_url}"
+                ) from e
             if e.code in (401, 403):
                 raise PermissionError(
                     f"Authentication failed fetching Jira issue '{issue_key}' (HTTP {e.code}). Set JIRA_EMAIL and JIRA_API_TOKEN."
                 ) from e
-            raise RuntimeError(f"Failed to fetch Jira issue '{issue_key}': HTTP {e.code} {e.reason}") from e
+            raise RuntimeError(
+                f"Failed to fetch Jira issue '{issue_key}': HTTP {e.code} {e.reason}"
+            ) from e
         except Exception as e:
             raise RuntimeError(f"Failed to connect to Jira at {api_url}: {e}") from e
 

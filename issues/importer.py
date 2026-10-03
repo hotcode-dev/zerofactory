@@ -171,7 +171,9 @@ def import_external_issue(
     description = issue.to_markdown_description()
 
     effective_assignee = assignee
-    if (not effective_assignee or effective_assignee == "unassigned") and status == "triage":
+    if (
+        not effective_assignee or effective_assignee == "unassigned"
+    ) and status == "triage":
         effective_assignee = "zf-orchestrator"
 
     metadata: dict[str, Any] = {

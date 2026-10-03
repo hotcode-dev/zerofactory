@@ -572,4 +572,3 @@ def setup_board_jira_endpoint(slug: str, req: JiraSetupRequest | None = None):
 def verify_board_jira_endpoint(slug: str):
     """Test reachability and authentication of configured Jira Cloud link."""
     return setup_board_jira_endpoint(slug, None)
-
