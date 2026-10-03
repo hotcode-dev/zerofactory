@@ -94,7 +94,7 @@ def _mark_task_session_ended(
 def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
     """Check running tasks and reap finished, crashed, or stuck worker processes."""
     cursor.execute(
-        "SELECT id, title, metadata, updated_at, created_at FROM tasks WHERE status = 'running'"
+        "SELECT id, title, status, metadata, updated_at, created_at FROM tasks WHERE status = 'running' OR (status = 'triage' AND metadata LIKE '%\"status\": \"ongoing\"%')"
     )
     running_rows = cursor.fetchall()
     reaped = 0
@@ -104,6 +104,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
 
     for row in running_rows:
         task_id = str(row["id"])
+        row_status = str(row["status"]) if "status" in row.keys() else "running"
         meta = {}
         try:
             meta = json.loads(row["metadata"] or "{}")
@@ -134,20 +135,45 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 _active_workers.pop(task_id, None)
                 if retcode == 0:
                     cursor.execute(
-                        "SELECT assignee, status FROM tasks WHERE id = ?", (task_id,)
+                        "SELECT assignee, status, title FROM tasks WHERE id = ?",
+                        (task_id,),
                     )
                     t_check = cursor.fetchone()
                     curr_asgn = t_check["assignee"] if t_check else ""
                     curr_stat = t_check["status"] if t_check else ""
+                    curr_title = (
+                        t_check["title"]
+                        if (t_check and "title" in t_check.keys())
+                        else ""
+                    )
 
                     meta = _d()._mark_task_session_ended(meta, now, "finished")
                     meta.pop("worker_failure_retries", None)
                     meta.pop("last_worker_failure", None)
 
-                    if curr_stat in ("blocked", "todo", "triage"):
+                    is_triage_task = (
+                        curr_stat == "triage"
+                        or curr_asgn in ("zf-orchestrator", "orchestrator")
+                        or "[Triage]" in curr_title
+                    )
+                    blocked_reason = str(meta.get("blocked_reason") or "").lower()
+                    if is_triage_task and (
+                        "grill" in blocked_reason
+                        or "interview" in blocked_reason
+                        or "human" in blocked_reason
+                        or curr_stat == "triage"
+                    ):
+                        target_status = "triage"
+                        meta.pop("blocked_reason", None)
+                        meta["awaiting_interview"] = True
+                        cursor.execute(
+                            "UPDATE tasks SET assignee = 'human' WHERE id = ? AND assignee != 'human'",
+                            (task_id,),
+                        )
+                    elif curr_stat in ("blocked", "todo", "triage"):
                         target_status = curr_stat
-                    elif curr_asgn == "zf-orchestrator":
-                        target_status = "todo"
+                    elif is_triage_task:
+                        target_status = "triage"
                     else:
                         target_status = "done"
 
@@ -287,7 +313,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 )
                 reaped += 1
                 continue
-        elif not has_ongoing_session:
+        elif row_status == "running" and not has_ongoing_session:
             # Task is marked 'running' but has no active process, PID, or ongoing session
             claim_age = max(0, now - int(row["updated_at"] or now))
             if claim_age >= 30:

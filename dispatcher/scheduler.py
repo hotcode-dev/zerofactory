@@ -21,6 +21,7 @@ from .config import (
     DEFAULT_MAX_CONCURRENT_WORKERS,
     DISPATCH_INTERVAL_SECONDS,
     _active_scanners,
+    _active_workers,
     _d,
     _dispatcher_lock,
     _dispatcher_thread,
@@ -164,9 +165,25 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         ):
                             break
                         task_id = str(row["id"])
+                        proc = _active_workers.get(task_id)
+                        if proc is not None and proc.poll() is None:
+                            continue
                         assignee = normalize_assignee(row["assignee"] or "zf-builder")
                         if assignee == "human":
                             continue
+                        cand_meta = {}
+                        try:
+                            cand_meta = json.loads(row["metadata"] or "{}")
+                        except Exception:
+                            pass
+                        cand_sessions = cand_meta.get("sessions")
+                        if isinstance(cand_sessions, list) and any(
+                            isinstance(s, dict) and s.get("status") == "ongoing"
+                            for s in cand_sessions
+                        ):
+                            cand_pid = cand_meta.get("worker_pid")
+                            if cand_pid and _d().is_pid_alive(int(cand_pid)):
+                                continue
                         title = row["title"] or ""
                         description = row["description"] or ""
                         priority = row["priority"] or "P2"
@@ -271,9 +288,12 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         task_orig_status = (
                             str(row["status"]) if "status" in row.keys() else "todo"
                         )
+                        target_dispatch_status = (
+                            "triage" if task_orig_status == "triage" else "running"
+                        )
                         cursor.execute(
-                            "UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND (status IN ('todo', 'ready') OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
-                            (now, task_id),
+                            "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND (status IN ('todo', 'ready') OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
+                            (target_dispatch_status, now, task_id),
                         )
                         if cursor.rowcount == 0:
                             continue
@@ -363,14 +383,28 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata FROM tasks
                         WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
-                           OR (status = 'blocked' AND assignee != 'zf-reviewer')
-                           OR (status = 'done' AND assignee != 'zf-reviewer' AND workspace_path IS NOT NULL)
+                           OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator', 'orchestrator'))
+                           OR (status = 'done' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator', 'orchestrator') AND workspace_path IS NOT NULL)
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
                         title = row["title"]
-                        workspace_path = row["workspace_path"]
                         assignee = row["assignee"]
+                        status = row["status"]
+                        # Triage and orchestrator tasks must never be routed to reviewer or PR generation
+                        if (
+                            assignee
+                            in (
+                                "zf-reviewer",
+                                "human",
+                                "zf-orchestrator",
+                                "orchestrator",
+                            )
+                            or status == "triage"
+                            or str(title or "").startswith("[Triage]")
+                        ) and not row["pr_url"]:
+                            continue
+                        workspace_path = row["workspace_path"]
                         tenant = row["tenant"] if "tenant" in row.keys() else None
                         board_slug = (
                             row["board_slug"] if "board_slug" in row.keys() else None
@@ -433,8 +467,17 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             continue
 
                         if row["pr_url"]:
-                            if row["status"] == "done" and (
-                                assignee == "zf-reviewer"
+                            if (
+                                row["status"] in ("done", "triage")
+                                or str(title or "").startswith("[Triage]")
+                            ) and (
+                                assignee
+                                in (
+                                    "zf-reviewer",
+                                    "zf-orchestrator",
+                                    "orchestrator",
+                                    "human",
+                                )
                                 or not workspace_path
                                 or not Path(workspace_path).exists()
                             ):
@@ -970,8 +1013,20 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                     e,
                                 )
 
-                        if assignee not in ("zf-reviewer", "human") and (
-                            not row["pr_url"] or row["status"] in ("done", "blocked")
+                        if (
+                            assignee
+                            not in (
+                                "zf-reviewer",
+                                "human",
+                                "zf-orchestrator",
+                                "orchestrator",
+                            )
+                            and row["status"] != "triage"
+                            and not str(title or "").startswith("[Triage]")
+                            and (
+                                not row["pr_url"]
+                                or row["status"] in ("done", "blocked")
+                            )
                         ):
                             if meta.get("permanently_blocked") or meta.get(
                                 "last_worker_failure"

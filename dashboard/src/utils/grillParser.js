@@ -53,22 +53,39 @@ export function parseActiveGrillQuestion(comments = [], task = {}) {
           : "Technical & Architectural Decision Required";
       }
 
-      // Extract Options
+      // Extract Options with full multiline markdown content
       const options = [];
-      const optionRegex =
-        /(?:[-*]\s*(?:\[[\sXx]?\]\s*)?|\d+\.\s*)\*\*Option\s+([A-Z0-9]+):\*\*\s*([^\n]+)/gi;
-      let optMatch;
-      while ((optMatch = optionRegex.exec(body)) !== null) {
-        options.push({
-          id: optMatch[1].trim(),
-          key: `Option ${optMatch[1].trim()}`,
-          label: `Option ${optMatch[1].trim()}: ${optMatch[2].trim()}`,
-          details: optMatch[2].trim()
-        });
+      const optionHeaderRegex =
+        /(?:^|\n)(?:[-*]\s*(?:\[[\sXx]?\]\s*)?|\d+\.\s*)\*\*Option\s+([A-Z0-9]+):\*\*\s*/gi;
+      const matches = [];
+      let m;
+      while ((m = optionHeaderRegex.exec(body)) !== null) {
+        matches.push({ id: m[1].trim(), index: m.index, headerEnd: m.index + m[0].length });
       }
 
-      // Fallback extraction if bold formatting differs
-      if (options.length === 0) {
+      // Documentation context index limit
+      const docContextIdx = body.search(/\n\s*\*\*Documentation Context:\*\*/i);
+      const endLimit = docContextIdx !== -1 ? docContextIdx : body.length;
+
+      if (matches.length > 0) {
+        matches.forEach((cur, idx) => {
+          const nextStart = idx + 1 < matches.length ? matches[idx + 1].index : endLimit;
+          const rawChunk = body.slice(cur.headerEnd, nextStart).trim();
+          const lines = rawChunk.split("\n");
+          const firstLine = lines[0].trim();
+          const isRecommended = rawChunk.includes("(Recommended)") || firstLine.includes("(Recommended)");
+
+          options.push({
+            id: cur.id,
+            key: `Option ${cur.id}`,
+            label: `Option ${cur.id}: ${firstLine.replace(/\(Recommended\)/i, "").trim()}`,
+            details: firstLine,
+            content: rawChunk,
+            isRecommended
+          });
+        });
+      } else {
+        // Fallback extraction if bold formatting differs
         const fallbackRegex =
           /(?:[-*]\s*|\d+\.\s*)Option\s+([A-Z0-9]+)[:\s-]+([^\n]+)/gi;
         let fbMatch;
@@ -77,7 +94,9 @@ export function parseActiveGrillQuestion(comments = [], task = {}) {
             id: fbMatch[1].trim(),
             key: `Option ${fbMatch[1].trim()}`,
             label: `Option ${fbMatch[1].trim()}: ${fbMatch[2].trim()}`,
-            details: fbMatch[2].trim()
+            details: fbMatch[2].trim(),
+            content: fbMatch[2].trim(),
+            isRecommended: fbMatch[2].includes("(Recommended)")
           });
         }
       }

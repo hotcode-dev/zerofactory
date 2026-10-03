@@ -13,7 +13,9 @@ export function FilterBar(props) {
     setPrFilter,
     stats,
     autoRefresh,
-    setAutoRefresh
+    setAutoRefresh,
+    isSyncingIssues,
+    onSyncIssues
   } = props;
 
   return (
@@ -110,15 +112,37 @@ export function FilterBar(props) {
                         )
                       ),
                       React.createElement(
-                        "label",
-                        { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" },
-                        React.createElement("input", {
-                          type: "checkbox",
-                          className: "rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-                          checked: autoRefresh,
-                          onChange: (e) => setAutoRefresh(e.target.checked)
-                        }),
-                        "Live 10s Poll"
+                        "div",
+                        { className: "flex items-center gap-3" },
+                        onSyncIssues &&
+                          React.createElement(
+                            "button",
+                            {
+                              type: "button",
+                              disabled: isSyncingIssues,
+                              onClick: onSyncIssues,
+                              className:
+                                "px-2.5 py-1 rounded-md text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 shadow-xs",
+                              title: "Sync open GitHub issues requested for AI investigation into Triage"
+                            },
+                            React.createElement(
+                              "span",
+                              { className: isSyncingIssues ? "animate-spin inline-block text-xs" : "text-xs" },
+                              isSyncingIssues ? "🔄" : "🐙"
+                            ),
+                            isSyncingIssues ? "Syncing..." : "Sync GitHub Issues"
+                          ),
+                        React.createElement(
+                          "label",
+                          { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" },
+                          React.createElement("input", {
+                            type: "checkbox",
+                            className: "rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                            checked: autoRefresh,
+                            onChange: (e) => setAutoRefresh(e.target.checked)
+                          }),
+                          "Live 10s Poll"
+                        )
                       )
                     )
   );

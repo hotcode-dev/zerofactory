@@ -157,9 +157,9 @@ def setup_board_gh_issues_deterministic(
 
 
 def create_gh_issues_setup_task(
-    board_slug: str, actor: str = "user", deterministic: bool = True
+    board_slug: str, actor: str = "user", deterministic: bool = False
 ) -> dict[str, Any]:
-    """Provision GitHub Issue templates. Defaults to deterministic execution."""
+    """Provision GitHub Issue templates. Defaults to creating a P0 setup task."""
     if deterministic:
         return setup_board_gh_issues_deterministic(board_slug, actor=actor)
     return create_setup_task(

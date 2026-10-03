@@ -207,9 +207,10 @@ def spawn_agent_worker(
             f"       **Documentation Context:** <Citations to openwiki/ or codebase patterns>\n\n"
             f"     * Post the question to the task discussion:\n"
             f'       hermes zerofactory comment {task_id} "<formatted interview question>"\n'
-            f"     * Move the task to blocked awaiting human input:\n"
-            f'       hermes zerofactory block {task_id} --reason "Awaiting Human Input (Grill-with-Docs)"\n'
-            f"     * Finish your turn cleanly.\n\n"
+            f"     * Keep the task in Triage awaiting human reply (assign to human so the dashboard displays the interview options and the dispatcher pauses re-dispatch until answered):\n"
+            f"       hermes zerofactory move {task_id} triage\n"
+            f"       hermes zerofactory update {task_id} --assignee human\n"
+            f"     * Finish your turn cleanly (DO NOT mark blocked, DO NOT write implementation code in worktree, DO NOT open PR).\n\n"
             f"   - If all decisions have been resolved (or the human has replied with their selection in the comments):\n"
             f"     * Record any new conventions or architectural decisions into board memory:\n"
             f'       hermes zerofactory memory add --board {board_slug or "default"} "<rule or decision>" --category decision\n'

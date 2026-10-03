@@ -157,6 +157,7 @@ export function ZeroFactoryKanbanApp() {
     const [ghIssuesStatus, setGhIssuesStatus] = useState(null);
     const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
     const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
+    const [isSyncingIssues, setIsSyncingIssues] = useState(false);
 
     const [isSettingUpJira, setIsSettingUpJira] = useState(false);
     const [isTestingJira, setIsTestingJira] = useState(false);
@@ -463,6 +464,30 @@ export function ZeroFactoryKanbanApp() {
         showToast("Error initiating setup: " + (err.message || String(err)), "error");
       } finally {
         setIsSettingUpGhIssues(false);
+      }
+    };
+
+    const handleSyncIssues = async (boardSlug) => {
+      const bSlug = boardSlug || selectedBoard;
+      if (!bSlug || bSlug === "all") {
+        showToast("Please select a specific board to sync issues", "info");
+        return;
+      }
+      setIsSyncingIssues(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/sync-gh-issues", {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          showToast(res.message || `Synced ${res.imported_count || 0} issues!`, "success");
+          await loadTasksAndStats(bSlug);
+        } else {
+          showToast((res && (res.detail || res.error || res.message)) || "Failed to sync GitHub issues", "error");
+        }
+      } catch (err) {
+        showToast("Error syncing issues: " + (err.message || String(err)), "error");
+      } finally {
+        setIsSyncingIssues(false);
       }
     };
 
@@ -1737,7 +1762,9 @@ export function ZeroFactoryKanbanApp() {
                     setPrFilter,
                     stats,
                     autoRefresh,
-                    setAutoRefresh
+                    setAutoRefresh,
+                    isSyncingIssues,
+                    onSyncIssues: handleSyncIssues
                   }),
                   React.createElement(SetupBanners, {
                     selectedBoard,

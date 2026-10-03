@@ -212,47 +212,57 @@ export function KanbanBoard(props) {
                                       }
                                       return null;
                                     })(),
-                                    t.status === "blocked" &&
+                                    // Status bar for tasks requiring human attention or blocked
+                                    t.status !== "running" &&
                                     (() => {
                                       const metaStr = typeof t.metadata === "string" ? t.metadata : JSON.stringify(t.metadata || {});
                                       const descStr = typeof t.description === "string" ? t.description : "";
                                       const titleStr = typeof t.title === "string" ? t.title : "";
 
-                                      const isGrillBlocked =
+                                      const isGrillInterview =
                                         metaStr.includes("Grill-with-Docs") ||
                                         metaStr.includes("Awaiting Human Input") ||
+                                        metaStr.includes("awaiting_interview") ||
                                         descStr.includes("Grill-with-Docs") ||
                                         titleStr.toLowerCase().includes("grill");
 
-                                      const badgeClass = isGrillBlocked
-                                        ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-200"
-                                        : (titleStr.includes("[PR Conflict]") || titleStr.includes("[Merge Conflict]"))
-                                          ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                                          : titleStr.includes("[Human Review]")
-                                            ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
-                                            : t.blocking_parent_count > 0
-                                              ? "bg-slate-800 border-slate-700 text-slate-300"
-                                              : "bg-rose-500/15 border-rose-500/30 text-rose-300";
+                                      const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview);
+                                      const isHumanReview = titleStr.includes("[Human Review]");
+                                      const isBlocked = t.status === "blocked";
 
-                                      const dotClass = isGrillBlocked
-                                        ? "bg-indigo-400 zfk-pulse-active"
-                                        : (titleStr.includes("[PR Conflict]") || titleStr.includes("[Merge Conflict]"))
-                                          ? "bg-amber-400"
-                                          : titleStr.includes("[Human Review]")
-                                            ? "bg-teal-400"
-                                            : t.blocking_parent_count > 0
-                                              ? "bg-slate-400"
-                                              : "bg-rose-400";
+                                      if (!isBlocked && !isHumanTriage && !isHumanReview) {
+                                        return null;
+                                      }
 
-                                      const labelText = isGrillBlocked
-                                        ? "🎯 Human Decision Needed (Grill)"
-                                        : (titleStr.includes("[PR Conflict]") || titleStr.includes("[Merge Conflict]"))
-                                          ? "🟠 Merge Conflict"
-                                          : titleStr.includes("[Human Review]")
-                                            ? "🟢 Awaiting Human Merge"
-                                            : t.blocking_parent_count > 0
-                                              ? "⏳ Blocked by Parent Task"
-                                              : "🛑 Action Required / Stuck";
+                                      let badgeClass = "";
+                                      let dotClass = "";
+                                      let labelText = "";
+
+                                      if (isGrillInterview || (t.status === "triage" && t.assignee === "human")) {
+                                        badgeClass = "bg-indigo-500/20 border-indigo-500/40 text-indigo-200";
+                                        dotClass = "bg-indigo-400 zfk-pulse-active";
+                                        labelText = isGrillInterview
+                                          ? "🎯 Waiting for Human Decision • Grill Interview"
+                                          : "🎯 Waiting for Human Input";
+                                      } else if (titleStr.includes("[PR Conflict]") || titleStr.includes("[Merge Conflict]")) {
+                                        badgeClass = "bg-amber-500/15 border-amber-500/30 text-amber-300";
+                                        dotClass = "bg-amber-400";
+                                        labelText = "🟠 Merge Conflict";
+                                      } else if (isHumanReview) {
+                                        badgeClass = "bg-teal-500/15 border-teal-500/30 text-teal-300";
+                                        dotClass = "bg-teal-400 zfk-pulse-active";
+                                        labelText = "🟢 Waiting for Human to Merge";
+                                      } else if (t.blocking_parent_count > 0) {
+                                        badgeClass = "bg-slate-800 border-slate-700 text-slate-300";
+                                        dotClass = "bg-slate-400";
+                                        labelText = "⏳ Blocked by Parent Task";
+                                      } else if (isBlocked) {
+                                        badgeClass = "bg-rose-500/15 border-rose-500/30 text-rose-300";
+                                        dotClass = "bg-rose-400 zfk-pulse-active";
+                                        labelText = "🛑 Action Required / Stuck";
+                                      } else {
+                                        return null;
+                                      }
 
                                       return React.createElement(
                                         "div",

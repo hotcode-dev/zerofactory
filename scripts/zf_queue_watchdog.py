@@ -35,11 +35,99 @@ for candidate in candidate_roots:
     except Exception:
         pass
 
-from dashboard.plugin_api import get_stats
+from dashboard.plugin_api import get_db_conn, get_stats
 from dispatcher import reap_stuck_tasks, run_dispatch_cycle
 
 
+def sync_open_github_issues(cooldown_seconds: int = 900) -> list[dict]:
+    """Scan and import open GitHub issues labeled 'zerofactory' for active boards.
+
+    Guards against GitHub rate limits by:
+    1. Checking ZEROFACTORY_AUTO_SYNC_GH_ISSUES (disable with '0' or 'false').
+    2. Enforcing a per-repo cooldown window (default 15 minutes) so frequent
+       watchdog ticks never spam the GitHub API.
+    """
+    if os.environ.get("ZEROFACTORY_AUTO_SYNC_GH_ISSUES", "1").lower() in (
+        "0",
+        "false",
+        "no",
+    ):
+        return []
+
+    try:
+        import re
+        import time
+        from issues.github import GitHubIssueClient
+        from issues.importer import import_external_issue
+
+        client = GitHubIssueClient()
+        if not client.test_connection():
+            return []
+
+        # Load cooldown timestamps
+        cache_file = Path.home() / ".hermes" / "gh_issues_sync_cache.json"
+        sync_cache: dict[str, float] = {}
+        if cache_file.exists():
+            try:
+                sync_cache = json.loads(cache_file.read_text(encoding="utf-8"))
+            except Exception:
+                sync_cache = {}
+
+        now = time.time()
+        imported_tasks = []
+        with get_db_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT slug, git_url FROM boards ORDER BY created_at ASC")
+            boards = cursor.fetchall()
+
+        cache_updated = False
+        for b in boards:
+            slug = b["slug"]
+            git_url = b["git_url"] or ""
+            m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?$", git_url)
+            if not m:
+                continue
+            repo = f"{m.group(1)}/{m.group(2)}"
+
+            # Skip if synced within cooldown window
+            last_synced = sync_cache.get(repo, 0.0)
+            if now - last_synced < cooldown_seconds:
+                continue
+            try:
+                sync_cache[repo] = now
+                cache_updated = True
+                open_issues = client.fetch_investigation_issues(
+                    repo=repo, label="zerofactory", state="open"
+                )
+                for iss in open_issues:
+                    res = import_external_issue(
+                        issue=iss,
+                        board_slug=slug,
+                        status="triage",
+                        assignee="zf-orchestrator",
+                        actor="zf-watchdog",
+                    )
+                    if not res.get("duplicate"):
+                        imported_tasks.append(res)
+            except Exception:
+                pass
+
+        if cache_updated:
+            try:
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                cache_file.write_text(json.dumps(sync_cache), encoding="utf-8")
+            except Exception:
+                pass
+
+        return imported_tasks
+    except Exception:
+        return []
+
+
 def run_watchdog() -> int:
+    # 0. Auto-sync open GitHub issues labeled 'zerofactory'
+    synced_issues = sync_open_github_issues()
+
     # 1. Check and reap stuck tasks
     reap_res = reap_stuck_tasks()
     reaped_tasks = reap_res.get("reaped_tasks") or reap_res.get("reaped", [])
@@ -68,6 +156,7 @@ def run_watchdog() -> int:
             "todo": cols.get("todo", 0),
             "running": cols.get("running", 0),
             "dispatched": dispatched,
+            "imported_issues": len(synced_issues),
         }
         print(json.dumps(gate))
         return 0

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _PLUGIN_ROOT not in sys.path:
@@ -513,19 +514,179 @@ def get_board_gh_issues_status_endpoint(slug: str):
 
 
 @router.post("/boards/{slug}/setup-gh-issues")
-def setup_board_gh_issues_endpoint(slug: str):
-    """Trigger deterministic setup of GitHub Issue templates and labels for a board."""
+def setup_board_gh_issues_endpoint(slug: str, deterministic: bool = False):
+    """Trigger setup of GitHub Issue templates and labels for a board."""
     try:
-        from ..gh_issues_service import setup_board_gh_issues_deterministic
+        from ..gh_issues_service import (
+            create_gh_issues_setup_task,
+            setup_board_gh_issues_deterministic,
+        )
     except (ImportError, ValueError):
-        from gh_issues_service import setup_board_gh_issues_deterministic  # type: ignore
+        from gh_issues_service import (  # type: ignore
+            create_gh_issues_setup_task,
+            setup_board_gh_issues_deterministic,
+        )
 
-    res = setup_board_gh_issues_deterministic(slug)
+    if deterministic:
+        res = setup_board_gh_issues_deterministic(slug)
+    else:
+        res = create_gh_issues_setup_task(slug, deterministic=False)
+
     if not res.get("ok"):
         raise HTTPException(
             status_code=400,
             detail=res.get("error", "Failed to setup GitHub issues"),
         )
+    return res
+
+
+@router.get("/boards/{slug}/sync-gh-issues")
+@router.post("/boards/{slug}/sync-gh-issues")
+def sync_board_gh_issues_endpoint(
+    slug: str, label: str = "zerofactory", force: bool = False
+):
+    """Scan and import open GitHub issues requested for AI investigation into human-gated Triage tasks."""
+    init_db()
+    with get_db_conn() as conn:
+        board = conn.execute("SELECT * FROM boards WHERE slug = ?", (slug,)).fetchone()
+        if not board:
+            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
+        board_dict = dict(board)
+
+    git_url = board_dict.get("git_url") or ""
+    import re
+
+    repo = None
+    if git_url:
+        m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?$", git_url)
+        if m:
+            repo = f"{m.group(1)}/{m.group(2)}"
+
+    if not repo:
+        resolver = get_repo_resolver()
+        repo_path = resolver(board_dict) if resolver else None
+        if repo_path:
+            try:
+                from scripts.setup_gh_issues import detect_repo_from_git
+
+                repo = detect_repo_from_git(repo_path)
+            except Exception:
+                pass
+
+    if not repo:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Board '{slug}' does not have a recognizable GitHub repository.",
+        )
+
+    try:
+        from issues.github import GitHubIssueClient
+        from issues.importer import import_external_issue
+    except ImportError:
+        try:
+            from ...issues.github import GitHubIssueClient
+            from ...issues.importer import import_external_issue
+        except ImportError:
+            from zerofactory.issues.github import GitHubIssueClient  # type: ignore
+            from zerofactory.issues.importer import import_external_issue  # type: ignore
+
+    client = GitHubIssueClient(default_repo=repo)
+    try:
+        issues_to_import = client.fetch_investigation_issues(
+            repo=repo, label=label, state="open"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch GitHub issues from {repo}: {e}"
+        )
+
+    imported = []
+    duplicates = []
+    for iss in issues_to_import:
+        res = import_external_issue(
+            issue=iss,
+            board_slug=slug,
+            status="triage",
+            assignee="zf-orchestrator",
+            actor="user",
+        )
+        if res.get("duplicate"):
+            duplicates.append(res)
+        else:
+            imported.append(res)
+
+    return {
+        "ok": True,
+        "repo": repo,
+        "imported_count": len(imported),
+        "duplicate_count": len(duplicates),
+        "imported": imported,
+        "duplicates": duplicates,
+        "message": f"Synced {len(imported)} new issue(s) from {repo} ({len(duplicates)} duplicates skipped).",
+    }
+
+
+@router.post("/boards/{slug}/import-gh-issue")
+def import_board_gh_issue_endpoint(slug: str, req: dict[str, Any]):
+    """Import a specific GitHub issue into the board's triage column."""
+    issue_ref = req.get("issue")
+    if not issue_ref:
+        raise HTTPException(
+            status_code=400, detail="Missing 'issue' field in request body"
+        )
+    force = bool(req.get("force", False))
+    label = str(req.get("label", "zerofactory"))
+
+    init_db()
+    with get_db_conn() as conn:
+        board = conn.execute("SELECT * FROM boards WHERE slug = ?", (slug,)).fetchone()
+        if not board:
+            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
+        board_dict = dict(board)
+
+    git_url = board_dict.get("git_url") or ""
+    import re
+
+    repo = None
+    if git_url:
+        m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?$", git_url)
+        if m:
+            repo = f"{m.group(1)}/{m.group(2)}"
+
+    try:
+        from issues.github import GitHubIssueClient
+        from issues.importer import import_external_issue
+    except ImportError:
+        try:
+            from ...issues.github import GitHubIssueClient
+            from ...issues.importer import import_external_issue
+        except ImportError:
+            from zerofactory.issues.github import GitHubIssueClient  # type: ignore
+            from zerofactory.issues.importer import import_external_issue  # type: ignore
+
+    client = GitHubIssueClient(default_repo=repo)
+    try:
+        issue = client.fetch_issue(str(issue_ref), repo=repo)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to fetch issue '{issue_ref}': {e}"
+        )
+
+    if not force and not issue.has_ai_request_label(
+        {label, "zerofactory", "ai-investigate", "ai-triage"}
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"GitHub issue #{issue.id} lacks an AI investigation request label ('{label}'). Add the label or pass force=True.",
+        )
+
+    res = import_external_issue(
+        issue=issue,
+        board_slug=slug,
+        status="triage",
+        assignee="zf-orchestrator",
+        actor="user",
+    )
     return res
 
 

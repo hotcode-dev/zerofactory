@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { parseActiveGrillQuestion } from "../utils/grillParser.js";
+import { MarkdownView } from "./MarkdownView.jsx";
 import { API_BASE } from "../constants.js";
 import { fetchJSON } from "../sdk.js";
 
@@ -13,14 +14,9 @@ export function GrillInterviewPanel({
 
   const interview = parseActiveGrillQuestion(task.comments || [], task);
   const isTriage = task.status === "triage";
-  const metaStr = typeof task.metadata === "string" ? task.metadata : JSON.stringify(task.metadata || {});
-  const descStr = typeof task.description === "string" ? task.description : "";
-  const isAwaitingInput =
-    (interview && !interview.hasReplied) ||
-    (task.status === "blocked" && (descStr.includes("Grill-with-Docs") || metaStr.includes("Grill-with-Docs")));
 
-  const [selectedOption, setSelectedOption] = useState("");
   const [customNotes, setCustomNotes] = useState("");
+  const [submittingKey, setSubmittingKey] = useState(null); // which option key is currently submitting
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDispatchingTriage, setIsDispatchingTriage] = useState(false);
 
@@ -41,35 +37,60 @@ export function GrillInterviewPanel({
     }
   };
 
-  // Submit human interview reply
-  const handleSubmitReply = async (e) => {
-    if (e) e.preventDefault();
-    if (!selectedOption && !customNotes.trim()) {
-      showToast("Please choose an option or enter notes before submitting", "warning");
-      return;
-    }
-
+  // Submit human interview reply for a direct option button
+  const handleOptionSubmit = async (opt) => {
     setIsSubmitting(true);
+    setSubmittingKey(opt.key);
     try {
-      const finalSelection = selectedOption || customNotes.trim();
       await fetchJSON(`${API_BASE}/tasks/${task.id}/interview-reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          selection: finalSelection,
-          notes: customNotes.trim(),
+          selection: opt.label,
+          notes: "",
           advance: true
         })
       });
-      showToast("Selection submitted! zf-orchestrator resuming triage...", "success");
-      setSelectedOption("");
-      setCustomNotes("");
+      showToast(`Selected ${opt.key}! zf-orchestrator resuming triage...`, "success");
       await loadTaskDetails(task.id);
       loadTasksAndStats();
     } catch (err) {
       showToast(`Failed to submit response: ${err.message}`, "error");
     } finally {
       setIsSubmitting(false);
+      setSubmittingKey(null);
+    }
+  };
+
+  // Submit custom notes / other answer
+  const handleCustomSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!customNotes.trim()) {
+      showToast("Please enter your custom answer before submitting", "warning");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmittingKey("custom");
+    try {
+      await fetchJSON(`${API_BASE}/tasks/${task.id}/interview-reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          selection: `Custom / Other: ${customNotes.trim()}`,
+          notes: customNotes.trim(),
+          advance: true
+        })
+      });
+      showToast("Custom answer submitted! zf-orchestrator resuming triage...", "success");
+      setCustomNotes("");
+      await loadTaskDetails(task.id);
+      loadTasksAndStats();
+    } catch (err) {
+      showToast(`Failed to submit custom answer: ${err.message}`, "error");
+    } finally {
+      setIsSubmitting(false);
+      setSubmittingKey(null);
     }
   };
 
@@ -116,7 +137,7 @@ export function GrillInterviewPanel({
         )
       ),
 
-      // Question Box
+      // Question Box with Markdown rendering
       React.createElement(
         "div",
         {
@@ -131,142 +152,204 @@ export function GrillInterviewPanel({
         ),
         React.createElement(
           "div",
-          { className: "text-xs text-slate-100 font-medium leading-relaxed pl-5 whitespace-pre-wrap" },
-          interview.questionText
+          { className: "pl-5" },
+          React.createElement(MarkdownView, { content: interview.questionText })
         ),
         interview.contextText &&
           React.createElement(
             "div",
-            { className: "mt-2 pt-2 border-t border-slate-800 text-[0.6875rem] text-slate-400 flex items-center gap-1.5" },
-            React.createElement("span", null, "📚"),
-            React.createElement("span", { className: "font-mono" }, interview.contextText)
+            { className: "mt-2 pt-2 border-t border-slate-800 text-[0.6875rem] text-slate-400 space-y-1" },
+            React.createElement(
+              "div",
+              { className: "flex items-center gap-1.5 font-semibold text-slate-400" },
+              React.createElement("span", null, "📚"),
+              React.createElement("span", null, "Documentation Context:")
+            ),
+            React.createElement("div", { className: "pl-5 font-mono text-[0.625rem] text-slate-300" },
+              React.createElement(MarkdownView, { content: interview.contextText })
+            )
           )
       ),
 
-      // When answered: show settled note
+      // When answered: show settled note with recorded answer
       interview.hasReplied &&
         React.createElement(
           "div",
-          {
-            className:
-              "p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-300 flex items-center justify-between gap-2"
-          },
+          { className: "space-y-2.5" },
           React.createElement(
-            "span",
-            { className: "truncate" },
-            "✓ Latest choice submitted. zf-orchestrator is grounding decisions into repository documentation."
-          ),
-          React.createElement(
-            "button",
+            "div",
             {
-              type: "button",
-              onClick: handleStartTriage,
-              disabled: isDispatchingTriage,
               className:
-                "shrink-0 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[0.6875rem] text-slate-200 border border-slate-700 cursor-pointer"
+                "p-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-300 space-y-1.5"
             },
-            isDispatchingTriage ? "Running..." : "Re-run Triage ↻"
+            React.createElement(
+              "div",
+              { className: "flex items-center justify-between gap-2" },
+              React.createElement(
+                "span",
+                { className: "font-semibold flex items-center gap-1.5" },
+                React.createElement("span", null, "✓"),
+                React.createElement("span", null, "Decision recorded. zf-orchestrator is grounding decisions into repository substrate.")
+              ),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  onClick: handleStartTriage,
+                  disabled: isDispatchingTriage,
+                  className:
+                    "shrink-0 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[0.6875rem] text-slate-200 border border-slate-700 cursor-pointer"
+                },
+                isDispatchingTriage ? "Running..." : "Re-run Triage ↻"
+              )
+            ),
+            interview.lastReply &&
+              React.createElement(
+                "div",
+                { className: "pt-1 text-[0.6875rem] text-slate-300 border-t border-emerald-500/20" },
+                React.createElement(MarkdownView, { content: interview.lastReply })
+              )
           )
         ),
 
-      // When awaiting input: render interactive options & response form
+      // When awaiting input: render interactive option buttons & custom other input
       !interview.hasReplied &&
         React.createElement(
-          "form",
-          { onSubmit: handleSubmitReply, className: "space-y-3" },
-          // Options choices
+          "div",
+          { className: "space-y-3" },
+          // Predefined Options
           interview.options && interview.options.length > 0 &&
             React.createElement(
               "div",
               { className: "space-y-2" },
               React.createElement(
-                "label",
-                { className: "block text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400" },
-                "Select Recommended Option:"
+                "div",
+                { className: "flex items-center justify-between gap-2" },
+                React.createElement(
+                  "label",
+                  { className: "block text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400" },
+                  "Click an Option Button to Choose:"
+                ),
+                React.createElement(
+                  "span",
+                  { className: "text-[0.625rem] text-slate-500" },
+                  "1-click selection • no typing required"
+                )
               ),
               React.createElement(
                 "div",
-                { className: "grid grid-cols-1 gap-2" },
+                { className: "grid grid-cols-1 gap-2.5" },
                 interview.options.map((opt) => {
-                  const isSelected = selectedOption === opt.label || selectedOption === opt.key;
+                  const isThisSubmitting = isSubmitting && submittingKey === opt.key;
                   return React.createElement(
                     "div",
                     {
                       key: opt.id,
-                      onClick: () => setSelectedOption(opt.label),
                       className:
-                        "flex items-start gap-3 p-3 rounded-lg border text-xs cursor-pointer transition-all duration-150 " +
-                        (isSelected
-                          ? "bg-indigo-600/20 border-indigo-400 text-white shadow-xs ring-1 ring-indigo-400/50"
-                          : "bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white")
+                        "p-3.5 rounded-lg border text-xs transition-all duration-150 space-y-2 " +
+                        (opt.isRecommended
+                          ? "bg-indigo-950/25 border-indigo-500/40 hover:border-indigo-400/80 shadow-xs"
+                          : "bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300")
                     },
+                    // Header of option card
                     React.createElement(
                       "div",
-                      { className: "pt-0.5 shrink-0" },
-                      React.createElement("div", {
-                        className:
-                          "w-4 h-4 rounded-full border flex items-center justify-center " +
-                          (isSelected
-                            ? "border-indigo-400 bg-indigo-500 text-white font-bold text-[10px]"
-                            : "border-slate-600 bg-slate-800")
-                      }, isSelected ? "✓" : "")
-                    ),
-                    React.createElement(
-                      "div",
-                      { className: "flex-1 space-y-0.5" },
+                      { className: "flex items-center justify-between gap-2 flex-wrap" },
                       React.createElement(
                         "div",
-                        { className: "font-semibold text-slate-100 flex items-center gap-2" },
+                        { className: "flex items-center gap-2" },
                         React.createElement(
                           "span",
-                          { className: "px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[0.625rem] border border-indigo-500/30" },
+                          {
+                            className:
+                              "px-2 py-0.5 rounded font-mono text-[0.6875rem] font-bold border " +
+                              (opt.isRecommended
+                                ? "bg-indigo-500/30 text-indigo-200 border-indigo-500/50"
+                                : "bg-slate-800 text-slate-300 border-slate-700")
+                          },
                           opt.key
                         ),
-                        React.createElement("span", null, opt.details)
+                        opt.isRecommended &&
+                          React.createElement(
+                            "span",
+                            { className: "px-2 py-0.5 rounded-full text-[0.625rem] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1" },
+                            "⭐ Recommended"
+                          )
+                      ),
+                      // Direct Click-to-Submit Button
+                      React.createElement(
+                        "button",
+                        {
+                          type: "button",
+                          onClick: () => handleOptionSubmit(opt),
+                          disabled: isSubmitting,
+                          className:
+                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed " +
+                            (opt.isRecommended
+                              ? "bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 shadow-indigo-600/30"
+                              : "bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200")
+                        },
+                        isThisSubmitting
+                          ? "Submitting..."
+                          : `Choose ${opt.key} ${opt.isRecommended ? "★" : ""} →`
                       )
+                    ),
+                    // Markdown rendered option details, pros, cons, and trade-offs
+                    React.createElement(
+                      "div",
+                      { className: "pt-1 text-slate-300" },
+                      React.createElement(MarkdownView, { content: opt.content })
                     )
                   );
                 })
               )
             ),
 
-          // Custom feedback / modifications
+          // Other / Custom Answer section
           React.createElement(
-            "div",
-            { className: "space-y-1.5" },
+            "form",
+            {
+              onSubmit: handleCustomSubmit,
+              className: "p-3.5 rounded-lg border border-slate-800 bg-slate-900/50 space-y-2.5 text-xs"
+            },
             React.createElement(
-              "label",
-              { className: "block text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-400" },
-              "Custom Notes, Modifications, or Alternative Choice (Optional):"
+              "div",
+              { className: "flex items-center justify-between gap-2" },
+              React.createElement(
+                "div",
+                { className: "font-semibold text-slate-300 flex items-center gap-1.5" },
+                React.createElement("span", null, "✏️"),
+                React.createElement("span", null, "Other Answer / Custom Specifications:")
+              ),
+              React.createElement(
+                "span",
+                { className: "text-[0.625rem] text-slate-500" },
+                "Optional • for custom constraints or alternative ideas"
+              )
             ),
             React.createElement("textarea", {
               rows: 2,
               value: customNotes,
               onChange: (e) => setCustomNotes(e.target.value),
-              placeholder: "e.g. Prefer Option A, but ensure backwards compatibility with legacy API endpoints...",
+              placeholder: "Type your custom decision, hybrid preference, or specific trade-offs here...",
               className:
                 "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors zfk-scrollbar"
-            })
-          ),
-
-          // Submit button
-          React.createElement(
-            "div",
-            { className: "flex items-center justify-between gap-2 pt-1" },
+            }),
             React.createElement(
-              "span",
-              { className: "text-[0.6875rem] text-slate-400" },
-              selectedOption ? "Selected: " + selectedOption.split(":")[0] : "Click an option above or type notes"
-            ),
-            React.createElement(
-              "button",
-              {
-                type: "submit",
-                disabled: isSubmitting || (!selectedOption && !customNotes.trim()),
-                className:
-                  "px-4 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition-colors cursor-pointer shadow-md shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-              },
-              isSubmitting ? "Submitting..." : "Submit Selection & Continue Triage →"
+              "div",
+              { className: "flex items-center justify-end gap-2" },
+              React.createElement(
+                "button",
+                {
+                  type: "submit",
+                  disabled: isSubmitting || !customNotes.trim(),
+                  className:
+                    "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 active:bg-slate-800 border border-slate-700 transition-colors cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                },
+                isSubmitting && submittingKey === "custom"
+                  ? "Submitting..."
+                  : "Submit Custom Answer →"
+              )
             )
           )
         )
