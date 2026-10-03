@@ -1,12 +1,9 @@
 description: Zero Factory master coordinator and pipeline orchestrator
 toolsets:
-  - kanban
-  - delegation
-  - cronjob
   - terminal
   - file
-  - search_files
   - web
+  - cronjob
 agent:
   max_turns: 120
   gateway_timeout: 3600
@@ -34,14 +31,6 @@ agent:
 plugins:
   enabled:
     - zerofactory
-mcp_servers:
-  openwiki:
-    command: npx
-    args:
-      - -y
-      - openwiki
-      - mcp
-      - --host=hermes
-    enabled: true
 default:
   temperature: 0.0
+

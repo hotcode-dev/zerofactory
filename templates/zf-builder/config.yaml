@@ -1,9 +1,7 @@
 description: Software engineer & coding specialist for Zero Factory
 toolsets:
-  - kanban
   - terminal
   - file
-  - search_files
   - web
 agent:
   max_turns: 90
