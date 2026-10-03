@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e423fa4858b1573ee779ea816ce75d231daafd2c58e9c94255dfcc48e2c5ceb0",
+  "pageVersion": "sha256:9ebaca51c50c23249aae5f6ada5a7266e7b0b09c792cbe8c7b1a8def06bb618e",
   "claims": [
     {
       "id": "claim_f5049d3391c7479baf38776d89ce8a5a",
@@ -114,17 +114,21 @@
     },
     {
       "id": "claim_a4b0e064b0b24b6cb9d38a663929af1c",
-      "statement": "Any agent-authored GitHub PR comment must begin with [AI] (enforced by ai_prefix in github_pr.py) so humans can distinguish agent output from human output.",
+      "statement": "Any agent-authored GitHub text (PR titles/bodies, review comments) must begin with a role-tagged [AI:<role>] marker such as [AI:zf-builder] or [AI:zf-reviewer] (enforced by the role-aware ai_prefix, idempotent for legacy [AI] markers via AI_PREFIX_RE) so humans can distinguish agent output from human output.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/github_pr.py#L321-L321",
-          "version": "repo-lines-v1:sha256:033af0a0bf3606c9277b65c0e157f7f129562fcdf7425f9fe42ee63958a9ee9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzYWYwYTBiZjM2MDZjOTI3N2I2NWMwZTE1N2Y3ZjEyOTU2MmZjZGY3NDI1ZjlmZTQyZWU2Mzk1OGE5ZWU5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzYWYwYTBiZjM2MDZjOTI3N2I2NWMwZTE1N2Y3ZjEyOTU2MmZjZGY3NDI1ZjlmZTQyZWU2Mzk1OGE5ZWU5ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTJkNmQyNTZiY2ZhYTU1YmI1NGJjYzdmMzMxYTI3ZjM1Yjg3ZmEyZTk3NTZhNjllOTY1Y2VlYmM0ZjYxN2Q5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2M1MWFkNTc2YzljZTE0YTk3NGRlNzFiMjUzYmFmNjdhMTIxNjU2MTc2YjE3OWNkNzFhMWJkMjZhNjAxMzNhYSJ9"
+          "resource": "repo://dispatcher/github_pr.py#L321-L335",
+          "version": "repo-lines-v1:sha256:b79bb45e452aba9c783942fe51bdb980c9a36dd56d1fb486ce2894bd8fc71b11:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwZDA4M2YzYWY3MTMxMDUwZTFlNWJjOGE3NmZhYTliYjhmZjBhOTFmZDg4ZTU3NTVlNWUzNjMxNzc3OTAzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwY2VjZDBmNmI3NzNmMTFhMjlmYWJiMmM0NDBkYzk2YzVkNjBlZGFmOTgyZmQ0MjVkZjQxMWU2MTIzODU5NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZDZkMjU2YmNmYWE1NWJiNTRiY2M3ZjMzMWEyN2YzNWI4N2ZhMmU5NzU2YTY5ZTk2NWNlZWJjNGY2MTdkOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MmI4MThlZDJjZGY1YjY4NTAzNWVjYTgxODdhMGQ0YWI0OWY3MjhjZTI1NzgyYmVlYTUyOGNiNDA5ZTFiNTEifQ"
+        },
+        {
+          "resource": "repo://dispatcher/worker_spawner.py#L127-L140",
+          "version": "repo-lines-v1:sha256:2cb5865f808ea097e27c02a214028f1f5d7990c4860a97f855436fcb6f83d70c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOWUzOTViZTI2M2VmMjUzNzk5NmM2NDJhZTBhYTNlYjZlNjBkNWM0ZGVlOGQ1YzRjYjYzNjUyMjc5Y2JmYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMzFhZjFiZmNiNTU1MTBkMGM3NWVkMzU4MDQ4YTM2NDA3NGJmMDQ5NjgwOGY2MjY1MzE4MjM5Mzg0MGRlNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwNDEwYzE2YTE1NWE0YzYyYjhhMjI1ZjU2NGY4NmZhYzYwY2Q3MmM3MDUwOTM0ODE3NTJkM2FjYmEzYTZmZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyOGJiZmZjZWZmZDk4ODc2Y2Q0ZjFjMGE0MDZhMmJhYTY0NmJkNGU1YjkzN2Y3YmRjZGM3YzU5MTRjYjNmMjkifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-01T13:01:50.039Z"
+    "at": "2026-10-03T01:15:19.967Z"
   }
 }

@@ -2,39 +2,46 @@
   "schemaVersion": 1,
   "pages": {
     "/openwiki/architecture.md": {
-      "pageVersion": "sha256:baf51f057747fcfa1984fa4327b855daad4613bcb672c7a88138eae25e7cb4bb",
+      "pageVersion": "sha256:a8c354ae882d28fca3ee8d893fdd57a91ce4a3d7b640f1d487fbc4ecfc038149",
       "completedBy": "hermes",
-      "completedRunId": "9976186b-1a37-4d24-865f-1fcfd785cb00",
-      "gitHead": "35c9391abac3b1b4975c6d9041fef0985c6536b9",
-      "sourceFingerprint": "sha256:98993f460009b5b1ec875b63695b588fa059778fad0b2edbd3e3aad6d893c04f"
+      "completedRunId": "e8f484ba-e539-41e9-a10a-f7c0c0a54a93",
+      "gitHead": "5a7b62a19ecfa7496345a95af93d3399bea67044",
+      "sourceFingerprint": "sha256:b87d7d7bfdf1c1bf143f3ffbc6aec5b007eff8c40eb4f8e63b369fb677114c66"
     },
     "/openwiki/components/dashboard-cron.md": {
-      "pageVersion": "sha256:0fe2c3a0fa21e442c197b3e8e86de2b1d0345cbc1356a9dc5915745e8b08ac2c",
+      "pageVersion": "sha256:87e28de623af0e054c7b972c5a9c797a73c2ceec66616494e191eb912afb240c",
       "completedBy": "hermes",
-      "completedRunId": "9976186b-1a37-4d24-865f-1fcfd785cb00",
-      "gitHead": "35c9391abac3b1b4975c6d9041fef0985c6536b9",
-      "sourceFingerprint": "sha256:98993f460009b5b1ec875b63695b588fa059778fad0b2edbd3e3aad6d893c04f"
+      "completedRunId": "e8f484ba-e539-41e9-a10a-f7c0c0a54a93",
+      "gitHead": "5a7b62a19ecfa7496345a95af93d3399bea67044",
+      "sourceFingerprint": "sha256:b87d7d7bfdf1c1bf143f3ffbc6aec5b007eff8c40eb4f8e63b369fb677114c66"
     },
     "/openwiki/components/dispatcher.md": {
-      "pageVersion": "sha256:aabbea4f5e339aaf3dc28822f78ef32e99f62d3c39af1d7f5b16f5dda20ae80c",
+      "pageVersion": "sha256:5c7f8b2d36209dae6082d0028f3c4831ce62b2772e7e18ac1fb0a250f7cb58b8",
       "completedBy": "hermes",
-      "completedRunId": "9976186b-1a37-4d24-865f-1fcfd785cb00",
-      "gitHead": "35c9391abac3b1b4975c6d9041fef0985c6536b9",
-      "sourceFingerprint": "sha256:98993f460009b5b1ec875b63695b588fa059778fad0b2edbd3e3aad6d893c04f"
+      "completedRunId": "e8f484ba-e539-41e9-a10a-f7c0c0a54a93",
+      "gitHead": "5a7b62a19ecfa7496345a95af93d3399bea67044",
+      "sourceFingerprint": "sha256:b87d7d7bfdf1c1bf143f3ffbc6aec5b007eff8c40eb4f8e63b369fb677114c66"
+    },
+    "/openwiki/components/issues-importer.md": {
+      "pageVersion": "sha256:6b940abede9059cf8f58f4915309bd9792fa82ca3ffabf80804778f9566e58b1",
+      "completedBy": "hermes",
+      "completedRunId": "e8f484ba-e539-41e9-a10a-f7c0c0a54a93",
+      "gitHead": "5a7b62a19ecfa7496345a95af93d3399bea67044",
+      "sourceFingerprint": "sha256:b87d7d7bfdf1c1bf143f3ffbc6aec5b007eff8c40eb4f8e63b369fb677114c66"
     },
     "/openwiki/conventions.md": {
-      "pageVersion": "sha256:e423fa4858b1573ee779ea816ce75d231daafd2c58e9c94255dfcc48e2c5ceb0",
+      "pageVersion": "sha256:9ebaca51c50c23249aae5f6ada5a7266e7b0b09c792cbe8c7b1a8def06bb618e",
       "completedBy": "hermes",
-      "completedRunId": "9976186b-1a37-4d24-865f-1fcfd785cb00",
-      "gitHead": "35c9391abac3b1b4975c6d9041fef0985c6536b9",
-      "sourceFingerprint": "sha256:98993f460009b5b1ec875b63695b588fa059778fad0b2edbd3e3aad6d893c04f"
+      "completedRunId": "e8f484ba-e539-41e9-a10a-f7c0c0a54a93",
+      "gitHead": "5a7b62a19ecfa7496345a95af93d3399bea67044",
+      "sourceFingerprint": "sha256:b87d7d7bfdf1c1bf143f3ffbc6aec5b007eff8c40eb4f8e63b369fb677114c66"
     },
     "/openwiki/quickstart.md": {
-      "pageVersion": "sha256:d72beaf2ebd7b0d8959d0dd18c45c82bc94485128b6cecbd7ebcfa449785793f",
+      "pageVersion": "sha256:7c5261d5ec42617a7482f0d6ca8ab1b1ab4979eeb16c63bb1d8d6ab3d5e81b00",
       "completedBy": "hermes",
-      "completedRunId": "9976186b-1a37-4d24-865f-1fcfd785cb00",
-      "gitHead": "35c9391abac3b1b4975c6d9041fef0985c6536b9",
-      "sourceFingerprint": "sha256:98993f460009b5b1ec875b63695b588fa059778fad0b2edbd3e3aad6d893c04f"
+      "completedRunId": "e8f484ba-e539-41e9-a10a-f7c0c0a54a93",
+      "gitHead": "5a7b62a19ecfa7496345a95af93d3399bea67044",
+      "sourceFingerprint": "sha256:b87d7d7bfdf1c1bf143f3ffbc6aec5b007eff8c40eb4f8e63b369fb677114c66"
     }
   }
 }

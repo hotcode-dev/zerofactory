@@ -119,7 +119,11 @@ class GitHubIssueClient(BaseIssueClient):
             )
 
         if res.returncode != 0:
-            err_msg = res.stderr.strip() or res.stdout.strip() or f"exit code {res.returncode}"
+            err_msg = (
+                res.stderr.strip()
+                or res.stdout.strip()
+                or f"exit code {res.returncode}"
+            )
             raise RuntimeError(
                 f"Failed to fetch GitHub issue #{issue_num} from '{effective_repo}': {err_msg}"
             )
@@ -144,9 +148,7 @@ class GitHubIssueClient(BaseIssueClient):
 
         raw_assignees = data.get("assignees") or []
         assignees = [
-            a["login"] if isinstance(a, dict) else str(a)
-            for a in raw_assignees
-            if a
+            a["login"] if isinstance(a, dict) else str(a) for a in raw_assignees if a
         ]
 
         num_str = str(data.get("number", issue_num))
@@ -156,7 +158,10 @@ class GitHubIssueClient(BaseIssueClient):
             key=f"#{num_str}",
             title=str(data.get("title") or "").strip(),
             body=str(data.get("body") or ""),
-            url=str(data.get("url") or f"https://github.com/{effective_repo}/issues/{num_str}"),
+            url=str(
+                data.get("url")
+                or f"https://github.com/{effective_repo}/issues/{num_str}"
+            ),
             author=author_login,
             state=str(data.get("state") or "OPEN").lower(),
             labels=labels,

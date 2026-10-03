@@ -3,9 +3,6 @@ type: quickstart
 title: Quickstart
 description: Install the Zero Factory Hermes plugin, provision the zf-* specialist profiles, open the dashboard, verify the deterministic precommit gate, and use the core CLI surface to operate the factory.
 tags: [quickstart, installation, cli, dashboard, precommit, tests, hermes-plugin]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-10-01T13:01:50.039Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -17,7 +14,10 @@ sources:
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-10-01T13:01:50.039Z" }
+generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-10-03T01:15:19.967Z
 ---
 
 # Quickstart
@@ -108,7 +108,7 @@ pytest tests/                 # full suite
 pytest tests/unit/            # or a single tier: integration/ / e2e/
 ```
 
-**As of this commit the full suite is green: `179 passed, 1 skipped`.** Re-run
+**As of this commit the full suite is green: `233 passed, 1 skipped`.** Re-run
 it before publishing any claim about the count.
 
 ## Core CLI surface
@@ -117,6 +117,7 @@ it before publishing any claim about the count.
 # Tasks
 hermes zerofactory list [--status <status>] [--assignee <profile>]
 hermes zerofactory create "Implement Feature X"
+hermes zerofactory import-gh-issue 42 [--repo owner/repo] [--board <slug>] [--status triage] [--priority P1] [--assignee zf-builder]
 hermes zerofactory move <task_id> <status> [--reason "..."]
 hermes zerofactory block <task_id> --reason "..."
 hermes zerofactory comment <task_id> "Note..."
@@ -141,6 +142,19 @@ hermes zerofactory cron run <job_id> # run a cron scanner immediately
 hermes zerofactory setup             # check/initialize zf-* profiles
 hermes zerofactory sync-profiles     # update system prompts from templates
 ```
+
+`import-gh-issue` deterministically ingests a GitHub issue (number, `#42`, URL,
+or `owner/repo#42`) into a board as a Kanban task — stable task id, `issue:`
+dedup key, label-inferred priority/category — so re-imports report
+"Duplicate Skipped" instead of double-filing
+([External Issue Import](/openwiki/components/issues-importer.md)).
+
+OpenWiki architecture docs stay in sync automatically: the per-board
+`zero-factory-openwiki-update-<slug>` cron job runs the deterministic
+`zf_openwiki_gate.py` wake-gate daily; when new commits land on the default
+branch it files at most one P2 `zf-builder` doc-sync task (0 LLM tokens when
+nothing changed or an OpenWiki task is already active). See
+[Dashboard, Cron & Automation](/openwiki/components/dashboard-cron.md).
 
 ## Task lifecycle
 

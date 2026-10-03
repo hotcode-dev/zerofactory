@@ -150,7 +150,6 @@ class TestOpenWikiGate(unittest.TestCase):
                 self.assertIn("created task", reason)
                 self.assertIn("for zf-builder", reason)
 
-
     def test_active_task_in_todo_suppresses_wake(self):
         (self.tmp / ".git").mkdir()
         (self.tmp / "openwiki").mkdir()
@@ -194,7 +193,9 @@ class TestOpenWikiGate(unittest.TestCase):
 
             # Change to blocked
             with sqlite3.connect(str(db_file)) as conn:
-                conn.execute("UPDATE tasks SET status = 'blocked' WHERE id = 'task-run'")
+                conn.execute(
+                    "UPDATE tasks SET status = 'blocked' WHERE id = 'task-run'"
+                )
                 conn.commit()
 
             wake, reason = self.gate.check_openwiki_gate(
@@ -240,4 +241,3 @@ class TestOpenWikiGate(unittest.TestCase):
                 self.assertIn("Detected 1 branch update(s)", reason)
                 self.assertIn("created task", reason)
                 self.assertIn("for zf-builder", reason)
-

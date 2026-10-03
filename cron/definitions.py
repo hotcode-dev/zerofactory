@@ -129,7 +129,6 @@ Provide a brief summary confirming that the task has been created in the Todo co
 - End the run after delivery."""
 
 
-
 def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
     """Resolve the local repository path for a given Kanban board."""
     slug = (board.get("slug") or "").strip()

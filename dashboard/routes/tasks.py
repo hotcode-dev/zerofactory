@@ -271,7 +271,9 @@ def create_task(req: TaskCreate):
         branch_name = req.branch_name or f"task/{task_id}"
 
         if req.task_id:
-            cursor.execute("SELECT id, title, status FROM tasks WHERE id = ?", (req.task_id,))
+            cursor.execute(
+                "SELECT id, title, status FROM tasks WHERE id = ?", (req.task_id,)
+            )
             existing_row = cursor.fetchone()
             if existing_row:
                 return {

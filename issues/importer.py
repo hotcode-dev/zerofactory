@@ -61,7 +61,9 @@ def resolve_board_for_issue(
                 if repo_or_project.lower() in cleaned_git.lower():
                     return slug
                 # Check slug match
-                norm_repo_slug = re.sub(r"[^a-zA-Z0-9]+", "-", repo_or_project).strip("-").lower()
+                norm_repo_slug = (
+                    re.sub(r"[^a-zA-Z0-9]+", "-", repo_or_project).strip("-").lower()
+                )
                 if norm_repo_slug in slug.lower():
                     return slug
 
@@ -76,12 +78,19 @@ def resolve_board_for_issue(
             if cwd_remote.returncode == 0:
                 cwd_url = cwd_remote.stdout.strip()
                 cleaned_cwd = re.sub(r"\.git$", "", cwd_url).strip().rstrip("/")
-                cursor.execute("SELECT slug, git_url FROM boards ORDER BY created_at ASC")
+                cursor.execute(
+                    "SELECT slug, git_url FROM boards ORDER BY created_at ASC"
+                )
                 for row in cursor.fetchall():
                     slug = str(row["slug"])
                     git_url = str(row["git_url"] or "")
-                    cleaned_board_url = re.sub(r"\.git$", "", git_url).strip().rstrip("/")
-                    if cleaned_board_url and cleaned_board_url.lower() == cleaned_cwd.lower():
+                    cleaned_board_url = (
+                        re.sub(r"\.git$", "", git_url).strip().rstrip("/")
+                    )
+                    if (
+                        cleaned_board_url
+                        and cleaned_board_url.lower() == cleaned_cwd.lower()
+                    ):
                         return slug
         except Exception:
             pass

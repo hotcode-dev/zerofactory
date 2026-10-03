@@ -131,7 +131,7 @@ def spawn_agent_worker(
             f"   - Dependency Veto (Rungs 3 & 5): Reject newly added packages if standard library or existing packages suffice.\n"
             f"   - Simplicity & YAGNI (Rungs 1 & 6): Reject premature abstractions, unnecessary wrappers, single-caller factories, and deep nesting.\n"
             f"3. Run automated test suites and linters in your workspace ({workdir}).\n"
-            f"4. Submit your review feedback on GitHub as a comment (`gh pr review --comment -b \"[AI:zf-reviewer] [Reviewer Feedback] ...\"` or inline via `gh api`). Do not use `--approve` or `--request-changes` as GitHub prevents authors/tokens from approving their own PRs.\n"
+            f'4. Submit your review feedback on GitHub as a comment (`gh pr review --comment -b "[AI:zf-reviewer] [Reviewer Feedback] ..."` or inline via `gh api`). Do not use `--approve` or `--request-changes` as GitHub prevents authors/tokens from approving their own PRs.\n'
             f'   - AI ATTRIBUTION: Every GitHub comment or review you post (review bodies, `gh pr comment`, inline `gh api` comments) MUST begin with `[AI:zf-reviewer]` (e.g. `"[AI:zf-reviewer] [Reviewer Feedback] Round 1: ..."`) so humans can distinguish agent output. Do not strip the `[AI:zf-builder]` prefix from the auto-opened PR title or body.\n'
             f"5. Continuous Learning & Repository Knowledge:\n"
             f"   - If you catch a recurring mistake, testing gotcha, or project convention that future tasks should follow, record it!\n"
