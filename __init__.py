@@ -467,9 +467,33 @@ def register(ctx: Any):
             help="Optional reason; recorded as a comment when moving to 'blocked' (mirrors the 'block' command)",
         )
         p_move.add_argument(
+            "--assignee",
+            default=None,
+            help="Optional new assignee (e.g. zf-builder or human)",
+        )
+        p_move.add_argument(
             "--actor",
             default=None,
             help="Actor executing move (defaults to HERMES_PROFILE or 'user')",
+        )
+
+        # update
+        p_update = subparsers.add_parser("update", help="Update task fields")
+        p_update.add_argument("task_id", help="Task ID")
+        p_update.add_argument("--title", default=None, help="New title")
+        p_update.add_argument("--description", default=None, help="New description")
+        p_update.add_argument("--assignee", default=None, help="New assignee")
+        p_update.add_argument(
+            "--priority",
+            choices=["P0", "P1", "P2", "P3"],
+            default=None,
+            help="New priority",
+        )
+        p_update.add_argument(
+            "--status",
+            choices=["triage", "todo", "running", "blocked", "done"],
+            default=None,
+            help="New status",
         )
 
         # block
@@ -1046,12 +1070,24 @@ def register(ctx: Any):
                 or "user"
             )
             reason = getattr(args, "reason", None)
-            req = TaskMove(status=args.status, actor=actor, reason=reason)
+            assignee = getattr(args, "assignee", None)
+            req = TaskMove(status=args.status, actor=actor, reason=reason, assignee=assignee)
             res = _move_task(args.task_id, req)
             if res.get("status") == "blocked" and reason:
                 print(f"Moved task {args.task_id} to {args.status} (reason: {reason})")
             else:
                 print(f"Moved task {args.task_id} to {args.status}")
+
+        elif action == "update":
+            req = TaskUpdate(
+                title=getattr(args, "title", None),
+                description=getattr(args, "description", None),
+                assignee=getattr(args, "assignee", None),
+                priority=getattr(args, "priority", None),
+                status=getattr(args, "status", None),
+            )
+            res = _update_task(args.task_id, req)
+            print(f"Updated task {args.task_id}")
 
         elif action == "block":
             # Delegate to `move_task` with the reason so the single shared

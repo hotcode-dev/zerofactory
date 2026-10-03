@@ -773,7 +773,14 @@ def move_task(task_id: str, req: TaskMove):
                         from dispatcher import stop_task_worker  # type: ignore
                     except Exception:
                         stop_task_worker = None
-                if stop_task_worker is not None:
+                is_agent_actor = bool(
+                    req.actor
+                    and (
+                        req.actor.startswith("zf-")
+                        or req.actor in ("orchestrator", "builder", "reviewer")
+                    )
+                )
+                if stop_task_worker is not None and not is_agent_actor:
                     try:
                         stop_task_worker(task_id, cursor=cursor)
                     except Exception as _stw_err:
@@ -783,8 +790,8 @@ def move_task(task_id: str, req: TaskMove):
                             _stw_err,
                         )
 
-        new_assignee = None
-        if (
+        new_assignee = getattr(req, "assignee", None)
+        if not new_assignee and (
             req.status == "blocked"
             and req.reason
             and (

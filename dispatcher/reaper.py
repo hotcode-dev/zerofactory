@@ -195,6 +195,25 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         target_status,
                     )
                 else:
+                    cursor.execute("SELECT assignee, status, title FROM tasks WHERE id = ?", (task_id,))
+                    t_check = cursor.fetchone()
+                    curr_stat = t_check["status"] if t_check else ""
+                    if curr_stat in ("todo", "done"):
+                        meta = _d()._mark_task_session_ended(meta, now, "finished")
+                        cursor.execute(
+                            "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                            (json.dumps(meta), now, task_id),
+                        )
+                        _log.info(
+                            "Worker for task %s exited with code %d but task is already in %s; keeping %s",
+                            task_id,
+                            retcode,
+                            curr_stat,
+                            curr_stat,
+                        )
+                        reaped += 1
+                        continue
+
                     meta = _d()._mark_task_session_ended(meta, now, "failed")
                     fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
                     meta["worker_failure_retries"] = fail_retries
