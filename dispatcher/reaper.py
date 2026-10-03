@@ -195,7 +195,10 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         target_status,
                     )
                 else:
-                    cursor.execute("SELECT assignee, status, title FROM tasks WHERE id = ?", (task_id,))
+                    cursor.execute(
+                        "SELECT assignee, status, title FROM tasks WHERE id = ?",
+                        (task_id,),
+                    )
                     t_check = cursor.fetchone()
                     curr_stat = t_check["status"] if t_check else ""
                     if curr_stat in ("todo", "done"):
