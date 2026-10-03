@@ -10,6 +10,7 @@ from dashboard.gh_issues_service import (
     build_gh_issues_setup_task_prompt,
     check_board_gh_issues_status,
     create_gh_issues_setup_task,
+    setup_board_gh_issues_deterministic,
 )
 from dashboard.plugin_api import BoardCreate, create_board
 from dashboard.routes.boards import (
@@ -48,8 +49,8 @@ def test_gh_issues_status_and_task_lifecycle(initialized_db: Path, tmp_path: Pat
     assert status["has_gh_issues"] is False
     assert status["pending_task_id"] is None
 
-    # 2. Create setup task
-    setup_res = create_gh_issues_setup_task(slug)
+    # 2. Create setup task in async mode
+    setup_res = create_gh_issues_setup_task(slug, deterministic=False)
     assert setup_res["ok"] is True
     assert setup_res["already_exists"] is False
     task_id = setup_res["task_id"]
@@ -58,18 +59,46 @@ def test_gh_issues_status_and_task_lifecycle(initialized_db: Path, tmp_path: Pat
     status2 = check_board_gh_issues_status(slug)
     assert status2["pending_task_id"] == task_id
 
-    # 4. Creating again should deduplicate
-    setup_res2 = create_gh_issues_setup_task(slug)
+    # 4. Creating again in async mode should deduplicate
+    setup_res2 = create_gh_issues_setup_task(slug, deterministic=False)
     assert setup_res2["ok"] is True
     assert setup_res2["already_exists"] is True
     assert setup_res2["task_id"] == task_id
 
-    # 5. Endpoints test
+    # 5. Endpoint test: status endpoint
     ep_status = get_board_gh_issues_status_endpoint(slug)
     assert ep_status["ok"] is True
     assert ep_status["pending_task_id"] == task_id
 
+    # 6. Endpoint test: deterministic setup endpoint
     ep_setup = setup_board_gh_issues_endpoint(slug)
     assert ep_setup["ok"] is True
-    assert ep_setup["already_exists"] is True
-    assert ep_setup["task_id"] == task_id
+    assert ep_setup["deterministic"] is True
+    assert (repo_dir / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml").exists()
+    assert (repo_dir / ".github" / "ISSUE_TEMPLATE" / "feature_request.yml").exists()
+    assert (repo_dir / ".github" / "ISSUE_TEMPLATE" / "config.yml").exists()
+
+    # 7. Status now reflects templates are configured
+    status_final = check_board_gh_issues_status(slug)
+    assert status_final["ok"] is True
+    assert status_final["has_gh_issues"] is True
+
+
+def test_setup_board_gh_issues_deterministic(initialized_db: Path, tmp_path: Path):
+    repo_dir = tmp_path / "dummy_gh_direct"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / ".git").mkdir()
+
+    board_res = create_board(BoardCreate(git_url=str(repo_dir)))
+    slug = board_res["slug"]
+
+    res = setup_board_gh_issues_deterministic(slug)
+    assert res["ok"] is True
+    assert res["deterministic"] is True
+    assert len(res["templates"]) == 3
+
+    config_path = repo_dir / ".github" / "ISSUE_TEMPLATE" / "config.yml"
+    assert config_path.exists()
+    content = config_path.read_text(encoding="utf-8")
+    assert "blank_issues_enabled: false" in content
+    assert "GitHub Discussions" in content
