@@ -402,7 +402,7 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
             "provider": eff_provider,
             "base_url": eff_base_url,
             "script": "zf_openwiki_gate.py",
-            "no_agent": False,
+            "no_agent": True,
             "context_from": None,
             "continuity": False,
             "schedule": wiki_sched,

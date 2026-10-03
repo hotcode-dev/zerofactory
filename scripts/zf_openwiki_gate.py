@@ -21,11 +21,86 @@ import sqlite3
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
+# Ensure ZeroFactory root is in sys.path
+SCRIPT_DIR = Path(__file__).resolve().parent
+candidate_roots = [
+    SCRIPT_DIR.parent,
+    Path.home() / ".hermes" / "plugins" / "zerofactory",
+    Path.home() / "git" / "hotcode-dev" / "zerofactory",
+]
+if os.environ.get("ZEROFACTORY_ROOT"):
+    candidate_roots.insert(0, Path(os.environ["ZEROFACTORY_ROOT"]))
+
+for candidate in candidate_roots:
+    try:
+        resolved = candidate.resolve()
+        if resolved.is_dir() and str(resolved) not in sys.path:
+            sys.path.insert(0, str(resolved))
+    except Exception:
+        pass
+
 STATE_FILE = Path.home() / ".hermes" / "openwiki_state.json"
 DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
+
+
+def create_openwiki_task(
+    board_slug: str, diff_log: str, repo_dir: Path
+) -> dict[str, Any] | None:
+    """Deterministically create a documentation sync task on the Kanban board for zf-builder."""
+    task_desc = f"""Sync OpenWiki architecture documentation (`openwiki/`) with recent merged commits on the default branch.
+
+## Key Recent Commits:
+{diff_log.strip() if diff_log.strip() else "(Check git log since last OpenWiki commit)"}
+
+## Instructions for zf-builder:
+1. Inspect recent commits and identify changes to public interfaces and architecture.
+2. Use the OpenWiki MCP server lifecycle tools to update relevant markdown pages:
+   - Call `openwiki_begin({{"root": ".", "mode": "update"}})`
+   - Call `openwiki_next_page`, update the relevant Markdown pages with valid frontmatter, and submit page decisions via `openwiki_submit_page`.
+   - When all pages are updated, call `openwiki_finish`.
+3. If OpenWiki created `.github/workflows/openwiki-update.yml` or `CLAUDE.md`, remove them:
+   `rm -rf .github/workflows/openwiki-update.yml CLAUDE.md`
+4. Stage and commit updated documentation directly on the default branch:
+   `git add openwiki/ AGENTS.md`
+   `git commit -m "docs(openwiki): sync architecture documentation with recent changes"`
+"""
+    try:
+        from dashboard.plugin_api import TaskCreate, create_task
+        task = create_task(TaskCreate(
+            board_slug=board_slug,
+            title="docs(openwiki): sync architecture documentation with recent changes",
+            category="documentation",
+            priority="P2",
+            status="todo",
+            assignee="zf-builder",
+            description=task_desc,
+        ))
+        return task
+    except Exception:
+        # Fallback to direct SQLite insertion if plugin_api unavailable
+        db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+        if db_path.exists():
+            task_id = f"zf-{board_slug[:3]}-{uuid.uuid4().hex[:8]}"
+            now_ts = int(time.time())
+            try:
+                with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO tasks (id, board_slug, title, description, status, assignee, priority, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, 'todo', 'zf-builder', 'P2', ?, ?)
+                        """,
+                        (task_id, board_slug, "docs(openwiki): sync architecture documentation with recent changes", task_desc, now_ts, now_ts),
+                    )
+                    conn.commit()
+                    return {"id": task_id}
+            except Exception:
+                pass
+    return None
+
 
 
 def _run_cmd(cmd: list[str], cwd: Path | None = None) -> str:
@@ -130,9 +205,9 @@ def has_active_openwiki_task(board_slug: str) -> tuple[bool, str]:
 
 
 def check_openwiki_gate(
-    repo_dir: Path, board_slug: str | None = None
+    repo_dir: Path, board_slug: str | None = None, auto_create_task: bool = True
 ) -> tuple[bool, str]:
-    """Evaluate whether the agent should be woken for OpenWiki update.
+    """Evaluate whether OpenWiki update is needed and deterministically create task.
 
     Returns:
         (wake_agent, reason_message)
@@ -164,6 +239,13 @@ def check_openwiki_gate(
             return False, active_reason
 
     if force_update:
+        if auto_create_task:
+            task = create_openwiki_task(slug, "Force OpenWiki documentation sync requested", repo_dir)
+            if task and task.get("id"):
+                return (
+                    False,
+                    f"Force update requested; created task '{task['id']}' in 'todo' for zf-builder.",
+                )
         return True, f"Force update requested for board '{slug}'."
 
     # 5. Check git working tree cleanliness
@@ -191,9 +273,16 @@ def check_openwiki_gate(
     base_commit = last_openwiki_commit or last_scanned_sha
 
     if not base_commit:
+        if auto_create_task:
+            task = create_openwiki_task(slug, "Initial OpenWiki documentation sync", repo_dir)
+            if task and task.get("id"):
+                return (
+                    False,
+                    f"No previous openwiki commit history found; created task '{task['id']}' in 'todo' for zf-builder.",
+                )
         return (
             True,
-            "No previous openwiki commit history found; waking agent to update OpenWiki.",
+            "No previous openwiki commit history found; documentation sync required.",
         )
 
     if head_sha == base_commit:
@@ -221,9 +310,22 @@ def check_openwiki_gate(
         )
 
     commit_count = len(diff_log.splitlines())
+    if auto_create_task:
+        task = create_openwiki_task(slug, diff_log, repo_dir)
+        if task and task.get("id"):
+            return (
+                False,
+                f"Detected {commit_count} branch update(s) since {base_commit[:8]}; created task '{task['id']}' in 'todo' for zf-builder.",
+            )
+        else:
+            return (
+                False,
+                f"Detected {commit_count} branch update(s) since {base_commit[:8]}; failed to create task on board.",
+            )
+
     return (
         True,
-        f"Detected {commit_count} branch update(s) since {base_commit[:8]}; waking agent to update OpenWiki.",
+        f"Detected {commit_count} branch update(s) since {base_commit[:8]}; documentation sync required.",
     )
 
 

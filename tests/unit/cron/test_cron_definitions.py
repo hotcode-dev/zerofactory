@@ -167,7 +167,7 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                     self.assertEqual(job["schedule"]["kind"], "interval")
                     self.assertEqual(job["schedule"]["minutes"], 1440)
                     self.assertEqual(job["schedule_display"], "daily")
-                    self.assertFalse(job["no_agent"])
+                    self.assertTrue(job["no_agent"])
                 finally:
                     if orig_bc:
                         builtin_cron.get_db_path = orig_bc

@@ -301,7 +301,8 @@ class TestAutomationScriptsE2E(unittest.TestCase):
         rc4, out4 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
         self.assertEqual(rc4, 0)
         self.assertIn("branch update(s)", out4)
-        self.assertIn('"wakeagent": true', out4.lower())
+        self.assertIn("created task", out4)
+        self.assertIn('"wakeagent": false', out4.lower())
 
         # 6. Run again without new changes: suppresses with wakeAgent: false
         rc5, out5 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
@@ -352,14 +353,15 @@ class TestAutomationScriptsE2E(unittest.TestCase):
         self.assertIn("already has an active OpenWiki task", out8)
         self.assertIn('"wakeagent": false', out8.lower())
 
-        # Move to 'done': now unblocked, wakes agent for doc synchronization!
+        # Move to 'done': now unblocked, automatically creates the new task on board for zf-builder!
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (task_id,))
             conn.commit()
         rc9, out9 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
         self.assertEqual(rc9, 0)
         self.assertIn("branch update(s)", out9)
-        self.assertIn('"wakeagent": true', out9.lower())
+        self.assertIn("created task", out9)
+        self.assertIn('"wakeagent": false', out9.lower())
 
 
 if __name__ == "__main__":
