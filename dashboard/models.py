@@ -120,6 +120,13 @@ class BoardTestClone(BaseModel):
     slug: str | None = Field(default=None, description="Optional board slug")
 
 
+class JiraSetupRequest(BaseModel):
+    jira_url: str | None = Field(
+        default=None,
+        description="Optional Jira Cloud link / project URL (e.g. https://your-domain.atlassian.net)",
+    )
+
+
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     description: str | None = ""

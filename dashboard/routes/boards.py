@@ -21,11 +21,11 @@ from fastapi import APIRouter, HTTPException
 
 try:
     from ..db import get_db_conn, init_db, parse_git_url
-    from ..models import BoardCreate, BoardTestClone, BoardUpdate
+    from ..models import BoardCreate, BoardTestClone, BoardUpdate, JiraSetupRequest
     from ..setup_common import get_repo_resolver
 except (ImportError, ValueError):
     from db import get_db_conn, init_db, parse_git_url  # type: ignore
-    from models import BoardCreate, BoardTestClone, BoardUpdate  # type: ignore
+    from models import BoardCreate, BoardTestClone, BoardUpdate, JiraSetupRequest  # type: ignore
     from setup_common import get_repo_resolver  # type: ignore
 
 _log = logging.getLogger(__name__)
@@ -527,3 +527,49 @@ def setup_board_gh_issues_endpoint(slug: str):
             detail=res.get("error", "Failed to setup GitHub issues"),
         )
     return res
+
+
+@router.post("/boards/{slug}/setup-jira")
+def setup_board_jira_endpoint(slug: str, req: JiraSetupRequest | None = None):
+    """Configure and/or test Jira Cloud integration for a board."""
+    init_db()
+    with get_db_conn() as conn:
+        board = conn.execute("SELECT * FROM boards WHERE slug = ?", (slug,)).fetchone()
+        if not board:
+            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
+
+        current_jira_url = (board["jira_url"] or "").strip()
+        if req and req.jira_url is not None:
+            new_jira_url = req.jira_url.strip()
+            conn.execute(
+                "UPDATE boards SET jira_url = ?, updated_at = ? WHERE slug = ?",
+                (new_jira_url, int(time.time()), slug),
+            )
+            conn.commit()
+            current_jira_url = new_jira_url
+
+    try:
+        from ...issues.jira import JiraIssueClient
+    except (ImportError, ValueError):
+        try:
+            from issues.jira import JiraIssueClient  # type: ignore
+        except (ImportError, ValueError):
+            from zerofactory.issues.jira import JiraIssueClient  # type: ignore
+
+    client = JiraIssueClient(base_url=current_jira_url, board_slug=slug)
+    conn_status = client.check_connection()
+
+    return {
+        "ok": True,
+        "slug": slug,
+        "jira_url": current_jira_url,
+        "connection": conn_status,
+        "message": conn_status.get("message", "Jira status checked"),
+    }
+
+
+@router.post("/boards/{slug}/test-jira")
+def verify_board_jira_endpoint(slug: str):
+    """Test reachability and authentication of configured Jira Cloud link."""
+    return setup_board_jira_endpoint(slug, None)
+

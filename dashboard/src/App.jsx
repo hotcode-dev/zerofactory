@@ -158,6 +158,9 @@ export function ZeroFactoryKanbanApp() {
     const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
     const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
 
+    const [isSettingUpJira, setIsSettingUpJira] = useState(false);
+    const [isTestingJira, setIsTestingJira] = useState(false);
+
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
     const [isSubmittingTask, setIsSubmittingTask] = useState(false);
@@ -460,6 +463,54 @@ export function ZeroFactoryKanbanApp() {
         showToast("Error initiating setup: " + (err.message || String(err)), "error");
       } finally {
         setIsSettingUpGhIssues(false);
+      }
+    };
+
+    const handleTriggerJiraSetup = async (boardSlug, jiraUrl) => {
+      const bSlug = boardSlug || selectedBoard;
+      if (!bSlug || bSlug === "all") return;
+      setIsSettingUpJira(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-jira", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jira_url: jiraUrl !== undefined ? jiraUrl : (editBoardForm.jira_url || "") })
+        });
+        if (res && res.ok) {
+          setEditBoardForm((prev) => ({ ...prev, jira_url: res.jira_url || "" }));
+          const conn = res.connection || {};
+          const msg = conn.message || res.message || "Jira Cloud link configured";
+          showToast(msg, conn.connected ? "success" : "info");
+          await loadBoards();
+        } else {
+          showToast((res && (res.detail || res.error || res.message)) || "Failed to configure Jira", "error");
+        }
+      } catch (err) {
+        showToast("Error configuring Jira: " + (err.message || String(err)), "error");
+      } finally {
+        setIsSettingUpJira(false);
+      }
+    };
+
+    const handleTriggerJiraTest = async (boardSlug) => {
+      const bSlug = boardSlug || selectedBoard;
+      if (!bSlug || bSlug === "all") return;
+      setIsTestingJira(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/test-jira", {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          const conn = res.connection || {};
+          const msg = conn.message || res.message || "Jira tested";
+          showToast(msg, conn.connected ? "success" : "warning");
+        } else {
+          showToast((res && (res.detail || res.error || res.message)) || "Jira test failed", "error");
+        }
+      } catch (err) {
+        showToast("Error testing Jira: " + (err.message || String(err)), "error");
+      } finally {
+        setIsTestingJira(false);
       }
     };
 
@@ -1780,7 +1831,11 @@ export function ZeroFactoryKanbanApp() {
         handleTriggerOpenwikiSetup,
         ghIssuesStatus,
         isSettingUpGhIssues,
-        handleTriggerGhIssuesSetup
+        handleTriggerGhIssuesSetup,
+        isSettingUpJira,
+        handleTriggerJiraSetup,
+        isTestingJira,
+        handleTriggerJiraTest
       }),
       React.createElement(SettingsModal, {
         showSettingsModal,

@@ -1486,6 +1486,10 @@ var ZeroFactoryDashboard = (function(exports) {
 							desc: "Create P0 setup task to generate GitHub Issue templates & labels"
 						},
 						{
+							cmd: "hermes zerofactory setup-jira --board <slug> [--url <jira_url>]",
+							desc: "Configure Jira Cloud instance link and test connectivity for a board"
+						},
+						{
 							cmd: "hermes zerofactory stats",
 							desc: "Show Kanban metrics, throughput, and worker states"
 						},
@@ -2049,7 +2053,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/EditBoardModal.jsx
 	function EditBoardModal(props) {
-		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, selectedBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {}, ghIssuesStatus = null, isSettingUpGhIssues = false, handleTriggerGhIssuesSetup = () => {} } = props;
+		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, selectedBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {}, ghIssuesStatus = null, isSettingUpGhIssues = false, handleTriggerGhIssuesSetup = () => {}, isSettingUpJira = false, handleTriggerJiraSetup = () => {}, isTestingJira = false, handleTriggerJiraTest = () => {} } = props;
 		if (!showEditBoardModal) return null;
 		return React.createElement("div", {
 			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
@@ -2154,12 +2158,39 @@ var ZeroFactoryDashboard = (function(exports) {
 			disabled: isSettingUpGhIssues,
 			onClick: () => handleTriggerGhIssuesSetup(editBoardForm.slug),
 			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-		}, isSettingUpGhIssues ? "Initiating..." : ghIssuesStatus && ghIssuesStatus.has_gh_issues ? "🔄 Regenerate Templates" : "🏷️ Setup GitHub Issues"))), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🔷 Jira Cloud Integration"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link Atlassian Jira Cloud instance/project for deterministic issue import into triage.")), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " + (editBoardForm.jira_url && editBoardForm.jira_url.trim() ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : "bg-slate-800 text-slate-400 border border-slate-700/60") }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? "Linked ✓" : "Optional ⚪")), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-[11px] text-slate-400 font-mono truncate" }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? editBoardForm.jira_url.trim() : "No Jira link configured (optional)"), editBoardForm.jira_url && editBoardForm.jira_url.trim() ? React.createElement("a", {
-			href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
-			target: "_blank",
-			rel: "noreferrer",
-			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
-		}, "🔗 Open Jira") : null)))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
+		}, isSettingUpGhIssues ? "Initiating..." : ghIssuesStatus && ghIssuesStatus.has_gh_issues ? "🔄 Regenerate Templates" : "🏷️ Setup GitHub Issues"))), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🔷 Jira Cloud Integration"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link Atlassian Jira Cloud instance/project for deterministic issue import into triage.")), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " + (editBoardForm.jira_url && editBoardForm.jira_url.trim() ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : "bg-slate-800 text-slate-400 border border-slate-700/60") }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? "Linked ✓" : "Optional ⚪")), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-[11px] text-slate-400 font-mono truncate" }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? editBoardForm.jira_url.trim() : "No Jira link configured (optional)"), React.createElement("div", { className: "flex items-center gap-1.5 shrink-0" }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? [
+			React.createElement("button", {
+				key: "test-btn",
+				type: "button",
+				disabled: isTestingJira,
+				onClick: () => handleTriggerJiraTest(editBoardForm.slug),
+				className: "px-2 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+			}, isTestingJira ? "Testing..." : "🧪 Test"),
+			React.createElement("button", {
+				key: "edit-btn",
+				type: "button",
+				onClick: () => {
+					const url = window.prompt("Enter Jira Cloud URL (e.g. https://domain.atlassian.net):", editBoardForm.jira_url || "");
+					if (url !== null) handleTriggerJiraSetup(editBoardForm.slug, url.trim());
+				},
+				className: "px-2 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
+			}, "✏️ Edit"),
+			React.createElement("a", {
+				key: "open-link",
+				href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
+				target: "_blank",
+				rel: "noreferrer",
+				className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
+			}, "🔗 Open Jira")
+		] : React.createElement("button", {
+			type: "button",
+			disabled: isSettingUpJira,
+			onClick: () => {
+				const url = window.prompt("Enter Jira Cloud URL (e.g. https://your-domain.atlassian.net):", "");
+				if (url && url.trim()) handleTriggerJiraSetup(editBoardForm.slug, url.trim());
+			},
+			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+		}, isSettingUpJira ? "Connecting..." : "🔷 Setup Jira Link")))))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
 			type: "button",
 			className: "mr-auto px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
 			onClick: handleDeleteBoard,
@@ -2841,6 +2872,8 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [ghIssuesStatus, setGhIssuesStatus] = useState(null);
 		const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
 		const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
+		const [isSettingUpJira, setIsSettingUpJira] = useState(false);
+		const [isTestingJira, setIsTestingJira] = useState(false);
 		const [createBoardError, setCreateBoardError] = useState("");
 		const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
 		const [isSubmittingTask, setIsSubmittingTask] = useState(false);
@@ -3120,6 +3153,49 @@ var ZeroFactoryDashboard = (function(exports) {
 				showToast("Error initiating setup: " + (err.message || String(err)), "error");
 			} finally {
 				setIsSettingUpGhIssues(false);
+			}
+		};
+		const handleTriggerJiraSetup = async (boardSlug, jiraUrl) => {
+			const bSlug = boardSlug || selectedBoard;
+			if (!bSlug || bSlug === "all") return;
+			setIsSettingUpJira(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-jira", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ jira_url: jiraUrl !== void 0 ? jiraUrl : editBoardForm.jira_url || "" })
+				});
+				if (res && res.ok) {
+					setEditBoardForm((prev) => ({
+						...prev,
+						jira_url: res.jira_url || ""
+					}));
+					const conn = res.connection || {};
+					const msg = conn.message || res.message || "Jira Cloud link configured";
+					showToast(msg, conn.connected ? "success" : "info");
+					await loadBoards();
+				} else showToast(res && (res.detail || res.error || res.message) || "Failed to configure Jira", "error");
+			} catch (err) {
+				showToast("Error configuring Jira: " + (err.message || String(err)), "error");
+			} finally {
+				setIsSettingUpJira(false);
+			}
+		};
+		const handleTriggerJiraTest = async (boardSlug) => {
+			const bSlug = boardSlug || selectedBoard;
+			if (!bSlug || bSlug === "all") return;
+			setIsTestingJira(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/test-jira", { method: "POST" });
+				if (res && res.ok) {
+					const conn = res.connection || {};
+					const msg = conn.message || res.message || "Jira tested";
+					showToast(msg, conn.connected ? "success" : "warning");
+				} else showToast(res && (res.detail || res.error || res.message) || "Jira test failed", "error");
+			} catch (err) {
+				showToast("Error testing Jira: " + (err.message || String(err)), "error");
+			} finally {
+				setIsTestingJira(false);
 			}
 		};
 		const loadTasksAndStats = useCallback(async (boardSlug) => {
@@ -4370,7 +4446,11 @@ var ZeroFactoryDashboard = (function(exports) {
 			handleTriggerOpenwikiSetup,
 			ghIssuesStatus,
 			isSettingUpGhIssues,
-			handleTriggerGhIssuesSetup
+			handleTriggerGhIssuesSetup,
+			isSettingUpJira,
+			handleTriggerJiraSetup,
+			isTestingJira,
+			handleTriggerJiraTest
 		}), React.createElement(SettingsModal, {
 			showSettingsModal,
 			setShowSettingsModal,

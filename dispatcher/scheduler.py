@@ -26,6 +26,7 @@ from .config import (
     _dispatcher_thread,
     _last_idle_scan_times,
     _log,
+    is_worker_or_child_process,
     load_settings,
     normalize_assignee,
 )
@@ -1574,7 +1575,7 @@ def _dispatcher_loop():
 
 def start_background_dispatcher():
     """Start background dispatcher daemon thread if not already running."""
-    if _d().is_worker_or_child_process():
+    if is_worker_or_child_process():
         _log.debug(
             "Skipping background dispatcher in worker/child process (profile=%s)",
             os.environ.get("HERMES_PROFILE"),

@@ -11,7 +11,7 @@ import pytest
 from dashboard.plugin_api import create_board, BoardCreate
 from issues.base import ExternalIssue
 from issues.github import GitHubIssueClient, parse_github_issue_ref
-from issues.jira import JiraIssueClient, parse_jira_issue_ref
+from issues.jira import JiraIssueClient, parse_jira_issue_ref, extract_adf_text
 from issues.importer import import_external_issue, resolve_board_for_issue
 
 
@@ -309,6 +309,96 @@ class TestJiraParserAndClient:
         )
         client = JiraIssueClient(board_slug="myorg-myrepo")
         assert client.base_url == "https://myteam.atlassian.net"
+
+    def test_extract_adf_text(self):
+        adf_doc = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "This is a test description."},
+                    ],
+                },
+                {
+                    "type": "bulletList",
+                    "content": [
+                        {
+                            "type": "listItem",
+                            "content": [
+                                {"type": "paragraph", "content": [{"type": "text", "text": "Item 1"}]}
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+        text = extract_adf_text(adf_doc)
+        assert "This is a test description." in text
+        assert "Item 1" in text
+
+    @patch("urllib.request.urlopen")
+    def test_jira_check_connection(self, mock_urlopen):
+        # 1. Successful connection
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        client = JiraIssueClient(
+            base_url="https://domain.atlassian.net",
+            email="bot@example.com",
+            api_token="dummy-token",
+        )
+        res = client.check_connection()
+        assert res["ok"]
+        assert res["connected"]
+        assert res["authenticated"]
+        assert client.test_connection()
+
+        # 2. No URL configured
+        empty_client = JiraIssueClient()
+        res_empty = empty_client.check_connection()
+        assert not res_empty["ok"]
+        assert not empty_client.test_connection()
+
+    @patch("urllib.request.urlopen")
+    def test_jira_fetch_issue_live_rest(self, mock_urlopen):
+        fake_api_data = {
+            "fields": {
+                "summary": "Fix login crash",
+                "description": {
+                    "type": "doc",
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": "Null pointer on submit"}],
+                        }
+                    ],
+                },
+                "reporter": {"displayName": "Bob Builder"},
+                "status": {"name": "To Do"},
+                "labels": ["bug", "critical"],
+                "assignee": {"displayName": "Alice"},
+            }
+        }
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(fake_api_data).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        client = JiraIssueClient(
+            base_url="https://domain.atlassian.net",
+            email="bot@example.com",
+            api_token="token",
+        )
+        issue = client.fetch_issue("PROJ-999")
+        assert issue.key == "PROJ-999"
+        assert issue.title == "Fix login crash"
+        assert "Null pointer on submit" in issue.body
+        assert issue.author == "Bob Builder"
+        assert issue.issue_type == "bug"
+        assert issue.infer_priority() == "P0"
 
 
 class TestImporterIdempotencyAndDeterminism:

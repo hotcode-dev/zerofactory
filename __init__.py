@@ -15,6 +15,7 @@ try:
     from .dashboard.plugin_api import (
         ACTIVITY_ACTORS,
         BoardCreate,
+        BoardUpdate as _BoardUpdate,
         CommentCreate,
         MemoryCreate,
         TaskCreate,
@@ -76,6 +77,9 @@ try:
     )
     from .dashboard.plugin_api import (
         update_task as _update_task,
+    )
+    from .dashboard.plugin_api import (
+        update_board as _update_board,
     )
 except ImportError:
     current_dir = Path(__file__).parent
@@ -84,6 +88,7 @@ except ImportError:
     from plugin_api import (  # type: ignore
         ACTIVITY_ACTORS,
         BoardCreate,
+        BoardUpdate as _BoardUpdate,
         CommentCreate,
         MemoryCreate,
         TaskCreate,
@@ -145,6 +150,9 @@ except ImportError:
     )
     from plugin_api import (
         update_task as _update_task,
+    )
+    from plugin_api import (
+        update_board as _update_board,
     )
 
 try:
@@ -424,6 +432,27 @@ def register(ctx: Any):
             help="Actor executing setup (defaults to HERMES_PROFILE or 'user')",
         )
 
+        # setup-jira
+        p_setup_jira = subparsers.add_parser(
+            "setup-jira",
+            help="Configure Jira Cloud link and test connectivity for a board",
+        )
+        p_setup_jira.add_argument(
+            "--board",
+            required=True,
+            help="Target board slug to configure Jira for",
+        )
+        p_setup_jira.add_argument(
+            "--url",
+            default=None,
+            help="Jira Cloud instance URL (e.g. https://your-domain.atlassian.net)",
+        )
+        p_setup_jira.add_argument(
+            "--test",
+            action="store_true",
+            help="Test Jira connectivity and API authentication",
+        )
+
         # move
         p_move = subparsers.add_parser("move", help="Move a task to a different column")
         p_move.add_argument("task_id", help="Task ID")
@@ -537,6 +566,20 @@ def register(ctx: Any):
             action="store_true",
             help="Automatically trigger setup task for .zerofactory/precommit.sh",
         )
+        p_bcreate.add_argument(
+            "--jira-url",
+            default="",
+            help="Optional Jira Cloud instance or project URL (e.g. https://your-domain.atlassian.net)",
+        )
+        p_bupdate = board_subs.add_parser(
+            "update",
+            help="Update board configuration (description, target-branch, jira-url)",
+        )
+        p_bupdate.add_argument("slug", help="Board slug to update")
+        p_bupdate.add_argument("--description", default=None, help="New board description")
+        p_bupdate.add_argument("--target-branch", default=None, help="New target branch")
+        p_bupdate.add_argument("--jira-url", default=None, help="Jira Cloud instance URL")
+
         p_bdelete = board_subs.add_parser(
             "delete", help="Delete a board and clear its cron scanner job"
         )
@@ -926,6 +969,41 @@ def register(ctx: Any):
                 "\nSetup complete! Issues filed with the 'zerofactory' label can now be triaged by Zero Factory AI.\n"
             )
 
+        elif action == "setup-jira":
+            board_slug = getattr(args, "board", None)
+            new_url = getattr(args, "url", None)
+
+            if not board_slug:
+                print("Error: --board <slug> is required", file=sys.stderr)
+                sys.exit(1)
+
+            init_db()
+            with get_db_conn() as conn:
+                board = conn.execute(
+                    "SELECT * FROM boards WHERE slug = ?", (board_slug,)
+                ).fetchone()
+                if not board:
+                    print(f"Error: Board '{board_slug}' not found", file=sys.stderr)
+                    sys.exit(1)
+
+                current_url = (board["jira_url"] or "").strip()
+                if new_url is not None:
+                    current_url = new_url.strip()
+                    conn.execute(
+                        "UPDATE boards SET jira_url = ?, updated_at = ? WHERE slug = ?",
+                        (current_url, int(time.time()), board_slug),
+                    )
+                    print(f"\n✓ Updated Jira URL for board '{board_slug}': {current_url}")
+
+            client = JiraIssueClient(base_url=current_url, board_slug=board_slug)
+            status = client.check_connection()
+            print(f"\nJira Connection Status for board '{board_slug}':")
+            print(f"  Configured URL : {status.get('base_url') or '(none)'}")
+            print(f"  Reachable      : {'✓ Yes' if status.get('connected') else '✗ No'}")
+            print(f"  Authenticated  : {'✓ Yes' if status.get('authenticated') else '⚪ No (Token/Email required for private issues)'}")
+            print(f"  Message        : {status.get('message')}\n")
+            return
+
         elif action == "move":
             actor = (
                 getattr(args, "actor", None)
@@ -1092,6 +1170,7 @@ def register(ctx: Any):
                     description=args.description,
                     target_branch=getattr(args, "target_branch", "") or "",
                     auto_setup_precommit=getattr(args, "setup_precommit", False),
+                    jira_url=getattr(args, "jira_url", "") or "",
                 )
                 res = _create_board(req)
                 slug = res.get("slug")
@@ -1101,6 +1180,16 @@ def register(ctx: Any):
                     )
                 else:
                     print(f"✓ Created board: {slug}")
+            elif b_act == "update":
+                up_kwargs = {}
+                if getattr(args, "description", None) is not None:
+                    up_kwargs["description"] = args.description
+                if getattr(args, "target_branch", None) is not None:
+                    up_kwargs["target_branch"] = args.target_branch
+                if getattr(args, "jira_url", None) is not None:
+                    up_kwargs["jira_url"] = args.jira_url
+                res = _update_board(args.slug, _BoardUpdate(**up_kwargs))
+                print(f"✓ Updated board '{args.slug}'.")
             elif b_act == "delete":
                 res = _delete_board(args.slug)
                 print(

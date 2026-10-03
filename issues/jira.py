@@ -6,9 +6,13 @@ Ready for direct expansion with Jira REST API or jira-cli.
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 import re
+import urllib.error
+import urllib.request
 from typing import Any
 
 from .base import BaseIssueClient, ExternalIssue
@@ -20,6 +24,28 @@ _JIRA_URL_RE = re.compile(
 )
 _JIRA_KEY_RE = re.compile(r"^([A-Z0-9]+)-(\d+)$", re.IGNORECASE)
 _JIRA_NUM_ONLY_RE = re.compile(r"^#?(\d+)$")
+
+
+def extract_adf_text(node: Any) -> str:
+    """Extract plain text from Atlassian Document Format (ADF) json structure."""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, dict):
+        node_type = node.get("type")
+        if node_type == "text":
+            return str(node.get("text", ""))
+        chunks = []
+        for child in node.get("content", []):
+            chunks.append(extract_adf_text(child))
+        joined = "".join(chunks)
+        if node_type in ("paragraph", "heading"):
+            return joined + "\n"
+        if node_type == "listItem":
+            return f"- {joined}\n"
+        return joined
+    if isinstance(node, list):
+        return "".join(extract_adf_text(item) for item in node)
+    return str(node) if node is not None else ""
 
 
 def parse_jira_issue_ref(
@@ -102,9 +128,86 @@ class JiraIssueClient(BaseIssueClient):
             pass
         return ""
 
+    def _build_auth_headers(self) -> dict[str, str]:
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "ZeroFactory-JiraClient/1.0",
+        }
+        if self.api_token:
+            if self.email:
+                cred = f"{self.email}:{self.api_token}".encode("utf-8")
+                b64 = base64.b64encode(cred).decode("ascii")
+                headers["Authorization"] = f"Basic {b64}"
+            else:
+                headers["Authorization"] = f"Bearer {self.api_token}"
+        return headers
+
+    def check_connection(self) -> dict[str, Any]:
+        """Verify Jira credentials and host reachability."""
+        if not self.base_url:
+            return {
+                "ok": False,
+                "connected": False,
+                "authenticated": False,
+                "base_url": "",
+                "message": "No Jira Cloud URL configured for this board or environment.",
+            }
+
+        url = self.base_url.rstrip("/")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            url = f"https://{url}"
+
+        # If credentials provided, check /rest/api/3/myself; otherwise check host root
+        test_url = f"{url}/rest/api/3/myself" if self.api_token else url
+        headers = self._build_auth_headers()
+        req = urllib.request.Request(test_url, headers=headers, method="GET")
+
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                status = resp.status
+                return {
+                    "ok": True,
+                    "connected": True,
+                    "authenticated": bool(self.api_token and status == 200),
+                    "status_code": status,
+                    "base_url": url,
+                    "message": "Jira Cloud reachable and authenticated"
+                    if self.api_token
+                    else "Jira Cloud reachable (no API token configured)",
+                }
+        except urllib.error.HTTPError as e:
+            # 401 or 403 means host is reachable, but credentials are required or bad
+            if e.code in (401, 403):
+                return {
+                    "ok": True,
+                    "connected": True,
+                    "authenticated": False,
+                    "status_code": e.code,
+                    "base_url": url,
+                    "message": f"Jira Cloud reachable; credentials rejected or missing (HTTP {e.code}). Set JIRA_EMAIL and JIRA_API_TOKEN.",
+                }
+            return {
+                "ok": False,
+                "connected": False,
+                "authenticated": False,
+                "status_code": e.code,
+                "base_url": url,
+                "message": f"HTTP error {e.code}: {e.reason}",
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "connected": False,
+                "authenticated": False,
+                "status_code": None,
+                "base_url": url,
+                "message": f"Connection error: {e}",
+            }
+
     def test_connection(self) -> bool:
         """Verify Jira credentials and reachability."""
-        return bool(self.base_url and self.api_token)
+        res = self.check_connection()
+        return bool(res.get("connected"))
 
     def fetch_issue(
         self, issue_ref: str, project: str | None = None, **kwargs: Any
@@ -122,16 +225,34 @@ class JiraIssueClient(BaseIssueClient):
         if mock_payload:
             return self._parse_jira_payload(effective_project, issue_key, mock_payload)
 
-        # When REST client is connected:
-        if not self.base_url or not self.api_token:
-            raise NotImplementedError(
-                f"Jira client integration for {issue_key} requires JIRA_BASE_URL and JIRA_API_TOKEN environment variables."
+        if not self.base_url:
+            raise ValueError(
+                f"Jira client integration for {issue_key} requires a Jira URL. Set jira_url on the board or JIRA_BASE_URL environment variable."
             )
 
-        # Placeholder for Jira REST HTTP GET /rest/api/3/issue/{issue_key}
-        raise NotImplementedError(
-            "Jira REST API fetcher will be enabled with Jira plugin."
-        )
+        url = self.base_url.rstrip("/")
+        if not (url.startswith("http://") or url.startswith("https://")):
+            url = f"https://{url}"
+
+        api_url = f"{url}/rest/api/3/issue/{issue_key}"
+        headers = self._build_auth_headers()
+        req = urllib.request.Request(api_url, headers=headers, method="GET")
+
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw_bytes = resp.read()
+                data = json.loads(raw_bytes.decode("utf-8"))
+                return self._parse_jira_payload(effective_project, issue_key, data)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise ValueError(f"Jira issue '{issue_key}' not found at {api_url}") from e
+            if e.code in (401, 403):
+                raise PermissionError(
+                    f"Authentication failed fetching Jira issue '{issue_key}' (HTTP {e.code}). Set JIRA_EMAIL and JIRA_API_TOKEN."
+                ) from e
+            raise RuntimeError(f"Failed to fetch Jira issue '{issue_key}': HTTP {e.code} {e.reason}") from e
+        except Exception as e:
+            raise RuntimeError(f"Failed to connect to Jira at {api_url}: {e}") from e
 
     def _parse_jira_payload(
         self, project: str, issue_key: str, data: dict[str, Any]
@@ -142,7 +263,10 @@ class JiraIssueClient(BaseIssueClient):
 
         # Jira description can be Atlassian Document Format (ADF) or plain string
         raw_desc = fields.get("description") or data.get("body") or ""
-        body = raw_desc if isinstance(raw_desc, str) else str(raw_desc)
+        if isinstance(raw_desc, dict):
+            body = extract_adf_text(raw_desc).strip()
+        else:
+            body = str(raw_desc)
 
         author = ""
         reporter = fields.get("reporter")

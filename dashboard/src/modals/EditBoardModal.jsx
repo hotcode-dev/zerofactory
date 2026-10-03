@@ -23,7 +23,11 @@ export function EditBoardModal(props) {
     handleTriggerOpenwikiSetup = () => {},
     ghIssuesStatus = null,
     isSettingUpGhIssues = false,
-    handleTriggerGhIssuesSetup = () => {}
+    handleTriggerGhIssuesSetup = () => {},
+    isSettingUpJira = false,
+    handleTriggerJiraSetup = () => {},
+    isTestingJira = false,
+    handleTriggerJiraTest = () => {}
   } = props;
 
   if (!showEditBoardModal) return null;
@@ -397,18 +401,65 @@ export function EditBoardModal(props) {
                             ? editBoardForm.jira_url.trim()
                             : "No Jira link configured (optional)"
                         ),
-                        editBoardForm.jira_url && editBoardForm.jira_url.trim() ? (
-                          React.createElement(
-                            "a",
-                            {
-                              href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
-                              target: "_blank",
-                              rel: "noreferrer",
-                              className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
-                            },
-                            "🔗 Open Jira"
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-1.5 shrink-0" },
+                          editBoardForm.jira_url && editBoardForm.jira_url.trim() ? [
+                            React.createElement(
+                              "button",
+                              {
+                                key: "test-btn",
+                                type: "button",
+                                disabled: isTestingJira,
+                                onClick: () => handleTriggerJiraTest(editBoardForm.slug),
+                                className: "px-2 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                              },
+                              isTestingJira ? "Testing..." : "🧪 Test"
+                            ),
+                            React.createElement(
+                              "button",
+                              {
+                                key: "edit-btn",
+                                type: "button",
+                                onClick: () => {
+                                  const url = window.prompt("Enter Jira Cloud URL (e.g. https://domain.atlassian.net):", editBoardForm.jira_url || "");
+                                  if (url !== null) {
+                                    handleTriggerJiraSetup(editBoardForm.slug, url.trim());
+                                  }
+                                },
+                                className: "px-2 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
+                              },
+                              "✏️ Edit"
+                            ),
+                            React.createElement(
+                              "a",
+                              {
+                                key: "open-link",
+                                href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
+                                target: "_blank",
+                                rel: "noreferrer",
+                                className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
+                              },
+                              "🔗 Open Jira"
+                            )
+                          ] : (
+                            React.createElement(
+                              "button",
+                              {
+                                type: "button",
+                                disabled: isSettingUpJira,
+                                onClick: () => {
+                                  const url = window.prompt("Enter Jira Cloud URL (e.g. https://your-domain.atlassian.net):", "");
+                                  if (url && url.trim()) {
+                                    handleTriggerJiraSetup(editBoardForm.slug, url.trim());
+                                  }
+                                },
+                                className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                              },
+                              isSettingUpJira ? "Connecting..." : "🔷 Setup Jira Link"
+                            )
                           )
-                        ) : null
+                        )
                       )
                     )
                   )

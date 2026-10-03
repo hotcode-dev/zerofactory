@@ -9,6 +9,7 @@ from dashboard.models import (
     BoardCreate,
     BoardUpdate,
     CronJobUpdate,
+    JiraSetupRequest,
     MemoryCreate,
     SettingsUpdate,
     TaskCreate,
@@ -122,3 +123,8 @@ def test_board_jira_url_fields():
 
     bu = BoardUpdate(jira_url="https://company.atlassian.net")
     assert bu.jira_url == "https://company.atlassian.net"
+
+    req = JiraSetupRequest(jira_url="https://jira.example.com")
+    assert req.jira_url == "https://jira.example.com"
+    req_empty = JiraSetupRequest()
+    assert req_empty.jira_url is None
