@@ -15,12 +15,12 @@ var ZeroFactoryDashboard = (function(exports) {
 		fetchJSON: () => Promise.resolve({}),
 		utils: {}
 	};
-	var fetchJSON$1 = SDK.fetchJSON;
+	var fetchJSON = SDK.fetchJSON;
 	var utils = SDK.utils || {};
 	//#endregion
 	//#region dashboard/src/constants.js
-	var API_BASE$1 = "/api/plugins/zerofactory";
-	var COLUMNS$1 = [
+	var API_BASE = "/api/plugins/zerofactory";
+	var COLUMNS = [
 		{
 			id: "triage",
 			title: "Triage",
@@ -68,8 +68,8 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/Header.jsx
 	function Header(props) {
-		const { activeView, setActiveView, hasActiveAgents, hasRunningSessions, boards, selectedBoard, setSelectedBoard, handleOpenEditBoardModal, handleOpenNewBoardModal, handleOpenCronModal, handleOpenSettingsModal, setShowNewTaskModal, isDispatching, handleDispatch, loadBoards, loadTasksAndStats } = props;
-		return React.createElement("div", { className: "flex flex-col lg:flex-row lg:items-center justify-between gap-4" }, React.createElement("div", { className: "flex items-center gap-4 flex-wrap" }, React.createElement("div", { className: "flex items-center gap-3.5" }, React.createElement("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 text-sm tracking-wider shrink-0" }, "ZF"), React.createElement("div", null, React.createElement("h1", { className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" }, "Zero Factory Kanban"), React.createElement("p", { className: "text-xs text-slate-400 font-medium" }, "Autonomous Multi-Agent Coordination Engine"))), React.createElement("div", { className: "flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1" }, React.createElement("button", {
+		const { activeView, setActiveView, hasActiveAgents, sessionsList = [], agentsList = [], loadSessions, loadAgents, loadMemories, boards = [], selectedBoard, setSelectedBoard, handleOpenEditBoard, handleOpenEditBoardModal, handleOpenNewBoardModal, handleOpenCronModal, setShowCronModal, loadCronJobs, cronSchedulerEnabled = true, cronJobs = [], handleOpenSettingsModal, setShowSettingsModal, loadSettings, setShowNewTaskModal, setNewTaskForm, isDispatching, handleRunDispatcher, handleDispatch, loadBoards, loadTasksAndStats } = props;
+		return React.createElement("header", { className: "space-y-4 pb-5 border-b border-slate-800/80" }, React.createElement("div", { className: "flex flex-col lg:flex-row lg:items-center justify-between gap-4" }, React.createElement("div", { className: "flex items-center gap-4 flex-wrap" }, React.createElement("div", { className: "flex items-center gap-3.5" }, React.createElement("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 text-sm tracking-wider shrink-0" }, "ZF"), React.createElement("div", null, React.createElement("h1", { className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" }, "Zero Factory Kanban"), React.createElement("p", { className: "text-xs text-slate-400 font-medium" }, "Autonomous Multi-Agent Coordination Engine"))), React.createElement("div", { className: "flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1" }, React.createElement("button", {
 			type: "button",
 			className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " + (activeView === "board" ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
 			onClick: () => setActiveView("board")
@@ -117,37 +117,44 @@ var ZeroFactoryDashboard = (function(exports) {
 			title: "Create New Board"
 		}, "+ Board"), selectedBoard && selectedBoard !== "all" && React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
-			onClick: handleOpenEditBoard,
+			onClick: handleOpenEditBoard || handleOpenEditBoardModal,
 			title: "Edit board settings and manage board"
 		}, "⚙️ Edit Board"), React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
 			onClick: () => {
-				setShowCronModal(true);
-				loadCronJobs();
+				if (handleOpenCronModal) handleOpenCronModal();
+				else {
+					if (setShowCronModal) setShowCronModal(true);
+					if (loadCronJobs) loadCronJobs();
+				}
 			},
 			title: "Configure built-in Cron schedules and periodic automation"
 		}, "⏰ Cron Config", React.createElement("span", { className: "px-1.5 py-0.5 rounded-full text-[10px] font-bold " + (!cronSchedulerEnabled ? "bg-rose-950/90 text-rose-300 border border-rose-800/80 shadow-xs" : cronJobs.some((j) => j.enabled) ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : "bg-slate-800 text-slate-400") }, !cronSchedulerEnabled ? "PAUSED" : cronJobs.length > 0 ? cronJobs.filter((j) => j.enabled).length + "/" + cronJobs.length : "CRON")), React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
 			onClick: () => {
-				loadSettings();
-				setShowSettingsModal(true);
+				if (handleOpenSettingsModal) handleOpenSettingsModal();
+				else {
+					if (loadSettings) loadSettings();
+					if (setShowSettingsModal) setShowSettingsModal(true);
+				}
 			},
 			title: "Global Zero Factory configuration (WIP limits, worker caps)"
 		}, "⚙️ Settings"), React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
-			onClick: handleRunDispatcher,
+			onClick: handleRunDispatcher || handleDispatch,
 			disabled: isDispatching || boards.length === 0,
 			title: boards.length === 0 ? "Create a board first" : "Trigger Zero Factory Dispatcher Cycle"
 		}, isDispatching ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "⚡", isDispatching ? " Dispatching..." : " Dispatch"), React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
 			onClick: () => {
-				if (boards.length === 0) handleOpenNewBoardModal();
-				else {
-					setNewTaskForm((prev) => ({
+				if (boards.length === 0) {
+					if (handleOpenNewBoardModal) handleOpenNewBoardModal();
+				} else {
+					if (setNewTaskForm) setNewTaskForm((prev) => ({
 						...prev,
 						board_slug: selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : ""
 					}));
-					setShowNewTaskModal(true);
+					if (setShowNewTaskModal) setShowNewTaskModal(true);
 				}
 			},
 			disabled: boards.length === 0,
@@ -159,21 +166,11 @@ var ZeroFactoryDashboard = (function(exports) {
 				loadTasksAndStats();
 			},
 			title: "Refresh Board"
-		}, "🔄")));
-	}
-	//#endregion
-	//#region dashboard/src/components/StatsBar.jsx
-	function StatsBar({ stats }) {
-		if (!stats) return null;
-		return React.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1" }, React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-indigo-500/15 text-indigo-400" }, "📊"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.total || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Total Tasks"))), React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-amber-500/15 text-amber-400" }, "⚡"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.columns && stats.columns.running || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Active In Progress"))), React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-rose-500/15 text-rose-400" }, "🛑"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.columns && stats.columns.blocked || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Blocked / Action"))), React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, "✅"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.columns && stats.columns.done || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Completed"))), React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-emerald-500/15 text-emerald-400" }, "🌿"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.active_worktrees || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Git Worktrees"))), React.createElement("div", {
-			className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150 cursor-pointer " + (prFilter === "has_pr" ? "ring-1 ring-purple-500/50 bg-purple-950/20" : ""),
-			onClick: () => setPrFilter(prFilter === "has_pr" ? "all" : "has_pr"),
-			title: "Filter by tasks with Pull Requests"
-		}, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, renderPrIcon("w-4 h-4 text-purple-400")), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.pr_count || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Pull Requests"))));
+		}, "🔄"))));
 	}
 	//#endregion
 	//#region dashboard/src/utils/icons.js
-	var renderPrIcon$1 = function(className = "w-3 h-3 shrink-0") {
+	var renderPrIcon = function(className = "w-3 h-3 shrink-0") {
 		return React.createElement("svg", {
 			className,
 			viewBox: "0 0 16 16",
@@ -181,6 +178,17 @@ var ZeroFactoryDashboard = (function(exports) {
 			xmlns: "http://www.w3.org/2000/svg"
 		}, React.createElement("path", { d: "M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122v5.256a2.251 2.251 0 11-1.5 0V5.372A2.25 2.25 0 011.5 3.25zM11 2.5h-1V4h1a1 1 0 011 1v5.628a2.251 2.251 0 101.5 0V5A2.5 2.5 0 0011 2.5zm1 10.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM3.75 12a.75.75 0 100 1.5.75.75 0 000-1.5z" }));
 	};
+	//#endregion
+	//#region dashboard/src/components/StatsBar.jsx
+	function StatsBar(props) {
+		const { stats, prFilter, setPrFilter } = props;
+		if (!stats) return null;
+		return React.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1" }, React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-indigo-500/15 text-indigo-400" }, "📊"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.total || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Total Tasks"))), React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-amber-500/15 text-amber-400" }, "⚡"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.columns && stats.columns.running || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Active In Progress"))), React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-rose-500/15 text-rose-400" }, "🛑"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.columns && stats.columns.blocked || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Blocked / Action"))), React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, "✅"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.columns && stats.columns.done || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Completed"))), React.createElement("div", { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" }, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-emerald-500/15 text-emerald-400" }, "🌿"), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.active_worktrees || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Git Worktrees"))), React.createElement("div", {
+			className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150 cursor-pointer " + (prFilter === "has_pr" ? "ring-1 ring-purple-500/50 bg-purple-950/20" : ""),
+			onClick: () => setPrFilter && setPrFilter(prFilter === "has_pr" ? "all" : "has_pr"),
+			title: "Filter by tasks with Pull Requests"
+		}, React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-purple-500/15 text-purple-400" }, renderPrIcon("w-4 h-4 text-purple-400")), React.createElement("div", { className: "flex flex-col min-w-0" }, React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.pr_count || 0), React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Pull Requests"))));
+	}
 	//#endregion
 	//#region dashboard/src/components/FilterBar.jsx
 	function FilterBar(props) {
@@ -243,7 +251,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			type: "button",
 			className: (prFilter === item.id ? "bg-purple-600 text-white border-purple-500 shadow-xs shadow-purple-600/30" : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") + " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center inline-flex items-center gap-1.5",
 			onClick: () => setPrFilter(item.id)
-		}, item.id === "has_pr" && renderPrIcon$1("w-3 h-3 shrink-0"), item.label, item.id === "has_pr" && stats && stats.pr_count > 0 && React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, stats.pr_count)))), React.createElement("label", { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" }, React.createElement("input", {
+		}, item.id === "has_pr" && renderPrIcon("w-3 h-3 shrink-0"), item.label, item.id === "has_pr" && stats && stats.pr_count > 0 && React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, stats.pr_count)))), React.createElement("label", { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" }, React.createElement("input", {
 			type: "checkbox",
 			className: "rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
 			checked: autoRefresh,
@@ -284,6 +292,25 @@ var ZeroFactoryDashboard = (function(exports) {
 		if (m) return "PR #" + m[1];
 		return "PR ↗";
 	};
+	var computeGitSlug = function(gitUrl) {
+		if (!gitUrl) return "";
+		let cleaned = gitUrl.trim().replace(/\.git$/, "").replace(/\/+$/, "");
+		cleaned = cleaned.replace(/^[a-zA-Z]+:\/\//, "");
+		if (cleaned.includes("@")) {
+			cleaned = cleaned.split("@")[1];
+			if (cleaned.includes(":")) cleaned = cleaned.split(":")[1];
+			else if (cleaned.includes("/")) cleaned = cleaned.split("/").slice(1).join("/");
+		} else if (cleaned.includes("/")) {
+			const first = cleaned.split("/")[0];
+			if (first.includes(".") || first.includes(":")) cleaned = cleaned.split("/").slice(1).join("/");
+		}
+		const parts = cleaned.split("/").filter(Boolean);
+		const repo = parts.length >= 1 ? parts[parts.length - 1].replace(/[^a-zA-Z0-9_\-.]/g, "") : "";
+		const owner = parts.length >= 2 ? parts[parts.length - 2].replace(/[^a-zA-Z0-9_\-.]/g, "") : "";
+		if (owner && repo) return (owner + "-" + repo).toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, "-").replace(/^-+|-+$/g, "");
+		if (repo) return repo.toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, "-").replace(/^-+|-+$/g, "");
+		return "";
+	};
 	//#endregion
 	//#region dashboard/src/components/KanbanBoard.jsx
 	function KanbanBoard(props) {
@@ -294,7 +321,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				display: "grid",
 				gridTemplateColumns: "repeat(5, minmax(220px, 1fr))"
 			}
-		}, COLUMNS$1.map((col) => {
+		}, COLUMNS.map((col) => {
 			const colTasks = tasksByColumn[col.id] || [];
 			const isOver = dragOverCol === col.id;
 			return React.createElement("div", {
@@ -326,7 +353,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					onClick: (e) => e.stopPropagation(),
 					className: "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] font-mono font-semibold bg-purple-500/15 hover:bg-purple-500/30 text-purple-300 hover:text-purple-100 border border-purple-500/30 transition-all duration-150 truncate max-w-[140px] shadow-xs cursor-pointer",
 					title: "Pull Request: " + t.pr_url
-				}, renderPrIcon$1("w-2.5 h-2.5 shrink-0 text-purple-400"), formatPrLabel(t.pr_url)), t.blocking_parent_count > 0 && React.createElement("span", { className: "text-[0.625rem] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20" }, "⏳ " + t.blocking_parent_count + " blocker")), (t.status === "running" || t.session_progress && (t.session_progress.has_session || t.session_progress.sessions && t.session_progress.sessions.length > 0)) && (() => {
+				}, renderPrIcon("w-2.5 h-2.5 shrink-0 text-purple-400"), formatPrLabel(t.pr_url)), t.blocking_parent_count > 0 && React.createElement("span", { className: "text-[0.625rem] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20" }, "⏳ " + t.blocking_parent_count + " blocker")), (t.status === "running" || t.session_progress && (t.session_progress.has_session || t.session_progress.sessions && t.session_progress.sessions.length > 0)) && (() => {
 					const tSessions = t.session_progress && t.session_progress.sessions || [];
 					const isRunning = t.status === "running";
 					const ongoingSess = isRunning ? tSessions.find((s) => s.status === "ongoing" || s.is_active) || t.session_progress : null;
@@ -391,7 +418,11 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/views/ActivitiesView.jsx
 	function ActivitiesView(props) {
-		const { activities, activitiesTotal, activitiesAgents, activitiesStats, activitiesFilterOptions, activitiesLoading, activityActorFilter, setActivityActorFilter, activityActionFilter, setActivityActionFilter, activityBoardFilter, setActivityBoardFilter, activityAssigneeFilter, setActivityAssigneeFilter, activitySearchQuery, setActivitySearchQuery, loadActivities, boards, setActiveView, loadTaskDetails, tasks } = props;
+		const { activities, activitiesTotal, activitiesAgents, activitiesStats, activitiesFilterOptions, activitiesLoading, activityActorFilter, setActivityActorFilter, activityActionFilter, setActivityActionFilter, activityBoardFilter, setActivityBoardFilter, activityAssigneeFilter, setActivityAssigneeFilter, activitySearchQuery, setActivitySearchQuery, loadActivities, boards, setActiveView, loadTaskDetails, tasks, liveAgents = [], effectiveActivities = [], effectiveStats = {}, effectiveFilterOptions = {
+			actors: [],
+			actions: [],
+			boards: []
+		}, activityPage = 0, setActivityPage = () => {}, activityLimit = 15, activityViewMode = "timeline", setActivityViewMode = () => {}, autoRefresh = false, setAutoRefresh = () => {}, expandedActivityId = null, setExpandedActivityId = () => {}, isDispatching = false, handleRunDispatcher = () => {} } = props;
 		const getActionBadge = (action) => {
 			switch (action) {
 				case "start": return {
@@ -723,7 +754,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/views/SessionsView.jsx
 	function SessionsView(props) {
-		const { selectedBoard, sessionsList, sessionsLoading, sessionsAgentFilter, setSessionsAgentFilter, sessionsStatusFilter, setSessionsStatusFilter, sessionsSearchQuery, setSessionsSearchQuery, stoppingSessionId, handleStopSession, loadSessions, tasks, agentsSubTab, setAgentsSubTab, boardMemories, memoriesLoading, memoriesTotal, loadBoardMemories, memoryCategoryFilter, setMemoryCategoryFilter, memorySearchQuery, setMemorySearchQuery, showAddMemoryModal, setShowAddMemoryModal, newMemoryForm, setNewMemoryForm, handleCreateMemory, submittingMemory, handleDeleteMemory, setActiveView, selectedSessionIdx, setSelectedSessionIdx } = props;
+		const { selectedBoard, sessionsList = [], sessionsLoading, sessionsAgentFilter, setSessionsAgentFilter, sessionsStatusFilter, setSessionsStatusFilter, sessionsSearchQuery, setSessionsSearchQuery, stoppingSessionId, handleStopSession, handleStopTaskSession = handleStopSession || (() => {}), loadSessions, tasks = [], agentsSubTab, setAgentsSubTab, boardMemories, memoriesLoading, memoriesTotal, loadBoardMemories, loadMemories = loadBoardMemories || (() => {}), memoryCategoryFilter, setMemoryCategoryFilter, memorySearchQuery, setMemorySearchQuery, showAddMemoryModal, setShowAddMemoryModal, newMemoryForm, setNewMemoryForm, handleCreateMemory, submittingMemory, handleDeleteMemory, setActiveView, selectedSessionIdx, setSelectedSessionIdx, agentsList = [], agentsLoading = false, loadAgents = () => {}, loadTaskDetails = () => {}, boards = [], showToast = () => {}, loadBoards = () => {} } = props;
 		const boardFilteredSessions = sessionsList.filter((s) => {
 			if (!selectedBoard || selectedBoard === "all") return true;
 			if (s.board_slug) return s.board_slug === selectedBoard;
@@ -1013,7 +1044,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				onClick: async () => {
 					const nextVal = !isAutoRecordOn;
 					try {
-						await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(currentBoard.slug), {
+						await fetchJSON("/api/plugins/zerofactory/boards/" + encodeURIComponent(currentBoard.slug), {
 							method: "PATCH",
 							headers: { "Content-Type": "application/json" },
 							body: JSON.stringify({ auto_record_memory: nextVal })
@@ -1563,7 +1594,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/TaskDetailModal.jsx
 	function TaskDetailModal(props) {
-		const { selectedTask, setSelectedTask, boards, handleUpdateTask, handleDeleteTask, handleRunAgent, handleStopTaskSession, stoppingSessionId, activeRunningTaskId, newCommentText, setNewCommentText, handleAddComment, loadTasksAndStats, loadTaskDetails } = props;
+		const { selectedTask, setSelectedTask, boards = [], handleUpdateTask, handleDeleteTask, handleRunAgent, handleStopTaskSession, stoppingSessionId, activeRunningTaskId, newCommentText, setNewCommentText, handleAddComment, handleAddCommentSubmit = handleAddComment, loadTasksAndStats, loadTaskDetails, showToast = () => {}, selectedSessionIdx = null, setSelectedSessionIdx = () => {}, refreshSessionProgress = () => {}, handleAdvanceTask = () => {} } = props;
 		if (!selectedTask) return null;
 		return React.createElement("div", {
 			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
@@ -1658,7 +1689,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			target: "_blank",
 			rel: "noopener noreferrer",
 			className: "inline-flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 font-medium transition-colors"
-		}, renderPrIcon$1("w-2.5 h-2.5 shrink-0"), "Open Link ↗")), React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("input", {
+		}, renderPrIcon("w-2.5 h-2.5 shrink-0"), "Open Link ↗")), React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("input", {
 			key: selectedTask.id + (selectedTask.pr_url || ""),
 			defaultValue: selectedTask.pr_url || "",
 			placeholder: "e.g. https://github.com/owner/repo/pull/123",
@@ -1681,7 +1712,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			onKeyDown: (e) => {
 				if (e.key === "Enter") e.target.blur();
 			}
-		}))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"), React.createElement("div", { className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap" }, selectedTask.description || "(No description provided)")), selectedTask.workspace_path && React.createElement("div", { className: "p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs space-y-1" }, React.createElement("strong", { className: "text-emerald-400 font-semibold" }, "Git Worktree Active: "), React.createElement("span", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path), selectedTask.branch_name && React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)), selectedTask.pr_url && React.createElement("div", { className: "p-3.5 bg-purple-500/10 border border-purple-500/25 rounded-lg text-xs space-y-2 shadow-xs" }, React.createElement("div", { className: "flex items-center justify-between gap-2 flex-wrap" }, React.createElement("div", { className: "flex items-center gap-2 text-purple-300 font-semibold" }, renderPrIcon$1("w-4 h-4 text-purple-400 shrink-0"), React.createElement("span", null, "Pull Request:"), React.createElement("span", { className: "font-mono font-bold bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30 text-purple-200" }, formatPrLabel(selectedTask.pr_url))), React.createElement("a", {
+		}))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"), React.createElement("div", { className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap" }, selectedTask.description || "(No description provided)")), selectedTask.workspace_path && React.createElement("div", { className: "p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs space-y-1" }, React.createElement("strong", { className: "text-emerald-400 font-semibold" }, "Git Worktree Active: "), React.createElement("span", { className: "text-indigo-300 font-mono text-[0.6875rem] break-all" }, selectedTask.workspace_path), selectedTask.branch_name && React.createElement("div", { className: "text-slate-400 text-[0.6875rem] mt-0.5" }, "Branch: " + selectedTask.branch_name)), selectedTask.pr_url && React.createElement("div", { className: "p-3.5 bg-purple-500/10 border border-purple-500/25 rounded-lg text-xs space-y-2 shadow-xs" }, React.createElement("div", { className: "flex items-center justify-between gap-2 flex-wrap" }, React.createElement("div", { className: "flex items-center gap-2 text-purple-300 font-semibold" }, renderPrIcon("w-4 h-4 text-purple-400 shrink-0"), React.createElement("span", null, "Pull Request:"), React.createElement("span", { className: "font-mono font-bold bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30 text-purple-200" }, formatPrLabel(selectedTask.pr_url))), React.createElement("a", {
 			href: selectedTask.pr_url,
 			target: "_blank",
 			rel: "noopener noreferrer",
@@ -1781,7 +1812,8 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/NewTaskModal.jsx
 	function NewTaskModal(props) {
-		const { showNewTaskModal, setShowNewTaskModal, newTaskForm, setNewTaskForm, handleCreateTask, isSubmittingTask, boards, selectedBoard } = props;
+		const { showNewTaskModal, setShowNewTaskModal, newTaskForm, setNewTaskForm, handleCreateTaskSubmit, handleCreateTask, isSubmittingTask, boards, selectedBoard } = props;
+		const onSubmitHandler = handleCreateTaskSubmit || handleCreateTask;
 		if (!showNewTaskModal) return null;
 		return React.createElement("div", {
 			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
@@ -1793,7 +1825,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
 			onClick: () => setShowNewTaskModal(false)
 		}, "✕")), React.createElement("form", {
-			onSubmit: handleCreateTaskSubmit,
+			onSubmit: onSubmitHandler,
 			className: "flex flex-col flex-1 overflow-hidden m-0"
 		}, React.createElement("div", { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Task Title *"), React.createElement("input", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
@@ -1804,7 +1836,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newTaskForm,
 				title: e.target.value
 			})
-		})), boards.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Board *"), React.createElement("select", {
+		})), boards && boards.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Board *"), React.createElement("select", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
 			value: newTaskForm.board_slug || (selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : ""),
 			onChange: (e) => setNewTaskForm({
@@ -1868,88 +1900,14 @@ var ZeroFactoryDashboard = (function(exports) {
 			onClick: () => setShowNewTaskModal(false)
 		}, "Cancel"), React.createElement("button", {
 			type: "submit",
-			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
-		}, "Create Task"))))), showAddMemoryModal && React.createElement("div", {
-			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-			onClick: () => setShowAddMemoryModal(false)
-		}, React.createElement("div", {
-			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100 animate-fade-in",
-			onClick: (e) => e.stopPropagation()
-		}, React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" }, React.createElement("div", null, React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "🧠 Record Repository Memory"), React.createElement("p", { className: "text-xs text-slate-400 font-normal m-0 mt-0.5" }, "Persist decisions, conventions, and gotchas for " + (selectedBoard === "all" ? "all boards" : selectedBoard || "board"))), React.createElement("button", {
-			type: "button",
-			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-			onClick: () => setShowAddMemoryModal(false)
-		}, "✕")), React.createElement("form", {
-			onSubmit: handleCreateMemorySubmit,
-			className: "flex flex-col flex-1 overflow-hidden m-0"
-		}, React.createElement("div", { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, (selectedBoard === "all" || !selectedBoard) && boards.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Target Board *"), React.createElement("select", {
-			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
-			value: newMemoryForm.board_slug || (boards[0] ? boards[0].slug : ""),
-			onChange: (e) => setNewMemoryForm({
-				...newMemoryForm,
-				board_slug: e.target.value
-			})
-		}, boards.map((b) => React.createElement("option", {
-			key: b.slug,
-			value: b.slug
-		}, b.slug)))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Category"), React.createElement("select", {
-			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
-			value: newMemoryForm.category,
-			onChange: (e) => setNewMemoryForm({
-				...newMemoryForm,
-				category: e.target.value
-			})
-		}, React.createElement("option", { value: "convention" }, "📐 Convention (Architecture / Style / Code Rules)"), React.createElement("option", { value: "gotcha" }, "⚠️ Gotcha (Pitfall / Bug to Avoid)"), React.createElement("option", { value: "decision" }, "💡 Decision (Key Architectural Decision)"), React.createElement("option", { value: "rejected_path" }, "🚫 Rejected Path (Alternative Tried & Discarded)"), React.createElement("option", { value: "general" }, "📝 General Knowledge"))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Memory / Knowledge Content *"), React.createElement("textarea", {
-			required: true,
-			rows: 4,
-			placeholder: "e.g. Always run 'python3 -m unittest test_plugin.py' before marking tasks done, as SQLite cascade triggers are verified there.",
-			className: "w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none font-sans",
-			value: newMemoryForm.content,
-			onChange: (e) => setNewMemoryForm({
-				...newMemoryForm,
-				content: e.target.value
-			})
-		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Tags (comma-separated)"), React.createElement("input", {
-			type: "text",
-			placeholder: "sqlite, tests, git, caching",
-			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
-			value: newMemoryForm.tags,
-			onChange: (e) => setNewMemoryForm({
-				...newMemoryForm,
-				tags: e.target.value
-			})
-		})), React.createElement("div", { className: "grid grid-cols-2 gap-3" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Author"), React.createElement("input", {
-			type: "text",
-			placeholder: "user",
-			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
-			value: newMemoryForm.author,
-			onChange: (e) => setNewMemoryForm({
-				...newMemoryForm,
-				author: e.target.value
-			})
-		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Related Task ID (Optional)"), React.createElement("input", {
-			type: "text",
-			placeholder: "zf-xxxxxxxx",
-			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono",
-			value: newMemoryForm.task_id || "",
-			onChange: (e) => setNewMemoryForm({
-				...newMemoryForm,
-				task_id: e.target.value
-			})
-		})))), React.createElement("div", { className: "px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0" }, React.createElement("button", {
-			type: "button",
-			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
-			onClick: () => setShowAddMemoryModal(false)
-		}, "Cancel"), React.createElement("button", {
-			type: "submit",
-			disabled: submittingMemory,
-			className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
-		}, submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"), "Save Memory")))));
+			disabled: isSubmittingTask,
+			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+		}, isSubmittingTask ? "Creating..." : "Create Task")))));
 	}
 	//#endregion
 	//#region dashboard/src/modals/NewBoardModal.jsx
 	function NewBoardModal(props) {
-		const { showNewBoardModal, setShowNewBoardModal, newBoardForm, setNewBoardForm, handleCreateBoard, isSubmittingBoard } = props;
+		const { showNewBoardModal, setShowNewBoardModal, newBoardForm, setNewBoardForm, handleCreateBoard, handleCreateBoardSubmit = handleCreateBoard, isSubmittingBoard, boards = [], setActiveView = () => {}, createBoardError = "", setCreateBoardError = () => {}, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {} } = props;
 		if (!showNewBoardModal) return null;
 		return React.createElement("div", {
 			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
@@ -2062,7 +2020,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/EditBoardModal.jsx
 	function EditBoardModal(props) {
-		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, selectedBoard, selectedBoardData, testingTracker, handleTestTrackerConnection, testTrackerResult, importingIssues, handleImportExternalIssues, importIssuesResult } = props;
+		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, selectedBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {} } = props;
 		if (!showEditBoardModal) return null;
 		return React.createElement("div", {
 			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
@@ -2291,7 +2249,32 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/CronModal.jsx
 	function CronModal(props) {
-		const { showCronModal, setShowCronModal, cronJobs, cronSchedulerEnabled, loadingCron, cronFilterTab, setCronFilterTab, cronSearchQuery, setCronSearchQuery, runningCronId, handleTriggerCron, editingCronId, setEditingCronId, cronEditForms, setCronEditForms, handleSaveCronEdit, handleToggleCron, handleToggleScheduler, loadCronJobs } = props;
+		const { showCronModal, setShowCronModal, cronJobs = [], cronSchedulerEnabled = true, loadingCron = false, cronFilterTab = "all", setCronFilterTab = () => {}, cronSearchQuery = "", setCronSearchQuery = () => {}, runningCronId, handleTriggerCron, handleRunCronJob = handleTriggerCron || (() => {}), editingCronId, setEditingCronId = () => {}, cronEditForms = {}, setCronEditForms = () => {}, handleSaveCronEdit, handleSaveCronJob = handleSaveCronEdit || (() => {}), handleToggleCron, handleToggleCronJob = handleToggleCron || (() => {}), handleToggleScheduler, handleToggleCronScheduler = handleToggleScheduler || (() => {}), handleResetCronJob = () => {}, handleSyncAllCron = () => {}, loadCronJobs = () => {} } = props;
+		const filteredCronJobs = React.useMemo(() => {
+			return (cronJobs || []).filter((job) => {
+				if (cronFilterTab === "core") {
+					const isScanner = job.id.startsWith("zero-factory-improvement-scanner-") || job.category === "scanner";
+					const isOpenWiki = job.id.startsWith("zero-factory-openwiki-update-") || job.category === "openwiki";
+					if (isScanner || isOpenWiki) return false;
+				} else if (cronFilterTab === "scanners") {
+					if (!(job.id.startsWith("zero-factory-improvement-scanner-") || job.category === "scanner")) return false;
+				} else if (cronFilterTab === "openwiki") {
+					if (!(job.id.startsWith("zero-factory-openwiki-update-") || job.category === "openwiki")) return false;
+				}
+				if (cronSearchQuery && cronSearchQuery.trim()) {
+					const q = cronSearchQuery.toLowerCase().trim();
+					const matchesName = (job.name || "").toLowerCase().includes(q);
+					const matchesId = (job.id || "").toLowerCase().includes(q);
+					const matchesWorkdir = (job.workdir || "").toLowerCase().includes(q);
+					return Boolean(matchesName || matchesId || matchesWorkdir);
+				}
+				return true;
+			});
+		}, [
+			cronJobs,
+			cronFilterTab,
+			cronSearchQuery
+		]);
 		if (!showCronModal) return null;
 		return React.createElement("div", {
 			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto",
@@ -2589,6 +2572,88 @@ var ZeroFactoryDashboard = (function(exports) {
 		}))));
 	}
 	//#endregion
+	//#region dashboard/src/modals/AddMemoryModal.jsx
+	function AddMemoryModal(props) {
+		const { showAddMemoryModal, setShowAddMemoryModal, newMemoryForm, setNewMemoryForm, handleCreateMemorySubmit, submittingMemory, selectedBoard, boards } = props;
+		if (!showAddMemoryModal) return null;
+		return React.createElement("div", {
+			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
+			onClick: () => setShowAddMemoryModal(false)
+		}, React.createElement("div", {
+			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100 animate-fade-in",
+			onClick: (e) => e.stopPropagation()
+		}, React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" }, React.createElement("div", null, React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "🧠 Record Repository Memory"), React.createElement("p", { className: "text-xs text-slate-400 font-normal m-0 mt-0.5" }, "Persist decisions, conventions, and gotchas for " + (selectedBoard === "all" ? "all boards" : selectedBoard || "board"))), React.createElement("button", {
+			type: "button",
+			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+			onClick: () => setShowAddMemoryModal(false)
+		}, "✕")), React.createElement("form", {
+			onSubmit: handleCreateMemorySubmit,
+			className: "flex flex-col flex-1 overflow-hidden m-0"
+		}, React.createElement("div", { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, (selectedBoard === "all" || !selectedBoard) && boards && boards.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Target Board *"), React.createElement("select", {
+			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
+			value: newMemoryForm.board_slug || (boards[0] ? boards[0].slug : ""),
+			onChange: (e) => setNewMemoryForm({
+				...newMemoryForm,
+				board_slug: e.target.value
+			})
+		}, boards.map((b) => React.createElement("option", {
+			key: b.slug,
+			value: b.slug
+		}, b.slug)))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Category"), React.createElement("select", {
+			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
+			value: newMemoryForm.category,
+			onChange: (e) => setNewMemoryForm({
+				...newMemoryForm,
+				category: e.target.value
+			})
+		}, React.createElement("option", { value: "convention" }, "📐 Convention (Architecture / Style / Code Rules)"), React.createElement("option", { value: "gotcha" }, "⚠️ Gotcha (Pitfall / Bug to Avoid)"), React.createElement("option", { value: "decision" }, "💡 Decision (Key Architectural Decision)"), React.createElement("option", { value: "rejected_path" }, "🚫 Rejected Path (Alternative Tried & Discarded)"), React.createElement("option", { value: "general" }, "📝 General Knowledge"))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Memory / Knowledge Content *"), React.createElement("textarea", {
+			required: true,
+			rows: 4,
+			placeholder: "e.g. Always run 'python3 -m unittest test_plugin.py' before marking tasks done, as SQLite cascade triggers are verified there.",
+			className: "w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none font-sans",
+			value: newMemoryForm.content,
+			onChange: (e) => setNewMemoryForm({
+				...newMemoryForm,
+				content: e.target.value
+			})
+		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Tags (comma-separated)"), React.createElement("input", {
+			type: "text",
+			placeholder: "sqlite, tests, git, caching",
+			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
+			value: newMemoryForm.tags,
+			onChange: (e) => setNewMemoryForm({
+				...newMemoryForm,
+				tags: e.target.value
+			})
+		})), React.createElement("div", { className: "grid grid-cols-2 gap-3" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Author"), React.createElement("input", {
+			type: "text",
+			placeholder: "user",
+			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500",
+			value: newMemoryForm.author,
+			onChange: (e) => setNewMemoryForm({
+				...newMemoryForm,
+				author: e.target.value
+			})
+		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Related Task ID (Optional)"), React.createElement("input", {
+			type: "text",
+			placeholder: "zf-xxxxxxxx",
+			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono",
+			value: newMemoryForm.task_id || "",
+			onChange: (e) => setNewMemoryForm({
+				...newMemoryForm,
+				task_id: e.target.value
+			})
+		})))), React.createElement("div", { className: "px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0" }, React.createElement("button", {
+			type: "button",
+			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
+			onClick: () => setShowAddMemoryModal(false)
+		}, "Cancel"), React.createElement("button", {
+			type: "submit",
+			disabled: submittingMemory,
+			className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+		}, submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"), "Save Memory")))));
+	}
+	//#endregion
 	//#region dashboard/src/App.jsx
 	function ZeroFactoryKanbanApp() {
 		const [boards, setBoards] = useState([]);
@@ -2721,6 +2786,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [isSettingUpOpenwiki, setIsSettingUpOpenwiki] = useState(false);
 		const [createBoardError, setCreateBoardError] = useState("");
 		const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
+		const [isSubmittingTask, setIsSubmittingTask] = useState(false);
 		const [isTestingClone, setIsTestingClone] = useState(false);
 		const [cloneTestResult, setCloneTestResult] = useState(null);
 		const handleOpenNewBoardModal = () => {
@@ -2739,7 +2805,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		};
 		const loadSettings = useCallback(async () => {
 			try {
-				const data = await fetchJSON$1(API_BASE$1 + "/settings");
+				const data = await fetchJSON(API_BASE + "/settings");
 				if (data && data.settings) {
 					const isCronEnabled = data.settings.enable_cron_scheduler ?? true;
 					setSettingsForm({
@@ -2774,7 +2840,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					langfuse_env: String(settingsForm.langfuse_env || "zerofactory").trim(),
 					auto_record_memory: Boolean(settingsForm.auto_record_memory !== false)
 				};
-				const res = await fetchJSON$1(API_BASE$1 + "/settings", {
+				const res = await fetchJSON(API_BASE + "/settings", {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(payload)
@@ -2805,7 +2871,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			setIsTestingLangfuse(true);
 			setLangfuseTestResult(null);
 			try {
-				const res = await fetchJSON$1(API_BASE$1 + "/settings/langfuse/test", {
+				const res = await fetchJSON(API_BASE + "/settings/langfuse/test", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
@@ -2836,7 +2902,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			setSyncProfilesResult(null);
 			try {
 				const queryParams = syncForce ? "?force=true" : "";
-				const res = await fetchJSON$1(API_BASE$1 + "/settings/profiles/sync" + queryParams, { method: "POST" });
+				const res = await fetchJSON(API_BASE + "/settings/profiles/sync" + queryParams, { method: "POST" });
 				if (res && res.ok) {
 					const detail = res.result;
 					let msg = res.message || "Profiles synced successfully!";
@@ -2881,7 +2947,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, []);
 		const loadBoards = useCallback(async () => {
 			try {
-				const data = await fetchJSON$1(API_BASE$1 + "/boards");
+				const data = await fetchJSON(API_BASE + "/boards");
 				if (data && data.boards) {
 					setBoards(data.boards);
 					if (data.boards.length > 0) setSelectedBoard((prev) => {
@@ -2899,7 +2965,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			} catch (err) {
 				console.error("Failed to fetch boards:", err);
 			}
-		}, [fetchJSON$1]);
+		}, [fetchJSON]);
 		const loadPrecommitStatus = useCallback(async (boardSlug) => {
 			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
 			if (!bSlug || bSlug === "all") {
@@ -2908,7 +2974,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 			setIsLoadingPrecommit(true);
 			try {
-				const res = await fetchJSON$1(API_BASE$1 + "/boards/" + encodeURIComponent(bSlug) + "/precommit-status");
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/precommit-status");
 				if (res && res.ok) setPrecommitStatus(res);
 				else setPrecommitStatus(null);
 			} catch (err) {
@@ -2916,13 +2982,13 @@ var ZeroFactoryDashboard = (function(exports) {
 			} finally {
 				setIsLoadingPrecommit(false);
 			}
-		}, [fetchJSON$1]);
+		}, [fetchJSON]);
 		const handleTriggerPrecommitSetup = async (boardSlug) => {
 			const bSlug = boardSlug || selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpPrecommit(true);
 			try {
-				const res = await fetchJSON$1(API_BASE$1 + "/boards/" + encodeURIComponent(bSlug) + "/setup-precommit", { method: "POST" });
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-precommit", { method: "POST" });
 				if (res && res.ok) {
 					showToast(res.message || "Created setup task for .zerofactory/precommit.sh!", "success");
 					await Promise.all([loadPrecommitStatus(bSlug), loadTasksAndStats(bSlug)]);
@@ -2941,7 +3007,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 			setIsLoadingOpenwiki(true);
 			try {
-				const res = await fetchJSON$1(API_BASE$1 + "/boards/" + encodeURIComponent(bSlug) + "/openwiki-status");
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/openwiki-status");
 				if (res && res.ok) setOpenwikiStatus(res);
 				else setOpenwikiStatus(null);
 			} catch (err) {
@@ -2949,13 +3015,13 @@ var ZeroFactoryDashboard = (function(exports) {
 			} finally {
 				setIsLoadingOpenwiki(false);
 			}
-		}, [fetchJSON$1]);
+		}, [fetchJSON]);
 		const handleTriggerOpenwikiSetup = async (boardSlug) => {
 			const bSlug = boardSlug || selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpOpenwiki(true);
 			try {
-				const res = await fetchJSON$1(API_BASE$1 + "/boards/" + encodeURIComponent(bSlug) + "/setup-openwiki", { method: "POST" });
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-openwiki", { method: "POST" });
 				if (res && res.ok) {
 					showToast(res.message || "Created setup task for OpenWiki!", "success");
 					await Promise.all([loadOpenwikiStatus(bSlug), loadTasksAndStats(bSlug)]);
@@ -2976,7 +3042,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 			try {
 				const bParam = bSlug && bSlug !== "all" ? "?board=" + encodeURIComponent(bSlug) : "";
-				const [tasksData, statsData] = await Promise.all([fetchJSON$1(API_BASE$1 + "/tasks" + bParam), fetchJSON$1(API_BASE$1 + "/stats" + bParam)]);
+				const [tasksData, statsData] = await Promise.all([fetchJSON(API_BASE + "/tasks" + bParam), fetchJSON(API_BASE + "/stats" + bParam)]);
 				if (tasksData && tasksData.tasks) setTasks(tasksData.tasks);
 				if (statsData) setStats(statsData);
 				if (bSlug && bSlug !== "all") {
@@ -2992,14 +3058,14 @@ var ZeroFactoryDashboard = (function(exports) {
 				setLoading(false);
 			}
 		}, [
-			fetchJSON$1,
+			fetchJSON,
 			loadPrecommitStatus,
 			loadOpenwikiStatus
 		]);
 		const loadCronJobs = useCallback(async () => {
 			try {
 				setLoadingCron(true);
-				const data = await fetchJSON$1(API_BASE$1 + "/cron");
+				const data = await fetchJSON(API_BASE + "/cron");
 				if (data) {
 					if (typeof data.scheduler_enabled === "boolean") setCronSchedulerEnabled(data.scheduler_enabled);
 					if (data.jobs) {
@@ -3030,10 +3096,10 @@ var ZeroFactoryDashboard = (function(exports) {
 				setLoadingCron(false);
 			}
 		}, [showToast]);
-		useCallback(async (currentEnabled) => {
+		const handleToggleCronScheduler = useCallback(async (currentEnabled) => {
 			try {
 				const nextEnabled = !currentEnabled;
-				const res = await fetchJSON$1(API_BASE$1 + "/cron/scheduler/toggle", {
+				const res = await fetchJSON(API_BASE + "/cron/scheduler/toggle", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ enabled: nextEnabled })
@@ -3052,10 +3118,10 @@ var ZeroFactoryDashboard = (function(exports) {
 			loadSettings,
 			showToast
 		]);
-		useCallback(async (jobId, currentEnabled) => {
+		const handleToggleCronJob = useCallback(async (jobId, currentEnabled) => {
 			try {
 				const nextEnabled = !currentEnabled;
-				const res = await fetchJSON$1(API_BASE$1 + `/cron/${jobId}/toggle`, {
+				const res = await fetchJSON(API_BASE + `/cron/${jobId}/toggle`, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ enabled: nextEnabled })
@@ -3068,11 +3134,11 @@ var ZeroFactoryDashboard = (function(exports) {
 				showToast("Error toggling cron job: " + err.message, "error");
 			}
 		}, [loadCronJobs, showToast]);
-		useCallback(async (jobId) => {
+		const handleRunCronJob = useCallback(async (jobId) => {
 			try {
 				setRunningCronId(jobId);
 				showToast(`Triggering execution for ${jobId}...`, "info");
-				const res = await fetchJSON$1(API_BASE$1 + `/cron/${jobId}/run`, { method: "POST" });
+				const res = await fetchJSON(API_BASE + `/cron/${jobId}/run`, { method: "POST" });
 				if (res && res.ok) {
 					const detail = res.message && res.returncode !== void 0 ? res.message : res.pid ? `PID: ${res.pid}` : "running";
 					showToast(`Job completed successfully (${detail})`, "success");
@@ -3084,7 +3150,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				setRunningCronId(null);
 			}
 		}, [loadCronJobs, showToast]);
-		useCallback(async (jobId) => {
+		const handleSaveCronJob = useCallback(async (jobId) => {
 			const form = cronEditForms[jobId];
 			if (!form) return;
 			try {
@@ -3110,7 +3176,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					if (form.schedule_kind === "interval") payload.minutes = parseInt(form.minutes, 10) || 60;
 					else payload.cron_expr = form.cron_expr;
 				}
-				const res = await fetchJSON$1(API_BASE$1 + `/cron/${jobId}`, {
+				const res = await fetchJSON(API_BASE + `/cron/${jobId}`, {
 					method: "PUT",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(payload)
@@ -3128,10 +3194,10 @@ var ZeroFactoryDashboard = (function(exports) {
 			loadCronJobs,
 			showToast
 		]);
-		useCallback(async (jobId) => {
-			if (!confirm("Reset this cron job configuration back to built-in defaults?")) return;
+		const handleResetCronJob = useCallback(async (jobId) => {
+			if (!window.confirm("Reset this cron job configuration back to built-in defaults?")) return;
 			try {
-				const res = await fetchJSON$1(API_BASE$1 + `/cron/${jobId}/reset`, { method: "POST" });
+				const res = await fetchJSON(API_BASE + `/cron/${jobId}/reset`, { method: "POST" });
 				if (res && res.ok) {
 					showToast("Job reset to default configuration", "success");
 					setEditingCronId(null);
@@ -3141,10 +3207,10 @@ var ZeroFactoryDashboard = (function(exports) {
 				showToast("Error resetting cron job: " + err.message, "error");
 			}
 		}, [loadCronJobs, showToast]);
-		useCallback(async () => {
+		const handleSyncAllCron = useCallback(async () => {
 			try {
 				showToast("Synchronizing cron jobs across all stores...", "info");
-				const res = await fetchJSON$1(API_BASE$1 + "/cron/sync", { method: "POST" });
+				const res = await fetchJSON(API_BASE + "/cron/sync", { method: "POST" });
 				if (res && res.ok) {
 					showToast("Cron jobs synchronized successfully", "success");
 					loadCronJobs();
@@ -3169,7 +3235,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				if (action && action !== "all") params.set("action", action);
 				if (board && board !== "all") params.set("board_slug", board);
 				if (search && search.trim()) params.set("search", search.trim());
-				const res = await fetchJSON$1(API_BASE$1 + "/activities?" + params.toString());
+				const res = await fetchJSON(API_BASE + "/activities?" + params.toString());
 				if (res && res.ok) {
 					setActivities(res.activities || []);
 					setActivitiesTotal(res.total || 0);
@@ -3183,7 +3249,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				setActivitiesLoading(false);
 			}
 		}, [
-			fetchJSON$1,
+			fetchJSON,
 			activityLimit,
 			activityPage,
 			activityActorFilter,
@@ -3196,27 +3262,27 @@ var ZeroFactoryDashboard = (function(exports) {
 			try {
 				setSessionsLoading(true);
 				const query = bSlug && bSlug !== "all" ? "?limit=15&board_slug=" + encodeURIComponent(bSlug) : "?limit=15";
-				const res = await fetchJSON$1(API_BASE$1 + "/sessions" + query);
+				const res = await fetchJSON(API_BASE + "/sessions" + query);
 				if (res && res.ok && res.sessions) setSessionsList(res.sessions);
 			} catch (err) {
 				console.error("Failed to load AI sessions:", err);
 			} finally {
 				setSessionsLoading(false);
 			}
-		}, [fetchJSON$1]);
+		}, [fetchJSON]);
 		const loadAgents = useCallback(async (boardSlug) => {
 			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
 			try {
 				setAgentsLoading(true);
 				const query = bSlug && bSlug !== "all" ? "?board_slug=" + encodeURIComponent(bSlug) : "";
-				const res = await fetchJSON$1(API_BASE$1 + "/agents" + query);
+				const res = await fetchJSON(API_BASE + "/agents" + query);
 				if (res && res.ok && res.agents) setAgentsList(res.agents);
 			} catch (err) {
 				console.error("Failed to load agents status:", err);
 			} finally {
 				setAgentsLoading(false);
 			}
-		}, [fetchJSON$1]);
+		}, [fetchJSON]);
 		const loadMemories = useCallback(async (slug) => {
 			const bSlug = slug !== void 0 ? slug : selectedBoardRef.current;
 			if (!bSlug) return;
@@ -3227,7 +3293,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					let totalCount = 0;
 					let fetchedViaAll = false;
 					try {
-						const res = await fetchJSON$1(API_BASE$1 + "/boards/all/memories?limit=100");
+						const res = await fetchJSON(API_BASE + "/boards/all/memories?limit=100");
 						if (res && res.ok && Array.isArray(res.memories)) {
 							allMems = res.memories;
 							totalCount = res.total || allMems.length;
@@ -3237,11 +3303,11 @@ var ZeroFactoryDashboard = (function(exports) {
 					if (!fetchedViaAll) {
 						let activeBoards = boardsRef.current;
 						if (!activeBoards || activeBoards.length === 0) try {
-							const bData = await fetchJSON$1(API_BASE$1 + "/boards");
+							const bData = await fetchJSON(API_BASE + "/boards");
 							if (bData && bData.boards) activeBoards = bData.boards;
 						} catch (_) {}
 						if (activeBoards && activeBoards.length > 0) {
-							const results = await Promise.all(activeBoards.map((b) => fetchJSON$1(API_BASE$1 + "/boards/" + encodeURIComponent(b.slug) + "/memories?limit=100").catch(() => null)));
+							const results = await Promise.all(activeBoards.map((b) => fetchJSON(API_BASE + "/boards/" + encodeURIComponent(b.slug) + "/memories?limit=100").catch(() => null)));
 							const combined = [];
 							const seen = /* @__PURE__ */ new Set();
 							results.forEach((r) => {
@@ -3260,7 +3326,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					setBoardMemories(allMems);
 					setMemoriesTotal(totalCount);
 				} else {
-					const res = await fetchJSON$1(API_BASE$1 + "/boards/" + encodeURIComponent(bSlug) + "/memories?limit=100");
+					const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/memories?limit=100");
 					if (res && res.ok && res.memories) {
 						setBoardMemories(res.memories);
 						setMemoriesTotal(res.total || res.memories.length);
@@ -3271,24 +3337,24 @@ var ZeroFactoryDashboard = (function(exports) {
 			} finally {
 				setMemoriesLoading(false);
 			}
-		}, [fetchJSON$1]);
+		}, [fetchJSON]);
 		const handleDeleteMemory = useCallback(async (memId) => {
 			if (!window.confirm("Are you sure you want to delete this repository memory?")) return;
 			try {
-				const res = await fetchJSON$1(API_BASE$1 + "/memories/" + encodeURIComponent(memId), { method: "DELETE" });
+				const res = await fetchJSON(API_BASE + "/memories/" + encodeURIComponent(memId), { method: "DELETE" });
 				if (res && res.ok) {
 					setBoardMemories((prev) => prev.filter((m) => m.id !== memId));
 					setMemoriesTotal((prev) => Math.max(0, prev - 1));
 				}
 			} catch (err) {
 				console.error("Failed to delete memory:", err);
-				alert("Failed to delete memory: " + (err.message || err));
+				window.alert("Failed to delete memory: " + (err.message || err));
 			}
-		}, [fetchJSON$1]);
-		useCallback(async (e) => {
+		}, [fetchJSON]);
+		const handleCreateMemorySubmit = useCallback(async (e) => {
 			if (e && e.preventDefault) e.preventDefault();
 			if (!newMemoryForm.content.trim()) {
-				alert("Memory content is required");
+				window.alert("Memory content is required");
 				return;
 			}
 			try {
@@ -3302,7 +3368,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					task_id: newMemoryForm.task_id || null
 				};
 				const targetBoard = selectedBoard && selectedBoard !== "all" ? selectedBoard : newMemoryForm.board_slug || (boards[0] ? boards[0].slug : "");
-				const res = await fetchJSON$1(API_BASE$1 + "/boards/" + encodeURIComponent(targetBoard) + "/memories", {
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(targetBoard) + "/memories", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(payload)
@@ -3322,12 +3388,12 @@ var ZeroFactoryDashboard = (function(exports) {
 				}
 			} catch (err) {
 				console.error("Failed to create memory:", err);
-				alert("Failed to create memory: " + (err.message || err));
+				window.alert("Failed to create memory: " + (err.message || err));
 			} finally {
 				setSubmittingMemory(false);
 			}
 		}, [
-			fetchJSON$1,
+			fetchJSON,
 			newMemoryForm,
 			selectedBoard,
 			boards
@@ -3499,7 +3565,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			activityBoardFilter,
 			activitySearchQuery
 		]);
-		useMemo(() => {
+		const effectiveFilterOptions = useMemo(() => {
 			const opts = {
 				actors: [
 					"zf-orchestrator",
@@ -3536,7 +3602,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			boards,
 			activities
 		]);
-		useMemo(() => {
+		const effectiveStats = useMemo(() => {
 			if (activitiesStats && activitiesStats.total_activities !== void 0) return activitiesStats;
 			return {
 				total_activities: effectiveActivities.length,
@@ -3634,7 +3700,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				status: targetStatus
 			} : t));
 			try {
-				await fetchJSON$1(API_BASE$1 + "/tasks/" + taskId + "/move", {
+				await fetchJSON(API_BASE + "/tasks/" + taskId + "/move", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
@@ -3653,7 +3719,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			if (e) e.stopPropagation();
 			const nextStatus = NEXT_STATUS_MAP[task.status] || "todo";
 			try {
-				await fetchJSON$1(API_BASE$1 + "/tasks/" + task.id + "/move", {
+				await fetchJSON(API_BASE + "/tasks/" + task.id + "/move", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
@@ -3670,7 +3736,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		};
 		const loadTaskDetails = async (taskId) => {
 			try {
-				const res = await fetchJSON$1(API_BASE$1 + "/tasks/" + taskId);
+				const res = await fetchJSON(API_BASE + "/tasks/" + taskId);
 				if (res && res.task) {
 					setSelectedSessionIdx(0);
 					setSelectedTask(res.task);
@@ -3679,19 +3745,40 @@ var ZeroFactoryDashboard = (function(exports) {
 				showToast("Failed to load task details", "error");
 			}
 		};
+		const refreshSessionProgress = async (taskId) => {
+			try {
+				let prog = null;
+				try {
+					const res = await fetchJSON(API_BASE + "/tasks/" + taskId + "/session");
+					if (res && res.session_progress) prog = res.session_progress;
+				} catch (subErr) {
+					const tRes = await fetchJSON(API_BASE + "/tasks/" + taskId);
+					if (tRes && tRes.task && tRes.task.session_progress) prog = tRes.task.session_progress;
+				}
+				if (prog) {
+					setSelectedTask((prev) => prev && prev.id === taskId ? {
+						...prev,
+						session_progress: prog
+					} : prev);
+					showToast("Session progress updated", "success");
+				} else showToast("No active session details found", "info");
+			} catch (err) {
+				showToast("Failed to refresh session: " + (err.message || err), "error");
+			}
+		};
 		const activeRunningTaskId = selectedTask && selectedTask.status === "running" ? selectedTask.id : null;
 		useEffect(() => {
 			if (!activeRunningTaskId) return;
 			const timer = setInterval(async () => {
 				try {
-					const res = await fetchJSON$1(API_BASE$1 + "/tasks/" + activeRunningTaskId + "/session");
+					const res = await fetchJSON(API_BASE + "/tasks/" + activeRunningTaskId + "/session");
 					if (res && res.session_progress) setSelectedTask((prev) => prev && prev.id === activeRunningTaskId ? {
 						...prev,
 						session_progress: res.session_progress
 					} : prev);
 				} catch (e) {
 					try {
-						const tRes = await fetchJSON$1(API_BASE$1 + "/tasks/" + activeRunningTaskId);
+						const tRes = await fetchJSON(API_BASE + "/tasks/" + activeRunningTaskId);
 						if (tRes && tRes.task && tRes.task.session_progress) setSelectedTask((prev) => prev && prev.id === activeRunningTaskId ? {
 							...prev,
 							session_progress: tRes.task.session_progress
@@ -3701,11 +3788,203 @@ var ZeroFactoryDashboard = (function(exports) {
 			}, 3500);
 			return () => clearInterval(timer);
 		}, [activeRunningTaskId]);
+		const handleCreateTaskSubmit = async (e) => {
+			e.preventDefault();
+			if (!newTaskForm.title.trim()) return;
+			try {
+				setIsSubmittingTask(true);
+				const chosenBoard = newTaskForm.board_slug && newTaskForm.board_slug !== "all" ? newTaskForm.board_slug : selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : "";
+				const payload = {
+					...newTaskForm,
+					pr_url: newTaskForm.pr_url && newTaskForm.pr_url.trim() ? newTaskForm.pr_url.trim() : null,
+					board_slug: chosenBoard
+				};
+				const res = await fetchJSON(API_BASE + "/tasks", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(payload)
+				});
+				showToast("Task " + res.id + " created!", "success");
+				setShowNewTaskModal(false);
+				setNewTaskForm({
+					title: "",
+					description: "",
+					status: "triage",
+					priority: "P2",
+					assignee: "unassigned",
+					tenant: "",
+					pr_url: "",
+					board_slug: ""
+				});
+				loadTasksAndStats();
+			} catch (err) {
+				showToast("Failed to create task: " + err.message, "error");
+			} finally {
+				setIsSubmittingTask(false);
+			}
+		};
+		const computeGitSlug = (gitUrl) => {
+			if (!gitUrl) return "";
+			let cleaned = gitUrl.trim().replace(/\.git$/, "").replace(/\/+$/, "");
+			cleaned = cleaned.replace(/^[a-zA-Z]+:\/\//, "");
+			if (cleaned.includes("@")) {
+				cleaned = cleaned.split("@")[1];
+				if (cleaned.includes(":")) cleaned = cleaned.split(":")[1];
+				else if (cleaned.includes("/")) cleaned = cleaned.split("/").slice(1).join("/");
+			} else if (cleaned.includes("/")) {
+				const first = cleaned.split("/")[0];
+				if (first.includes(".") || first.includes(":")) cleaned = cleaned.split("/").slice(1).join("/");
+			}
+			const parts = cleaned.split("/").filter(Boolean);
+			let repo = parts.length >= 1 ? parts[parts.length - 1].replace(/[^a-zA-Z0-9_\-.]/g, "") : "";
+			let owner = parts.length >= 2 ? parts[parts.length - 2].replace(/[^a-zA-Z0-9_\-.]/g, "") : "";
+			if (owner && repo) return (owner + "-" + repo).toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, "-").replace(/^-+|-+$/g, "");
+			if (repo) return repo.toLowerCase().replace(/[^a-zA-Z0-9_\-]/g, "-").replace(/^-+|-+$/g, "");
+			return "";
+		};
+		const handleCreateBoardSubmit = async (e) => {
+			e.preventDefault();
+			const gitUrl = (newBoardForm.git_url || "").trim();
+			if (!gitUrl) {
+				showToast("Please enter a Remote Git URL", "warning");
+				return;
+			}
+			const autoSlug = computeGitSlug(gitUrl);
+			if (!autoSlug) {
+				const msg = "Could not derive a board slug from the URL. Please enter a valid Git URL.";
+				setCreateBoardError(msg);
+				showToast(msg, "warning");
+				return;
+			}
+			if (boards.some((b) => b.slug === autoSlug)) {
+				const msg = "Board '" + autoSlug + "' already exists. Please enter a different repository URL.";
+				setCreateBoardError(msg);
+				showToast(msg, "warning");
+				return;
+			}
+			setCreateBoardError("");
+			setIsSubmittingBoard(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/boards", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						git_url: gitUrl,
+						description: (newBoardForm.description || "").trim(),
+						target_branch: (newBoardForm.target_branch || "").trim(),
+						max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
+						auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
+						additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
+						auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false)
+					})
+				});
+				const createdSlug = res && res.slug ? res.slug : autoSlug;
+				showToast("Board '" + createdSlug + "' created!", "success");
+				setShowNewBoardModal(false);
+				setNewBoardForm({
+					git_url: "",
+					description: "",
+					target_branch: "",
+					max_concurrent_running: 1,
+					auto_record_memory: true,
+					additional_reviewer_usernames: "",
+					auto_setup_precommit: true
+				});
+				setCreateBoardError("");
+				await loadBoards();
+				setSelectedBoard(createdSlug);
+			} catch (err) {
+				const msg = err && err.message ? err.message : "Failed to create board";
+				setCreateBoardError(msg);
+				showToast("Failed to create board: " + msg, "error");
+			} finally {
+				setIsSubmittingBoard(false);
+			}
+		};
+		const handleTestClone = async (gitUrl, slug) => {
+			const url = (gitUrl || "").trim();
+			if (!url) {
+				setCloneTestResult({
+					ok: false,
+					message: "Please enter a Remote Git URL to test"
+				});
+				return;
+			}
+			setIsTestingClone(true);
+			setCloneTestResult(null);
+			try {
+				const res = await fetchJSON(API_BASE + "/boards/test-clone", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						git_url: url,
+						slug: slug || void 0
+					})
+				});
+				if (res && res.ok) setCloneTestResult({
+					ok: true,
+					message: res.message || "Git clone verified successfully!"
+				});
+				else setCloneTestResult({
+					ok: false,
+					message: res && (res.detail || res.error || res.message) || "Git clone test failed"
+				});
+			} catch (err) {
+				setCloneTestResult({
+					ok: false,
+					message: err && (err.detail || err.message) || String(err)
+				});
+			} finally {
+				setIsTestingClone(false);
+			}
+		};
+		const handleOpenEditBoard = () => {
+			if (!selectedBoard) return;
+			const curr = boards.find((b) => b.slug === selectedBoard);
+			if (curr) {
+				setCloneTestResult(null);
+				setEditBoardForm({
+					slug: curr.slug || "",
+					description: curr.description || "",
+					git_url: curr.git_url || "",
+					target_branch: curr.target_branch || "",
+					max_concurrent_running: typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1 ? curr.max_concurrent_running : 1,
+					auto_record_memory: curr.auto_record_memory !== false,
+					additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
+				});
+				loadPrecommitStatus(curr.slug);
+				loadOpenwikiStatus(curr.slug);
+				setShowEditBoardModal(true);
+			}
+		};
+		const handleUpdateBoardSubmit = async (e) => {
+			e.preventDefault();
+			if (!editBoardForm.slug) return;
+			try {
+				await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(editBoardForm.slug), {
+					method: "PATCH",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						description: (editBoardForm.description || "").trim(),
+						git_url: (editBoardForm.git_url || "").trim(),
+						target_branch: (editBoardForm.target_branch || "").trim(),
+						max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
+						auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
+						additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
+					})
+				});
+				showToast("Board '" + editBoardForm.slug + "' updated!", "success");
+				setShowEditBoardModal(false);
+				await loadBoards();
+			} catch (err) {
+				showToast("Failed to update board: " + err.message, "error");
+			}
+		};
 		const handleDeleteBoard = async () => {
 			if (!selectedBoard || selectedBoard === "all") return;
 			if (!window.confirm("Are you sure you want to delete board \"" + selectedBoard + "\"?\n\nThis will permanently remove the board, all its tasks, and clear its scheduled improvement scanner job.")) return;
 			try {
-				await fetchJSON$1(API_BASE$1 + "/boards/" + encodeURIComponent(selectedBoard), { method: "DELETE" });
+				await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(selectedBoard), { method: "DELETE" });
 				showToast("Board '" + selectedBoard + "' deleted and scanner cron cleared", "info");
 				setShowEditBoardModal(false);
 				const remaining = boards.filter((b) => b.slug !== selectedBoard);
@@ -3722,10 +4001,29 @@ var ZeroFactoryDashboard = (function(exports) {
 				showToast("Failed to delete board: " + err.message, "error");
 			}
 		};
+		const handleAddCommentSubmit = async (e) => {
+			e.preventDefault();
+			if (!newCommentText.trim() || !selectedTask) return;
+			try {
+				await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/comments", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						author: "user",
+						body: newCommentText.trim()
+					})
+				});
+				setNewCommentText("");
+				loadTaskDetails(selectedTask.id);
+				showToast("Comment posted", "success");
+			} catch (err) {
+				showToast("Failed to post comment: " + err.message, "error");
+			}
+		};
 		const handleDeleteTask = async (taskId) => {
 			if (!window.confirm("Are you sure you want to delete task " + taskId + "?")) return;
 			try {
-				await fetchJSON$1(API_BASE$1 + "/tasks/" + taskId, { method: "DELETE" });
+				await fetchJSON(API_BASE + "/tasks/" + taskId, { method: "DELETE" });
 				showToast("Task " + taskId + " deleted", "info");
 				setSelectedTask(null);
 				loadTasksAndStats();
@@ -3739,8 +4037,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			setStoppingSessionId(sessionId || taskId);
 			try {
 				let res;
-				if (taskId) res = await fetchJSON$1(API_BASE$1 + "/tasks/" + encodeURIComponent(taskId) + "/stop", { method: "POST" });
-				else if (sessionId) res = await fetchJSON$1(API_BASE$1 + "/sessions/" + encodeURIComponent(sessionId) + "/stop", { method: "POST" });
+				if (taskId) res = await fetchJSON(API_BASE + "/tasks/" + encodeURIComponent(taskId) + "/stop", { method: "POST" });
+				else if (sessionId) res = await fetchJSON(API_BASE + "/sessions/" + encodeURIComponent(sessionId) + "/stop", { method: "POST" });
 				showToast(res?.message || "AI session stopped successfully", "info");
 				loadTasksAndStats();
 				if (activeView === "sessions") loadSessions();
@@ -3752,21 +4050,42 @@ var ZeroFactoryDashboard = (function(exports) {
 				setStoppingSessionId(null);
 			}
 		};
+		const handleRunDispatcher = async () => {
+			setIsDispatching(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/dispatch/run", { method: "POST" });
+				showToast(res.message || "Dispatch cycle finished", "success");
+				loadTasksAndStats();
+			} catch (err) {
+				showToast("Dispatch error: " + err.message, "error");
+			} finally {
+				setIsDispatching(false);
+			}
+		};
 		return React.createElement("div", { className: "zerofactory-root w-full" }, React.createElement("div", { className: "max-w-[1600px] mx-auto p-4 md:p-6 space-y-6 text-slate-100 font-sans antialiased min-h-screen" }, React.createElement(Header, {
 			activeView,
 			setActiveView,
 			hasActiveAgents,
-			hasRunningSessions,
+			sessionsList,
+			agentsList,
+			loadSessions,
+			loadAgents,
+			loadMemories,
 			boards,
 			selectedBoard,
 			setSelectedBoard,
-			handleOpenEditBoardModal,
+			handleOpenEditBoard,
 			handleOpenNewBoardModal,
-			handleOpenCronModal,
-			handleOpenSettingsModal,
+			setShowCronModal,
+			loadCronJobs,
+			cronSchedulerEnabled,
+			cronJobs,
+			setShowSettingsModal,
+			loadSettings,
 			setShowNewTaskModal,
+			setNewTaskForm,
 			isDispatching,
-			handleDispatch,
+			handleRunDispatcher,
 			loadBoards,
 			loadTasksAndStats
 		}), activeView === "activities" ? React.createElement(ActivitiesView, {
@@ -3782,15 +4101,28 @@ var ZeroFactoryDashboard = (function(exports) {
 			setActivityActionFilter,
 			activityBoardFilter,
 			setActivityBoardFilter,
-			activityAssigneeFilter,
-			setActivityAssigneeFilter,
 			activitySearchQuery,
 			setActivitySearchQuery,
 			loadActivities,
 			boards,
 			setActiveView,
 			loadTaskDetails,
-			tasks
+			tasks,
+			liveAgents,
+			effectiveActivities,
+			effectiveStats,
+			effectiveFilterOptions,
+			activityPage,
+			setActivityPage,
+			activityLimit,
+			activityViewMode,
+			setActivityViewMode,
+			autoRefresh,
+			setAutoRefresh,
+			expandedActivityId,
+			setExpandedActivityId,
+			isDispatching,
+			handleRunDispatcher
 		}) : activeView === "instructions" ? React.createElement(InstructionsView, {
 			instructionTab,
 			setInstructionTab,
@@ -3806,7 +4138,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			sessionsSearchQuery,
 			setSessionsSearchQuery,
 			stoppingSessionId,
-			handleStopSession,
+			handleStopTaskSession,
 			loadSessions,
 			tasks,
 			agentsSubTab,
@@ -3814,7 +4146,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			boardMemories,
 			memoriesLoading,
 			memoriesTotal,
-			loadBoardMemories,
+			loadMemories,
 			memoryCategoryFilter,
 			setMemoryCategoryFilter,
 			memorySearchQuery,
@@ -3823,16 +4155,27 @@ var ZeroFactoryDashboard = (function(exports) {
 			setShowAddMemoryModal,
 			newMemoryForm,
 			setNewMemoryForm,
-			handleCreateMemory,
+			handleCreateMemorySubmit,
 			submittingMemory,
 			handleDeleteMemory,
 			setActiveView,
 			selectedSessionIdx,
-			setSelectedSessionIdx
+			setSelectedSessionIdx,
+			agentsList,
+			agentsLoading,
+			loadAgents,
+			loadTaskDetails,
+			boards,
+			showToast,
+			loadBoards
 		}) : boards.length === 0 ? React.createElement(EmptyBoardState, {
 			onNewBoard: () => setShowNewBoardModal(true),
 			onInstructions: () => setActiveView("instructions")
-		}) : React.createElement("div", { className: "space-y-6" }, React.createElement(StatsBar, { stats }), React.createElement(FilterBar, {
+		}) : React.createElement("div", { className: "space-y-6" }, React.createElement(StatsBar, {
+			stats,
+			prFilter,
+			setPrFilter
+		}), React.createElement(FilterBar, {
 			searchQuery,
 			setSearchQuery,
 			assigneeFilter,
@@ -3868,23 +4211,26 @@ var ZeroFactoryDashboard = (function(exports) {
 			selectedTask,
 			setSelectedTask,
 			boards,
-			handleUpdateTask,
 			handleDeleteTask,
-			handleRunAgent,
 			handleStopTaskSession,
 			stoppingSessionId,
 			activeRunningTaskId,
 			newCommentText,
 			setNewCommentText,
-			handleAddComment,
+			handleAddCommentSubmit,
 			loadTasksAndStats,
-			loadTaskDetails
+			loadTaskDetails,
+			showToast,
+			selectedSessionIdx,
+			setSelectedSessionIdx,
+			refreshSessionProgress,
+			handleAdvanceTask
 		}), React.createElement(NewTaskModal, {
 			showNewTaskModal,
 			setShowNewTaskModal,
 			newTaskForm,
 			setNewTaskForm,
-			handleCreateTask,
+			handleCreateTaskSubmit,
 			isSubmittingTask,
 			boards,
 			selectedBoard
@@ -3893,24 +4239,35 @@ var ZeroFactoryDashboard = (function(exports) {
 			setShowNewBoardModal,
 			newBoardForm,
 			setNewBoardForm,
-			handleCreateBoard,
-			isSubmittingBoard
+			handleCreateBoardSubmit,
+			isSubmittingBoard,
+			boards,
+			setActiveView,
+			createBoardError,
+			setCreateBoardError,
+			isTestingClone,
+			handleTestClone,
+			cloneTestResult,
+			setCloneTestResult
 		}), React.createElement(EditBoardModal, {
 			showEditBoardModal,
 			setShowEditBoardModal,
 			editBoardForm,
 			setEditBoardForm,
-			handleUpdateBoard,
+			handleUpdateBoardSubmit,
 			handleDeleteBoard,
 			isSubmittingBoard,
 			selectedBoard,
-			selectedBoardData,
-			testingTracker,
-			handleTestTrackerConnection,
-			testTrackerResult,
-			importingIssues,
-			handleImportExternalIssues,
-			importIssuesResult
+			isTestingClone,
+			handleTestClone,
+			cloneTestResult,
+			setCloneTestResult,
+			precommitStatus,
+			isSettingUpPrecommit,
+			handleTriggerPrecommitSetup,
+			openwikiStatus,
+			isSettingUpOpenwiki,
+			handleTriggerOpenwikiSetup
 		}), React.createElement(SettingsModal, {
 			showSettingsModal,
 			setShowSettingsModal,
@@ -3939,15 +4296,26 @@ var ZeroFactoryDashboard = (function(exports) {
 			cronSearchQuery,
 			setCronSearchQuery,
 			runningCronId,
-			handleTriggerCron,
+			handleRunCronJob,
 			editingCronId,
 			setEditingCronId,
 			cronEditForms,
 			setCronEditForms,
-			handleSaveCronEdit,
-			handleToggleCron,
-			handleToggleScheduler,
+			handleSaveCronJob,
+			handleToggleCronJob,
+			handleToggleCronScheduler,
+			handleResetCronJob,
+			handleSyncAllCron,
 			loadCronJobs
+		}), React.createElement(AddMemoryModal, {
+			showAddMemoryModal,
+			setShowAddMemoryModal,
+			newMemoryForm,
+			setNewMemoryForm,
+			handleCreateMemorySubmit,
+			submittingMemory,
+			selectedBoard,
+			boards
 		}), React.createElement(Toast, { toast })));
 	}
 	//#endregion

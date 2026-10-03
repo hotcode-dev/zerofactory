@@ -7,16 +7,20 @@ export function EditBoardModal(props) {
     editBoardForm,
     setEditBoardForm,
     handleUpdateBoard,
+    handleUpdateBoardSubmit = handleUpdateBoard,
     handleDeleteBoard,
     isSubmittingBoard,
     selectedBoard,
-    selectedBoardData,
-    testingTracker,
-    handleTestTrackerConnection,
-    testTrackerResult,
-    importingIssues,
-    handleImportExternalIssues,
-    importIssuesResult
+    isTestingClone = false,
+    handleTestClone = () => {},
+    cloneTestResult = null,
+    setCloneTestResult = () => {},
+    precommitStatus = null,
+    isSettingUpPrecommit = false,
+    handleTriggerPrecommitSetup = () => {},
+    openwikiStatus = null,
+    isSettingUpOpenwiki = false,
+    handleTriggerOpenwikiSetup = () => {}
   } = props;
 
   if (!showEditBoardModal) return null;

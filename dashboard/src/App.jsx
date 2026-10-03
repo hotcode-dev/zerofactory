@@ -17,6 +17,7 @@ import { NewBoardModal } from "./modals/NewBoardModal.jsx";
 import { EditBoardModal } from "./modals/EditBoardModal.jsx";
 import { SettingsModal } from "./modals/SettingsModal.jsx";
 import { CronModal } from "./modals/CronModal.jsx";
+import { AddMemoryModal } from "./modals/AddMemoryModal.jsx";
 
 export function ZeroFactoryKanbanApp() {
     const [boards, setBoards] = useState([]);
@@ -153,6 +154,7 @@ export function ZeroFactoryKanbanApp() {
 
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
+    const [isSubmittingTask, setIsSubmittingTask] = useState(false);
     const [isTestingClone, setIsTestingClone] = useState(false);
     const [cloneTestResult, setCloneTestResult] = useState(null);
 
@@ -599,7 +601,7 @@ export function ZeroFactoryKanbanApp() {
     }, [cronEditForms, loadCronJobs, showToast]);
 
     const handleResetCronJob = useCallback(async (jobId) => {
-      if (!confirm("Reset this cron job configuration back to built-in defaults?")) return;
+      if (!window.confirm("Reset this cron job configuration back to built-in defaults?")) return;
       try {
         const res = await fetchJSON(API_BASE + `/cron/${jobId}/reset`, {
           method: "POST"
@@ -778,14 +780,14 @@ export function ZeroFactoryKanbanApp() {
         }
       } catch (err) {
         console.error("Failed to delete memory:", err);
-        alert("Failed to delete memory: " + (err.message || err));
+        window.alert("Failed to delete memory: " + (err.message || err));
       }
     }, [fetchJSON]);
 
     const handleCreateMemorySubmit = useCallback(async (e) => {
       if (e && e.preventDefault) e.preventDefault();
       if (!newMemoryForm.content.trim()) {
-        alert("Memory content is required");
+        window.alert("Memory content is required");
         return;
       }
       try {
@@ -814,7 +816,7 @@ export function ZeroFactoryKanbanApp() {
         }
       } catch (err) {
         console.error("Failed to create memory:", err);
-        alert("Failed to create memory: " + (err.message || err));
+        window.alert("Failed to create memory: " + (err.message || err));
       } finally {
         setSubmittingMemory(false);
       }
@@ -1185,6 +1187,7 @@ export function ZeroFactoryKanbanApp() {
       if (!newTaskForm.title.trim()) return;
 
       try {
+        setIsSubmittingTask(true);
         const chosenBoard = (newTaskForm.board_slug && newTaskForm.board_slug !== "all")
           ? newTaskForm.board_slug
           : (selectedBoard && selectedBoard !== "all"
@@ -1215,6 +1218,8 @@ export function ZeroFactoryKanbanApp() {
         loadTasksAndStats();
       } catch (err) {
         showToast("Failed to create task: " + err.message, "error");
+      } finally {
+        setIsSubmittingTask(false);
       }
     };
 
@@ -1497,17 +1502,26 @@ export function ZeroFactoryKanbanApp() {
         activeView,
         setActiveView,
         hasActiveAgents,
-        hasRunningSessions,
+        sessionsList,
+        agentsList,
+        loadSessions,
+        loadAgents,
+        loadMemories,
         boards,
         selectedBoard,
         setSelectedBoard,
-        handleOpenEditBoardModal,
+        handleOpenEditBoard,
         handleOpenNewBoardModal,
-        handleOpenCronModal,
-        handleOpenSettingsModal,
+        setShowCronModal,
+        loadCronJobs,
+        cronSchedulerEnabled,
+        cronJobs,
+        setShowSettingsModal,
+        loadSettings,
         setShowNewTaskModal,
+        setNewTaskForm,
         isDispatching,
-        handleDispatch,
+        handleRunDispatcher,
         loadBoards,
         loadTasksAndStats
       }),
@@ -1525,15 +1539,28 @@ export function ZeroFactoryKanbanApp() {
             setActivityActionFilter,
             activityBoardFilter,
             setActivityBoardFilter,
-            activityAssigneeFilter,
-            setActivityAssigneeFilter,
             activitySearchQuery,
             setActivitySearchQuery,
             loadActivities,
             boards,
             setActiveView,
             loadTaskDetails,
-            tasks
+            tasks,
+            liveAgents,
+            effectiveActivities,
+            effectiveStats,
+            effectiveFilterOptions,
+            activityPage,
+            setActivityPage,
+            activityLimit,
+            activityViewMode,
+            setActivityViewMode,
+            autoRefresh,
+            setAutoRefresh,
+            expandedActivityId,
+            setExpandedActivityId,
+            isDispatching,
+            handleRunDispatcher
           })
         : activeView === "instructions"
           ? React.createElement(InstructionsView, {
@@ -1553,7 +1580,7 @@ export function ZeroFactoryKanbanApp() {
                 sessionsSearchQuery,
                 setSessionsSearchQuery,
                 stoppingSessionId,
-                handleStopSession,
+                handleStopTaskSession,
                 loadSessions,
                 tasks,
                 agentsSubTab,
@@ -1561,7 +1588,7 @@ export function ZeroFactoryKanbanApp() {
                 boardMemories,
                 memoriesLoading,
                 memoriesTotal,
-                loadBoardMemories,
+                loadMemories,
                 memoryCategoryFilter,
                 setMemoryCategoryFilter,
                 memorySearchQuery,
@@ -1570,12 +1597,19 @@ export function ZeroFactoryKanbanApp() {
                 setShowAddMemoryModal,
                 newMemoryForm,
                 setNewMemoryForm,
-                handleCreateMemory,
+                handleCreateMemorySubmit,
                 submittingMemory,
                 handleDeleteMemory,
                 setActiveView,
                 selectedSessionIdx,
-                setSelectedSessionIdx
+                setSelectedSessionIdx,
+                agentsList,
+                agentsLoading,
+                loadAgents,
+                loadTaskDetails,
+                boards,
+                showToast,
+                loadBoards
               })
             : boards.length === 0
               ? React.createElement(EmptyBoardState, {
@@ -1585,7 +1619,7 @@ export function ZeroFactoryKanbanApp() {
               : React.createElement(
                   "div",
                   { className: "space-y-6" },
-                  React.createElement(StatsBar, { stats }),
+                  React.createElement(StatsBar, { stats, prFilter, setPrFilter }),
                   React.createElement(FilterBar, {
                     searchQuery,
                     setSearchQuery,
@@ -1626,24 +1660,27 @@ export function ZeroFactoryKanbanApp() {
         selectedTask,
         setSelectedTask,
         boards,
-        handleUpdateTask,
         handleDeleteTask,
-        handleRunAgent,
         handleStopTaskSession,
         stoppingSessionId,
         activeRunningTaskId,
         newCommentText,
         setNewCommentText,
-        handleAddComment,
+        handleAddCommentSubmit,
         loadTasksAndStats,
-        loadTaskDetails
+        loadTaskDetails,
+        showToast,
+        selectedSessionIdx,
+        setSelectedSessionIdx,
+        refreshSessionProgress,
+        handleAdvanceTask
       }),
       React.createElement(NewTaskModal, {
         showNewTaskModal,
         setShowNewTaskModal,
         newTaskForm,
         setNewTaskForm,
-        handleCreateTask,
+        handleCreateTaskSubmit,
         isSubmittingTask,
         boards,
         selectedBoard
@@ -1653,25 +1690,36 @@ export function ZeroFactoryKanbanApp() {
         setShowNewBoardModal,
         newBoardForm,
         setNewBoardForm,
-        handleCreateBoard,
-        isSubmittingBoard
+        handleCreateBoardSubmit,
+        isSubmittingBoard,
+        boards,
+        setActiveView,
+        createBoardError,
+        setCreateBoardError,
+        isTestingClone,
+        handleTestClone,
+        cloneTestResult,
+        setCloneTestResult
       }),
       React.createElement(EditBoardModal, {
         showEditBoardModal,
         setShowEditBoardModal,
         editBoardForm,
         setEditBoardForm,
-        handleUpdateBoard,
+        handleUpdateBoardSubmit,
         handleDeleteBoard,
         isSubmittingBoard,
         selectedBoard,
-        selectedBoardData,
-        testingTracker,
-        handleTestTrackerConnection,
-        testTrackerResult,
-        importingIssues,
-        handleImportExternalIssues,
-        importIssuesResult
+        isTestingClone,
+        handleTestClone,
+        cloneTestResult,
+        setCloneTestResult,
+        precommitStatus,
+        isSettingUpPrecommit,
+        handleTriggerPrecommitSetup,
+        openwikiStatus,
+        isSettingUpOpenwiki,
+        handleTriggerOpenwikiSetup
       }),
       React.createElement(SettingsModal, {
         showSettingsModal,
@@ -1702,15 +1750,27 @@ export function ZeroFactoryKanbanApp() {
         cronSearchQuery,
         setCronSearchQuery,
         runningCronId,
-        handleTriggerCron,
+        handleRunCronJob,
         editingCronId,
         setEditingCronId,
         cronEditForms,
         setCronEditForms,
-        handleSaveCronEdit,
-        handleToggleCron,
-        handleToggleScheduler,
+        handleSaveCronJob,
+        handleToggleCronJob,
+        handleToggleCronScheduler,
+        handleResetCronJob,
+        handleSyncAllCron,
         loadCronJobs
+      }),
+      React.createElement(AddMemoryModal, {
+        showAddMemoryModal,
+        setShowAddMemoryModal,
+        newMemoryForm,
+        setNewMemoryForm,
+        handleCreateMemorySubmit,
+        submittingMemory,
+        selectedBoard,
+        boards
       }),
       React.createElement(Toast, { toast })
     )

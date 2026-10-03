@@ -23,7 +23,22 @@ export function ActivitiesView(props) {
     boards,
     setActiveView,
     loadTaskDetails,
-    tasks
+    tasks,
+    liveAgents = [],
+    effectiveActivities = [],
+    effectiveStats = {},
+    effectiveFilterOptions = { actors: [], actions: [], boards: [] },
+    activityPage = 0,
+    setActivityPage = () => {},
+    activityLimit = 15,
+    activityViewMode = "timeline",
+    setActivityViewMode = () => {},
+    autoRefresh = false,
+    setAutoRefresh = () => {},
+    expandedActivityId = null,
+    setExpandedActivityId = () => {},
+    isDispatching = false,
+    handleRunDispatcher = () => {}
   } = props;
 
       const getActionBadge = (action) => {

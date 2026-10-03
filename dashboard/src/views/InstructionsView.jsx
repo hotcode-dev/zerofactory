@@ -1,4 +1,5 @@
 import React from "react";
+import { renderPrIcon } from "../utils/icons.js";
 
 export function InstructionsView({ instructionTab, setInstructionTab, setActiveView }) {
     const renderOverviewSection = () => {

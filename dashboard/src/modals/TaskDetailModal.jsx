@@ -1,12 +1,14 @@
 import React from "react";
 import { formatPrLabel, timeAgo } from "../utils/formatters.js";
 import { renderPrIcon } from "../utils/icons.js";
+import { API_BASE, COLUMNS } from "../constants.js";
+import { fetchJSON } from "../sdk.js";
 
 export function TaskDetailModal(props) {
   const {
     selectedTask,
     setSelectedTask,
-    boards,
+    boards = [],
     handleUpdateTask,
     handleDeleteTask,
     handleRunAgent,
@@ -16,8 +18,14 @@ export function TaskDetailModal(props) {
     newCommentText,
     setNewCommentText,
     handleAddComment,
+    handleAddCommentSubmit = handleAddComment,
     loadTasksAndStats,
-    loadTaskDetails
+    loadTaskDetails,
+    showToast = () => {},
+    selectedSessionIdx = null,
+    setSelectedSessionIdx = () => {},
+    refreshSessionProgress = () => {},
+    handleAdvanceTask = () => {}
   } = props;
 
   if (!selectedTask) return null;

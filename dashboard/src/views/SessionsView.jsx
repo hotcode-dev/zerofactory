@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { timeAgo } from "../utils/formatters.js";
+import { API_BASE } from "../constants.js";
+import { fetchJSON } from "../sdk.js";
 
 export function SessionsView(props) {
   const {
     selectedBoard,
-    sessionsList,
+    sessionsList = [],
     sessionsLoading,
     sessionsAgentFilter,
     setSessionsAgentFilter,
@@ -14,14 +16,16 @@ export function SessionsView(props) {
     setSessionsSearchQuery,
     stoppingSessionId,
     handleStopSession,
+    handleStopTaskSession = handleStopSession || (() => {}),
     loadSessions,
-    tasks,
+    tasks = [],
     agentsSubTab,
     setAgentsSubTab,
     boardMemories,
     memoriesLoading,
     memoriesTotal,
     loadBoardMemories,
+    loadMemories = loadBoardMemories || (() => {}),
     memoryCategoryFilter,
     setMemoryCategoryFilter,
     memorySearchQuery,
@@ -35,7 +39,14 @@ export function SessionsView(props) {
     handleDeleteMemory,
     setActiveView,
     selectedSessionIdx,
-    setSelectedSessionIdx
+    setSelectedSessionIdx,
+    agentsList = [],
+    agentsLoading = false,
+    loadAgents = () => {},
+    loadTaskDetails = () => {},
+    boards = [],
+    showToast = () => {},
+    loadBoards = () => {}
   } = props;
 
       // Filter sessions by selected board first (if not 'all')

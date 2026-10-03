@@ -5,24 +5,37 @@ export function Header(props) {
     activeView,
     setActiveView,
     hasActiveAgents,
-    hasRunningSessions,
-    boards,
+    sessionsList = [],
+    agentsList = [],
+    loadSessions,
+    loadAgents,
+    loadMemories,
+    boards = [],
     selectedBoard,
     setSelectedBoard,
+    handleOpenEditBoard,
     handleOpenEditBoardModal,
     handleOpenNewBoardModal,
     handleOpenCronModal,
+    setShowCronModal,
+    loadCronJobs,
+    cronSchedulerEnabled = true,
+    cronJobs = [],
     handleOpenSettingsModal,
+    setShowSettingsModal,
+    loadSettings,
     setShowNewTaskModal,
+    setNewTaskForm,
     isDispatching,
+    handleRunDispatcher,
     handleDispatch,
     loadBoards,
     loadTasksAndStats
   } = props;
 
-  return (
-          "header",
-          { className: "space-y-4 pb-5 border-b border-slate-800/80" },
+  return React.createElement(
+    "header",
+    { className: "space-y-4 pb-5 border-b border-slate-800/80" },
           React.createElement(
             "div",
             { className: "flex flex-col lg:flex-row lg:items-center justify-between gap-4" },
@@ -172,7 +185,7 @@ export function Header(props) {
                 "button",
                 {
                   className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
-                  onClick: handleOpenEditBoard,
+                  onClick: handleOpenEditBoard || handleOpenEditBoardModal,
                   title: "Edit board settings and manage board"
                 },
                 "⚙️ Edit Board"
@@ -182,8 +195,12 @@ export function Header(props) {
                 {
                   className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
                   onClick: () => {
-                    setShowCronModal(true);
-                    loadCronJobs();
+                    if (handleOpenCronModal) {
+                      handleOpenCronModal();
+                    } else {
+                      if (setShowCronModal) setShowCronModal(true);
+                      if (loadCronJobs) loadCronJobs();
+                    }
                   },
                   title: "Configure built-in Cron schedules and periodic automation"
                 },
@@ -211,8 +228,12 @@ export function Header(props) {
                 {
                   className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
                   onClick: () => {
-                    loadSettings();
-                    setShowSettingsModal(true);
+                    if (handleOpenSettingsModal) {
+                      handleOpenSettingsModal();
+                    } else {
+                      if (loadSettings) loadSettings();
+                      if (setShowSettingsModal) setShowSettingsModal(true);
+                    }
                   },
                   title: "Global Zero Factory configuration (WIP limits, worker caps)"
                 },
@@ -222,7 +243,7 @@ export function Header(props) {
                 "button",
                 {
                   className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
-                  onClick: handleRunDispatcher,
+                  onClick: handleRunDispatcher || handleDispatch,
                   disabled: isDispatching || boards.length === 0,
                   title: boards.length === 0 ? "Create a board first" : "Trigger Zero Factory Dispatcher Cycle"
                 },
@@ -237,13 +258,15 @@ export function Header(props) {
                   className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                   onClick: () => {
                     if (boards.length === 0) {
-                      handleOpenNewBoardModal();
+                      if (handleOpenNewBoardModal) handleOpenNewBoardModal();
                     } else {
-                      setNewTaskForm(prev => ({
-                        ...prev,
-                        board_slug: (selectedBoard && selectedBoard !== "all") ? selectedBoard : (boards[0] ? boards[0].slug : "")
-                      }));
-                      setShowNewTaskModal(true);
+                      if (setNewTaskForm) {
+                        setNewTaskForm(prev => ({
+                          ...prev,
+                          board_slug: (selectedBoard && selectedBoard !== "all") ? selectedBoard : (boards[0] ? boards[0].slug : "")
+                        }));
+                      }
+                      if (setShowNewTaskModal) setShowNewTaskModal(true);
                     }
                   },
                   disabled: boards.length === 0,

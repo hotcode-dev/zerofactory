@@ -5,24 +5,54 @@ export function CronModal(props) {
   const {
     showCronModal,
     setShowCronModal,
-    cronJobs,
-    cronSchedulerEnabled,
-    loadingCron,
-    cronFilterTab,
-    setCronFilterTab,
-    cronSearchQuery,
-    setCronSearchQuery,
+    cronJobs = [],
+    cronSchedulerEnabled = true,
+    loadingCron = false,
+    cronFilterTab = "all",
+    setCronFilterTab = () => {},
+    cronSearchQuery = "",
+    setCronSearchQuery = () => {},
     runningCronId,
     handleTriggerCron,
+    handleRunCronJob = handleTriggerCron || (() => {}),
     editingCronId,
-    setEditingCronId,
-    cronEditForms,
-    setCronEditForms,
+    setEditingCronId = () => {},
+    cronEditForms = {},
+    setCronEditForms = () => {},
     handleSaveCronEdit,
+    handleSaveCronJob = handleSaveCronEdit || (() => {}),
     handleToggleCron,
+    handleToggleCronJob = handleToggleCron || (() => {}),
     handleToggleScheduler,
-    loadCronJobs
+    handleToggleCronScheduler = handleToggleScheduler || (() => {}),
+    handleResetCronJob = () => {},
+    handleSyncAllCron = () => {},
+    loadCronJobs = () => {}
   } = props;
+
+  const filteredCronJobs = React.useMemo(() => {
+    return (cronJobs || []).filter((job) => {
+      if (cronFilterTab === "core") {
+        const isScanner = job.id.startsWith("zero-factory-improvement-scanner-") || job.category === "scanner";
+        const isOpenWiki = job.id.startsWith("zero-factory-openwiki-update-") || job.category === "openwiki";
+        if (isScanner || isOpenWiki) return false;
+      } else if (cronFilterTab === "scanners") {
+        const isScanner = job.id.startsWith("zero-factory-improvement-scanner-") || job.category === "scanner";
+        if (!isScanner) return false;
+      } else if (cronFilterTab === "openwiki") {
+        const isOpenWiki = job.id.startsWith("zero-factory-openwiki-update-") || job.category === "openwiki";
+        if (!isOpenWiki) return false;
+      }
+      if (cronSearchQuery && cronSearchQuery.trim()) {
+        const q = cronSearchQuery.toLowerCase().trim();
+        const matchesName = (job.name || "").toLowerCase().includes(q);
+        const matchesId = (job.id || "").toLowerCase().includes(q);
+        const matchesWorkdir = (job.workdir || "").toLowerCase().includes(q);
+        return Boolean(matchesName || matchesId || matchesWorkdir);
+      }
+      return true;
+    });
+  }, [cronJobs, cronFilterTab, cronSearchQuery]);
 
   if (!showCronModal) return null;
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { computeGitSlug } from "../utils/formatters.js";
 
 export function NewBoardModal(props) {
   const {
@@ -7,7 +8,16 @@ export function NewBoardModal(props) {
     newBoardForm,
     setNewBoardForm,
     handleCreateBoard,
-    isSubmittingBoard
+    handleCreateBoardSubmit = handleCreateBoard,
+    isSubmittingBoard,
+    boards = [],
+    setActiveView = () => {},
+    createBoardError = "",
+    setCreateBoardError = () => {},
+    isTestingClone = false,
+    handleTestClone = () => {},
+    cloneTestResult = null,
+    setCloneTestResult = () => {}
   } = props;
 
   if (!showNewBoardModal) return null;
