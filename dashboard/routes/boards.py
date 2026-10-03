@@ -514,16 +514,16 @@ def get_board_gh_issues_status_endpoint(slug: str):
 
 @router.post("/boards/{slug}/setup-gh-issues")
 def setup_board_gh_issues_endpoint(slug: str):
-    """Trigger creation of a P0 setup task to generate GitHub Issue templates and labels."""
+    """Trigger deterministic setup of GitHub Issue templates and labels for a board."""
     try:
-        from ..gh_issues_service import create_gh_issues_setup_task
+        from ..gh_issues_service import setup_board_gh_issues_deterministic
     except (ImportError, ValueError):
-        from gh_issues_service import create_gh_issues_setup_task  # type: ignore
+        from gh_issues_service import setup_board_gh_issues_deterministic  # type: ignore
 
-    res = create_gh_issues_setup_task(slug)
+    res = setup_board_gh_issues_deterministic(slug)
     if not res.get("ok"):
         raise HTTPException(
             status_code=400,
-            detail=res.get("error", "Failed to initiate GitHub issues setup task"),
+            detail=res.get("error", "Failed to setup GitHub issues"),
         )
     return res

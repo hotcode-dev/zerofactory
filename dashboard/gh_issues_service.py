@@ -15,9 +15,19 @@ if _DASHBOARD_ROOT not in sys.path:
     sys.path.insert(0, _DASHBOARD_ROOT)
 
 try:
-    from .setup_common import check_board_setup_status, create_setup_task
+    from .db import get_db_conn, init_db
+    from .setup_common import (
+        check_board_setup_status,
+        create_setup_task,
+        get_repo_resolver,
+    )
 except (ImportError, ValueError):
-    from setup_common import check_board_setup_status, create_setup_task  # type: ignore
+    from db import get_db_conn, init_db  # type: ignore
+    from setup_common import (  # type: ignore
+        check_board_setup_status,
+        create_setup_task,
+        get_repo_resolver,
+    )
 
 _log = logging.getLogger("zerofactory.dashboard.gh_issues_service")
 
@@ -48,7 +58,7 @@ This requires:
 1. **GitHub Issue Forms (YAML)**:
    - `{BUG_REPORT_RELPATH}`: Bug report form automatically pre-labeled with `["bug", "zerofactory"]`, with problem description, reproduction steps, expected behavior, and AI investigation confirmation checkbox.
    - `{FEATURE_REQUEST_RELPATH}`: Feature proposal form automatically pre-labeled with `["feature", "zerofactory"]`, with summary, proposed solution, constraints, and AI investigation confirmation checkbox.
-   - `{CONFIG_RELPATH}`: Configuration enabling blank issues and linking to Zero Factory documentation.
+   - `{CONFIG_RELPATH}`: Configuration disabling blank issues (`blank_issues_enabled: false`) and directing users to GitHub Discussions for questions, ideas, and general community discussions.
 2. **Repository Labels**:
    - `zerofactory` (#7c3aed): Triggers Zero Factory AI triage and investigation.
    - `ai-investigate` (#8b5cf6): Request Zero Factory AI investigation.
@@ -96,10 +106,62 @@ def check_board_gh_issues_status(board_slug: str) -> dict[str, Any]:
     )
 
 
-def create_gh_issues_setup_task(
+def setup_board_gh_issues_deterministic(
     board_slug: str, actor: str = "user"
 ) -> dict[str, Any]:
-    """Create or return an existing setup task to generate GitHub Issue templates and labels."""
+    """Deterministically provision GitHub Issue templates and standard labels for a board."""
+    init_db()
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM boards WHERE slug = ?", (board_slug,))
+        row = cursor.fetchone()
+        if not row:
+            return {"ok": False, "error": f"Board '{board_slug}' not found"}
+        board = dict(row)
+
+    # Resolve board repository root
+    repo_path: Path | None = None
+    resolver = get_repo_resolver()
+    if resolver:
+        try:
+            repo_path = resolver(board)
+        except Exception as e:
+            _log.warning("Could not resolve repo path for board %s: %s", board_slug, e)
+
+    if not repo_path or not repo_path.is_dir():
+        repo_path = Path(".").resolve()
+
+    try:
+        from ..scripts.setup_gh_issues import setup_github_issues
+    except Exception:
+        try:
+            from scripts.setup_gh_issues import setup_github_issues
+        except Exception:
+            _scripts_path = Path(__file__).resolve().parent.parent / "scripts"
+            if str(_scripts_path) not in sys.path:
+                sys.path.insert(0, str(_scripts_path))
+            from setup_gh_issues import setup_github_issues  # type: ignore
+
+    res = setup_github_issues(
+        repo_root=repo_path,
+        repo=board.get("git_url") or None,
+        create_labels=True,
+    )
+    res["board_slug"] = board_slug
+    res["deterministic"] = True
+    res["has_gh_issues"] = True
+    res["message"] = (
+        "Configured GitHub Issue templates and AI labels deterministically."
+    )
+    return res
+
+
+def create_gh_issues_setup_task(
+    board_slug: str, actor: str = "user", deterministic: bool = True
+) -> dict[str, Any]:
+    """Provision GitHub Issue templates. Defaults to deterministic execution."""
+    if deterministic:
+        return setup_board_gh_issues_deterministic(board_slug, actor=actor)
     return create_setup_task(
         board_slug,
         status_checker=check_board_gh_issues_status,

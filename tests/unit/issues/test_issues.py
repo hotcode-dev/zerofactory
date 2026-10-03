@@ -599,3 +599,10 @@ class TestSetupGhIssuesScript:
         assert 'labels: ["feature", "zerofactory"]' in f_content
         assert "Zero Factory AI Feature Proposal" in f_content
 
+        config_template = tmp_path / ".github" / "ISSUE_TEMPLATE" / "config.yml"
+        assert config_template.exists()
+        c_content = config_template.read_text(encoding="utf-8")
+        assert "blank_issues_enabled: false" in c_content
+        assert "GitHub Discussions" in c_content
+        assert "discussions" in c_content
+

@@ -115,12 +115,25 @@ body:
           required: false
 """
 
-CONFIG_TEMPLATE = """blank_issues_enabled: true
+def build_config_template(repo: str | None = None) -> str:
+    repo_slug = (repo or "").strip()
+    discussions_url = (
+        f"https://github.com/{repo_slug}/discussions"
+        if repo_slug and "/" in repo_slug
+        else "https://github.com/hotcode-dev/zerofactory/discussions"
+    )
+    return f"""blank_issues_enabled: false
 contact_links:
+  - name: GitHub Discussions
+    url: {discussions_url}
+    about: Please ask questions, share ideas, and engage with the community in Discussions instead of opening an issue.
   - name: Zero Factory Documentation
     url: https://github.com/hotcode-dev/zerofactory
     about: Learn how Zero Factory AI agents triage and resolve issues.
 """
+
+
+CONFIG_TEMPLATE = build_config_template("hotcode-dev/zerofactory")
 
 STANDARD_LABELS = [
     {
@@ -187,7 +200,9 @@ def detect_repo_from_git(cwd: Path) -> str | None:
     return None
 
 
-def setup_github_issue_templates(target_dir: Path) -> list[Path]:
+def setup_github_issue_templates(
+    target_dir: Path, repo: str | None = None
+) -> list[Path]:
     """Write issue template YAML files into target_dir/.github/ISSUE_TEMPLATE/."""
     template_dir = target_dir / ".github" / "ISSUE_TEMPLATE"
     template_dir.mkdir(parents=True, exist_ok=True)
@@ -202,8 +217,9 @@ def setup_github_issue_templates(target_dir: Path) -> list[Path]:
     feature_file.write_text(FEATURE_REQUEST_TEMPLATE, encoding="utf-8")
     files_written.append(feature_file)
 
+    effective_repo = repo or detect_repo_from_git(target_dir)
     config_file = template_dir / "config.yml"
-    config_file.write_text(CONFIG_TEMPLATE, encoding="utf-8")
+    config_file.write_text(build_config_template(effective_repo), encoding="utf-8")
     files_written.append(config_file)
 
     return files_written
@@ -263,7 +279,7 @@ def setup_github_issues(
     effective_repo = repo or detect_repo_from_git(repo_root)
 
     # 1. Write issue templates
-    templates = setup_github_issue_templates(repo_root)
+    templates = setup_github_issue_templates(repo_root, repo=effective_repo)
 
     # 2. Provision labels if requested and repo is available
     label_res: dict[str, Any] | None = None

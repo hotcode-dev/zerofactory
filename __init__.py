@@ -868,31 +868,25 @@ def register(ctx: Any):
             if board_slug:
                 try:
                     from .dashboard.gh_issues_service import (
-                        check_board_gh_issues_status,
-                        create_gh_issues_setup_task,
+                        setup_board_gh_issues_deterministic,
                     )
                 except Exception:
                     from dashboard.gh_issues_service import (
-                        check_board_gh_issues_status,
-                        create_gh_issues_setup_task,
+                        setup_board_gh_issues_deterministic,
                     )
 
-                status_info = check_board_gh_issues_status(board_slug)
-                if status_info.get("has_gh_issues"):
-                    print(
-                        f"Notice: Board '{board_slug}' already has GitHub Issue templates at {status_info.get('gh_issues_path')}."
-                    )
-
-                res = create_gh_issues_setup_task(board_slug, actor=actor_val)
+                res = setup_board_gh_issues_deterministic(board_slug, actor=actor_val)
                 if res.get("ok"):
-                    if res.get("already_exists"):
-                        print(
-                            f"✓ GitHub issues setup task already active: {res.get('task_id')} ({res.get('status')})"
-                        )
-                    else:
-                        print(f"✓ Created P0 GitHub issues setup task: {res.get('task_id')}")
+                    print(
+                        f"\n✓ Configured GitHub Issue templates and AI labels deterministically for board '{board_slug}'."
+                    )
+                    for t in res.get("templates", []):
+                        print(f"  - {t}")
+                    if res.get("labels", {}).get("created"):
+                        print(f"  Labels provisioned: {', '.join(res['labels']['created'])}")
+                    print()
                 else:
-                    print(f"✗ Failed to initiate setup task: {res.get('error')}")
+                    print(f"✗ Failed to configure GitHub issues: {res.get('error')}")
                 return
 
             from scripts.setup_gh_issues import setup_github_issues
