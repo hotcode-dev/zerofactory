@@ -146,4 +146,3 @@ def test_spawn_agent_worker_orchestrator_grill_with_docs():
         assert "### 🎯 Grill-with-Docs: Decision Required" in prompt
         assert "Option A:" in prompt
         assert kwargs.get("env", {}).get("HERMES_PROFILE") == "zf-orchestrator"
-

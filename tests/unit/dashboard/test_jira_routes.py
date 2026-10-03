@@ -24,7 +24,9 @@ def test_setup_and_test_jira_endpoint(initialized_db: Path, tmp_path: Path):
 
     # 1. Non-existent board raises 404
     with pytest.raises(HTTPException) as exc_info:
-        setup_board_jira_endpoint("nonexistent-slug", JiraSetupRequest(jira_url="https://test.atlassian.net"))
+        setup_board_jira_endpoint(
+            "nonexistent-slug", JiraSetupRequest(jira_url="https://test.atlassian.net")
+        )
     assert exc_info.value.status_code == 404
 
     # 2. Setup Jira URL for board (with mocked reachable connection)

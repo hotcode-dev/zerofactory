@@ -206,16 +206,16 @@ def spawn_agent_worker(
             f"       - [ ] **Option C:** <Details, trade-offs, pros/cons>\n"
             f"       **Documentation Context:** <Citations to openwiki/ or codebase patterns>\n\n"
             f"     * Post the question to the task discussion:\n"
-            f"       hermes zerofactory comment {task_id} \"<formatted interview question>\"\n"
+            f'       hermes zerofactory comment {task_id} "<formatted interview question>"\n'
             f"     * Move the task to blocked awaiting human input:\n"
-            f"       hermes zerofactory block {task_id} --reason \"Awaiting Human Input (Grill-with-Docs)\"\n"
+            f'       hermes zerofactory block {task_id} --reason "Awaiting Human Input (Grill-with-Docs)"\n'
             f"     * Finish your turn cleanly.\n\n"
             f"   - If all decisions have been resolved (or the human has replied with their selection in the comments):\n"
             f"     * Record any new conventions or architectural decisions into board memory:\n"
             f'       hermes zerofactory memory add --board {board_slug or "default"} "<rule or decision>" --category decision\n'
             f"     * If needed, update openwiki/ documentation or ADRs in {workdir}.\n"
             f"     * Update the task description with the finalized specification, acceptance criteria, and test plan:\n"
-            f"       hermes zerofactory update {task_id} --description \"<comprehensive specification & acceptance criteria>\"\n"
+            f'       hermes zerofactory update {task_id} --description "<comprehensive specification & acceptance criteria>"\n'
             f"     * Promote the task to Todo and reassign to zf-builder:\n"
             f"       hermes zerofactory move {task_id} todo\n"
             f"       hermes zerofactory update {task_id} --assignee zf-builder\n"

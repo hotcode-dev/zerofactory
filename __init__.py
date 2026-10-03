@@ -576,9 +576,15 @@ def register(ctx: Any):
             help="Update board configuration (description, target-branch, jira-url)",
         )
         p_bupdate.add_argument("slug", help="Board slug to update")
-        p_bupdate.add_argument("--description", default=None, help="New board description")
-        p_bupdate.add_argument("--target-branch", default=None, help="New target branch")
-        p_bupdate.add_argument("--jira-url", default=None, help="Jira Cloud instance URL")
+        p_bupdate.add_argument(
+            "--description", default=None, help="New board description"
+        )
+        p_bupdate.add_argument(
+            "--target-branch", default=None, help="New target branch"
+        )
+        p_bupdate.add_argument(
+            "--jira-url", default=None, help="Jira Cloud instance URL"
+        )
 
         p_bdelete = board_subs.add_parser(
             "delete", help="Delete a board and clear its cron scanner job"
@@ -764,14 +770,19 @@ def register(ctx: Any):
                     if not repo_to_sync:
                         try:
                             from scripts.setup_gh_issues import detect_repo_from_git
+
                             repo_to_sync = detect_repo_from_git(Path("."))
                         except Exception:
                             pass
                     if not repo_to_sync:
-                        print("Error: Specify --repo owner/repo or run from a git repository with remote origin.")
+                        print(
+                            "Error: Specify --repo owner/repo or run from a git repository with remote origin."
+                        )
                         sys.exit(1)
 
-                    print(f"\nScanning {repo_to_sync} for open issues labeled '{req_label}'...")
+                    print(
+                        f"\nScanning {repo_to_sync} for open issues labeled '{req_label}'..."
+                    )
                     issues_to_import = client.fetch_investigation_issues(
                         repo=repo_to_sync, label=req_label, state="open"
                     )
@@ -779,7 +790,9 @@ def register(ctx: Any):
                         print(f"No open issues found with label '{req_label}'.\n")
                         return
 
-                    print(f"Found {len(issues_to_import)} issue(s) requested for AI investigation.\n")
+                    print(
+                        f"Found {len(issues_to_import)} issue(s) requested for AI investigation.\n"
+                    )
                     imported_count = 0
                     duplicate_count = 0
                     for iss in issues_to_import:
@@ -795,16 +808,26 @@ def register(ctx: Any):
                         )
                         if res.get("duplicate"):
                             duplicate_count += 1
-                            print(f"  [Duplicate] {res['issue_key']}: {res['title']} ({res['id']})")
+                            print(
+                                f"  [Duplicate] {res['issue_key']}: {res['title']} ({res['id']})"
+                            )
                         else:
                             imported_count += 1
-                            print(f"  ✓ Imported  {res['issue_key']} [{res['issue_type'].capitalize()}] -> {res['id']}: {res['title']}")
+                            print(
+                                f"  ✓ Imported  {res['issue_key']} [{res['issue_type'].capitalize()}] -> {res['id']}: {res['title']}"
+                            )
 
-                    print(f"\nSync complete: {imported_count} imported, {duplicate_count} skipped duplicates.\n")
+                    print(
+                        f"\nSync complete: {imported_count} imported, {duplicate_count} skipped duplicates.\n"
+                    )
                 else:
-                    issue = client.fetch_issue(args.issue, repo=getattr(args, "repo", None))
+                    issue = client.fetch_issue(
+                        args.issue, repo=getattr(args, "repo", None)
+                    )
                     # Check human request label
-                    if not force and not issue.has_ai_request_label({req_label, "zerofactory", "ai-investigate", "ai-triage"}):
+                    if not force and not issue.has_ai_request_label(
+                        {req_label, "zerofactory", "ai-investigate", "ai-triage"}
+                    ):
                         print(
                             f"\nError: GitHub issue #{issue.id} ('{issue.title}') lacks an explicit human AI investigation label "
                             f"(expected '{req_label}' or 'ai-investigate').",
@@ -833,9 +856,13 @@ def register(ctx: Any):
                             f"\n[Duplicate Skipped] {res.get('message', 'Task already exists')}"
                         )
                         print(f"  Task ID:    {res['id']}")
-                        print(f"  Issue:      {res['issue_key']} ({res['issue_url']})\n")
+                        print(
+                            f"  Issue:      {res['issue_key']} ({res['issue_url']})\n"
+                        )
                     else:
-                        print(f"\n✓ Successfully imported GitHub issue {res['issue_key']}")
+                        print(
+                            f"\n✓ Successfully imported GitHub issue {res['issue_key']}"
+                        )
                         print(f"  Task ID:    {res['id']}")
                         print(f"  Type:       {res['issue_type'].capitalize()}")
                         print(f"  Board:      {res['board_slug']}")
@@ -864,7 +891,9 @@ def register(ctx: Any):
                 or "user"
             )
             try:
-                issue = client.fetch_issue(args.issue, project=getattr(args, "project", None))
+                issue = client.fetch_issue(
+                    args.issue, project=getattr(args, "project", None)
+                )
                 if getattr(args, "type", None):
                     issue.issue_type = getattr(args, "type")
 
@@ -926,7 +955,9 @@ def register(ctx: Any):
                     for t in res.get("templates", []):
                         print(f"  - {t}")
                     if res.get("labels", {}).get("created"):
-                        print(f"  Labels provisioned: {', '.join(res['labels']['created'])}")
+                        print(
+                            f"  Labels provisioned: {', '.join(res['labels']['created'])}"
+                        )
                     print()
                 else:
                     print(f"✗ Failed to configure GitHub issues: {res.get('error')}")
@@ -954,9 +985,7 @@ def register(ctx: Any):
             if res.get("label_results"):
                 l_res = res["label_results"]
                 if l_res.get("created"):
-                    print(
-                        f"\n✓ Provisioned GitHub Labels in {res.get('target_repo')}:"
-                    )
+                    print(f"\n✓ Provisioned GitHub Labels in {res.get('target_repo')}:")
                     for lbl in l_res["created"]:
                         print(f"  ✓ {lbl}")
                 if l_res.get("failed"):
@@ -993,14 +1022,20 @@ def register(ctx: Any):
                         "UPDATE boards SET jira_url = ?, updated_at = ? WHERE slug = ?",
                         (current_url, int(time.time()), board_slug),
                     )
-                    print(f"\n✓ Updated Jira URL for board '{board_slug}': {current_url}")
+                    print(
+                        f"\n✓ Updated Jira URL for board '{board_slug}': {current_url}"
+                    )
 
             client = JiraIssueClient(base_url=current_url, board_slug=board_slug)
             status = client.check_connection()
             print(f"\nJira Connection Status for board '{board_slug}':")
             print(f"  Configured URL : {status.get('base_url') or '(none)'}")
-            print(f"  Reachable      : {'✓ Yes' if status.get('connected') else '✗ No'}")
-            print(f"  Authenticated  : {'✓ Yes' if status.get('authenticated') else '⚪ No (Token/Email required for private issues)'}")
+            print(
+                f"  Reachable      : {'✓ Yes' if status.get('connected') else '✗ No'}"
+            )
+            print(
+                f"  Authenticated  : {'✓ Yes' if status.get('authenticated') else '⚪ No (Token/Email required for private issues)'}"
+            )
             print(f"  Message        : {status.get('message')}\n")
             return
 
