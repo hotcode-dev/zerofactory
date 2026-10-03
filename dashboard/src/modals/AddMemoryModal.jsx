@@ -1,4 +1,5 @@
 import React from "react";
+import { Modal } from "../components/Modal.jsx";
 
 export function AddMemoryModal(props) {
   const {
@@ -15,42 +16,39 @@ export function AddMemoryModal(props) {
   if (!showAddMemoryModal) return null;
 
   return React.createElement(
-    "div",
+    Modal,
     {
-      className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-      onClick: () => setShowAddMemoryModal(false)
-    },
-    React.createElement(
-      "div",
-      {
-        className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100 animate-fade-in",
-        onClick: (e) => e.stopPropagation()
-      },
-      React.createElement(
-        "div",
-        { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-        React.createElement(
-          "div",
-          null,
-          React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "🧠 Record Repository Memory"),
-          React.createElement("p", { className: "text-xs text-slate-400 font-normal m-0 mt-0.5" }, "Persist decisions, conventions, and gotchas for " + (selectedBoard === "all" ? "all boards" : (selectedBoard || "board")))
-        ),
+      isOpen: showAddMemoryModal,
+      onClose: () => setShowAddMemoryModal(false),
+      onSubmit: handleCreateMemorySubmit,
+      title: "Record Repository Memory",
+      subtitle: "Persist decisions, conventions, and gotchas for " + (selectedBoard === "all" ? "all boards" : (selectedBoard || "board")),
+      icon: "🧠",
+      footerClassName: "px-6 py-3.5 bg-slate-900/50 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0",
+      footer: React.createElement(
+        React.Fragment,
+        null,
         React.createElement(
           "button",
           {
             type: "button",
-            className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+            className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
             onClick: () => setShowAddMemoryModal(false)
           },
-          "✕"
-        )
-      ),
-      React.createElement(
-        "form",
-        { onSubmit: handleCreateMemorySubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
+          "Cancel"
+        ),
         React.createElement(
-          "div",
-          { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+          "button",
+          {
+            type: "submit",
+            disabled: submittingMemory,
+            className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+          },
+          submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"),
+          "Save Memory"
+        )
+      )
+    },
           (selectedBoard === "all" || !selectedBoard) && boards && boards.length > 0 &&
           React.createElement(
             "div",
@@ -141,31 +139,5 @@ export function AddMemoryModal(props) {
               })
             )
           )
-        ),
-        React.createElement(
-          "div",
-          { className: "px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0" },
-          React.createElement(
-            "button",
-            {
-              type: "button",
-              className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
-              onClick: () => setShowAddMemoryModal(false)
-            },
-            "Cancel"
-          ),
-          React.createElement(
-            "button",
-            {
-              type: "submit",
-              disabled: submittingMemory,
-              className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
-            },
-            submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"),
-            "Save Memory"
-          )
-        )
-      )
-    )
   );
 }

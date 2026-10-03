@@ -1,5 +1,6 @@
 import React from "react";
 import { COLUMNS } from "../constants.js";
+import { Modal } from "../components/Modal.jsx";
 
 export function NewTaskModal(props) {
   const {
@@ -16,33 +17,20 @@ export function NewTaskModal(props) {
 
   const onSubmitHandler = handleCreateTaskSubmit || handleCreateTask;
 
-  if (!showNewTaskModal) return null;
-
   return React.createElement(
-    "div",
-    { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setShowNewTaskModal(false) },
+    Modal,
+    {
+      isOpen: showNewTaskModal,
+      onClose: () => setShowNewTaskModal(false),
+      title: "Create New Zero Factory Task",
+      bodyClassName: "p-0 flex flex-col flex-1 overflow-hidden"
+    },
     React.createElement(
-      "div",
-      { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
+      "form",
+      { onSubmit: onSubmitHandler, className: "flex flex-col flex-1 overflow-hidden m-0" },
       React.createElement(
         "div",
-        { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-        React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Create New Zero Factory Task"),
-        React.createElement(
-          "button",
-          {
-            className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-            onClick: () => setShowNewTaskModal(false)
-          },
-          "✕"
-        )
-      ),
-      React.createElement(
-        "form",
-        { onSubmit: onSubmitHandler, className: "flex flex-col flex-1 overflow-hidden m-0" },
-        React.createElement(
-          "div",
-          { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+        { className: "p-4 sm:p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
           React.createElement(
             "div",
             { className: "space-y-1.5" },
@@ -187,7 +175,7 @@ export function NewTaskModal(props) {
         ),
         React.createElement(
           "div",
-          { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+          { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
           React.createElement(
             "button",
             {
@@ -208,6 +196,5 @@ export function NewTaskModal(props) {
           )
         )
       )
-    )
   );
 }

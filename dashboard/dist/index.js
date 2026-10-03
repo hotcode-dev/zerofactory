@@ -1617,20 +1617,56 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, React.createElement("span", null, tab.icon), tab.label))), instructionTab === "overview" && renderOverviewSection(), instructionTab === "specialists" && renderSpecialistsSection(), instructionTab === "lifecycle" && renderLifecycleSection(), instructionTab === "worktrees" && renderWorktreesSection(), instructionTab === "quality" && renderQualitySection(), instructionTab === "cli" && renderCliSection(), instructionTab === "crons" && renderCronsSection());
 	}
 	//#endregion
+	//#region dashboard/src/components/Modal.jsx
+	/**
+	* Standard reusable Modal dialog for Zero Factory Dashboard.
+	* Enforces uniform responsive sizing, backdrop, mobile padding, and Escape-key listener.
+	*/
+	function Modal(props) {
+		const { isOpen = true, onClose, title, subtitle, icon, iconBg, header, headerExtra, subHeader, footer, maxWidth = "max-w-4xl", children, className = "", bodyClassName = "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1", footerClassName = "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0", onSubmit } = props;
+		if (!isOpen) return null;
+		useEffect(() => {
+			const handleKeyDown = (e) => {
+				if (e.key === "Escape" && onClose) onClose();
+			};
+			window.addEventListener("keydown", handleKeyDown);
+			return () => window.removeEventListener("keydown", handleKeyDown);
+		}, [onClose]);
+		return React.createElement("div", {
+			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto",
+			onClick: () => onClose && onClose()
+		}, React.createElement(onSubmit ? "form" : "div", {
+			onSubmit,
+			className: `bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[92vh] flex flex-col overflow-hidden text-slate-100 ${className}`,
+			onClick: (e) => e.stopPropagation()
+		}, header !== void 0 ? header : title || onClose ? React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0 bg-slate-900/60" }, React.createElement("div", { className: "flex items-center gap-3 min-w-0 pr-2" }, icon && React.createElement("div", { className: `w-9 h-9 rounded-xl ${iconBg || "bg-gradient-to-br from-indigo-500 to-indigo-700"} flex items-center justify-center font-bold text-white shadow-md text-base shrink-0` }, icon), React.createElement("div", { className: "min-w-0" }, typeof title === "string" ? React.createElement("h2", { className: "text-base font-bold text-white m-0 truncate" }, title) : title, subtitle && React.createElement("p", { className: "text-xs text-slate-400 font-medium m-0 truncate" }, subtitle))), React.createElement("div", { className: "flex items-center gap-2 shrink-0" }, headerExtra, onClose && React.createElement("button", {
+			type: "button",
+			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+			onClick: onClose,
+			title: "Close"
+		}, "✕"))) : null, subHeader, React.createElement("div", { className: bodyClassName }, children), footer && React.createElement("div", { className: footerClassName }, footer)));
+	}
+	//#endregion
 	//#region dashboard/src/modals/TaskDetailModal.jsx
 	function TaskDetailModal(props) {
 		const { selectedTask, setSelectedTask, boards = [], handleUpdateTask, handleDeleteTask, handleRunAgent, handleStopTaskSession, stoppingSessionId, activeRunningTaskId, newCommentText, setNewCommentText, handleAddComment, handleAddCommentSubmit = handleAddComment, loadTasksAndStats, loadTaskDetails, showToast = () => {}, selectedSessionIdx = null, setSelectedSessionIdx = () => {}, refreshSessionProgress = () => {}, handleAdvanceTask = () => {} } = props;
 		if (!selectedTask) return null;
-		return React.createElement("div", {
-			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-			onClick: () => setSelectedTask(null)
-		}, React.createElement("div", {
-			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
-			onClick: (e) => e.stopPropagation()
-		}, React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" }, React.createElement("div", { className: "flex items-center gap-3 min-w-0" }, React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id), React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)), React.createElement("button", {
-			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-			onClick: () => setSelectedTask(null)
-		}, "✕")), React.createElement("div", { className: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"), React.createElement("select", {
+		return React.createElement(Modal, {
+			isOpen: Boolean(selectedTask),
+			onClose: () => setSelectedTask(null),
+			title: React.createElement("div", { className: "flex items-center gap-3 min-w-0" }, React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id), React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)),
+			bodyClassName: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1",
+			footerClassName: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
+			footer: React.createElement(React.Fragment, null, React.createElement("button", {
+				type: "button",
+				className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
+				onClick: () => handleDeleteTask(selectedTask.id)
+			}, "Delete Task"), React.createElement("button", {
+				type: "button",
+				className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
+				onClick: () => handleAdvanceTask(selectedTask)
+			}, "Advance Stage →"))
+		}, React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"), React.createElement("select", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
 			value: selectedTask.status,
 			onChange: async (e) => {
@@ -1824,35 +1860,22 @@ var ZeroFactoryDashboard = (function(exports) {
 		}), React.createElement("button", {
 			type: "submit",
 			className: "px-3.5 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-colors cursor-pointer"
-		}, "Post")))), React.createElement("div", { className: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
-			type: "button",
-			className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
-			onClick: () => handleDeleteTask(selectedTask.id)
-		}, "Delete Task"), React.createElement("button", {
-			type: "button",
-			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
-			onClick: () => handleAdvanceTask(selectedTask)
-		}, "Advance Stage →"))));
+		}, "Post"))));
 	}
 	//#endregion
 	//#region dashboard/src/modals/NewTaskModal.jsx
 	function NewTaskModal(props) {
 		const { showNewTaskModal, setShowNewTaskModal, newTaskForm, setNewTaskForm, handleCreateTaskSubmit, handleCreateTask, isSubmittingTask, boards, selectedBoard } = props;
 		const onSubmitHandler = handleCreateTaskSubmit || handleCreateTask;
-		if (!showNewTaskModal) return null;
-		return React.createElement("div", {
-			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-			onClick: () => setShowNewTaskModal(false)
-		}, React.createElement("div", {
-			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
-			onClick: (e) => e.stopPropagation()
-		}, React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" }, React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Create New Zero Factory Task"), React.createElement("button", {
-			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-			onClick: () => setShowNewTaskModal(false)
-		}, "✕")), React.createElement("form", {
+		return React.createElement(Modal, {
+			isOpen: showNewTaskModal,
+			onClose: () => setShowNewTaskModal(false),
+			title: "Create New Zero Factory Task",
+			bodyClassName: "p-0 flex flex-col flex-1 overflow-hidden"
+		}, React.createElement("form", {
 			onSubmit: onSubmitHandler,
 			className: "flex flex-col flex-1 overflow-hidden m-0"
-		}, React.createElement("div", { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Task Title *"), React.createElement("input", {
+		}, React.createElement("div", { className: "p-4 sm:p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Task Title *"), React.createElement("input", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
 			required: true,
 			placeholder: "e.g. Implement caching layer for Redis",
@@ -1919,7 +1942,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newTaskForm,
 				description: e.target.value
 			})
-		}))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
+		}))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
 			type: "button",
 			className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
 			onClick: () => setShowNewTaskModal(false)
@@ -1927,28 +1950,23 @@ var ZeroFactoryDashboard = (function(exports) {
 			type: "submit",
 			disabled: isSubmittingTask,
 			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
-		}, isSubmittingTask ? "Creating..." : "Create Task")))));
+		}, isSubmittingTask ? "Creating..." : "Create Task"))));
 	}
 	//#endregion
 	//#region dashboard/src/modals/NewBoardModal.jsx
 	function NewBoardModal(props) {
 		const { showNewBoardModal, setShowNewBoardModal, newBoardForm, setNewBoardForm, handleCreateBoard, handleCreateBoardSubmit = handleCreateBoard, isSubmittingBoard, boards = [], setActiveView = () => {}, createBoardError = "", setCreateBoardError = () => {}, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {} } = props;
 		if (!showNewBoardModal) return null;
-		return React.createElement("div", {
-			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-			onClick: () => {
-				if (boards.length > 0) setShowNewBoardModal(false);
-			}
-		}, React.createElement("div", {
-			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
-			onClick: (e) => e.stopPropagation()
-		}, React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" }, React.createElement("div", null, React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, boards.length === 0 ? "Create First Project Board (Required)" : "Create New Project Board"), boards.length === 0 && React.createElement("p", { className: "text-xs text-indigo-400 font-normal m-0 mt-0.5" }, "A project board is required to use Zero Factory Kanban")), boards.length > 0 && React.createElement("button", {
-			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-			onClick: () => setShowNewBoardModal(false)
-		}, "✕")), React.createElement("form", {
+		return React.createElement(Modal, {
+			isOpen: showNewBoardModal,
+			onClose: boards.length > 0 ? () => setShowNewBoardModal(false) : void 0,
+			title: boards.length === 0 ? "Create First Project Board (Required)" : "Create New Project Board",
+			subtitle: boards.length === 0 ? "A project board is required to use Zero Factory Kanban" : void 0,
+			bodyClassName: "p-0 flex flex-col flex-1 overflow-hidden"
+		}, React.createElement("form", {
 			onSubmit: handleCreateBoardSubmit,
 			className: "flex flex-col flex-1 overflow-hidden m-0"
-		}, React.createElement("div", { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, boards.length === 0 && React.createElement("div", { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" }, React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"), React.createElement("div", null, React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"), React.createElement("p", { className: "text-indigo-200/90" }, "Please register a project board for your codebase to begin creating tickets, assigning autonomous agents, and orchestrating Git worktrees. You can also explore the ", React.createElement("button", {
+		}, React.createElement("div", { className: "p-4 sm:p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, boards.length === 0 && React.createElement("div", { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" }, React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"), React.createElement("div", null, React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"), React.createElement("p", { className: "text-indigo-200/90" }, "Please register a project board for your codebase to begin creating tickets, assigning autonomous agents, and orchestrating Git worktrees. You can also explore the ", React.createElement("button", {
 			type: "button",
 			className: "underline text-indigo-300 hover:text-white font-medium cursor-pointer",
 			onClick: () => {
@@ -2040,7 +2058,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newBoardForm,
 				auto_setup_precommit: e.target.checked
 			})
-		}))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, boards.length > 0 && React.createElement("button", {
+		}))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, boards.length > 0 && React.createElement("button", {
 			type: "button",
 			className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
 			onClick: () => setShowNewBoardModal(false)
@@ -2048,26 +2066,21 @@ var ZeroFactoryDashboard = (function(exports) {
 			type: "submit",
 			disabled: isSubmittingBoard,
 			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-		}, isSubmittingBoard ? "Creating..." : boards.length === 0 ? "Create & Get Started" : "Create Board")))));
+		}, isSubmittingBoard ? "Creating..." : boards.length === 0 ? "Create & Get Started" : "Create Board"))));
 	}
 	//#endregion
 	//#region dashboard/src/modals/EditBoardModal.jsx
 	function EditBoardModal(props) {
 		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, selectedBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {}, ghIssuesStatus = null, isSettingUpGhIssues = false, handleTriggerGhIssuesSetup = () => {}, isSettingUpJira = false, handleTriggerJiraSetup = () => {}, isTestingJira = false, handleTriggerJiraTest = () => {} } = props;
-		if (!showEditBoardModal) return null;
-		return React.createElement("div", {
-			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-			onClick: () => setShowEditBoardModal(false)
-		}, React.createElement("div", {
-			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
-			onClick: (e) => e.stopPropagation()
-		}, React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" }, React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "Edit Board: " + editBoardForm.slug), React.createElement("button", {
-			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-			onClick: () => setShowEditBoardModal(false)
-		}, "✕")), React.createElement("form", {
+		return React.createElement(Modal, {
+			isOpen: showEditBoardModal,
+			onClose: () => setShowEditBoardModal(false),
+			title: "Edit Board: " + editBoardForm.slug,
+			bodyClassName: "p-0 flex flex-col flex-1 overflow-hidden"
+		}, React.createElement("form", {
 			onSubmit: handleUpdateBoardSubmit,
 			className: "flex flex-col flex-1 overflow-hidden m-0"
-		}, React.createElement("div", { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Slug (URL identifier)"), React.createElement("input", {
+		}, React.createElement("div", { className: "p-4 sm:p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Slug (URL identifier)"), React.createElement("input", {
 			className: "w-full bg-slate-950/60 border border-slate-800/60 rounded-lg px-3 py-2 text-xs text-slate-400 cursor-not-allowed opacity-60 outline-none",
 			disabled: true,
 			value: editBoardForm.slug
@@ -2190,7 +2203,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				if (url && url.trim()) handleTriggerJiraSetup(editBoardForm.slug, url.trim());
 			},
 			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-		}, isSettingUpJira ? "Connecting..." : "🔷 Setup Jira Link")))))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
+		}, isSettingUpJira ? "Connecting..." : "🔷 Setup Jira Link")))))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
 			type: "button",
 			className: "mr-auto px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
 			onClick: handleDeleteBoard,
@@ -2202,26 +2215,32 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, "Cancel"), React.createElement("button", {
 			type: "submit",
 			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30"
-		}, "Save Changes")))));
+		}, "Save Changes"))));
 	}
 	//#endregion
 	//#region dashboard/src/modals/SettingsModal.jsx
 	function SettingsModal(props) {
 		const { showSettingsModal, setShowSettingsModal, settingsForm, setSettingsForm, handleSaveSettings, isSavingSettings, isTestingLangfuse, handleTestLangfuse, langfuseTestResult, showLangfuseSecret, setShowLangfuseSecret, isSyncingProfiles, handleSyncProfiles, syncProfilesResult, syncForce, setSyncForce } = props;
 		if (!showSettingsModal) return null;
-		return React.createElement("div", {
-			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-			onClick: () => setShowSettingsModal(false)
-		}, React.createElement("div", {
-			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
-			onClick: (e) => e.stopPropagation()
-		}, React.createElement("div", { className: "flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("div", { className: "flex items-center gap-2.5" }, React.createElement("span", { className: "text-lg" }, "⚙️"), React.createElement("div", null, React.createElement("h3", { className: "text-sm font-semibold text-white tracking-tight" }, "Zero Factory Global Settings"), React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "System-wide orchestration limits and defaults"))), React.createElement("button", {
-			className: "text-slate-400 hover:text-slate-200 transition-colors cursor-pointer",
-			onClick: () => setShowSettingsModal(false)
-		}, "✕")), React.createElement("form", {
+		return React.createElement(Modal, {
+			isOpen: showSettingsModal,
+			onClose: () => setShowSettingsModal(false),
 			onSubmit: handleSaveSettings,
-			className: "flex flex-col flex-1 overflow-hidden m-0"
-		}, React.createElement("div", { className: "p-5 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Max Active Tasks (WIP Limit)"), React.createElement("input", {
+			title: "Zero Factory Global Settings",
+			subtitle: "System-wide orchestration limits and defaults",
+			icon: "⚙️",
+			bodyClassName: "p-6 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1",
+			footerClassName: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
+			footer: React.createElement(React.Fragment, null, React.createElement("button", {
+				type: "button",
+				className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+				onClick: () => setShowSettingsModal(false)
+			}, "Cancel"), React.createElement("button", {
+				type: "submit",
+				disabled: isSavingSettings,
+				className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+			}, isSavingSettings ? "Saving..." : "Save Settings"))
+		}, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Max Active Tasks (WIP Limit)"), React.createElement("input", {
 			type: "number",
 			min: 1,
 			step: 1,
@@ -2319,15 +2338,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			disabled: isTestingLangfuse,
 			onClick: handleTestLangfuse,
 			className: "px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
-		}, isTestingLangfuse ? "Testing..." : "Test Connection"))), langfuseTestResult && React.createElement("div", { className: `text-[11px] px-2.5 py-1.5 rounded border ${langfuseTestResult.ok ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300" : "bg-rose-950/40 border-rose-800/60 text-rose-300"}` }, (langfuseTestResult.ok ? "✓ " : "✕ ") + langfuseTestResult.message)))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-5 py-3 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
-			type: "button",
-			className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
-			onClick: () => setShowSettingsModal(false)
-		}, "Cancel"), React.createElement("button", {
-			type: "submit",
-			disabled: isSavingSettings,
-			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
-		}, isSavingSettings ? "Saving..." : "Save Settings")))));
+		}, isTestingLangfuse ? "Testing..." : "Test Connection"))), langfuseTestResult && React.createElement("div", { className: `text-[11px] px-2.5 py-1.5 rounded border ${langfuseTestResult.ok ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300" : "bg-rose-950/40 border-rose-800/60 text-rose-300"}` }, (langfuseTestResult.ok ? "✓ " : "✕ ") + langfuseTestResult.message))));
 	}
 	//#endregion
 	//#region dashboard/src/modals/CronModal.jsx
@@ -2359,43 +2370,44 @@ var ZeroFactoryDashboard = (function(exports) {
 			cronSearchQuery
 		]);
 		if (!showCronModal) return null;
-		return React.createElement("div", {
-			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto",
-			onClick: () => setShowCronModal(false)
-		}, React.createElement("div", {
-			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden text-slate-100",
-			onClick: (e) => e.stopPropagation()
-		}, React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0 bg-slate-900/60" }, React.createElement("div", { className: "flex items-center gap-3" }, React.createElement("div", { className: "w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-base shrink-0" }, "⏰"), React.createElement("div", null, React.createElement("h2", { className: "text-base font-bold text-white m-0 flex items-center gap-2" }, "Zero Factory Cron Automation"), React.createElement("p", { className: "text-xs text-slate-400 font-medium m-0" }, "Manage periodic health checks, daily metrics, and per-board improvement scanners"))), React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("button", {
-			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
-			onClick: handleSyncAllCron,
-			title: "Synchronize all built-in jobs across active profiles"
-		}, "🔄 Sync All"), React.createElement("button", {
-			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-			onClick: () => setShowCronModal(false)
-		}, "✕"))), React.createElement("div", { className: "px-6 py-3.5 bg-slate-950/70 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0" }, React.createElement("div", { className: "flex items-center gap-3" }, React.createElement("div", { className: "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold " + (cronSchedulerEnabled ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30") }, cronSchedulerEnabled ? "⚡" : "⏸"), React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("span", { className: "text-xs font-bold text-white tracking-wide" }, "Periodic Cron Scheduler Engine"), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-bold " + (cronSchedulerEnabled ? "bg-emerald-950 text-emerald-300 border border-emerald-800/60" : "bg-rose-950 text-rose-300 border border-rose-800/60") }, cronSchedulerEnabled ? "Running (15s Ticks)" : "Disabled / Paused")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 mt-0.5" }, cronSchedulerEnabled ? "Background daemon actively ticks due jobs and spawns idle improvement scanners." : "Master cron scheduler is disabled. All background ticking and autonomous scans are halted."))), React.createElement("div", { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" }, React.createElement("span", { className: "text-xs font-semibold " + (cronSchedulerEnabled ? "text-emerald-400" : "text-slate-500") }, cronSchedulerEnabled ? "Active" : "Disabled"), React.createElement("button", {
-			type: "button",
-			role: "switch",
-			"aria-checked": cronSchedulerEnabled,
-			onClick: () => handleToggleCronScheduler(cronSchedulerEnabled),
-			className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (cronSchedulerEnabled ? "bg-emerald-600" : "bg-slate-700")
-		}, React.createElement("span", { className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (cronSchedulerEnabled ? "translate-x-4" : "translate-x-0") })))), React.createElement("div", { className: "px-6 py-3 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0" }, React.createElement("div", { className: "flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs" }, React.createElement("button", {
-			className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "all" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-			onClick: () => setCronFilterTab("all")
-		}, "All (" + cronJobs.length + ")"), React.createElement("button", {
-			className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "core" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-			onClick: () => setCronFilterTab("core")
-		}, "Core (" + cronJobs.filter((j) => !j.id.startsWith("zero-factory-improvement-scanner-") && !j.id.startsWith("zero-factory-openwiki-update-") && j.category !== "scanner" && j.category !== "openwiki").length + ")"), React.createElement("button", {
-			className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "scanners" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-			onClick: () => setCronFilterTab("scanners")
-		}, "Scanners (" + cronJobs.filter((j) => j.id.startsWith("zero-factory-improvement-scanner-") || j.category === "scanner").length + ")"), React.createElement("button", {
-			className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "openwiki" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-			onClick: () => setCronFilterTab("openwiki")
-		}, "OpenWiki (" + cronJobs.filter((j) => j.id.startsWith("zero-factory-openwiki-update-") || j.category === "openwiki").length + ")")), React.createElement("input", {
-			className: "w-full sm:w-64 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors",
-			placeholder: "Search jobs by name or ID...",
-			value: cronSearchQuery,
-			onChange: (e) => setCronSearchQuery(e.target.value)
-		})), React.createElement("div", { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1 bg-slate-950/20" }, loadingCron && React.createElement("div", { className: "text-center py-12 text-slate-400 text-xs" }, React.createElement("span", { className: "zfk-spinning inline-block mr-2" }, "⏳"), "Loading cron schedules..."), !loadingCron && filteredCronJobs.length === 0 && React.createElement("div", { className: "text-center py-12 text-slate-500 text-xs" }, "No cron jobs match the selected filter."), !loadingCron && filteredCronJobs.map((job) => {
+		return React.createElement(Modal, {
+			isOpen: showCronModal,
+			onClose: () => setShowCronModal(false),
+			title: "Zero Factory Cron Automation",
+			subtitle: "Manage periodic health checks, daily metrics, and per-board improvement scanners",
+			icon: "⏰",
+			iconBg: "bg-gradient-to-br from-amber-500 to-indigo-600",
+			headerExtra: React.createElement("button", {
+				className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
+				onClick: handleSyncAllCron,
+				title: "Synchronize all built-in jobs across active profiles"
+			}, "🔄 Sync All"),
+			subHeader: React.createElement(React.Fragment, null, React.createElement("div", { className: "px-6 py-3.5 bg-slate-950/70 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0" }, React.createElement("div", { className: "flex items-center gap-3" }, React.createElement("div", { className: "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold " + (cronSchedulerEnabled ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30") }, cronSchedulerEnabled ? "⚡" : "⏸"), React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("span", { className: "text-xs font-bold text-white tracking-wide" }, "Periodic Cron Scheduler Engine"), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-bold " + (cronSchedulerEnabled ? "bg-emerald-950 text-emerald-300 border border-emerald-800/60" : "bg-rose-950 text-rose-300 border border-rose-800/60") }, cronSchedulerEnabled ? "Running (15s Ticks)" : "Disabled / Paused")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 mt-0.5" }, cronSchedulerEnabled ? "Background daemon actively ticks due jobs and spawns idle improvement scanners." : "Master cron scheduler is disabled. All background ticking and autonomous scans are halted."))), React.createElement("div", { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" }, React.createElement("span", { className: "text-xs font-semibold " + (cronSchedulerEnabled ? "text-emerald-400" : "text-slate-500") }, cronSchedulerEnabled ? "Active" : "Disabled"), React.createElement("button", {
+				type: "button",
+				role: "switch",
+				"aria-checked": cronSchedulerEnabled,
+				onClick: () => handleToggleCronScheduler(cronSchedulerEnabled),
+				className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (cronSchedulerEnabled ? "bg-emerald-600" : "bg-slate-700")
+			}, React.createElement("span", { className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (cronSchedulerEnabled ? "translate-x-4" : "translate-x-0") })))), React.createElement("div", { className: "px-6 py-3 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0" }, React.createElement("div", { className: "flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs" }, React.createElement("button", {
+				className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "all" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+				onClick: () => setCronFilterTab("all")
+			}, "All (" + cronJobs.length + ")"), React.createElement("button", {
+				className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "core" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+				onClick: () => setCronFilterTab("core")
+			}, "Core (" + cronJobs.filter((j) => !j.id.startsWith("zero-factory-improvement-scanner-") && !j.id.startsWith("zero-factory-openwiki-update-") && j.category !== "scanner" && j.category !== "openwiki").length + ")"), React.createElement("button", {
+				className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "scanners" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+				onClick: () => setCronFilterTab("scanners")
+			}, "Scanners (" + cronJobs.filter((j) => j.id.startsWith("zero-factory-improvement-scanner-") || j.category === "scanner").length + ")"), React.createElement("button", {
+				className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "openwiki" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+				onClick: () => setCronFilterTab("openwiki")
+			}, "OpenWiki (" + cronJobs.filter((j) => j.id.startsWith("zero-factory-openwiki-update-") || j.category === "openwiki").length + ")")), React.createElement("input", {
+				className: "w-full sm:w-64 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors",
+				placeholder: "Search jobs by name or ID...",
+				value: cronSearchQuery,
+				onChange: (e) => setCronSearchQuery(e.target.value)
+			}))),
+			bodyClassName: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1 bg-slate-950/20"
+		}, loadingCron && React.createElement("div", { className: "text-center py-12 text-slate-400 text-xs" }, React.createElement("span", { className: "zfk-spinning inline-block mr-2" }, "⏳"), "Loading cron schedules..."), !loadingCron && filteredCronJobs.length === 0 && React.createElement("div", { className: "text-center py-12 text-slate-500 text-xs" }, "No cron jobs match the selected filter."), !loadingCron && filteredCronJobs.map((job) => {
 			const isEditing = editingCronId === job.id;
 			const form = cronEditForms[job.id] || {};
 			const isScanner = job.id.startsWith("zero-factory-improvement-scanner-") || job.category === "scanner";
@@ -2652,27 +2664,31 @@ var ZeroFactoryDashboard = (function(exports) {
 				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 shadow-xs transition-colors cursor-pointer",
 				onClick: () => handleSaveCronJob(job.id)
 			}, "💾 Save Configuration"))));
-		}))));
+		}));
 	}
 	//#endregion
 	//#region dashboard/src/modals/AddMemoryModal.jsx
 	function AddMemoryModal(props) {
 		const { showAddMemoryModal, setShowAddMemoryModal, newMemoryForm, setNewMemoryForm, handleCreateMemorySubmit, submittingMemory, selectedBoard, boards } = props;
 		if (!showAddMemoryModal) return null;
-		return React.createElement("div", {
-			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-			onClick: () => setShowAddMemoryModal(false)
-		}, React.createElement("div", {
-			className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100 animate-fade-in",
-			onClick: (e) => e.stopPropagation()
-		}, React.createElement("div", { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" }, React.createElement("div", null, React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, "🧠 Record Repository Memory"), React.createElement("p", { className: "text-xs text-slate-400 font-normal m-0 mt-0.5" }, "Persist decisions, conventions, and gotchas for " + (selectedBoard === "all" ? "all boards" : selectedBoard || "board"))), React.createElement("button", {
-			type: "button",
-			className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-			onClick: () => setShowAddMemoryModal(false)
-		}, "✕")), React.createElement("form", {
+		return React.createElement(Modal, {
+			isOpen: showAddMemoryModal,
+			onClose: () => setShowAddMemoryModal(false),
 			onSubmit: handleCreateMemorySubmit,
-			className: "flex flex-col flex-1 overflow-hidden m-0"
-		}, React.createElement("div", { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, (selectedBoard === "all" || !selectedBoard) && boards && boards.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Target Board *"), React.createElement("select", {
+			title: "Record Repository Memory",
+			subtitle: "Persist decisions, conventions, and gotchas for " + (selectedBoard === "all" ? "all boards" : selectedBoard || "board"),
+			icon: "🧠",
+			footerClassName: "px-6 py-3.5 bg-slate-900/50 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0",
+			footer: React.createElement(React.Fragment, null, React.createElement("button", {
+				type: "button",
+				className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
+				onClick: () => setShowAddMemoryModal(false)
+			}, "Cancel"), React.createElement("button", {
+				type: "submit",
+				disabled: submittingMemory,
+				className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+			}, submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"), "Save Memory"))
+		}, (selectedBoard === "all" || !selectedBoard) && boards && boards.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-medium text-slate-300" }, "Target Board *"), React.createElement("select", {
 			className: "w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer",
 			value: newMemoryForm.board_slug || (boards[0] ? boards[0].slug : ""),
 			onChange: (e) => setNewMemoryForm({
@@ -2726,15 +2742,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newMemoryForm,
 				task_id: e.target.value
 			})
-		})))), React.createElement("div", { className: "px-6 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0" }, React.createElement("button", {
-			type: "button",
-			className: "px-4 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer",
-			onClick: () => setShowAddMemoryModal(false)
-		}, "Cancel"), React.createElement("button", {
-			type: "submit",
-			disabled: submittingMemory,
-			className: "inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
-		}, submittingMemory && React.createElement("span", { className: "zfk-spinning" }, "⏳"), "Save Memory")))));
+		}))));
 	}
 	//#endregion
 	//#region dashboard/src/App.jsx

@@ -3,6 +3,7 @@ import { formatPrLabel, timeAgo } from "../utils/formatters.js";
 import { renderPrIcon } from "../utils/icons.js";
 import { API_BASE, COLUMNS } from "../constants.js";
 import { fetchJSON } from "../sdk.js";
+import { Modal } from "../components/Modal.jsx";
 
 export function TaskDetailModal(props) {
   const {
@@ -30,34 +31,42 @@ export function TaskDetailModal(props) {
 
   if (!selectedTask) return null;
 
-  return (
-          React.createElement(
-            "div",
-            { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto", onClick: () => setSelectedTask(null) },
-            React.createElement(
-              "div",
-              { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-3 min-w-0" },
-                  React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id),
-                  React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                    onClick: () => setSelectedTask(null)
-                  },
-                  "✕"
-                )
-              ),
-              React.createElement(
-                "div",
-                { className: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1" },
+  return React.createElement(
+    Modal,
+    {
+      isOpen: Boolean(selectedTask),
+      onClose: () => setSelectedTask(null),
+      title: React.createElement(
+        "div",
+        { className: "flex items-center gap-3 min-w-0" },
+        React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id),
+        React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)
+      ),
+      bodyClassName: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1",
+      footerClassName: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
+      footer: React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
+            onClick: () => handleDeleteTask(selectedTask.id)
+          },
+          "Delete Task"
+        ),
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
+            onClick: () => handleAdvanceTask(selectedTask)
+          },
+          "Advance Stage →"
+        )
+      )
+    },
 
                 // Status & Controls Row
                 React.createElement(
@@ -601,31 +610,5 @@ export function TaskDetailModal(props) {
                     React.createElement("button", { type: "submit", className: "px-3.5 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-colors cursor-pointer" }, "Post")
                   )
                 )
-              ),
-
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
-                    onClick: () => handleDeleteTask(selectedTask.id)
-                  },
-                  "Delete Task"
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    type: "button",
-                    className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
-                    onClick: () => handleAdvanceTask(selectedTask)
-                  },
-                  "Advance Stage →"
-                )
-              )
-            )
-          )
   );
 }

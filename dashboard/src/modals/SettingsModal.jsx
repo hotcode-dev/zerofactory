@@ -1,4 +1,5 @@
 import React from "react";
+import { Modal } from "../components/Modal.jsx";
 
 export function SettingsModal(props) {
   const {
@@ -22,51 +23,43 @@ export function SettingsModal(props) {
 
   if (!showSettingsModal) return null;
 
-  return (
-          React.createElement(
-            "div",
-            {
-              className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-              onClick: () => setShowSettingsModal(false)
-            },
-            React.createElement(
-              "div",
-              {
-                className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100",
-                onClick: (e) => e.stopPropagation()
-              },
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/50 shrink-0" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-2.5" },
-                  React.createElement("span", { className: "text-lg" }, "⚙️"),
-                  React.createElement(
-                    "div",
-                    null,
-                    React.createElement("h3", { className: "text-sm font-semibold text-white tracking-tight" }, "Zero Factory Global Settings"),
-                    React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "System-wide orchestration limits and defaults")
-                  )
-                ),
-                React.createElement(
-                  "button",
-                  {
-                    className: "text-slate-400 hover:text-slate-200 transition-colors cursor-pointer",
-                    onClick: () => setShowSettingsModal(false)
-                  },
-                  "✕"
-                )
-              ),
-              React.createElement(
-                "form",
-                { onSubmit: handleSaveSettings, className: "flex flex-col flex-1 overflow-hidden m-0" },
-                React.createElement(
-                  "div",
-                  { className: "p-5 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1" },
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1.5" },
+  return React.createElement(
+    Modal,
+    {
+      isOpen: showSettingsModal,
+      onClose: () => setShowSettingsModal(false),
+      onSubmit: handleSaveSettings,
+      title: "Zero Factory Global Settings",
+      subtitle: "System-wide orchestration limits and defaults",
+      icon: "⚙️",
+      bodyClassName: "p-6 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1",
+      footerClassName: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
+      footer: React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(
+          "button",
+          {
+            type: "button",
+            className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
+            onClick: () => setShowSettingsModal(false)
+          },
+          "Cancel"
+        ),
+        React.createElement(
+          "button",
+          {
+            type: "submit",
+            disabled: isSavingSettings,
+            className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
+          },
+          isSavingSettings ? "Saving..." : "Save Settings"
+        )
+      )
+    },
+    React.createElement(
+      "div",
+      { className: "space-y-1.5" },
                     React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Max Active Tasks (WIP Limit)"),
                     React.createElement("input", {
                       type: "number",
@@ -339,32 +332,6 @@ export function SettingsModal(props) {
                         (langfuseTestResult.ok ? "✓ " : "✕ ") + langfuseTestResult.message
                       )
                     )
-                  ),
-                ),
-                React.createElement(
-                  "div",
-                  { className: "flex items-center justify-end gap-2.5 px-5 py-3 border-t border-slate-800 bg-slate-900/50 shrink-0" },
-                  React.createElement(
-                    "button",
-                    {
-                      type: "button",
-                      className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
-                      onClick: () => setShowSettingsModal(false)
-                    },
-                    "Cancel"
-                  ),
-                  React.createElement(
-                    "button",
-                    {
-                      type: "submit",
-                      disabled: isSavingSettings,
-                      className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30 disabled:opacity-50"
-                    },
-                    isSavingSettings ? "Saving..." : "Save Settings"
                   )
-                )
-              )
-            )
-          )
   );
 }

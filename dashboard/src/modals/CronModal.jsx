@@ -1,5 +1,6 @@
 import React from "react";
 import { timeAgo } from "../utils/formatters.js";
+import { Modal } from "../components/Modal.jsx";
 
 export function CronModal(props) {
   const {
@@ -57,155 +58,126 @@ export function CronModal(props) {
   if (!showCronModal) return null;
 
   return React.createElement(
-    "div",
+    Modal,
     {
-              className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto",
-              onClick: () => setShowCronModal(false)
-            },
+      isOpen: showCronModal,
+      onClose: () => setShowCronModal(false),
+      title: "Zero Factory Cron Automation",
+      subtitle: "Manage periodic health checks, daily metrics, and per-board improvement scanners",
+      icon: "⏰",
+      iconBg: "bg-gradient-to-br from-amber-500 to-indigo-600",
+      headerExtra: React.createElement(
+        "button",
+        {
+          className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
+          onClick: handleSyncAllCron,
+          title: "Synchronize all built-in jobs across active profiles"
+        },
+        "🔄 Sync All"
+      ),
+      subHeader: React.createElement(
+        React.Fragment,
+        null,
+        // Master Scheduler Engine Control Banner
+        React.createElement(
+          "div",
+          { className: "px-6 py-3.5 bg-slate-950/70 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0" },
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-3" },
             React.createElement(
               "div",
+              { className: "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold " + (cronSchedulerEnabled ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30") },
+              cronSchedulerEnabled ? "⚡" : "⏸"
+            ),
+            React.createElement(
+              "div",
+              null,
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-2" },
+                React.createElement("span", { className: "text-xs font-bold text-white tracking-wide" }, "Periodic Cron Scheduler Engine"),
+                React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-bold " + (cronSchedulerEnabled ? "bg-emerald-950 text-emerald-300 border border-emerald-800/60" : "bg-rose-950 text-rose-300 border border-rose-800/60") }, cronSchedulerEnabled ? "Running (15s Ticks)" : "Disabled / Paused")
+              ),
+              React.createElement("p", { className: "text-[11px] text-slate-400 m-0 mt-0.5" },
+                cronSchedulerEnabled
+                  ? "Background daemon actively ticks due jobs and spawns idle improvement scanners."
+                  : "Master cron scheduler is disabled. All background ticking and autonomous scans are halted."
+              )
+            )
+          ),
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" },
+            React.createElement("span", { className: "text-xs font-semibold " + (cronSchedulerEnabled ? "text-emerald-400" : "text-slate-500") }, cronSchedulerEnabled ? "Active" : "Disabled"),
+            React.createElement(
+              "button",
               {
-                className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden text-slate-100",
-                onClick: (e) => e.stopPropagation()
+                type: "button",
+                role: "switch",
+                "aria-checked": cronSchedulerEnabled,
+                onClick: () => handleToggleCronScheduler(cronSchedulerEnabled),
+                className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (cronSchedulerEnabled ? "bg-emerald-600" : "bg-slate-700")
               },
-              // Modal Header
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0 bg-slate-900/60" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-3" },
-                  React.createElement("div", { className: "w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-base shrink-0" }, "⏰"),
-                  React.createElement(
-                    "div",
-                    null,
-                    React.createElement("h2", { className: "text-base font-bold text-white m-0 flex items-center gap-2" }, "Zero Factory Cron Automation"),
-                    React.createElement("p", { className: "text-xs text-slate-400 font-medium m-0" }, "Manage periodic health checks, daily metrics, and per-board improvement scanners")
-                  )
-                ),
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-2" },
-                  React.createElement(
-                    "button",
-                    {
-                      className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer",
-                      onClick: handleSyncAllCron,
-                      title: "Synchronize all built-in jobs across active profiles"
-                    },
-                    "🔄 Sync All"
-                  ),
-                  React.createElement(
-                    "button",
-                    {
-                      className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                      onClick: () => setShowCronModal(false)
-                    },
-                    "✕"
-                  )
-                )
-              ),
-              // Master Scheduler Engine Control Banner
-              React.createElement(
-                "div",
-                { className: "px-6 py-3.5 bg-slate-950/70 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-3" },
-                  React.createElement(
-                    "div",
-                    { className: "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold " + (cronSchedulerEnabled ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-rose-500/10 text-rose-400 border border-rose-500/30") },
-                    cronSchedulerEnabled ? "⚡" : "⏸"
-                  ),
-                  React.createElement(
-                    "div",
-                    null,
-                    React.createElement(
-                      "div",
-                      { className: "flex items-center gap-2" },
-                      React.createElement("span", { className: "text-xs font-bold text-white tracking-wide" }, "Periodic Cron Scheduler Engine"),
-                      React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-bold " + (cronSchedulerEnabled ? "bg-emerald-950 text-emerald-300 border border-emerald-800/60" : "bg-rose-950 text-rose-300 border border-rose-800/60") }, cronSchedulerEnabled ? "Running (15s Ticks)" : "Disabled / Paused")
-                    ),
-                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 mt-0.5" },
-                      cronSchedulerEnabled
-                        ? "Background daemon actively ticks due jobs and spawns idle improvement scanners."
-                        : "Master cron scheduler is disabled. All background ticking and autonomous scans are halted."
-                    )
-                  )
-                ),
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-2.5 shrink-0 self-end sm:self-auto" },
-                  React.createElement("span", { className: "text-xs font-semibold " + (cronSchedulerEnabled ? "text-emerald-400" : "text-slate-500") }, cronSchedulerEnabled ? "Active" : "Disabled"),
-                  React.createElement(
-                    "button",
-                    {
-                      type: "button",
-                      role: "switch",
-                      "aria-checked": cronSchedulerEnabled,
-                      onClick: () => handleToggleCronScheduler(cronSchedulerEnabled),
-                      className: "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none " + (cronSchedulerEnabled ? "bg-emerald-600" : "bg-slate-700")
-                    },
-                    React.createElement("span", {
-                      className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (cronSchedulerEnabled ? "translate-x-4" : "translate-x-0")
-                    })
-                  )
-                )
-              ),
-              // Filter Tabs & Search Bar
-              React.createElement(
-                "div",
-                { className: "px-6 py-3 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0" },
-                React.createElement(
-                  "div",
-                  { className: "flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs" },
-                  React.createElement(
-                    "button",
-                    {
-                      className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "all" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-                      onClick: () => setCronFilterTab("all")
-                    },
-                    "All (" + cronJobs.length + ")"
-                  ),
-                  React.createElement(
-                    "button",
-                    {
-                      className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "core" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-                      onClick: () => setCronFilterTab("core")
-                    },
-                    "Core (" + cronJobs.filter(j => !j.id.startsWith("zero-factory-improvement-scanner-") && !j.id.startsWith("zero-factory-openwiki-update-") && j.category !== "scanner" && j.category !== "openwiki").length + ")"
-                  ),
-                  React.createElement(
-                    "button",
-                    {
-                      className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "scanners" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-                      onClick: () => setCronFilterTab("scanners")
-                    },
-                    "Scanners (" + cronJobs.filter(j => j.id.startsWith("zero-factory-improvement-scanner-") || j.category === "scanner").length + ")"
-                  ),
-                  React.createElement(
-                    "button",
-                    {
-                      className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "openwiki" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
-                      onClick: () => setCronFilterTab("openwiki")
-                    },
-                    "OpenWiki (" + cronJobs.filter(j => j.id.startsWith("zero-factory-openwiki-update-") || j.category === "openwiki").length + ")"
-                  )
-                ),
-                React.createElement(
-                  "input",
-                  {
-                    className: "w-full sm:w-64 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors",
-                    placeholder: "Search jobs by name or ID...",
-                    value: cronSearchQuery,
-                    onChange: (e) => setCronSearchQuery(e.target.value)
-                  }
-                )
-              ),
-              // Job Cards List
-              React.createElement(
-                "div",
-                { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1 bg-slate-950/20" },
+              React.createElement("span", {
+                className: "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out " + (cronSchedulerEnabled ? "translate-x-4" : "translate-x-0")
+              })
+            )
+          )
+        ),
+        // Filter Tabs & Search Bar
+        React.createElement(
+          "div",
+          { className: "px-6 py-3 border-b border-slate-800/80 bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0" },
+          React.createElement(
+            "div",
+            { className: "flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs" },
+            React.createElement(
+              "button",
+              {
+                className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "all" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                onClick: () => setCronFilterTab("all")
+              },
+              "All (" + cronJobs.length + ")"
+            ),
+            React.createElement(
+              "button",
+              {
+                className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "core" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                onClick: () => setCronFilterTab("core")
+              },
+              "Core (" + cronJobs.filter(j => !j.id.startsWith("zero-factory-improvement-scanner-") && !j.id.startsWith("zero-factory-openwiki-update-") && j.category !== "scanner" && j.category !== "openwiki").length + ")"
+            ),
+            React.createElement(
+              "button",
+              {
+                className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "scanners" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                onClick: () => setCronFilterTab("scanners")
+              },
+              "Scanners (" + cronJobs.filter(j => j.id.startsWith("zero-factory-improvement-scanner-") || j.category === "scanner").length + ")"
+            ),
+            React.createElement(
+              "button",
+              {
+                className: "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer " + (cronFilterTab === "openwiki" ? "bg-indigo-600 text-white shadow-xs" : "text-slate-400 hover:text-slate-200"),
+                onClick: () => setCronFilterTab("openwiki")
+              },
+              "OpenWiki (" + cronJobs.filter(j => j.id.startsWith("zero-factory-openwiki-update-") || j.category === "openwiki").length + ")"
+            )
+          ),
+          React.createElement(
+            "input",
+            {
+              className: "w-full sm:w-64 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 transition-colors",
+              placeholder: "Search jobs by name or ID...",
+              value: cronSearchQuery,
+              onChange: (e) => setCronSearchQuery(e.target.value)
+            }
+          )
+        )
+      ),
+      bodyClassName: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1 bg-slate-950/20"
+    },
                 loadingCron && React.createElement("div", { className: "text-center py-12 text-slate-400 text-xs" }, React.createElement("span", { className: "zfk-spinning inline-block mr-2" }, "⏳"), "Loading cron schedules..."),
                 !loadingCron && filteredCronJobs.length === 0 && React.createElement("div", { className: "text-center py-12 text-slate-500 text-xs" }, "No cron jobs match the selected filter."),
                 !loadingCron && filteredCronJobs.map(job => {
@@ -637,7 +609,5 @@ export function CronModal(props) {
                     )
                   );
                 })
-        )
-      )
   );
 }

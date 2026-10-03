@@ -1,5 +1,6 @@
 import React from "react";
 import { computeGitSlug } from "../utils/formatters.js";
+import { Modal } from "../components/Modal.jsx";
 
 export function NewBoardModal(props) {
   const {
@@ -22,44 +23,21 @@ export function NewBoardModal(props) {
 
   if (!showNewBoardModal) return null;
 
-  return (
-          React.createElement(
-            "div",
-            {
-              className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
-              onClick: () => {
-                if (boards.length > 0) setShowNewBoardModal(false);
-              }
-            },
-            React.createElement(
-              "div",
-              { className: "bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden text-slate-100", onClick: (e) => e.stopPropagation() },
-              React.createElement(
-                "div",
-                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0" },
-                React.createElement(
-                  "div",
-                  null,
-                  React.createElement("h2", { className: "text-base font-semibold text-white m-0" }, boards.length === 0 ? "Create First Project Board (Required)" : "Create New Project Board"),
-                  boards.length === 0 &&
-                  React.createElement("p", { className: "text-xs text-indigo-400 font-normal m-0 mt-0.5" }, "A project board is required to use Zero Factory Kanban")
-                ),
-                boards.length > 0 &&
-                React.createElement(
-                  "button",
-                  {
-                    className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
-                    onClick: () => setShowNewBoardModal(false)
-                  },
-                  "✕"
-                )
-              ),
-              React.createElement(
-                "form",
-                { onSubmit: handleCreateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
-                React.createElement(
-                  "div",
-                  { className: "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
+  return React.createElement(
+    Modal,
+    {
+      isOpen: showNewBoardModal,
+      onClose: boards.length > 0 ? () => setShowNewBoardModal(false) : undefined,
+      title: boards.length === 0 ? "Create First Project Board (Required)" : "Create New Project Board",
+      subtitle: boards.length === 0 ? "A project board is required to use Zero Factory Kanban" : undefined,
+      bodyClassName: "p-0 flex flex-col flex-1 overflow-hidden"
+    },
+    React.createElement(
+      "form",
+      { onSubmit: handleCreateBoardSubmit, className: "flex flex-col flex-1 overflow-hidden m-0" },
+      React.createElement(
+        "div",
+        { className: "p-4 sm:p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" },
                   boards.length === 0 &&
                   React.createElement(
                     "div",
@@ -251,7 +229,7 @@ export function NewBoardModal(props) {
                 ),
                 React.createElement(
                   "div",
-                  { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+                  { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
                   boards.length > 0 &&
                   React.createElement(
                     "button",
@@ -275,7 +253,5 @@ export function NewBoardModal(props) {
                   )
                 )
               )
-            )
-          )
   );
 }
