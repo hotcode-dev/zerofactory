@@ -15,7 +15,9 @@ from dashboard.gh_issues_service import (
 from dashboard.plugin_api import BoardCreate, create_board
 from dashboard.routes.boards import (
     get_board_gh_issues_status_endpoint,
+    import_board_gh_issue_endpoint,
     setup_board_gh_issues_endpoint,
+    sync_board_gh_issues_endpoint,
 )
 
 
@@ -70,15 +72,21 @@ def test_gh_issues_status_and_task_lifecycle(initialized_db: Path, tmp_path: Pat
     assert ep_status["ok"] is True
     assert ep_status["pending_task_id"] == task_id
 
-    # 6. Endpoint test: deterministic setup endpoint
-    ep_setup = setup_board_gh_issues_endpoint(slug)
+    # 6. Endpoint test: setup endpoint defaults to creating setup task (or deduplicating)
+    ep_task = setup_board_gh_issues_endpoint(slug)
+    assert ep_task["ok"] is True
+    assert ep_task["already_exists"] is True
+    assert ep_task["task_id"] == task_id
+
+    # 7. Endpoint test: deterministic setup writes templates directly
+    ep_setup = setup_board_gh_issues_endpoint(slug, deterministic=True)
     assert ep_setup["ok"] is True
     assert ep_setup["deterministic"] is True
     assert (repo_dir / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml").exists()
     assert (repo_dir / ".github" / "ISSUE_TEMPLATE" / "feature_request.yml").exists()
     assert (repo_dir / ".github" / "ISSUE_TEMPLATE" / "config.yml").exists()
 
-    # 7. Status now reflects templates are configured
+    # 8. Status now reflects templates are configured
     status_final = check_board_gh_issues_status(slug)
     assert status_final["ok"] is True
     assert status_final["has_gh_issues"] is True
@@ -102,3 +110,62 @@ def test_setup_board_gh_issues_deterministic(initialized_db: Path, tmp_path: Pat
     content = config_path.read_text(encoding="utf-8")
     assert "blank_issues_enabled: false" in content
     assert "GitHub Discussions" in content
+
+
+def test_sync_and_import_gh_issues_endpoints(
+    initialized_db: Path, tmp_path: Path, monkeypatch
+):
+    from issues.base import ExternalIssue
+
+    repo_dir = tmp_path / "dummy_gh_sync"
+    repo_dir.mkdir(parents=True)
+    (repo_dir / ".git").mkdir()
+
+    board_res = create_board(BoardCreate(git_url="https://github.com/testowner/testrepo.git"))
+    slug = board_res["slug"]
+
+    mock_issue = ExternalIssue(
+        source="github",
+        id="42",
+        key="#42",
+        title="Test issue for AI investigation",
+        issue_type="bug",
+        body="Reproduction steps here",
+        url="https://github.com/testowner/testrepo/issues/42",
+        author="alice",
+        state="open",
+        labels=["bug", "zerofactory"],
+        repo_or_project="testowner/testrepo",
+    )
+
+    class MockClient:
+        def __init__(self, default_repo=None):
+            self.default_repo = default_repo
+
+        def fetch_investigation_issues(self, repo, label, state="open"):
+            return [mock_issue]
+
+        def fetch_issue(self, issue_ref, repo=None):
+            return mock_issue
+
+    import issues.github
+    monkeypatch.setattr(issues.github, "GitHubIssueClient", MockClient)
+
+    # 1. Sync endpoint
+    sync_res = sync_board_gh_issues_endpoint(slug, label="zerofactory")
+    assert sync_res["ok"] is True
+    assert sync_res["imported_count"] == 1
+    assert sync_res["duplicate_count"] == 0
+    assert len(sync_res["imported"]) == 1
+
+    # Syncing again should detect duplicate
+    sync_res2 = sync_board_gh_issues_endpoint(slug, label="zerofactory")
+    assert sync_res2["ok"] is True
+    assert sync_res2["imported_count"] == 0
+    assert sync_res2["duplicate_count"] == 1
+
+    # 2. Import endpoint
+    import_res = import_board_gh_issue_endpoint(slug, {"issue": "42"})
+    assert import_res["ok"] is True
+    assert import_res["duplicate"] is True
+

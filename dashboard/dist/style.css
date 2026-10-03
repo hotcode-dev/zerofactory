@@ -2724,6 +2724,14 @@
   .hover\:bg-slate-700:hover {
     background-color: var(--color-slate-700);
   }
+  .hover\:bg-slate-700\/80:hover {
+    background-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 80%, transparent);
+  }
+  @supports (color: color-mix(in lab, red, red)) {
+    .hover\:bg-slate-700\/80:hover {
+      background-color: color-mix(in oklab, var(--color-slate-700) 80%, transparent);
+    }
+  }
   .hover\:bg-slate-700\/90:hover {
     background-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 90%, transparent);
   }

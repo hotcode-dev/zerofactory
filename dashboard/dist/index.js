@@ -192,7 +192,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/FilterBar.jsx
 	function FilterBar(props) {
-		const { searchQuery, setSearchQuery, assigneeFilter, setAssigneeFilter, priorityFilter, setPriorityFilter, prFilter, setPrFilter, stats, autoRefresh, setAutoRefresh } = props;
+		const { searchQuery, setSearchQuery, assigneeFilter, setAssigneeFilter, priorityFilter, setPriorityFilter, prFilter, setPrFilter, stats, autoRefresh, setAutoRefresh, isSyncingIssues, onSyncIssues } = props;
 		return React.createElement("div", { className: "flex flex-wrap items-center justify-between gap-3 bg-slate-900/40 backdrop-blur-sm border border-slate-800/70 p-3 rounded-xl" }, React.createElement("div", { className: "flex items-center gap-2 bg-slate-950/60 border border-slate-800 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 rounded-lg px-3 py-1.5 min-w-[240px] md:w-80 transition-all" }, React.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, "🔍"), React.createElement("input", {
 			type: "text",
 			className: "bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none w-full",
@@ -251,12 +251,18 @@ var ZeroFactoryDashboard = (function(exports) {
 			type: "button",
 			className: (prFilter === item.id ? "bg-purple-600 text-white border-purple-500 shadow-xs shadow-purple-600/30" : "bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200 hover:bg-slate-800") + " px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border text-center inline-flex items-center gap-1.5",
 			onClick: () => setPrFilter(item.id)
-		}, item.id === "has_pr" && renderPrIcon("w-3 h-3 shrink-0"), item.label, item.id === "has_pr" && stats && stats.pr_count > 0 && React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, stats.pr_count)))), React.createElement("label", { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" }, React.createElement("input", {
+		}, item.id === "has_pr" && renderPrIcon("w-3 h-3 shrink-0"), item.label, item.id === "has_pr" && stats && stats.pr_count > 0 && React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, stats.pr_count)))), React.createElement("div", { className: "flex items-center gap-3" }, onSyncIssues && React.createElement("button", {
+			type: "button",
+			disabled: isSyncingIssues,
+			onClick: onSyncIssues,
+			className: "px-2.5 py-1 rounded-md text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 shadow-xs",
+			title: "Sync open GitHub issues requested for AI investigation into Triage"
+		}, React.createElement("span", { className: isSyncingIssues ? "animate-spin inline-block text-xs" : "text-xs" }, isSyncingIssues ? "🔄" : "🐙"), isSyncingIssues ? "Syncing..." : "Sync GitHub Issues"), React.createElement("label", { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" }, React.createElement("input", {
 			type: "checkbox",
 			className: "rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
 			checked: autoRefresh,
 			onChange: (e) => setAutoRefresh(e.target.checked)
-		}), "Live 10s Poll"));
+		}), "Live 10s Poll")));
 	}
 	//#endregion
 	//#region dashboard/src/components/SetupBanners.jsx
@@ -3069,6 +3075,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [ghIssuesStatus, setGhIssuesStatus] = useState(null);
 		const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
 		const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
+		const [isSyncingIssues, setIsSyncingIssues] = useState(false);
 		const [isSettingUpJira, setIsSettingUpJira] = useState(false);
 		const [isTestingJira, setIsTestingJira] = useState(false);
 		const [createBoardError, setCreateBoardError] = useState("");
@@ -3350,6 +3357,25 @@ var ZeroFactoryDashboard = (function(exports) {
 				showToast("Error initiating setup: " + (err.message || String(err)), "error");
 			} finally {
 				setIsSettingUpGhIssues(false);
+			}
+		};
+		const handleSyncIssues = async (boardSlug) => {
+			const bSlug = boardSlug || selectedBoard;
+			if (!bSlug || bSlug === "all") {
+				showToast("Please select a specific board to sync issues", "info");
+				return;
+			}
+			setIsSyncingIssues(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/sync-gh-issues", { method: "POST" });
+				if (res && res.ok) {
+					showToast(res.message || `Synced ${res.imported_count || 0} issues!`, "success");
+					await loadTasksAndStats(bSlug);
+				} else showToast(res && (res.detail || res.error || res.message) || "Failed to sync GitHub issues", "error");
+			} catch (err) {
+				showToast("Error syncing issues: " + (err.message || String(err)), "error");
+			} finally {
+				setIsSyncingIssues(false);
 			}
 		};
 		const handleTriggerJiraSetup = async (boardSlug, jiraUrl) => {
@@ -4556,7 +4582,9 @@ var ZeroFactoryDashboard = (function(exports) {
 			setPrFilter,
 			stats,
 			autoRefresh,
-			setAutoRefresh
+			setAutoRefresh,
+			isSyncingIssues,
+			onSyncIssues: handleSyncIssues
 		}), React.createElement(SetupBanners, {
 			selectedBoard,
 			precommitStatus,
