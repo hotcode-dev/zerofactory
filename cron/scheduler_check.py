@@ -218,7 +218,6 @@ def set_cron_scheduler_enabled(
                     j["state"] = "paused"
                     j["paused_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
                     j["paused_by_master"] = True
-                    j["custom_config"] = True
                     changed = True
             else:
                 # Enabling scheduler -> resume jobs paused by master (or all if none tagged)
