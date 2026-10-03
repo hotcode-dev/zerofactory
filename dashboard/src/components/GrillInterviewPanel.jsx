@@ -13,9 +13,11 @@ export function GrillInterviewPanel({
 
   const interview = parseActiveGrillQuestion(task.comments || [], task);
   const isTriage = task.status === "triage";
+  const metaStr = typeof task.metadata === "string" ? task.metadata : JSON.stringify(task.metadata || {});
+  const descStr = typeof task.description === "string" ? task.description : "";
   const isAwaitingInput =
     (interview && !interview.hasReplied) ||
-    (task.status === "blocked" && (task.description?.includes("Grill-with-Docs") || (task.metadata && task.metadata.includes("Grill-with-Docs"))));
+    (task.status === "blocked" && (descStr.includes("Grill-with-Docs") || metaStr.includes("Grill-with-Docs")));
 
   const [selectedOption, setSelectedOption] = useState("");
   const [customNotes, setCustomNotes] = useState("");

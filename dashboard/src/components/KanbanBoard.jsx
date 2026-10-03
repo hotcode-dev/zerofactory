@@ -214,16 +214,21 @@ export function KanbanBoard(props) {
                                     })(),
                                     t.status === "blocked" &&
                                     (() => {
+                                      const metaStr = typeof t.metadata === "string" ? t.metadata : JSON.stringify(t.metadata || {});
+                                      const descStr = typeof t.description === "string" ? t.description : "";
+                                      const titleStr = typeof t.title === "string" ? t.title : "";
+
                                       const isGrillBlocked =
-                                        (t.metadata && (t.metadata.includes("Grill-with-Docs") || t.metadata.includes("Awaiting Human Input"))) ||
-                                        (t.description && t.description.includes("Grill-with-Docs")) ||
-                                        (t.title && t.title.toLowerCase().includes("grill"));
+                                        metaStr.includes("Grill-with-Docs") ||
+                                        metaStr.includes("Awaiting Human Input") ||
+                                        descStr.includes("Grill-with-Docs") ||
+                                        titleStr.toLowerCase().includes("grill");
 
                                       const badgeClass = isGrillBlocked
                                         ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-200"
-                                        : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                                        : (titleStr.includes("[PR Conflict]") || titleStr.includes("[Merge Conflict]"))
                                           ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                                          : (t.title && t.title.includes("[Human Review]"))
+                                          : titleStr.includes("[Human Review]")
                                             ? "bg-teal-500/15 border-teal-500/30 text-teal-300"
                                             : t.blocking_parent_count > 0
                                               ? "bg-slate-800 border-slate-700 text-slate-300"
@@ -231,9 +236,9 @@ export function KanbanBoard(props) {
 
                                       const dotClass = isGrillBlocked
                                         ? "bg-indigo-400 zfk-pulse-active"
-                                        : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                                        : (titleStr.includes("[PR Conflict]") || titleStr.includes("[Merge Conflict]"))
                                           ? "bg-amber-400"
-                                          : (t.title && t.title.includes("[Human Review]"))
+                                          : titleStr.includes("[Human Review]")
                                             ? "bg-teal-400"
                                             : t.blocking_parent_count > 0
                                               ? "bg-slate-400"
@@ -241,9 +246,9 @@ export function KanbanBoard(props) {
 
                                       const labelText = isGrillBlocked
                                         ? "🎯 Human Decision Needed (Grill)"
-                                        : (t.title && (t.title.includes("[PR Conflict]") || t.title.includes("[Merge Conflict]")))
+                                        : (titleStr.includes("[PR Conflict]") || titleStr.includes("[Merge Conflict]"))
                                           ? "🟠 Merge Conflict"
-                                          : (t.title && t.title.includes("[Human Review]"))
+                                          : titleStr.includes("[Human Review]")
                                             ? "🟢 Awaiting Human Merge"
                                             : t.blocking_parent_count > 0
                                               ? "⏳ Blocked by Parent Task"
