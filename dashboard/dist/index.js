@@ -261,7 +261,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/SetupBanners.jsx
 	function SetupBanners(props) {
-		const { selectedBoard, precommitStatus, openwikiStatus, isSettingUpPrecommit, handleTriggerPrecommitSetup, isSettingUpOpenwiki, handleTriggerOpenwikiSetup } = props;
+		const { selectedBoard, precommitStatus, openwikiStatus, ghIssuesStatus, isSettingUpPrecommit, handleTriggerPrecommitSetup, isSettingUpOpenwiki, handleTriggerOpenwikiSetup, isSettingUpGhIssues, handleTriggerGhIssuesSetup } = props;
 		return React.createElement(React.Fragment, null, Boolean(selectedBoard && selectedBoard !== "all" && precommitStatus && !precommitStatus.has_precommit) && React.createElement("div", { className: "mb-3.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs" }, React.createElement("div", { className: "flex items-center gap-2.5 text-amber-200" }, React.createElement("span", { className: "text-base" }, precommitStatus.pending_task_id ? "⚡" : "⚠️"), React.createElement("div", null, React.createElement("div", { className: "font-semibold text-slate-100" }, precommitStatus.pending_task_id ? "Precommit Setup Task in Progress" : "Precommit Verification Not Configured"), React.createElement("div", { className: "text-slate-400 text-[11px]" }, precommitStatus.pending_task_id ? "Task " + precommitStatus.pending_task_id + " (" + precommitStatus.pending_task_status + ") is generating .zerofactory/precommit.sh" : "This board lacks .zerofactory/precommit.sh. Set up standard automated test, build, and format verification for commits."))), !precommitStatus.pending_task_id && React.createElement("button", {
 			type: "button",
 			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all duration-150 cursor-pointer disabled:opacity-50",
@@ -272,7 +272,12 @@ var ZeroFactoryDashboard = (function(exports) {
 			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all duration-150 cursor-pointer disabled:opacity-50",
 			disabled: isSettingUpOpenwiki,
 			onClick: () => handleTriggerOpenwikiSetup(selectedBoard)
-		}, isSettingUpOpenwiki ? "Initiating Setup..." : "📖 Setup OpenWiki")));
+		}, isSettingUpOpenwiki ? "Initiating Setup..." : "📖 Setup OpenWiki")), Boolean(selectedBoard && selectedBoard !== "all" && ghIssuesStatus && !ghIssuesStatus.has_gh_issues) && React.createElement("div", { className: "mb-3.5 px-4 py-2.5 rounded-xl border border-purple-500/30 bg-purple-950/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs" }, React.createElement("div", { className: "flex items-center gap-2.5 text-purple-200" }, React.createElement("span", { className: "text-base" }, ghIssuesStatus.pending_task_id ? "⏳" : "🏷️"), React.createElement("div", null, React.createElement("div", { className: "font-semibold text-slate-100 flex items-center gap-1.5" }, ghIssuesStatus.pending_task_id ? "GitHub Issues Setup Task in Progress" : "Recommended: GitHub Issue Templates & AI Labels Not Configured", React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, "AI Triage & Classification")), React.createElement("div", { className: "text-slate-400 text-[11px]" }, ghIssuesStatus.pending_task_id ? "Task " + ghIssuesStatus.pending_task_id + " (" + ghIssuesStatus.pending_task_status + ") is generating .github/ISSUE_TEMPLATE/ and triage labels." : "Set up standardized GitHub Issue templates (Bug Report, Feature Request) with 'zerofactory' human investigation labels."))), !ghIssuesStatus.pending_task_id && React.createElement("button", {
+			type: "button",
+			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all duration-150 cursor-pointer disabled:opacity-50",
+			disabled: isSettingUpGhIssues,
+			onClick: () => handleTriggerGhIssuesSetup(selectedBoard)
+		}, isSettingUpGhIssues ? "Initiating Setup..." : "🏷️ Setup GitHub Issues")));
 	}
 	//#endregion
 	//#region dashboard/src/utils/formatters.js
@@ -1438,6 +1443,18 @@ var ZeroFactoryDashboard = (function(exports) {
 						{
 							cmd: "hermes zerofactory comment <task_id> \"<message>\"",
 							desc: "Post a comment to a ticket"
+						},
+						{
+							cmd: "hermes zerofactory import-gh-issue <issue> [--force]",
+							desc: "Import GitHub issue into human-gated Triage task"
+						},
+						{
+							cmd: "hermes zerofactory import-gh-issue --sync",
+							desc: "Batch import open issues requested for AI investigation"
+						},
+						{
+							cmd: "hermes zerofactory import-jira-issue <key-or-url> [--board <slug>]",
+							desc: "Import Jira Cloud issue into human-gated Triage task"
 						}
 					]
 				},
@@ -1463,6 +1480,10 @@ var ZeroFactoryDashboard = (function(exports) {
 						{
 							cmd: "hermes zerofactory setup-openwiki --board <slug>",
 							desc: "Create P0 setup task to generate openwiki/ architecture docs"
+						},
+						{
+							cmd: "hermes zerofactory setup-gh-issues --board <slug>",
+							desc: "Create P0 setup task to generate GitHub Issue templates & labels"
 						},
 						{
 							cmd: "hermes zerofactory stats",
@@ -1980,7 +2001,15 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newBoardForm,
 				additional_reviewer_usernames: e.target.value
 			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Comma-separated usernames trusted to submit automation-relevant PR feedback.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"), React.createElement("input", {
+		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Comma-separated usernames trusted to submit automation-relevant PR feedback.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"), React.createElement("input", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+			placeholder: "https://your-domain.atlassian.net or project link",
+			value: newBoardForm.jira_url || "",
+			onChange: (e) => setNewBoardForm({
+				...newBoardForm,
+				jira_url: e.target.value
+			})
+		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link your Jira Cloud instance or project to this board for Jira issue references and triage.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"), React.createElement("input", {
 			type: "number",
 			min: 1,
 			step: 1,
@@ -2020,7 +2049,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/EditBoardModal.jsx
 	function EditBoardModal(props) {
-		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, selectedBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {} } = props;
+		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, selectedBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {}, ghIssuesStatus = null, isSettingUpGhIssues = false, handleTriggerGhIssuesSetup = () => {} } = props;
 		if (!showEditBoardModal) return null;
 		return React.createElement("div", {
 			className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto",
@@ -2078,7 +2107,20 @@ var ZeroFactoryDashboard = (function(exports) {
 				...editBoardForm,
 				additional_reviewer_usernames: e.target.value
 			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"), React.createElement("input", {
+		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"), editBoardForm.jira_url && React.createElement("a", {
+			href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
+			target: "_blank",
+			rel: "noreferrer",
+			className: "text-[11px] font-medium text-sky-400 hover:text-sky-300 cursor-pointer flex items-center gap-1 transition-colors"
+		}, "↗ Open Jira Cloud")), React.createElement("input", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+			placeholder: "https://your-domain.atlassian.net or project link",
+			value: editBoardForm.jira_url || "",
+			onChange: (e) => setEditBoardForm({
+				...editBoardForm,
+				jira_url: e.target.value
+			})
+		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link your Jira Cloud instance or project to this board for Jira issue references and triage.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"), React.createElement("input", {
 			type: "number",
 			min: 1,
 			step: 1,
@@ -2107,7 +2149,17 @@ var ZeroFactoryDashboard = (function(exports) {
 			disabled: isSettingUpOpenwiki,
 			onClick: () => handleTriggerOpenwikiSetup(editBoardForm.slug),
 			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-		}, isSettingUpOpenwiki ? "Initiating..." : openwikiStatus && openwikiStatus.has_openwiki ? "🔄 Regenerate OpenWiki" : "📖 Setup OpenWiki"))))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
+		}, isSettingUpOpenwiki ? "Initiating..." : openwikiStatus && openwikiStatus.has_openwiki ? "🔄 Regenerate OpenWiki" : "📖 Setup OpenWiki"))), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🏷️ GitHub Issue Templates & Labels"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Bug/Feature templates with 'zerofactory' AI triage labels (.github/ISSUE_TEMPLATE/).")), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " + (ghIssuesStatus && ghIssuesStatus.has_gh_issues ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : ghIssuesStatus && ghIssuesStatus.pending_task_id ? "bg-purple-950/80 text-purple-300 border border-purple-800/60" : "bg-amber-950/80 text-amber-300 border border-amber-800/60") }, ghIssuesStatus && ghIssuesStatus.has_gh_issues ? "Configured ✓" : ghIssuesStatus && ghIssuesStatus.pending_task_id ? "Setup in Progress ⏳" : "Not Configured ⚠️")), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-[11px] text-slate-400 font-mono truncate" }, ghIssuesStatus && ghIssuesStatus.gh_issues_path ? ghIssuesStatus.gh_issues_path : ".github/ISSUE_TEMPLATE/"), React.createElement("button", {
+			type: "button",
+			disabled: isSettingUpGhIssues,
+			onClick: () => handleTriggerGhIssuesSetup(editBoardForm.slug),
+			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+		}, isSettingUpGhIssues ? "Initiating..." : ghIssuesStatus && ghIssuesStatus.has_gh_issues ? "🔄 Regenerate Templates" : "🏷️ Setup GitHub Issues"))), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🔷 Jira Cloud Integration"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link Atlassian Jira Cloud instance/project for deterministic issue import into triage.")), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " + (editBoardForm.jira_url && editBoardForm.jira_url.trim() ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : "bg-slate-800 text-slate-400 border border-slate-700/60") }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? "Linked ✓" : "Optional ⚪")), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-[11px] text-slate-400 font-mono truncate" }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? editBoardForm.jira_url.trim() : "No Jira link configured (optional)"), editBoardForm.jira_url && editBoardForm.jira_url.trim() ? React.createElement("a", {
+			href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
+			target: "_blank",
+			rel: "noreferrer",
+			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
+		}, "🔗 Open Jira") : null)))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
 			type: "button",
 			className: "mr-auto px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
 			onClick: handleDeleteBoard,
@@ -2767,6 +2819,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			max_concurrent_running: 1,
 			auto_record_memory: true,
 			additional_reviewer_usernames: "",
+			jira_url: "",
 			auto_setup_precommit: true
 		});
 		const [editBoardForm, setEditBoardForm] = useState({
@@ -2776,7 +2829,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			target_branch: "",
 			max_concurrent_running: 1,
 			auto_record_memory: true,
-			additional_reviewer_usernames: ""
+			additional_reviewer_usernames: "",
+			jira_url: ""
 		});
 		const [precommitStatus, setPrecommitStatus] = useState(null);
 		const [isLoadingPrecommit, setIsLoadingPrecommit] = useState(false);
@@ -2784,6 +2838,9 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [openwikiStatus, setOpenwikiStatus] = useState(null);
 		const [isLoadingOpenwiki, setIsLoadingOpenwiki] = useState(false);
 		const [isSettingUpOpenwiki, setIsSettingUpOpenwiki] = useState(false);
+		const [ghIssuesStatus, setGhIssuesStatus] = useState(null);
+		const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
+		const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
 		const [createBoardError, setCreateBoardError] = useState("");
 		const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
 		const [isSubmittingTask, setIsSubmittingTask] = useState(false);
@@ -3032,6 +3089,39 @@ var ZeroFactoryDashboard = (function(exports) {
 				setIsSettingUpOpenwiki(false);
 			}
 		};
+		const loadGhIssuesStatus = useCallback(async (boardSlug) => {
+			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
+			if (!bSlug || bSlug === "all") {
+				setGhIssuesStatus(null);
+				return;
+			}
+			setIsLoadingGhIssues(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/gh-issues-status");
+				if (res && res.ok) setGhIssuesStatus(res);
+				else setGhIssuesStatus(null);
+			} catch (err) {
+				setGhIssuesStatus(null);
+			} finally {
+				setIsLoadingGhIssues(false);
+			}
+		}, [fetchJSON]);
+		const handleTriggerGhIssuesSetup = async (boardSlug) => {
+			const bSlug = boardSlug || selectedBoard;
+			if (!bSlug || bSlug === "all") return;
+			setIsSettingUpGhIssues(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-gh-issues", { method: "POST" });
+				if (res && res.ok) {
+					showToast(res.message || "Created setup task for GitHub Issue templates & labels!", "success");
+					await Promise.all([loadGhIssuesStatus(bSlug), loadTasksAndStats(bSlug)]);
+				} else showToast(res && (res.detail || res.error || res.message) || "Failed to trigger GitHub issues setup", "error");
+			} catch (err) {
+				showToast("Error initiating setup: " + (err.message || String(err)), "error");
+			} finally {
+				setIsSettingUpGhIssues(false);
+			}
+		};
 		const loadTasksAndStats = useCallback(async (boardSlug) => {
 			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
 			if (!bSlug) {
@@ -3048,9 +3138,11 @@ var ZeroFactoryDashboard = (function(exports) {
 				if (bSlug && bSlug !== "all") {
 					loadPrecommitStatus(bSlug);
 					loadOpenwikiStatus(bSlug);
+					loadGhIssuesStatus(bSlug);
 				} else {
 					setPrecommitStatus(null);
 					setOpenwikiStatus(null);
+					setGhIssuesStatus(null);
 				}
 			} catch (err) {
 				console.error("Failed to load kanban data:", err);
@@ -3875,6 +3967,7 @@ var ZeroFactoryDashboard = (function(exports) {
 						max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
 						auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
 						additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
+						jira_url: (newBoardForm.jira_url || "").trim(),
 						auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false)
 					})
 				});
@@ -3888,6 +3981,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					max_concurrent_running: 1,
 					auto_record_memory: true,
 					additional_reviewer_usernames: "",
+					jira_url: "",
 					auto_setup_precommit: true
 				});
 				setCreateBoardError("");
@@ -3950,10 +4044,12 @@ var ZeroFactoryDashboard = (function(exports) {
 					target_branch: curr.target_branch || "",
 					max_concurrent_running: typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1 ? curr.max_concurrent_running : 1,
 					auto_record_memory: curr.auto_record_memory !== false,
-					additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
+					additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : "",
+					jira_url: curr.jira_url || ""
 				});
 				loadPrecommitStatus(curr.slug);
 				loadOpenwikiStatus(curr.slug);
+				loadGhIssuesStatus(curr.slug);
 				setShowEditBoardModal(true);
 			}
 		};
@@ -3970,7 +4066,8 @@ var ZeroFactoryDashboard = (function(exports) {
 						target_branch: (editBoardForm.target_branch || "").trim(),
 						max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
 						auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
-						additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
+						additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
+						jira_url: (editBoardForm.jira_url || "").trim()
 					})
 				});
 				showToast("Board '" + editBoardForm.slug + "' updated!", "success");
@@ -4191,10 +4288,13 @@ var ZeroFactoryDashboard = (function(exports) {
 			selectedBoard,
 			precommitStatus,
 			openwikiStatus,
+			ghIssuesStatus,
 			isSettingUpPrecommit,
 			handleTriggerPrecommitSetup,
 			isSettingUpOpenwiki,
-			handleTriggerOpenwikiSetup
+			handleTriggerOpenwikiSetup,
+			isSettingUpGhIssues,
+			handleTriggerGhIssuesSetup
 		}), React.createElement(KanbanBoard, {
 			tasksByColumn,
 			dragOverCol,
@@ -4267,7 +4367,10 @@ var ZeroFactoryDashboard = (function(exports) {
 			handleTriggerPrecommitSetup,
 			openwikiStatus,
 			isSettingUpOpenwiki,
-			handleTriggerOpenwikiSetup
+			handleTriggerOpenwikiSetup,
+			ghIssuesStatus,
+			isSettingUpGhIssues,
+			handleTriggerGhIssuesSetup
 		}), React.createElement(SettingsModal, {
 			showSettingsModal,
 			setShowSettingsModal,

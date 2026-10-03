@@ -7,6 +7,7 @@ from dashboard.models import (
     MEMORY_CONTENT_MAX_LENGTH,
     VALID_STATUSES,
     BoardCreate,
+    BoardUpdate,
     CronJobUpdate,
     MemoryCreate,
     SettingsUpdate,
@@ -106,3 +107,18 @@ def test_cron_job_update_fields():
     assert c.idle_scan_cooldown_minutes == 20
     assert c.idle_scan_max_todo == 4
     assert c.minutes == 10080
+
+
+def test_board_jira_url_fields():
+    """BoardCreate and BoardUpdate support optional jira_url."""
+    b = BoardCreate(
+        git_url="https://github.com/owner/repo.git",
+        jira_url="https://myteam.atlassian.net",
+    )
+    assert b.jira_url == "https://myteam.atlassian.net"
+
+    b_default = BoardCreate(git_url="https://github.com/owner/repo.git")
+    assert b_default.jira_url == ""
+
+    bu = BoardUpdate(jira_url="https://company.atlassian.net")
+    assert bu.jira_url == "https://company.atlassian.net"

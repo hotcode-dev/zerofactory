@@ -152,7 +152,7 @@ class GitHubIssueClient(BaseIssueClient):
         ]
 
         num_str = str(data.get("number", issue_num))
-        return ExternalIssue(
+        issue = ExternalIssue(
             source="github",
             id=num_str,
             key=f"#{num_str}",
@@ -169,3 +169,109 @@ class GitHubIssueClient(BaseIssueClient):
             repo_or_project=effective_repo,
             raw=data,
         )
+        issue.issue_type = issue.infer_issue_type()
+        return issue
+
+    def fetch_investigation_issues(
+        self,
+        repo: str | None = None,
+        label: str = "zerofactory",
+        state: str = "open",
+        limit: int = 50,
+    ) -> list[ExternalIssue]:
+        """Fetch all issues from GitHub flagged for AI investigation via label."""
+        target_repo = repo or self.default_repo
+        if not target_repo:
+            raise ValueError(
+                "Repository is required to list issues. Specify --repo owner/repo or set up a board."
+            )
+
+        cmd = [
+            "gh",
+            "issue",
+            "list",
+            "--repo",
+            target_repo,
+            "--state",
+            state,
+            "--limit",
+            str(limit),
+            "--json",
+            "number,title,body,url,author,state,labels,assignees",
+        ]
+        if label:
+            cmd.extend(["--label", label])
+
+        try:
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except FileNotFoundError:
+            raise RuntimeError(
+                "GitHub CLI ('gh') is not installed or not in PATH. Please install gh to import GitHub issues."
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"Timed out fetching issues from '{target_repo}' via GitHub CLI."
+            )
+
+        if res.returncode != 0:
+            err_msg = (
+                res.stderr.strip()
+                or res.stdout.strip()
+                or f"exit code {res.returncode}"
+            )
+            raise RuntimeError(
+                f"Failed to list GitHub issues from '{target_repo}': {err_msg}"
+            )
+
+        try:
+            data_list = json.loads(res.stdout) if res.stdout.strip() else []
+        except Exception as e:
+            raise RuntimeError(f"Failed to parse GitHub CLI response: {e}")
+
+        issues = []
+        for item in data_list:
+            author_login = ""
+            if isinstance(item.get("author"), dict):
+                author_login = item["author"].get("login") or ""
+
+            raw_labels = item.get("labels") or []
+            labels = [
+                lbl["name"] if isinstance(lbl, dict) else str(lbl)
+                for lbl in raw_labels
+                if lbl
+            ]
+
+            raw_assignees = item.get("assignees") or []
+            assignees = [
+                a["login"] if isinstance(a, dict) else str(a)
+                for a in raw_assignees
+                if a
+            ]
+
+            num_str = str(item.get("number", ""))
+            iss = ExternalIssue(
+                source="github",
+                id=num_str,
+                key=f"#{num_str}",
+                title=str(item.get("title") or "").strip(),
+                body=str(item.get("body") or ""),
+                url=str(
+                    item.get("url")
+                    or f"https://github.com/{target_repo}/issues/{num_str}"
+                ),
+                author=author_login,
+                state=str(item.get("state") or "OPEN").lower(),
+                labels=labels,
+                assignees=assignees,
+                repo_or_project=target_repo,
+                raw=item,
+            )
+            iss.issue_type = iss.infer_issue_type()
+            issues.append(iss)
+
+        return issues

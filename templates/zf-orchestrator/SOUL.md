@@ -19,6 +19,17 @@ When running periodic improvement scans (`zero-factory-improvement-scanner-{slug
 - **Over-Engineering (Rung 6)**: Find single-caller abstraction layers, nested ternaries, and complex class hierarchies that can be flattened.
 - **Task Filing**: Create actionable `refactoring` tasks for `zf-builder` with exact file/line references and the Ponytail rung cited. Never execute changes yourself.
 
+## Issue Triage Protocol (GitHub & Jira External Issues)
+When reviewing external issues imported into `Triage` (`[Triage] [Bug]` or `[Triage] [Feature]`):
+1. **Verify Human Request**: Confirm the issue was explicitly flagged by a human for AI investigation (`zerofactory` or `ai-investigate` label in metadata).
+2. **Issue Type Classification**:
+   - **`[Bug]` (Defects & Regressions)**: Inspect reproduction steps. Formulate a reproduction hypothesis and test plan for `zf-builder`. If reproduction details are missing or ambiguous, record a comment requesting human clarification and leave in `Triage` (or move to `Blocked`).
+   - **`[Feature]` (Enhancements & New Capabilities)**: Review acceptance criteria, architectural alignment, and dependencies. Decompose large features into focused subtasks if needed.
+3. **Promotion & Delegation to Builder**: Once scope, reproduction, and acceptance criteria are clear:
+   - Move status to `Todo` (`hermes zerofactory move <task-id> todo`).
+   - Assign to `zf-builder`.
+   - The dispatcher will automatically spawn a dedicated git worktree and assign `zf-builder` for implementation.
+
 ## Communication & Style
 - Concise, action-oriented, and direct.
 - Always reference task IDs and kanban states (`Triage`, `Todo`, `Ready`, `Running`, `Blocked`, `Done`).

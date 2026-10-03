@@ -74,11 +74,33 @@ class JiraIssueClient(BaseIssueClient):
         email: str | None = None,
         api_token: str | None = None,
         default_project: str | None = None,
+        board_slug: str | None = None,
     ):
-        self.base_url = base_url or os.environ.get("JIRA_BASE_URL", "")
-        self.email = email or os.environ.get("JIRA_EMAIL", "")
-        self.api_token = api_token or os.environ.get("JIRA_API_TOKEN", "")
-        self.default_project = default_project or os.environ.get("JIRA_PROJECT", "")
+        self.base_url = (base_url or os.environ.get("JIRA_BASE_URL", "")).strip()
+        self.email = (email or os.environ.get("JIRA_EMAIL", "")).strip()
+        self.api_token = (api_token or os.environ.get("JIRA_API_TOKEN", "")).strip()
+        self.default_project = (default_project or os.environ.get("JIRA_PROJECT", "")).strip()
+        self.board_slug = board_slug
+        if not self.base_url and board_slug:
+            self.base_url = self._resolve_board_jira_url(board_slug)
+
+    @staticmethod
+    def _resolve_board_jira_url(board_slug: str) -> str:
+        try:
+            try:
+                from ..dashboard.db import get_db_conn
+            except (ImportError, ValueError):
+                from dashboard.db import get_db_conn  # type: ignore
+
+            with get_db_conn() as conn:
+                row = conn.execute(
+                    "SELECT jira_url FROM boards WHERE slug = ?", (board_slug,)
+                ).fetchone()
+                if row and row["jira_url"]:
+                    return str(row["jira_url"]).strip()
+        except Exception:
+            pass
+        return ""
 
     def test_connection(self) -> bool:
         """Verify Jira credentials and reachability."""
@@ -141,7 +163,7 @@ class JiraIssueClient(BaseIssueClient):
 
         url = f"{self.base_url.rstrip('/')}/browse/{issue_key}" if self.base_url else ""
 
-        return ExternalIssue(
+        iss = ExternalIssue(
             source="jira",
             id=issue_key,
             key=issue_key,
@@ -155,3 +177,5 @@ class JiraIssueClient(BaseIssueClient):
             repo_or_project=project,
             raw=data,
         )
+        iss.issue_type = iss.infer_issue_type()
+        return iss

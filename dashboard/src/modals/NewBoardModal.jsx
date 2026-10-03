@@ -192,6 +192,18 @@ export function NewBoardModal(props) {
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+                      placeholder: "https://your-domain.atlassian.net or project link",
+                      value: newBoardForm.jira_url || "",
+                      onChange: (e) => setNewBoardForm({ ...newBoardForm, jira_url: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link your Jira Cloud instance or project to this board for Jira issue references and triage.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
                     React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"),
                     React.createElement("input", {
                       type: "number",

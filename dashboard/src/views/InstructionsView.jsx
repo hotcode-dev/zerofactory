@@ -587,7 +587,10 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             { cmd: "hermes zerofactory create \"<title>\" --description \"<desc>\" --board <slug> --priority P1", desc: "Create a new ticket" },
             { cmd: "hermes zerofactory move <task_id> running", desc: "Transition ticket status" },
             { cmd: "hermes zerofactory block <task_id> --reason \"<reason>\"", desc: "Mark ticket as blocked with explanation" },
-            { cmd: "hermes zerofactory comment <task_id> \"<message>\"", desc: "Post a comment to a ticket" }
+            { cmd: "hermes zerofactory comment <task_id> \"<message>\"", desc: "Post a comment to a ticket" },
+            { cmd: "hermes zerofactory import-gh-issue <issue> [--force]", desc: "Import GitHub issue into human-gated Triage task" },
+            { cmd: "hermes zerofactory import-gh-issue --sync", desc: "Batch import open issues requested for AI investigation" },
+            { cmd: "hermes zerofactory import-jira-issue <key-or-url> [--board <slug>]", desc: "Import Jira Cloud issue into human-gated Triage task" }
           ]
         },
         {
@@ -598,6 +601,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             { cmd: "hermes zerofactory board delete <slug>", desc: "Delete a board and clear its scheduled scanner job" },
             { cmd: "hermes zerofactory setup-repo --board <slug>", desc: "Create P0 setup task to generate .zerofactory/precommit.sh" },
             { cmd: "hermes zerofactory setup-openwiki --board <slug>", desc: "Create P0 setup task to generate openwiki/ architecture docs" },
+            { cmd: "hermes zerofactory setup-gh-issues --board <slug>", desc: "Create P0 setup task to generate GitHub Issue templates & labels" },
             { cmd: "hermes zerofactory stats", desc: "Show Kanban metrics, throughput, and worker states" },
             { cmd: "hermes zerofactory dispatch", desc: "Trigger an immediate autonomous dispatch cycle" },
             { cmd: "hermes zerofactory check-stuck", desc: "Audit and reap long-running or hung worker processes" }

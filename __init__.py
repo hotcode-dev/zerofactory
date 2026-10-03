@@ -174,9 +174,9 @@ except ImportError:
     from profile_manager import ZF_PROFILES, ensure_zf_profiles  # type: ignore
 
 try:
-    from .issues import GitHubIssueClient, import_external_issue
+    from .issues import GitHubIssueClient, JiraIssueClient, import_external_issue
 except ImportError:
-    from issues import GitHubIssueClient, import_external_issue  # type: ignore
+    from issues import GitHubIssueClient, JiraIssueClient, import_external_issue  # type: ignore
 
 
 def register(ctx: Any):
@@ -283,11 +283,13 @@ def register(ctx: Any):
         # import-gh-issue
         p_import_gh = subparsers.add_parser(
             "import-gh-issue",
-            help="Import a GitHub issue into Zero Factory Kanban deterministically",
+            help="Import GitHub issue(s) into Zero Factory Kanban deterministically",
         )
         p_import_gh.add_argument(
             "issue",
-            help="GitHub issue number (e.g. 42, #42), URL (https://github.com/owner/repo/issues/42), or owner/repo#42",
+            nargs="?",
+            default=None,
+            help="GitHub issue number (e.g. 42, #42), URL, or owner/repo#42. Omit when using --sync.",
         )
         p_import_gh.add_argument(
             "--repo",
@@ -313,13 +315,113 @@ def register(ctx: Any):
         )
         p_import_gh.add_argument(
             "--assignee",
-            default="unassigned",
-            help="Assignee (default: unassigned)",
+            default="zf-orchestrator",
+            help="Assignee (default: zf-orchestrator)",
+        )
+        p_import_gh.add_argument(
+            "--label",
+            default="zerofactory",
+            help="Required human request label for AI investigation (default: 'zerofactory')",
+        )
+        p_import_gh.add_argument(
+            "--force",
+            action="store_true",
+            help="Import issue even if it lacks the AI request label",
+        )
+        p_import_gh.add_argument(
+            "--sync",
+            action="store_true",
+            help="Fetch and import all open issues flagged with the AI request label",
+        )
+        p_import_gh.add_argument(
+            "--type",
+            choices=["bug", "feature"],
+            default=None,
+            help="Explicit issue type override ('bug' or 'feature')",
         )
         p_import_gh.add_argument(
             "--actor",
             default=None,
             help="Actor executing import (defaults to HERMES_PROFILE or 'user')",
+        )
+
+        # import-jira-issue
+        p_import_jira = subparsers.add_parser(
+            "import-jira-issue",
+            help="Import Jira issue into Zero Factory Kanban deterministically",
+        )
+        p_import_jira.add_argument(
+            "issue",
+            help="Jira issue key (e.g. PROJ-123) or full URL (https://domain.atlassian.net/browse/PROJ-123)",
+        )
+        p_import_jira.add_argument(
+            "--project",
+            default=None,
+            help="Default Jira project key (e.g. PROJ)",
+        )
+        p_import_jira.add_argument(
+            "--board",
+            default=None,
+            help="Target board slug. Inferred from project or board's jira_url if omitted.",
+        )
+        p_import_jira.add_argument(
+            "--status",
+            default="triage",
+            choices=["triage", "todo", "running", "blocked", "done"],
+            help="Initial Kanban column (default: triage)",
+        )
+        p_import_jira.add_argument(
+            "--priority",
+            default=None,
+            choices=["P0", "P1", "P2", "P3"],
+            help="Priority override (inferred deterministically from issue labels if omitted)",
+        )
+        p_import_jira.add_argument(
+            "--assignee",
+            default="zf-orchestrator",
+            help="Assignee (default: zf-orchestrator)",
+        )
+        p_import_jira.add_argument(
+            "--type",
+            choices=["bug", "feature"],
+            default=None,
+            help="Explicit issue type override ('bug' or 'feature')",
+        )
+        p_import_jira.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing import (defaults to HERMES_PROFILE or 'user')",
+        )
+
+        # setup-gh-issues
+        p_setup_gh = subparsers.add_parser(
+            "setup-gh-issues",
+            help="Provision GitHub issue templates (.github/ISSUE_TEMPLATE) and standard labels",
+        )
+        p_setup_gh.add_argument(
+            "--board",
+            default=None,
+            help="Target board slug to create a P0 setup task or inspect board workspace.",
+        )
+        p_setup_gh.add_argument(
+            "--repo",
+            default=None,
+            help="Target GitHub repository (owner/repo). Inferred from git origin if omitted.",
+        )
+        p_setup_gh.add_argument(
+            "--path",
+            default=None,
+            help="Path to repository root (defaults to current working directory).",
+        )
+        p_setup_gh.add_argument(
+            "--no-labels",
+            action="store_true",
+            help="Skip creating GitHub labels via gh CLI",
+        )
+        p_setup_gh.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing setup (defaults to HERMES_PROFILE or 'user')",
         )
 
         # move
@@ -608,38 +710,227 @@ def register(ctx: Any):
                 or os.environ.get("HERMES_PROFILE")
                 or "user"
             )
+            req_label = getattr(args, "label", "zerofactory")
+            force = getattr(args, "force", False)
+            sync_mode = getattr(args, "sync", False)
+
             try:
-                issue = client.fetch_issue(args.issue, repo=getattr(args, "repo", None))
+                if sync_mode or not getattr(args, "issue", None):
+                    # Batch sync open issues with the AI investigation request label
+                    repo_to_sync = getattr(args, "repo", None)
+                    if not repo_to_sync:
+                        try:
+                            from scripts.setup_gh_issues import detect_repo_from_git
+                            repo_to_sync = detect_repo_from_git(Path("."))
+                        except Exception:
+                            pass
+                    if not repo_to_sync:
+                        print("Error: Specify --repo owner/repo or run from a git repository with remote origin.")
+                        sys.exit(1)
+
+                    print(f"\nScanning {repo_to_sync} for open issues labeled '{req_label}'...")
+                    issues_to_import = client.fetch_investigation_issues(
+                        repo=repo_to_sync, label=req_label, state="open"
+                    )
+                    if not issues_to_import:
+                        print(f"No open issues found with label '{req_label}'.\n")
+                        return
+
+                    print(f"Found {len(issues_to_import)} issue(s) requested for AI investigation.\n")
+                    imported_count = 0
+                    duplicate_count = 0
+                    for iss in issues_to_import:
+                        if getattr(args, "type", None):
+                            iss.issue_type = getattr(args, "type")
+                        res = import_external_issue(
+                            issue=iss,
+                            board_slug=getattr(args, "board", None),
+                            status=getattr(args, "status", "triage"),
+                            priority=getattr(args, "priority", None),
+                            assignee=getattr(args, "assignee", "zf-orchestrator"),
+                            actor=actor,
+                        )
+                        if res.get("duplicate"):
+                            duplicate_count += 1
+                            print(f"  [Duplicate] {res['issue_key']}: {res['title']} ({res['id']})")
+                        else:
+                            imported_count += 1
+                            print(f"  ✓ Imported  {res['issue_key']} [{res['issue_type'].capitalize()}] -> {res['id']}: {res['title']}")
+
+                    print(f"\nSync complete: {imported_count} imported, {duplicate_count} skipped duplicates.\n")
+                else:
+                    issue = client.fetch_issue(args.issue, repo=getattr(args, "repo", None))
+                    # Check human request label
+                    if not force and not issue.has_ai_request_label({req_label, "zerofactory", "ai-investigate", "ai-triage"}):
+                        print(
+                            f"\nError: GitHub issue #{issue.id} ('{issue.title}') lacks an explicit human AI investigation label "
+                            f"(expected '{req_label}' or 'ai-investigate').",
+                            file=sys.stderr,
+                        )
+                        print(
+                            "Zero Factory only imports issues where a human explicitly requested AI investigation.\n"
+                            f"Add the '{req_label}' label on GitHub, or pass --force to bypass this check.\n",
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
+
+                    if getattr(args, "type", None):
+                        issue.issue_type = getattr(args, "type")
+
+                    res = import_external_issue(
+                        issue=issue,
+                        board_slug=getattr(args, "board", None),
+                        status=getattr(args, "status", "triage"),
+                        priority=getattr(args, "priority", None),
+                        assignee=getattr(args, "assignee", "zf-orchestrator"),
+                        actor=actor,
+                    )
+                    if res.get("duplicate"):
+                        print(
+                            f"\n[Duplicate Skipped] {res.get('message', 'Task already exists')}"
+                        )
+                        print(f"  Task ID:    {res['id']}")
+                        print(f"  Issue:      {res['issue_key']} ({res['issue_url']})\n")
+                    else:
+                        print(f"\n✓ Successfully imported GitHub issue {res['issue_key']}")
+                        print(f"  Task ID:    {res['id']}")
+                        print(f"  Type:       {res['issue_type'].capitalize()}")
+                        print(f"  Board:      {res['board_slug']}")
+                        print(f"  Status:     {res['status']}")
+                        print(f"  Assignee:   {res['assignee']}")
+                        print(f"  Priority:   {res['priority']}")
+                        print(f"  Title:      {res['title']}")
+                        if res.get("issue_url"):
+                            print(f"  URL:        {res['issue_url']}")
+                        print()
+            except Exception as e:
+                print(
+                    f"\nError importing GitHub issue: {e}\n",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+        elif action == "import-jira-issue":
+            client = JiraIssueClient(
+                board_slug=getattr(args, "board", None),
+                default_project=getattr(args, "project", None),
+            )
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            try:
+                issue = client.fetch_issue(args.issue, project=getattr(args, "project", None))
+                if getattr(args, "type", None):
+                    issue.issue_type = getattr(args, "type")
+
                 res = import_external_issue(
                     issue=issue,
                     board_slug=getattr(args, "board", None),
                     status=getattr(args, "status", "triage"),
                     priority=getattr(args, "priority", None),
-                    assignee=getattr(args, "assignee", "unassigned"),
+                    assignee=getattr(args, "assignee", "zf-orchestrator"),
                     actor=actor,
                 )
                 if res.get("duplicate"):
                     print(
                         f"\n[Duplicate Skipped] {res.get('message', 'Task already exists')}"
                     )
-                    print(f"  Task ID:  {res['id']}")
-                    print(f"  Issue:    {res['issue_key']} ({res['issue_url']})\n")
+                    print(f"  Task ID:    {res['id']}")
+                    print(f"  Issue:      {res['issue_key']} ({res['issue_url']})\n")
                 else:
-                    print(f"\n✓ Successfully imported GitHub issue {res['issue_key']}")
-                    print(f"  Task ID:  {res['id']}")
-                    print(f"  Board:    {res['board_slug']}")
-                    print(f"  Status:   {res['status']}")
-                    print(f"  Priority: {res['priority']}")
-                    print(f"  Title:    {res['title']}")
+                    print(f"\n✓ Successfully imported Jira issue {res['issue_key']}")
+                    print(f"  Task ID:    {res['id']}")
+                    print(f"  Type:       {res['issue_type'].capitalize()}")
+                    print(f"  Board:      {res['board_slug']}")
+                    print(f"  Status:     {res['status']}")
+                    print(f"  Assignee:   {res['assignee']}")
+                    print(f"  Priority:   {res['priority']}")
+                    print(f"  Title:      {res['title']}")
                     if res.get("issue_url"):
-                        print(f"  URL:      {res['issue_url']}")
+                        print(f"  URL:        {res['issue_url']}")
                     print()
             except Exception as e:
                 print(
-                    f"\nError importing GitHub issue '{args.issue}': {e}\n",
+                    f"\nError importing Jira issue: {e}\n",
                     file=sys.stderr,
                 )
                 sys.exit(1)
+
+        elif action == "setup-gh-issues":
+            board_slug = getattr(args, "board", None)
+            actor_val = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            if board_slug:
+                try:
+                    from .dashboard.gh_issues_service import (
+                        check_board_gh_issues_status,
+                        create_gh_issues_setup_task,
+                    )
+                except Exception:
+                    from dashboard.gh_issues_service import (
+                        check_board_gh_issues_status,
+                        create_gh_issues_setup_task,
+                    )
+
+                status_info = check_board_gh_issues_status(board_slug)
+                if status_info.get("has_gh_issues"):
+                    print(
+                        f"Notice: Board '{board_slug}' already has GitHub Issue templates at {status_info.get('gh_issues_path')}."
+                    )
+
+                res = create_gh_issues_setup_task(board_slug, actor=actor_val)
+                if res.get("ok"):
+                    if res.get("already_exists"):
+                        print(
+                            f"✓ GitHub issues setup task already active: {res.get('task_id')} ({res.get('status')})"
+                        )
+                    else:
+                        print(f"✓ Created P0 GitHub issues setup task: {res.get('task_id')}")
+                else:
+                    print(f"✗ Failed to initiate setup task: {res.get('error')}")
+                return
+
+            from scripts.setup_gh_issues import setup_github_issues
+
+            target_path = Path(getattr(args, "path", None) or ".").resolve()
+            repo_arg = getattr(args, "repo", None)
+            create_labels = not getattr(args, "no_labels", False)
+
+            print("\nZero Factory GitHub Issue Setup:")
+            print(f"  Target Directory: {target_path}")
+
+            res = setup_github_issues(
+                repo_root=target_path,
+                repo=repo_arg,
+                create_labels=create_labels,
+            )
+
+            print("\n✓ Generated GitHub Issue Templates:")
+            for t in res["templates"]:
+                print(f"  - {t}")
+
+            if res.get("label_results"):
+                l_res = res["label_results"]
+                if l_res.get("created"):
+                    print(
+                        f"\n✓ Provisioned GitHub Labels in {res.get('target_repo')}:"
+                    )
+                    for lbl in l_res["created"]:
+                        print(f"  ✓ {lbl}")
+                if l_res.get("failed"):
+                    print("\n⚠️ Label Provisioning Warnings:")
+                    for err in l_res["failed"]:
+                        print(f"  - {err}")
+                if l_res.get("error"):
+                    print(f"\n⚠️ {l_res['error']}")
+            print(
+                "\nSetup complete! Issues filed with the 'zerofactory' label can now be triaged by Zero Factory AI.\n"
+            )
 
         elif action == "move":
             actor = (

@@ -110,6 +110,7 @@ def list_boards():
 
         for b in boards:
             b["target_branch"] = (b.get("target_branch") or "").strip()
+            b["jira_url"] = (b.get("jira_url") or "").strip()
             b["auto_record_memory"] = bool(b.get("auto_record_memory", 1))
             try:
                 b["additional_reviewer_usernames"] = json.loads(
@@ -148,6 +149,7 @@ def create_board(req: BoardCreate):
 
     desc = (req.description or "").strip()
     target_branch = (req.target_branch or "").strip()
+    jira_url = (req.jira_url or "").strip()
     mcr = max(1, req.max_concurrent_running or 1)
     arm = 1 if (req.auto_record_memory is None or req.auto_record_memory) else 0
     reviewer_usernames = sorted(
@@ -167,7 +169,7 @@ def create_board(req: BoardCreate):
             )
 
         cursor.execute(
-            "INSERT INTO boards (slug, description, git_url, target_branch, max_concurrent_running, auto_record_memory, additional_reviewer_usernames, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO boards (slug, description, git_url, target_branch, max_concurrent_running, auto_record_memory, additional_reviewer_usernames, jira_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 slug,
                 desc,
@@ -176,6 +178,7 @@ def create_board(req: BoardCreate):
                 mcr,
                 arm,
                 json.dumps(reviewer_usernames),
+                jira_url,
                 now,
                 now,
             ),
@@ -352,6 +355,9 @@ def update_board(slug: str, req: BoardUpdate):
             )
             updates.append("additional_reviewer_usernames = ?")
             params.append(json.dumps(reviewer_usernames))
+        if req.jira_url is not None:
+            updates.append("jira_url = ?")
+            params.append(req.jira_url.strip())
         if updates:
             updates.append("updated_at = ?")
             params.append(now)
@@ -486,5 +492,38 @@ def setup_board_openwiki_endpoint(slug: str):
         raise HTTPException(
             status_code=400,
             detail=res.get("error", "Failed to initiate OpenWiki setup task"),
+        )
+    return res
+
+
+@router.get("/boards/{slug}/gh-issues-status")
+def get_board_gh_issues_status_endpoint(slug: str):
+    """Get the GitHub issue templates status and active setup task status for a board."""
+    try:
+        from ..gh_issues_service import check_board_gh_issues_status
+    except (ImportError, ValueError):
+        from gh_issues_service import check_board_gh_issues_status  # type: ignore
+
+    res = check_board_gh_issues_status(slug)
+    if not res.get("ok"):
+        raise HTTPException(
+            status_code=404, detail=res.get("error", f"Board '{slug}' not found")
+        )
+    return res
+
+
+@router.post("/boards/{slug}/setup-gh-issues")
+def setup_board_gh_issues_endpoint(slug: str):
+    """Trigger creation of a P0 setup task to generate GitHub Issue templates and labels."""
+    try:
+        from ..gh_issues_service import create_gh_issues_setup_task
+    except (ImportError, ValueError):
+        from gh_issues_service import create_gh_issues_setup_task  # type: ignore
+
+    res = create_gh_issues_setup_task(slug)
+    if not res.get("ok"):
+        raise HTTPException(
+            status_code=400,
+            detail=res.get("error", "Failed to initiate GitHub issues setup task"),
         )
     return res

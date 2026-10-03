@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS boards (
     max_concurrent_running INTEGER NOT NULL DEFAULT 1,
     auto_record_memory INTEGER NOT NULL DEFAULT 1,
     additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]',
+    jira_url TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );

@@ -79,6 +79,10 @@ class BoardCreate(BaseModel):
         default_factory=list,
         description="Additional GitHub usernames whose PR feedback is trusted",
     )
+    jira_url: str | None = Field(
+        default="",
+        description="Optional Jira Cloud link / project URL (e.g. https://your-domain.atlassian.net)",
+    )
     auto_setup_precommit: bool | None = Field(
         default=False,
         description="Automatically trigger setup task for .zerofactory/precommit.sh if missing",
@@ -102,6 +106,10 @@ class BoardUpdate(BaseModel):
     additional_reviewer_usernames: list[str] | None = Field(
         default=None,
         description="Additional GitHub usernames whose PR feedback is trusted",
+    )
+    jira_url: str | None = Field(
+        default=None,
+        description="Optional Jira Cloud link / project URL (e.g. https://your-domain.atlassian.net)",
     )
 
 

@@ -108,6 +108,7 @@ class TestExternalIssueModel:
             id="42",
             key="#42",
             title="Fix broken link",
+            issue_type="bug",
             body="Steps to reproduce:\n1. Click home\n2. 404",
             url="https://github.com/org/repo/issues/42",
             author="alice",
@@ -115,11 +116,45 @@ class TestExternalIssueModel:
             assignees=["bob"],
         )
         desc = issue.to_markdown_description()
-        assert "## Github Issue #42: Fix broken link" in desc
+        assert "## Github Bug #42: Fix broken link" in desc
+        assert "- **Type**: `Bug`" in desc
         assert "- **URL**: https://github.com/org/repo/issues/42" in desc
         assert "- **Author**: @alice" in desc
         assert "- **Labels**: `bug`, `p1`" in desc
         assert "Steps to reproduce:" in desc
+
+    def test_issue_type_inference_bug_and_feature(self):
+        bug_issue = ExternalIssue(
+            source="github", id="1", key="#1", title="App crashes on startup", labels=["bug"]
+        )
+        assert bug_issue.infer_issue_type() == "bug"
+
+        feat_issue = ExternalIssue(
+            source="github", id="2", key="#2", title="Add dark mode support", labels=["enhancement"]
+        )
+        assert feat_issue.infer_issue_type() == "feature"
+        assert feat_issue.infer_category() == "feature"
+
+        title_feat_issue = ExternalIssue(
+            source="github", id="3", key="#3", title="[Feature] Export report to CSV", labels=[]
+        )
+        assert title_feat_issue.infer_issue_type() == "feature"
+
+    def test_has_ai_request_label(self):
+        labeled_issue = ExternalIssue(
+            source="github", id="1", key="#1", title="Investigate leak", labels=["zerofactory"]
+        )
+        assert labeled_issue.has_ai_request_label()
+
+        ai_inv_issue = ExternalIssue(
+            source="github", id="2", key="#2", title="Investigate leak", labels=["ai-investigate"]
+        )
+        assert ai_inv_issue.has_ai_request_label()
+
+        unlabeled_issue = ExternalIssue(
+            source="github", id="3", key="#3", title="Random question", labels=["question"]
+        )
+        assert not unlabeled_issue.has_ai_request_label()
 
 
 class TestGitHubParserAndClient:
@@ -161,7 +196,7 @@ class TestGitHubParserAndClient:
             "url": "https://github.com/my-org/my-repo/issues/42",
             "author": {"login": "devuser"},
             "state": "OPEN",
-            "labels": [{"name": "bug"}, {"name": "p0"}],
+            "labels": [{"name": "bug"}, {"name": "p0"}, {"name": "zerofactory"}],
             "assignees": [{"login": "alice"}],
         }
         mock_run.return_value = subprocess.CompletedProcess(
@@ -177,9 +212,36 @@ class TestGitHubParserAndClient:
         assert issue.title == "Fix token expiration"
         assert issue.body == "Tokens expire immediately on login."
         assert issue.author == "devuser"
-        assert issue.labels == ["bug", "p0"]
+        assert issue.labels == ["bug", "p0", "zerofactory"]
         assert issue.assignees == ["alice"]
         assert issue.infer_priority() == "P0"
+        assert issue.issue_type == "bug"
+        assert issue.has_ai_request_label()
+
+    @patch("subprocess.run")
+    def test_fetch_investigation_issues(self, mock_run):
+        fake_list = [
+            {
+                "number": 10,
+                "title": "Slow query in dashboard",
+                "body": "Optimization needed",
+                "url": "https://github.com/my-org/my-repo/issues/10",
+                "author": {"login": "alice"},
+                "state": "OPEN",
+                "labels": [{"name": "zerofactory"}, {"name": "enhancement"}],
+                "assignees": [],
+            }
+        ]
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps(fake_list), stderr=""
+        )
+
+        client = GitHubIssueClient(default_repo="my-org/my-repo")
+        issues = client.fetch_investigation_issues(label="zerofactory")
+        assert len(issues) == 1
+        assert issues[0].key == "#10"
+        assert issues[0].issue_type == "feature"
+        assert issues[0].has_ai_request_label()
 
     @patch("subprocess.run")
     def test_fetch_issue_gh_error(self, mock_run):
@@ -220,7 +282,7 @@ class TestJiraParserAndClient:
                 "description": "Add PKCE validation for SPA clients",
                 "reporter": {"displayName": "Security Lead"},
                 "status": {"name": "In Progress"},
-                "labels": ["security", "p1"],
+                "labels": ["security", "p1", "feature"],
                 "assignee": {"displayName": "Dev Two"},
             }
         }
@@ -231,9 +293,22 @@ class TestJiraParserAndClient:
         assert issue.title == "Implement OAuth2 PKCE"
         assert issue.url == "https://company.atlassian.net/browse/AUTH-101"
         assert issue.author == "Security Lead"
-        assert issue.labels == ["security", "p1"]
+        assert issue.labels == ["security", "p1", "feature"]
         assert issue.infer_category() == "security"
         assert issue.infer_priority() == "P0"
+        assert issue.issue_type == "feature"
+
+    def test_jira_client_resolves_base_url_from_board(self, tmp_path, monkeypatch):
+        db_file = tmp_path / "zerofactory.db"
+        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
+        create_board(
+            BoardCreate(
+                git_url="https://github.com/myorg/myrepo.git",
+                jira_url="https://myteam.atlassian.net",
+            )
+        )
+        client = JiraIssueClient(board_slug="myorg-myrepo")
+        assert client.base_url == "https://myteam.atlassian.net"
 
 
 class TestImporterIdempotencyAndDeterminism:
@@ -254,10 +329,11 @@ class TestImporterIdempotencyAndDeterminism:
             id="42",
             key="#42",
             title="Crash when parsing bad yaml",
+            issue_type="bug",
             body="YAML parse exception on empty file",
             url="https://github.com/hotcode-dev/zerofactory/issues/42",
             author="tester",
-            labels=["bug", "critical"],
+            labels=["bug", "critical", "zerofactory"],
             repo_or_project="hotcode-dev/zerofactory",
         )
 
@@ -269,6 +345,9 @@ class TestImporterIdempotencyAndDeterminism:
         assert "gh42" in task_id
         assert res1["priority"] == "P0"
         assert res1["category"] == "bug-fix"
+        assert res1["status"] == "triage"
+        assert res1["assignee"] == "zf-orchestrator"
+        assert res1["title"] == "[Triage] [Bug] [#42] Crash when parsing bad yaml"
 
         # 2. Second import of same issue: must deterministically return duplicate
         res2 = import_external_issue(issue, board_slug=self.board_slug)
@@ -288,12 +367,65 @@ class TestImporterIdempotencyAndDeterminism:
             assert meta["external_issue"]["source"] == "github"
             assert meta["external_issue"]["id"] == "42"
             assert meta["external_issue"]["key"] == "#42"
+            assert meta["external_issue"]["issue_type"] == "bug"
             assert meta["dedup_key"] == issue.to_dedup_key()
+
+    def test_import_feature_issue(self):
+        issue = ExternalIssue(
+            source="github",
+            id="43",
+            key="#43",
+            title="Add dark mode support",
+            issue_type="feature",
+            body="Need dark mode toggle",
+            url="https://github.com/hotcode-dev/zerofactory/issues/43",
+            author="tester",
+            labels=["feature", "zerofactory"],
+            repo_or_project="hotcode-dev/zerofactory",
+        )
+        res = import_external_issue(issue, board_slug=self.board_slug)
+        assert res["ok"]
+        assert res["title"] == "[Triage] [Feature] [#43] Add dark mode support"
+        assert res["category"] == "feature"
+        assert res["assignee"] == "zf-orchestrator"
+
+    def test_resolve_board_matching_jira_url(self, tmp_path, monkeypatch):
+        db_file = tmp_path / "zerofactory.db"
+        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
+        create_board(
+            BoardCreate(
+                git_url="https://github.com/corp/core.git",
+                jira_url="https://corp.atlassian.net",
+            )
+        )
+        matched_slug = resolve_board_for_issue("corp.atlassian.net", db_path=db_file)
+        assert matched_slug == "corp-core"
+
+    def test_board_crud_with_jira_url(self, tmp_path, monkeypatch):
+        from dashboard.routes.boards import update_board, list_boards
+        from dashboard.models import BoardUpdate
+
+        db_file = tmp_path / "zerofactory.db"
+        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
+        create_board(
+            BoardCreate(
+                git_url="https://github.com/myorg/alpha.git",
+                jira_url="https://alpha.atlassian.net",
+            )
+        )
+        boards = list_boards()["boards"]
+        alpha = next(b for b in boards if b["slug"] == "myorg-alpha")
+        assert alpha["jira_url"] == "https://alpha.atlassian.net"
+
+        update_board("myorg-alpha", BoardUpdate(jira_url="https://new-alpha.atlassian.net"))
+        boards_after = list_boards()["boards"]
+        alpha_after = next(b for b in boards_after if b["slug"] == "myorg-alpha")
+        assert alpha_after["jira_url"] == "https://new-alpha.atlassian.net"
 
 
 class TestCliImportGhIssue:
     @patch("issues.github.subprocess.run")
-    def test_cli_import_gh_issue_flow(self, mock_gh_run, tmp_path, monkeypatch, capsys):
+    def test_cli_import_gh_issue_rejects_without_label(self, mock_gh_run, tmp_path, monkeypatch, capsys):
         import argparse
         import __init__ as plugin_main
 
@@ -303,12 +435,12 @@ class TestCliImportGhIssue:
 
         fake_issue = {
             "number": 99,
-            "title": "Bug in auth session",
-            "body": "Auth session drops",
+            "title": "Unlabeled issue",
+            "body": "No request label",
             "url": "https://github.com/my-org/my-repo/issues/99",
-            "author": {"login": "tester"},
+            "author": {"login": "random_user"},
             "state": "OPEN",
-            "labels": [{"name": "bug"}, {"name": "p0"}],
+            "labels": [{"name": "question"}],
             "assignees": [],
         }
         mock_gh_run.return_value = subprocess.CompletedProcess(
@@ -318,8 +450,6 @@ class TestCliImportGhIssue:
         fake_ctx = MagicMock()
         fake_ctx.register_cli_command = MagicMock()
         plugin_main.register(fake_ctx)
-
-        # Get the registered runner callback
         cmd_runner = fake_ctx.register_cli_command.call_args[1]["handler_fn"]
 
         args = argparse.Namespace(
@@ -329,17 +459,143 @@ class TestCliImportGhIssue:
             board=None,
             status="triage",
             priority=None,
-            assignee="unassigned",
+            assignee="zf-orchestrator",
+            label="zerofactory",
+            force=False,
+            sync=False,
+            type=None,
+            actor="test-user",
+        )
+
+        with pytest.raises(SystemExit):
+            cmd_runner(args)
+        err = capsys.readouterr().err
+        assert "lacks an explicit human AI investigation label" in err
+
+    @patch("issues.github.subprocess.run")
+    def test_cli_import_gh_issue_flow_with_label_and_force(self, mock_gh_run, tmp_path, monkeypatch, capsys):
+        import argparse
+        import __init__ as plugin_main
+
+        db_file = tmp_path / "zerofactory.db"
+        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
+        create_board(BoardCreate(git_url="https://github.com/my-org/my-repo.git"))
+
+        fake_issue = {
+            "number": 101,
+            "title": "Bug in auth session",
+            "body": "Auth session drops",
+            "url": "https://github.com/my-org/my-repo/issues/101",
+            "author": {"login": "tester"},
+            "state": "OPEN",
+            "labels": [{"name": "bug"}, {"name": "p0"}, {"name": "zerofactory"}],
+            "assignees": [],
+        }
+        mock_gh_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps(fake_issue), stderr=""
+        )
+
+        fake_ctx = MagicMock()
+        fake_ctx.register_cli_command = MagicMock()
+        plugin_main.register(fake_ctx)
+        cmd_runner = fake_ctx.register_cli_command.call_args[1]["handler_fn"]
+
+        args = argparse.Namespace(
+            action="import-gh-issue",
+            issue="101",
+            repo="my-org/my-repo",
+            board=None,
+            status="triage",
+            priority=None,
+            assignee="zf-orchestrator",
+            label="zerofactory",
+            force=False,
+            sync=False,
+            type=None,
             actor="test-user",
         )
 
         # First run: should successfully import
         cmd_runner(args)
         out = capsys.readouterr().out
-        assert "Successfully imported GitHub issue #99" in out
+        assert "Successfully imported GitHub issue #101" in out
+        assert "Type:       Bug" in out
+        assert "Assignee:   zf-orchestrator" in out
         assert "P0" in out
 
         # Second run: should report duplicate
         cmd_runner(args)
         out2 = capsys.readouterr().out
         assert "[Duplicate Skipped]" in out2
+
+    @patch("issues.jira.JiraIssueClient.fetch_issue")
+    def test_cli_import_jira_issue(self, mock_jira_fetch, tmp_path, monkeypatch, capsys):
+        import argparse
+        import __init__ as plugin_main
+
+        db_file = tmp_path / "zerofactory.db"
+        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
+        create_board(
+            BoardCreate(
+                git_url="https://github.com/corp/jira-proj.git",
+                jira_url="https://corp.atlassian.net",
+            )
+        )
+
+        mock_jira_fetch.return_value = ExternalIssue(
+            source="jira",
+            id="PROJ-202",
+            key="PROJ-202",
+            title="Database migration lockup",
+            body="Postgres transaction hangs",
+            repo_or_project="PROJ",
+            author="DBA",
+            labels=["bug", "p0"],
+            issue_type="bug",
+        )
+
+        fake_ctx = MagicMock()
+        fake_ctx.register_cli_command = MagicMock()
+        plugin_main.register(fake_ctx)
+        cmd_runner = fake_ctx.register_cli_command.call_args[1]["handler_fn"]
+
+        args = argparse.Namespace(
+            action="import-jira-issue",
+            issue="PROJ-202",
+            project="PROJ",
+            board="corp-jira-proj",
+            status="triage",
+            priority=None,
+            assignee="zf-orchestrator",
+            type=None,
+            actor="test-user",
+        )
+
+        cmd_runner(args)
+        out = capsys.readouterr().out
+        assert "Successfully imported Jira issue PROJ-202" in out
+        assert "Type:       Bug" in out
+        assert "Board:      corp-jira-proj" in out
+        assert "Assignee:   zf-orchestrator" in out
+
+
+class TestSetupGhIssuesScript:
+    def test_setup_github_issues_generates_templates(self, tmp_path):
+        from scripts.setup_gh_issues import setup_github_issues
+
+        res = setup_github_issues(repo_root=tmp_path, create_labels=False)
+        assert res["ok"]
+        assert len(res["templates"]) == 3
+
+        bug_template = tmp_path / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml"
+        assert bug_template.exists()
+        content = bug_template.read_text(encoding="utf-8")
+        assert 'labels: ["bug", "zerofactory"]' in content
+        assert "Zero Factory AI Bug Report" in content
+
+        feature_template = tmp_path / ".github" / "ISSUE_TEMPLATE" / "feature_request.yml"
+        assert feature_template.exists()
+        f_content = feature_template.read_text(encoding="utf-8")
+        assert 'labels: ["feature", "zerofactory"]' in f_content
+        assert "Zero Factory AI Feature Proposal" in f_content
+

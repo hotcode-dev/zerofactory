@@ -131,6 +131,7 @@ export function ZeroFactoryKanbanApp() {
       max_concurrent_running: 1,
       auto_record_memory: true,
       additional_reviewer_usernames: "",
+      jira_url: "",
       auto_setup_precommit: true
     });
 
@@ -141,7 +142,8 @@ export function ZeroFactoryKanbanApp() {
       target_branch: "",
       max_concurrent_running: 1,
       auto_record_memory: true,
-      additional_reviewer_usernames: ""
+      additional_reviewer_usernames: "",
+      jira_url: ""
     });
 
     const [precommitStatus, setPrecommitStatus] = useState(null);
@@ -151,6 +153,10 @@ export function ZeroFactoryKanbanApp() {
     const [openwikiStatus, setOpenwikiStatus] = useState(null);
     const [isLoadingOpenwiki, setIsLoadingOpenwiki] = useState(false);
     const [isSettingUpOpenwiki, setIsSettingUpOpenwiki] = useState(false);
+
+    const [ghIssuesStatus, setGhIssuesStatus] = useState(null);
+    const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
+    const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
 
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
@@ -414,6 +420,49 @@ export function ZeroFactoryKanbanApp() {
       }
     };
 
+    // GitHub Issues status loader
+    const loadGhIssuesStatus = useCallback(async (boardSlug) => {
+      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      if (!bSlug || bSlug === "all") {
+        setGhIssuesStatus(null);
+        return;
+      }
+      setIsLoadingGhIssues(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/gh-issues-status");
+        if (res && res.ok) {
+          setGhIssuesStatus(res);
+        } else {
+          setGhIssuesStatus(null);
+        }
+      } catch (err) {
+        setGhIssuesStatus(null);
+      } finally {
+        setIsLoadingGhIssues(false);
+      }
+    }, [fetchJSON]);
+
+    const handleTriggerGhIssuesSetup = async (boardSlug) => {
+      const bSlug = boardSlug || selectedBoard;
+      if (!bSlug || bSlug === "all") return;
+      setIsSettingUpGhIssues(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-gh-issues", {
+          method: "POST"
+        });
+        if (res && res.ok) {
+          showToast(res.message || "Created setup task for GitHub Issue templates & labels!", "success");
+          await Promise.all([loadGhIssuesStatus(bSlug), loadTasksAndStats(bSlug)]);
+        } else {
+          showToast((res && (res.detail || res.error || res.message)) || "Failed to trigger GitHub issues setup", "error");
+        }
+      } catch (err) {
+        showToast("Error initiating setup: " + (err.message || String(err)), "error");
+      } finally {
+        setIsSettingUpGhIssues(false);
+      }
+    };
+
     // Load Tasks & Stats
     const loadTasksAndStats = useCallback(async (boardSlug) => {
       const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
@@ -439,9 +488,11 @@ export function ZeroFactoryKanbanApp() {
         if (bSlug && bSlug !== "all") {
           loadPrecommitStatus(bSlug);
           loadOpenwikiStatus(bSlug);
+          loadGhIssuesStatus(bSlug);
         } else {
           setPrecommitStatus(null);
           setOpenwikiStatus(null);
+          setGhIssuesStatus(null);
         }
       } catch (err) {
         console.error("Failed to load kanban data:", err);
@@ -1287,13 +1338,14 @@ export function ZeroFactoryKanbanApp() {
             max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
             additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
+            jira_url: (newBoardForm.jira_url || "").trim(),
             auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false)
           })
         });
         const createdSlug = (res && res.slug) ? res.slug : autoSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        setNewBoardForm({ git_url: "", description: "", target_branch: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "", auto_setup_precommit: true });
+        setNewBoardForm({ git_url: "", description: "", target_branch: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "", jira_url: "", auto_setup_precommit: true });
         setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
@@ -1346,10 +1398,12 @@ export function ZeroFactoryKanbanApp() {
           target_branch: curr.target_branch || "",
           max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1,
           auto_record_memory: curr.auto_record_memory !== false,
-          additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
+          additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : "",
+          jira_url: curr.jira_url || ""
         });
         loadPrecommitStatus(curr.slug);
         loadOpenwikiStatus(curr.slug);
+        loadGhIssuesStatus(curr.slug);
         setShowEditBoardModal(true);
       }
     };
@@ -1369,7 +1423,8 @@ export function ZeroFactoryKanbanApp() {
             target_branch: (editBoardForm.target_branch || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
-            additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
+            additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
+            jira_url: (editBoardForm.jira_url || "").trim()
           })
         });
         showToast("Board '" + editBoardForm.slug + "' updated!", "success");
@@ -1637,10 +1692,13 @@ export function ZeroFactoryKanbanApp() {
                     selectedBoard,
                     precommitStatus,
                     openwikiStatus,
+                    ghIssuesStatus,
                     isSettingUpPrecommit,
                     handleTriggerPrecommitSetup,
                     isSettingUpOpenwiki,
-                    handleTriggerOpenwikiSetup
+                    handleTriggerOpenwikiSetup,
+                    isSettingUpGhIssues,
+                    handleTriggerGhIssuesSetup
                   }),
                   React.createElement(KanbanBoard, {
                     tasksByColumn,
@@ -1719,7 +1777,10 @@ export function ZeroFactoryKanbanApp() {
         handleTriggerPrecommitSetup,
         openwikiStatus,
         isSettingUpOpenwiki,
-        handleTriggerOpenwikiSetup
+        handleTriggerOpenwikiSetup,
+        ghIssuesStatus,
+        isSettingUpGhIssues,
+        handleTriggerGhIssuesSetup
       }),
       React.createElement(SettingsModal, {
         showSettingsModal,

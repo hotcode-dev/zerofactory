@@ -20,7 +20,10 @@ export function EditBoardModal(props) {
     handleTriggerPrecommitSetup = () => {},
     openwikiStatus = null,
     isSettingUpOpenwiki = false,
-    handleTriggerOpenwikiSetup = () => {}
+    handleTriggerOpenwikiSetup = () => {},
+    ghIssuesStatus = null,
+    isSettingUpGhIssues = false,
+    handleTriggerGhIssuesSetup = () => {}
   } = props;
 
   if (!showEditBoardModal) return null;
@@ -136,6 +139,33 @@ export function EditBoardModal(props) {
                       onChange: (e) => setEditBoardForm({ ...editBoardForm, additional_reviewer_usernames: e.target.value })
                     }),
                     React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"),
+                      editBoardForm.jira_url &&
+                      React.createElement(
+                        "a",
+                        {
+                          href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
+                          target: "_blank",
+                          rel: "noreferrer",
+                          className: "text-[11px] font-medium text-sky-400 hover:text-sky-300 cursor-pointer flex items-center gap-1 transition-colors"
+                        },
+                        "↗ Open Jira Cloud"
+                      )
+                    ),
+                    React.createElement("input", {
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+                      placeholder: "https://your-domain.atlassian.net or project link",
+                      value: editBoardForm.jira_url || "",
+                      onChange: (e) => setEditBoardForm({ ...editBoardForm, jira_url: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link your Jira Cloud instance or project to this board for Jira issue references and triage.")
                   ),
                   React.createElement(
                     "div",
@@ -275,6 +305,110 @@ export function EditBoardModal(props) {
                                 ? "🔄 Regenerate OpenWiki"
                                 : "📖 Setup OpenWiki")
                         )
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between" },
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🏷️ GitHub Issue Templates & Labels"),
+                          React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Bug/Feature templates with 'zerofactory' AI triage labels (.github/ISSUE_TEMPLATE/).")
+                        ),
+                        React.createElement(
+                          "span",
+                          {
+                            className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " +
+                              (ghIssuesStatus && ghIssuesStatus.has_gh_issues
+                                ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                                : ghIssuesStatus && ghIssuesStatus.pending_task_id
+                                ? "bg-purple-950/80 text-purple-300 border border-purple-800/60"
+                                : "bg-amber-950/80 text-amber-300 border border-amber-800/60")
+                          },
+                          ghIssuesStatus && ghIssuesStatus.has_gh_issues
+                            ? "Configured ✓"
+                            : ghIssuesStatus && ghIssuesStatus.pending_task_id
+                            ? "Setup in Progress ⏳"
+                            : "Not Configured ⚠️"
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between gap-2" },
+                        React.createElement(
+                          "span",
+                          { className: "text-[11px] text-slate-400 font-mono truncate" },
+                          ghIssuesStatus && ghIssuesStatus.gh_issues_path
+                            ? ghIssuesStatus.gh_issues_path
+                            : ".github/ISSUE_TEMPLATE/"
+                        ),
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            disabled: isSettingUpGhIssues,
+                            onClick: () => handleTriggerGhIssuesSetup(editBoardForm.slug),
+                            className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                          },
+                          isSettingUpGhIssues
+                            ? "Initiating..."
+                            : (ghIssuesStatus && ghIssuesStatus.has_gh_issues
+                                ? "🔄 Regenerate Templates"
+                                : "🏷️ Setup GitHub Issues")
+                        )
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between" },
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🔷 Jira Cloud Integration"),
+                          React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link Atlassian Jira Cloud instance/project for deterministic issue import into triage.")
+                        ),
+                        React.createElement(
+                          "span",
+                          {
+                            className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " +
+                              (editBoardForm.jira_url && editBoardForm.jira_url.trim()
+                                ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60"
+                                : "bg-slate-800 text-slate-400 border border-slate-700/60")
+                          },
+                          editBoardForm.jira_url && editBoardForm.jira_url.trim()
+                            ? "Linked ✓"
+                            : "Optional ⚪"
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center justify-between gap-2" },
+                        React.createElement(
+                          "span",
+                          { className: "text-[11px] text-slate-400 font-mono truncate" },
+                          editBoardForm.jira_url && editBoardForm.jira_url.trim()
+                            ? editBoardForm.jira_url.trim()
+                            : "No Jira link configured (optional)"
+                        ),
+                        editBoardForm.jira_url && editBoardForm.jira_url.trim() ? (
+                          React.createElement(
+                            "a",
+                            {
+                              href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
+                              target: "_blank",
+                              rel: "noreferrer",
+                              className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
+                            },
+                            "🔗 Open Jira"
+                          )
+                        ) : null
                       )
                     )
                   )

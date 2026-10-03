@@ -2708,6 +2708,9 @@
   .hover\:text-rose-300:hover {
     color: var(--color-rose-300);
   }
+  .hover\:text-sky-300:hover {
+    color: var(--color-sky-300);
+  }
   .hover\:text-slate-200:hover {
     color: var(--color-slate-200);
   }

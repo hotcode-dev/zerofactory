@@ -238,6 +238,26 @@ except (ImportError, ValueError):
         create_openwiki_setup_task,
     )
 
+# --- Re-export GitHub Issues Service -----------------------------------------
+try:
+    from .gh_issues_service import (
+        GH_ISSUES_RELATIVE_DIR,
+        SETUP_GH_ISSUES_TASK_DEDUP_KEY,
+        SETUP_GH_ISSUES_TASK_TITLE,
+        build_gh_issues_setup_task_prompt,
+        check_board_gh_issues_status,
+        create_gh_issues_setup_task,
+    )
+except (ImportError, ValueError):
+    from gh_issues_service import (  # type: ignore
+        GH_ISSUES_RELATIVE_DIR,
+        SETUP_GH_ISSUES_TASK_DEDUP_KEY,
+        SETUP_GH_ISSUES_TASK_TITLE,
+        build_gh_issues_setup_task_prompt,
+        check_board_gh_issues_status,
+        create_gh_issues_setup_task,
+    )
+
 # --- Routes and Master APIRouter ---------------------------------------------
 try:
     from .routes import (
