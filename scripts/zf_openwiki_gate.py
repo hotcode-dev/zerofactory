@@ -179,70 +179,34 @@ def check_openwiki_gate(
     if not head_sha:
         return False, f"Unable to resolve git HEAD at {repo_dir}; skipping."
 
-    # 6. Check state and git log for non-openwiki commits
-    state = load_state()
-    board_state = state.get(slug, {})
-    last_scanned_sha = board_state.get("last_scanned_sha")
-
-    # If we have a recorded last_scanned_sha:
-    if last_scanned_sha:
-        if head_sha == last_scanned_sha:
-            return (
-                False,
-                f"No new commits on branch (HEAD={head_sha[:8]}); OpenWiki is up to date.",
-            )
-
-        diff_log = _run_cmd(
-            [
-                "git",
-                "log",
-                f"{last_scanned_sha}..HEAD",
-                "--oneline",
-                "--",
-                ".",
-                ":(exclude)openwiki",
-            ],
-            cwd=repo_dir,
-        )
-        if not diff_log:
-            board_state["last_scanned_sha"] = head_sha
-            state[slug] = board_state
-            save_state(state)
-            return (
-                False,
-                f"No code changes since last scan (HEAD={head_sha[:8]}); OpenWiki is up to date.",
-            )
-
-        commit_count = len(diff_log.splitlines())
-        board_state["last_scanned_sha"] = head_sha
-        board_state["last_updated_at"] = int(time.time())
-        state[slug] = board_state
-        save_state(state)
-        return (
-            True,
-            f"Detected {commit_count} branch update(s) since {last_scanned_sha[:8]}; waking agent to update OpenWiki.",
-        )
-
-    # If no last_scanned_sha recorded yet:
+    # 6. Check last openwiki commit from git log (or state fallback)
     last_openwiki_commit = _run_cmd(
         ["git", "log", "-1", "--format=%H", "--", "openwiki"],
         cwd=repo_dir,
     )
-    if not last_openwiki_commit:
-        board_state["last_scanned_sha"] = head_sha
-        board_state["last_updated_at"] = int(time.time())
-        state[slug] = board_state
-        save_state(state)
+
+    state = load_state()
+    board_state = state.get(slug, {})
+    last_scanned_sha = board_state.get("last_scanned_sha")
+    base_commit = last_openwiki_commit or last_scanned_sha
+
+    if not base_commit:
         return (
             True,
             "No previous openwiki commit history found; waking agent to update OpenWiki.",
+        )
+
+    if head_sha == base_commit:
+        return (
+            False,
+            f"No new commits on branch (HEAD={head_sha[:8]}); OpenWiki is up to date.",
         )
 
     diff_log = _run_cmd(
         [
             "git",
             "log",
-            f"{last_openwiki_commit}..HEAD",
+            f"{base_commit}..HEAD",
             "--oneline",
             "--",
             ".",
@@ -251,22 +215,15 @@ def check_openwiki_gate(
         cwd=repo_dir,
     )
     if not diff_log:
-        board_state["last_scanned_sha"] = head_sha
-        state[slug] = board_state
-        save_state(state)
         return (
             False,
-            f"No branch updates since last OpenWiki commit ({last_openwiki_commit[:8]}); OpenWiki is up to date.",
+            f"No code changes since last OpenWiki commit ({base_commit[:8]}); OpenWiki is up to date.",
         )
 
     commit_count = len(diff_log.splitlines())
-    board_state["last_scanned_sha"] = head_sha
-    board_state["last_updated_at"] = int(time.time())
-    state[slug] = board_state
-    save_state(state)
     return (
         True,
-        f"Detected {commit_count} branch update(s) since last OpenWiki commit ({last_openwiki_commit[:8]}); waking agent to update OpenWiki.",
+        f"Detected {commit_count} branch update(s) since {base_commit[:8]}; waking agent to update OpenWiki.",
     )
 
 
