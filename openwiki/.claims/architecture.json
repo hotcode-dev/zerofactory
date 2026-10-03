@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:baf51f057747fcfa1984fa4327b855daad4613bcb672c7a88138eae25e7cb4bb",
+  "pageVersion": "sha256:a8c354ae882d28fca3ee8d893fdd57a91ce4a3d7b640f1d487fbc4ecfc038149",
   "claims": [
     {
       "id": "claim_80cf282ecc34488f9bf7da2c69151cc1",
@@ -103,10 +103,24 @@
           "version": "repo-file-v1:sha256:226de700a54e54364a8ba3c72357d249105fb9996b03fb53696c211a087488c3"
         }
       ]
+    },
+    {
+      "id": "claim_d88946e4e0b34fc286bc7066f4bad17c",
+      "statement": "The issues/ subsystem imports external GitHub/Jira issues into the Kanban board: import_external_issue resolves the target board, derives a deterministic task id and 'issue:' dedup key, infers priority/category from labels, and creates the task; the CLI exposes it as `hermes zerofactory import-gh-issue`.",
+      "evidence": [
+        {
+          "resource": "repo://__init__.py#L283-L316",
+          "version": "repo-lines-v1:sha256:c2c22c47a9c1927b8a0e62724295b2d5f0115b44a77ae95a15a2e0faf6e3ae20:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmNWYzN2YyZDE0NGVhZmUzYmJkOTI4M2NkNDg0ZTg5ZDgwNzhlYjAxYmVkOTlkYTZkODEwNTE3NGI5NDYyMDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2NDU0ZjBjMTFmYmYxYmYxNTVmMjE5YTQ2OTQ5MGIxMjY1NzI2ZGM1YWNhZTg2ZDhkNmZmMDZjMDAyOGNkYzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3NDNlNmViYmQ5MmQ5ZjQwMjZlNTliM2Q1MWFmNTdmY2RjYWMxMWY1ZTk2YzgwMjc2NjdkY2JmYTgxOGYwZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMjg3Y2UzZWRhMzcyYTU2MzQwZWMxNzljNGQyYzY4OTdkZGEyODIzNDQ0NjlhOWEzNzAwM2FmZWVjOWQwNjkifQ"
+        },
+        {
+          "resource": "repo://issues/importer.py#L98-L178",
+          "version": "repo-lines-v1:sha256:a3bcb6062bf1fcff9a764a1396903730abe488e9b83edd639d85e707e2ac43a7:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MmVmNjEzNjc0Yjk2ZTQ1MTRhNGY2NjdjYTgwZTI4NjNmZjJiYTZlYzkxNjY0YWViZDQxOGYxYmEyZWZhMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1ZGIxOTA3NTE3N2NlMzQzODdlYjNhM2ZjZjk2YWVjY2NkNjVhMDc2ZWE2YjE2Mzk1MTlmNTE1ZjI5ZjViYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-01T13:01:50.039Z"
+    "at": "2026-10-03T01:15:19.967Z"
   }
 }

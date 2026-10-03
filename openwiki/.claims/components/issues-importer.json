@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:6b940abede9059cf8f58f4915309bd9792fa82ca3ffabf80804778f9566e58b1",
+  "claims": [
+    {
+      "id": "claim_be552b6d7ec04f239ee42608bf0f568d",
+      "statement": "ExternalIssue is the tracker-agnostic dataclass for imported issues; to_dedup_key yields 'issue:<source>:<repo_lower>:<id>' and to_task_id derives a stable deterministic task id from board code + source + sanitized issue id, making repeat imports idempotent.",
+      "evidence": [
+        {
+          "resource": "repo://issues/base.py#L32-L46",
+          "version": "repo-lines-v1:sha256:f47f39b8b74d7fb88724db79e619c3796f91ff589b6e145036d16d81f4562b7f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0Nzk3YTE5Njg0OTQ0ZTYyMjBmMWNhMWZkNzYyN2Y3MTA0Yjg3N2NiMjk1ZDVjNmQyYTVlZmVmMjVmODVlYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkZmMyZTM5Yjc3ZDZjNDUyMDgzZjc5MGYzODVjNDUzMzJlNTUxODgyODY5YmYyOGIxOThmODRmOWU4NWIyNTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4MmI1MjlmNzlkNDExYmQ4YTA4M2RjNWIyYjliMTE4ZTJlMTlmMDdlNDkxOWE5MTM3OTI5NWJmYWRlYmNjYWMifQ"
+        },
+        {
+          "resource": "repo://issues/base.py#L48-L78",
+          "version": "repo-lines-v1:sha256:dea86e695608b59a1a23d261042501f1f7b8ab08eacacdacff745dedde9841a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNzUzODRiNDE2M2E3MDdhNTNiNjA1Y2MwZTZlMWM3Mjc3MWI3MjU0Njk4YWRiZmU0ZTIzMTY5ODg1MDFjMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMDc3N2UxMTI1NGMwNTdlODc0Y2Y2MDRhZDhiMDNlNjEzYWZjYWQxMDc3OGJmMmMyZTNjZjJmYTJmM2RmZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkZTA3NGFhNDU1OWRhOTlhOWZiMGRjOTllYzI0NDQzMGQzZGVmYmIxMDc5NTE1MzU2OGRjOTJkZTUzM2RmMDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiNjEzYjk5ZTM3NDQ5NDkxMmE2OGFhZGNjN2U4NTg5ZDI1ODM2M2Q0YThhYzY2MmU5OGUwYzcwYzA2NGYyNWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8fdbbbe41afb466d9614a24efecbdae6",
+      "statement": "Label inference is deterministic: infer_priority maps labels to P0 (critical/blocker/security/hotfix), P1 (high/major/bug), P3 (low/trivial/nice-to-have) defaulting to P2, and infer_category maps labels to security/performance/bug-fix/refactoring/documentation/testing/config defaulting to bug-fix.",
+      "evidence": [
+        {
+          "resource": "repo://issues/base.py#L80-L99",
+          "version": "repo-lines-v1:sha256:e2be4bea267c41a394b9d7a7c81a2930e9b7cbd5b6bc15e2a45538c5e2270692:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxOTVkNmMzYWUwMzcwNTY2MTE4MTVmZjYzMWZlZDRjYjg1OTFkY2Y1Mzg5NTM4YWQyOTc2YjQ3ZTgyYTcxODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkZGQ5MDI0N2E5NDRhODljZWFjOGFhMzU4ZjRjOWRkMzM1YzcxODdjODU1YzA1MDZhNTY3ZGUxNTFlMmU0YTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzYTNmNTAyMjllMDU0YjBlOTVjZWQxMDc1NzgzNDhkYTdmNTdmYmI0NjUxNjZkZThiMDI1MjM3ZGViMzA1N2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyNWM3OThjYjM2Nzk0NzUyNzVmNzI3ZWE3MTc5NTI4ZGQ4NGFmZTMwZjJiOGM3OGY0MzI5NzQwNWQ2ZmNjYjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_50a6ad2b039f4992b468784c91f10b7e",
+      "statement": "GitHubIssueClient fetches GitHub issues via the authenticated gh CLI and accepts a bare number, owner/repo#N, or a full issue URL via parse_github_issue_ref.",
+      "evidence": [
+        {
+          "resource": "repo://issues/github.py#L64-L166",
+          "version": "repo-lines-v1:sha256:58ab622ea0443072aac3164f9b9b213a5327b7b5be2586334f3400f11158a1b3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3YTMzMmY1NDdkNTAwYjU3MzM4ODYwNjAxZTIxNDk2MTgwZjY1N2E1ZWU2NmQ4NzVjYjYxY2RhMDUxMGE3MDMwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OTA5YTUzYTYxOGQwMjhlMWQzMDAwYzBhN2FiY2VlY2JlNWZiMzdmNGU1MTFlZmU0NjY0M2ZhZDZlNjY4NzJmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4Y2M0YTdkMWNjNzk2YWJhM2U0NjcyMzMyN2Y1MTdlOWY4MTE5ODJkMjUwZjA3MDI5ODZlNGI1NzY0YWQ5NTg5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_31e8180c8b284d738f3972a1720c5658",
+      "statement": "JiraIssueClient accepts PROJ-123-style keys; live REST fetching is gated on JIRA_BASE_URL and JIRA_API_TOKEN (raising NotImplementedError until the integration lands) while mock_data payloads are parsed for tests and webhooks.",
+      "evidence": [
+        {
+          "resource": "repo://issues/jira.py#L68-L112",
+          "version": "repo-lines-v1:sha256:8727760176e3dce832d50a57f9812be097145ae240b112a25012932647d66503:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3NDAyN2JmMjI4ZDBlYjZmOGJiNmM3ZjI3ZmVlNmY4NjVjMjM0MjM0MDE0YWYwY2VmOGExY2FhNTRhOGMxMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NzM1ZTVlYWM2MDc0OTZlODcyYWEyMDJhODNiNmIxZjNmZWE1MDFlOWQ3NzI5YTdhZjhjYjg1OGUxZDAzZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwOTg0YzAxOWRlN2I2MzhlMjVhYmI3ZTYyNjBkOThjMDI5YzYwMWNiNDdmZDMwMjIyZDg0OTFiMTZmMDVmNTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9c13f221b5b54d73ae13d87db4495a31",
+      "statement": "resolve_board_for_issue picks the target board in priority order: an explicit valid board_slug, then the issue repo_or_project matched against each board's git_url or slug, then the working directory's git remote origin against board URLs, falling back to the supplied board slug.",
+      "evidence": [
+        {
+          "resource": "repo://issues/importer.py#L30-L96",
+          "version": "repo-lines-v1:sha256:313961ae2bd48c964075f4ea6fd9d751cc8e00ac5a57444fdb56fd8230892a56:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwZjNhZWJiZGFkMGI4ZWVjMzAzOTY3MzM5ODMzOGNlNDNlMDE1ODE4MzJhODk5NzdjMWI5ZjFmMmQwYjE0ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOTVmYzQ4MzEwMGY5MGQ3Y2MyYzMyNzY2NzhmZTIxM2MyZTFiYmIyNjU5ODg5MTY3NjM3ZmU3NDMzMzM4N2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhN2ZkNzAzNDM0ZjE3ZjNhOTdlNGI2NjIxNTI0YjdlYWJkM2IyMTljMjkxZmY4MjE4ZDhhYmNhNzBmNjljNTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_55f7b8a26e7549cf8828eb6de397ac33",
+      "statement": "import_external_issue creates the Kanban task deterministically: it resolves the board, derives the task id and 'issue:' dedup key, infers priority/category unless overridden, and passes an explicit task_id plus external_issue/dedup_key metadata through TaskCreate to the dashboard create-task endpoint.",
+      "evidence": [
+        {
+          "resource": "repo://issues/importer.py#L98-L178",
+          "version": "repo-lines-v1:sha256:a3bcb6062bf1fcff9a764a1396903730abe488e9b83edd639d85e707e2ac43a7:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MmVmNjEzNjc0Yjk2ZTQ1MTRhNGY2NjdjYTgwZTI4NjNmZjJiYTZlYzkxNjY0YWViZDQxOGYxYmEyZWZhMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1ZGIxOTA3NTE3N2NlMzQzODdlYjNhM2ZjZjk2YWVjY2NkNjVhMDc2ZWE2YjE2Mzk1MTlmNTE1ZjI5ZjViYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8976ce7c690441bb92a0b449d5522d6e",
+      "statement": "The create-task endpoint honors an explicit task_id: if a task row with that id already exists it returns a duplicate response carrying the existing task's status and title instead of inserting a new row, which is what makes external issue imports repeat-safe.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L267-L284",
+          "version": "repo-lines-v1:sha256:7b3b9559a1cf3431a877a8901ee6f269ed92f0fc116c26623966728e63f4e888:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZDA5ZmE4MDMxMGJkMTk3NzgxMGM4MzFjNWNjMWI3YTQyYTE2NGMzNmU3NGYwOTJlY2FmYzM1YTEyZWRmNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZDc4M2YwNjdiZjMwYTczOGVmZTM0Y2IzMzIyMThkMmYxYjA2MDJkOGM2ZTY4YzljODQxMTRjNTc3MTNjOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3YmE5YzMxZTAzZDBiMzcxOWUzNTNjOWVlM2ZlY2ZiNTYxMmIxNzM4NGNjOWJmMDJiMTRiMjQzNzgwOWU1ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzNzU2Y2M1NzcwZGY4Yjg1ZjU2MWM5ZDM1NmQ3ZDExMzM3MDkxZDMxODE0MGE5MmFhOGEzNDI2Yjk0OGU1OWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8fe62b0ac38949fdb5d94997ddefcd70",
+      "statement": "The CLI command `hermes zerofactory import-gh-issue <issue>` accepts a number, #42, a GitHub URL, or owner/repo#42, with flags for --repo, --board, --status (default triage), --priority, --assignee, and --actor; the handler fetches via GitHubIssueClient and prints the resulting task id, board, status, priority, and URL.",
+      "evidence": [
+        {
+          "resource": "repo://__init__.py#L283-L316",
+          "version": "repo-lines-v1:sha256:c2c22c47a9c1927b8a0e62724295b2d5f0115b44a77ae95a15a2e0faf6e3ae20:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmNWYzN2YyZDE0NGVhZmUzYmJkOTI4M2NkNDg0ZTg5ZDgwNzhlYjAxYmVkOTlkYTZkODEwNTE3NGI5NDYyMDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2NDU0ZjBjMTFmYmYxYmYxNTVmMjE5YTQ2OTQ5MGIxMjY1NzI2ZGM1YWNhZTg2ZDhkNmZmMDZjMDAyOGNkYzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3NDNlNmViYmQ5MmQ5ZjQwMjZlNTliM2Q1MWFmNTdmY2RjYWMxMWY1ZTk2YzgwMjc2NjdkY2JmYTgxOGYwZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMjg3Y2UzZWRhMzcyYTU2MzQwZWMxNzljNGQyYzY4OTdkZGEyODIzNDQ0NjlhOWEzNzAwM2FmZWVjOWQwNjkifQ"
+        },
+        {
+          "resource": "repo://__init__.py#L604-L640",
+          "version": "repo-lines-v1:sha256:e812eae025e59e5250457a5cb16441795f40e4dff76870589038d9597464e748:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMWUzNWMwZDdjZDYwZjQ0ZmU1MjcyYzI1Y2Q0NTM3YmI1OTcxYzU5MjYxMmY0MDI3YmI5NmQ1NWRhMDE3MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiZmQ4NTBjMGQwOWNiZDJjNmIzNTYxODNlYTVlMmYxM2ZjN2Y1NzUyZGYyZGE3NWZiNjZhMzljNTAwYThiY2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhNWFjMzg0ZjA1NGU3NzUyOTFlYzgxODFhOTQ3NzY3MzMzMDZkZTVhZjM3ZmY2ZDBhODdlYTk3ZmQxZDZiMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0ODYzOGUzZjljM2FmODVjMzQ5NDBkYTMxMzZiMTBiMjIwNWM4ZDZlYjNkYzI3YmEwMTliZTViNDY2ZGM3ZTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6b907afecf494b8ba3f3f91d2630f8fb",
+      "statement": "Tasks carrying external_issue metadata get their source issue linked in the PR: the dispatcher appends 'Fixes #<n>' for GitHub issues or 'Resolves: <KEY>' for Jira issues to the PR body it opens.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L1277-L1295",
+          "version": "repo-lines-v1:sha256:04dc425779d777ad7a5ad306d9c3eeee24995829b79c82fece62b9a90f08f6d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkYTdhNmE1MTNiOGY1OTVhMGYzZWJlYTRkMzE1MDEzYmZmZjZiZTcwZDU1MDA3ZjlhZmY2ZDNlY2IwYTk0MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MDU4YzliMTgyNGZkNWM1MzhkNjIwNzg4MjE5MjJjZWY2OGU1MTYzOTNlNGVjNDA5M2MzNzg5NTY1NWNjMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmOTJiNzQzY2Q3Y2ZlYTg3OTA3NTBiNDdmYjZjNDQ5YjAwYjViNzQ2MDBlODQ0M2I4ZGIwN2RmMTU5OGU5YjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkZDhlMzNkYTdkNWZhM2ZjOTFjZDdjODVkMGNiNDY2NGZjYTFjMjA1YjJlNzQ2YzlmOWVhYTc2MDA4N2Q4YTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_287e7638e7914772b01ff77c06ae312b",
+      "statement": "tests/unit/issues/test_issues.py covers issue ref parsing, priority/category inference, deterministic task-id and dedup-key derivation, board resolution, and import behavior (16 tests in the unit tier).",
+      "evidence": [
+        {
+          "resource": "repo://tests/unit/issues/test_issues.py",
+          "version": "repo-file-v1:sha256:154f04b9751b343e8f2ab5f6156a1bdf20d99246cfc21cb6be35ea989c9540d8"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.6.0",
+    "at": "2026-10-03T01:15:19.967Z"
+  }
+}

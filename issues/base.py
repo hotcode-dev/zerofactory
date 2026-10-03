@@ -24,7 +24,10 @@ _CATEGORY_RULES: list[tuple[str, set[str]]] = [
     ("refactoring", {"refactor", "refactoring", "cleanup", "techdebt", "tech-debt"}),
     ("documentation", {"documentation", "doc", "docs"}),
     ("testing", {"testing", "test", "tests", "coverage"}),
-    ("config", {"config", "configuration", "ci", "build", "chore", "deps", "dependencies"}),
+    (
+        "config",
+        {"config", "configuration", "ci", "build", "chore", "deps", "dependencies"},
+    ),
 ]
 
 
@@ -115,15 +118,21 @@ class ExternalIssue:
         if self.labels:
             lines.append(f"- **Labels**: {', '.join(f'`{l}`' for l in self.labels)}")
         if self.assignees:
-            lines.append(f"- **Assignees**: {', '.join(f'@{a}' for a in self.assignees)}")
+            lines.append(
+                f"- **Assignees**: {', '.join(f'@{a}' for a in self.assignees)}"
+            )
 
-        lines.extend([
-            "",
-            "### Description",
-            "",
-            self.body.strip() if self.body else "_No description provided in original issue._",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "### Description",
+                "",
+                self.body.strip()
+                if self.body
+                else "_No description provided in original issue._",
+                "",
+            ]
+        )
         return "\n".join(lines)
 
     def to_metadata_dict(self) -> dict[str, Any]:

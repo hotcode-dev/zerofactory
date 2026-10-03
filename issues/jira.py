@@ -107,7 +107,9 @@ class JiraIssueClient(BaseIssueClient):
             )
 
         # Placeholder for Jira REST HTTP GET /rest/api/3/issue/{issue_key}
-        raise NotImplementedError("Jira REST API fetcher will be enabled with Jira plugin.")
+        raise NotImplementedError(
+            "Jira REST API fetcher will be enabled with Jira plugin."
+        )
 
     def _parse_jira_payload(
         self, project: str, issue_key: str, data: dict[str, Any]

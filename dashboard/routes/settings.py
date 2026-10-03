@@ -265,4 +265,3 @@ def sync_profiles(force: bool = False):
             "ok": False,
             "error": f"Failed to sync profiles: {e}",
         }
-

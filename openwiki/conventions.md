@@ -3,9 +3,6 @@ type: conventions
 title: Conventions
 description: Repository patterns and rules agents must follow — the relative-import fallback, sys.path bootstrap, namespaced logging, the ruff lint/format gate, the pytest test organization, and the dashboard CSS rebuild rule.
 tags: [conventions, import-pattern, ruff, pytest, css-build, logging, error-handling]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-10-01T13:01:50.039Z
 sources:
   - id: openwiki-source-9ab161c6e9774cf771b19ced
     resource: repo://.zerofactory/precommit.sh
@@ -19,6 +16,8 @@ sources:
     resource: repo://dashboard/routes/__init__.py
   - id: openwiki-source-b9dde5e47d9b9a7f900ad216
     resource: repo://dispatcher/github_pr.py
+  - id: openwiki-source-b73a2eae57b810a3ad15196e
+    resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-2feae2067f9a49cc4d8f2150
     resource: repo://migrations/runner.py
   - id: openwiki-source-d763dfe33a2468865a9b9ce5
@@ -27,7 +26,10 @@ sources:
     resource: repo://tests/conftest.py
   - id: openwiki-source-b4194cdb1aee8e18787b21d6
     resource: repo://tests/unit/dashboard/test_dashboard_css.py
-generated: { by: "hermes", at: "2026-10-01T13:01:50.039Z" }
+generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-10-03T01:15:19.967Z
 ---
 
 # Conventions
@@ -106,7 +108,8 @@ real factory: it sets `ZEROFACTORY_SKIP_GIT`, `ZEROFACTORY_SKIP_CRON_SYNC`,
 Test tiers (mirrored on disk):
 
 - **`tests/unit/`** — fast, isolated units per subsystem
-  (`unit/dispatcher/`, `unit/cron/`, `unit/dashboard/`, `unit/scripts/`).
+  (`unit/dispatcher/`, `unit/cron/`, `unit/dashboard/`, `unit/scripts/`,
+  `unit/issues/`).
 - **`tests/integration/`** — the FastAPI REST surface via the `api_client`
   fixture (`test_tasks_api.py`, `test_boards_api.py`, `test_memories_api.py`,
   `test_settings_api.py`).
@@ -134,9 +137,15 @@ referenced (including variant-prefixed) utility class.
 
 ## AI attribution on GitHub
 
-Any agent-authored GitHub PR comment **must** begin with `[AI]` (enforced by
-`ai_prefix` in `repo://dispatcher/github_pr.py#L321`) so humans can distinguish
-agent output from human output.
+Any agent-authored GitHub text (PR titles/bodies, review comments) **must**
+begin with a **role-tagged** marker `[AI:<role>]` — e.g. `[AI:zf-builder]`,
+`[AI:zf-reviewer]` — enforced by the role-aware `ai_prefix(text, role)` in
+`repo://dispatcher/github_pr.py#L321-L335`. The matcher (`AI_PREFIX_RE`) also
+recognizes the legacy untagged `[AI]` marker and leaves it untouched, so
+re-writes are idempotent and never double-prefix. The reviewer submits verdicts
+as `gh pr review --comment` (not `--approve` / `--request-changes`, which GitHub
+blocks for the PR author's own token) with `[AI:zf-reviewer]`-tagged bodies
+(`repo://dispatcher/worker_spawner.py#L127-L140`).
 
 ## What NOT to add
 

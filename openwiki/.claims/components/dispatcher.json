@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:aabbea4f5e339aaf3dc28822f78ef32e99f62d3c39af1d7f5b16f5dda20ae80c",
+  "pageVersion": "sha256:5c7f8b2d36209dae6082d0028f3c4831ce62b2772e7e18ac1fb0a250f7cb58b8",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
@@ -102,15 +102,15 @@
     },
     {
       "id": "claim_5bfad96eee7646e8953599b022c3a02c",
-      "statement": "github_pr.py fetches PR review comments and formats them into task comments; ai_prefix prepends [AI] to any agent-authored GitHub comment so humans can distinguish agent output from human output.",
+      "statement": "github_pr.py fetches PR review comments and formats them into task comments; ai_prefix(text, role) prepends a role-tagged [AI:<role>] marker (default zf-builder) to agent-authored GitHub text and is idempotent for any existing [AI] / [AI:<tag>] marker, so humans can distinguish agent output from human output.",
       "evidence": [
         {
           "resource": "repo://dispatcher/github_pr.py#L25-L380",
-          "version": "repo-lines-v1:sha256:c41d01775494874b184a9de30656b1c0b7c969a8c54e8b08268a1de1ec52f120:eyJzZWxlY3RlZExpbmVDb3VudCI6MzU2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxN2ZkYmY5NGIwOThmYzQwNWNmOTEwYzM2MWMwNmJhYjljMzA3NDE2NDA2NzNkNWIzNWNlMjc0YWIyMWM3NzBkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjZWVjMjlhNjQwMjMyN2JhNzk2MmY1YjBjYjVlNDZkZGYxMTA3MTNlNGI2NWRlNzVhM2YzMTc5Yjg5MWFjMWY5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMGZkM2YyYzIwOWY0ZGVjZDJhNmVlOTc3NDdmOGVjOTdjNzRmZWViZmZiNzQ3NDg2MDgyNjcxZTgwZTIwMGZiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5OTU4NGU5OTA5ODk2OTUzMWY3NzYxNDI2YjBiZTFhMTM5ZDI4NmM1OTkzYTBhMDZkNjhkZDZmMDM0M2NiNTllIn0"
+          "version": "repo-lines-v1:sha256:ee72c50056f66dbd12b50b6531974bf73261437e0d7a1098a9bd675e7e445dc9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzU2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxN2ZkYmY5NGIwOThmYzQwNWNmOTEwYzM2MWMwNmJhYjljMzA3NDE2NDA2NzNkNWIzNWNlMjc0YWIyMWM3NzBkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMGZkM2YyYzIwOWY0ZGVjZDJhNmVlOTc3NDdmOGVjOTdjNzRmZWViZmZiNzQ3NDg2MDgyNjcxZTgwZTIwMGZiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjZGVmMzQzNDE0MjI4ZTc4ZDUzYTcxYzc3NWY0MWE0MTAyMmVlZTc1ZWE5NjliNTBmYzAzZTQyMzk4NjcwNDc3In0"
         },
         {
-          "resource": "repo://dispatcher/github_pr.py#L321-L321",
-          "version": "repo-lines-v1:sha256:033af0a0bf3606c9277b65c0e157f7f129562fcdf7425f9fe42ee63958a9ee9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzYWYwYTBiZjM2MDZjOTI3N2I2NWMwZTE1N2Y3ZjEyOTU2MmZjZGY3NDI1ZjlmZTQyZWU2Mzk1OGE5ZWU5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMzYWYwYTBiZjM2MDZjOTI3N2I2NWMwZTE1N2Y3ZjEyOTU2MmZjZGY3NDI1ZjlmZTQyZWU2Mzk1OGE5ZWU5ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTJkNmQyNTZiY2ZhYTU1YmI1NGJjYzdmMzMxYTI3ZjM1Yjg3ZmEyZTk3NTZhNjllOTY1Y2VlYmM0ZjYxN2Q5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2M1MWFkNTc2YzljZTE0YTk3NGRlNzFiMjUzYmFmNjdhMTIxNjU2MTc2YjE3OWNkNzFhMWJkMjZhNjAxMzNhYSJ9"
+          "resource": "repo://dispatcher/github_pr.py#L321-L335",
+          "version": "repo-lines-v1:sha256:b79bb45e452aba9c783942fe51bdb980c9a36dd56d1fb486ce2894bd8fc71b11:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwZDA4M2YzYWY3MTMxMDUwZTFlNWJjOGE3NmZhYTliYjhmZjBhOTFmZDg4ZTU3NTVlNWUzNjMxNzc3OTAzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwY2VjZDBmNmI3NzNmMTFhMjlmYWJiMmM0NDBkYzk2YzVkNjBlZGFmOTgyZmQ0MjVkZjQxMWU2MTIzODU5NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZDZkMjU2YmNmYWE1NWJiNTRiY2M3ZjMzMWEyN2YzNWI4N2ZhMmU5NzU2YTY5ZTk2NWNlZWJjNGY2MTdkOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MmI4MThlZDJjZGY1YjY4NTAzNWVjYTgxODdhMGQ0YWI0OWY3MjhjZTI1NzgyYmVlYTUyOGNiNDA5ZTFiNTEifQ"
         }
       ]
     },
@@ -123,10 +123,40 @@
           "version": "repo-lines-v1:sha256:c8f6fd2b0e59600619aacad2a543a7d430374add7ca8ca418b2df0f99e8912dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNzBjZTE5OWZhOWExOTNkZmQ3NDRiNGYyNGUwNjE0NWU1NDQ5MjdhN2RjZDg2OTEzOTE5Y2ViMTdiNjY1NjEwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzM2JjM2MyMmI5N2ExMTExM2IwMmEwZjQ5ZWEzZDI1NDVlOWI5M2JkZmNlOTIxOGY3ZGViZDg4ZTkwMTkyZjUwIn0"
         }
       ]
+    },
+    {
+      "id": "claim_a882501482984a34948b0e7cd6d8f640",
+      "statement": "is_actionable_review_comment filters PR comments to genuine reviewer/human critiques: approval verdicts, builder-authored or automated notes (e.g. '[AI:zf-builder]' markers, 'builder verification', 'dedup note:'), and empty bodies are excluded, so only actionable feedback routes a task back to the builder.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/github_pr.py#L477-L532",
+          "version": "repo-lines-v1:sha256:42da1c887b275f5fc1379ac99ea76177507b79b5eda00adabf7f4a20a511d651:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiZGVhODk5OTQ3Y2FmYTE5YjNiZjA5MzMzNmNmODYxMTFhNGE5NzE0YWI3ODM3ZDAwN2NiNzZmYThjNmE0Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwYjIxYmY4OTVmYWUyZDczOTIwZDkzMTc4Y2ZkNTg0MWNkZjhmOTUyNDUxNmM4YTU2NTg0MzZhNGFjNDhmM2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f12dbdbe23344518b15eaa7f7535a24a",
+      "statement": "The dispatcher enforces a per-commit review cap: commit_review_count in task metadata is keyed to the PR head commit (headRefOid, reset when the head changes) and compared against ZEROFACTORY_MAX_REVIEW_ROUNDS (default 2); exceeding the cap sets review_cap_reached, appends [Human Review] to the title, assigns the task to 'human', and moves it to blocked instead of looping between builder and reviewer.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L749-L847",
+          "version": "repo-lines-v1:sha256:44c2b3ab4f83745fcf625d0e73bfa82db101ea20d92011ac223f2922051ca6fb:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwOTk2YTU5MmUyOTI0OTczMzMwMWMxMjU2ZWVlMGU3MDFlNzYyZDMwYWIyMTVjNjg2ODYyNjc0ODM1MGY2MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwZWEyNzUwZjc1NTNmZjUzOTJkYjk1MzUyMjkxMGM3ZDQxOTY2ODcxMDJkODEyYTc3YjU3Zjk3MDVkZTYzOWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1M2ZkZjA1N2UzMWE2NzQzMWZhZDVjYzM0NDI5ZjQxN2JhMmM0MDBmZTk5NWVjY2EwODFjNzk4MDg3NmQxN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0M2FlM2ExOGQ3YjY4NmU2YjUzMzI0YzVlZDdlMWMxMDFlMjIwNDFkY2NkMzhkZjJiMTU5OGI1OTZjMmI5YTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e3c674af5f2d43fb91e623a9259bdfe7",
+      "statement": "When a task carries external_issue metadata, the PR body opened by the dispatcher appends 'Fixes #<n>' for GitHub issues or 'Resolves: <KEY>' for Jira issues so merging the PR links the source issue.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L1277-L1295",
+          "version": "repo-lines-v1:sha256:04dc425779d777ad7a5ad306d9c3eeee24995829b79c82fece62b9a90f08f6d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkYTdhNmE1MTNiOGY1OTVhMGYzZWJlYTRkMzE1MDEzYmZmZjZiZTcwZDU1MDA3ZjlhZmY2ZDNlY2IwYTk0MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MDU4YzliMTgyNGZkNWM1MzhkNjIwNzg4MjE5MjJjZWY2OGU1MTYzOTNlNGVjNDA5M2MzNzg5NTY1NWNjMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmOTJiNzQzY2Q3Y2ZlYTg3OTA3NTBiNDdmYjZjNDQ5YjAwYjViNzQ2MDBlODQ0M2I4ZGIwN2RmMTU5OGU5YjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkZDhlMzNkYTdkNWZhM2ZjOTFjZDdjODVkMGNiNDY2NGZjYTFjMjA1YjJlNzQ2YzlmOWVhYTc2MDA4N2Q4YTAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-01T13:01:50.039Z"
+    "at": "2026-10-03T01:15:19.967Z"
   }
 }

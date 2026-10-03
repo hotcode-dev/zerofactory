@@ -402,8 +402,7 @@ def is_reviewer_approval_comment(comment_body: str, state: str | None = None) ->
         lower,
     )
     clean_for_changes = (
-        clean_for_changes
-        .replace("no test changes needed", "")
+        clean_for_changes.replace("no test changes needed", "")
         .replace("no code changes needed", "")
         .replace("no changes needed", "")
         .replace("no changes requested", "")

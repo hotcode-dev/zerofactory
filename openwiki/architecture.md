@@ -5,8 +5,10 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-01T13:01:50.039Z
+    at: 2026-10-03T01:15:19.967Z
 sources:
+  - id: openwiki-source-4942bcbe129130ccad2b7e2a
+    resource: repo://__init__.py
   - id: openwiki-source-9ab161c6e9774cf771b19ced
     resource: repo://.zerofactory/precommit.sh
   - id: openwiki-source-594f18a4ed0f4f061e35fdc9
@@ -17,13 +19,15 @@ sources:
     resource: repo://dispatcher/scheduler.py
   - id: openwiki-source-b73a2eae57b810a3ad15196e
     resource: repo://dispatcher/worker_spawner.py
+  - id: openwiki-source-992af5f6e480f39b3a3a184e
+    resource: repo://issues/importer.py
   - id: openwiki-source-73f3b62839035304ececba97
     resource: repo://migrations/0001_initial_schema.sql
   - id: openwiki-source-2feae2067f9a49cc4d8f2150
     resource: repo://migrations/runner.py
   - id: openwiki-source-81127d20a2ccc07b7626fc4e
     resource: repo://plugin.yaml
-generated: { by: "hermes", at: "2026-10-01T13:01:50.039Z" }
+generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
 ---
 
 # Zero Factory Architecture
@@ -47,9 +51,20 @@ brand-new agent session, keeping context windows small and preventing
 |---|---|---|
 | Plugin shell / CLI | Registers CLI, profiles, hooks with Hermes | `repo://__init__.py` |
 | Dispatcher | Task claiming, worktrees, worker spawn, precommit, PRs | `repo://dispatcher/scheduler.py` |
-| Cron + scripts | 0-token background automation (watchdog, scanner gate, stats) | `repo://cron/definitions.py` |
+| Cron + scripts | 0-token background automation (watchdog, scanner gate, stats, openwiki gate) | `repo://cron/definitions.py` |
 | Dashboard | FastAPI REST + services (db, models, setup services) | `repo://dashboard/plugin_api.py` |
+| Issues import | GitHub/Jira issue → Kanban task ingestion (dedup, priority, board resolution) | `repo://issues/importer.py` |
 | Profile management | Auto-provisioning of `zf-*` profiles | `repo://profile_manager.py` |
+
+External issue ingestion flows through the `issues/` package: `hermes zerofactory
+import-gh-issue` fetches a GitHub (or Jira) issue via `GitHubIssueClient`,
+normalizes it into an `ExternalIssue` (labels drive deterministic priority and
+category inference), and `import_external_issue` resolves the target board,
+derives a deterministic task id + `issue:` dedup key, and creates the Kanban task
+(`repo://issues/importer.py#L98-L178`). The stored `external_issue` metadata is
+later read back by the dispatcher so the PR it opens for the task links the
+source issue (`Fixes #42` / `Resolves: PROJ-123`). See
+[External Issue Import](/openwiki/components/issues-importer.md).
 
 ## Control / data flow
 

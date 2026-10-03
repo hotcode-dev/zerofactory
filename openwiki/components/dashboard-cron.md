@@ -3,29 +3,43 @@ type: subsystem
 title: Dashboard, Cron & Automation
 description: The operator and automation layer — the FastAPI dashboard REST surface, the cron subsystem, and the No-Agent Mode scripts that drive 0-token background queue checks and wake-gated codebase scans.
 tags: [dashboard, rest-api, cron, automation, no-agent-mode, fastapi, setup-services]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-10-01T13:01:50.039Z
 sources:
+  - id: openwiki-source-0fcd11b2ec72e81b8258e0a7
+    resource: repo://cron/config.py
   - id: openwiki-source-334dcccc8c22be32509cfb1e
     resource: repo://cron/definitions.py
+  - id: openwiki-source-c543e3bc44804657bf480372
+    resource: repo://cron/executor.py
+  - id: openwiki-source-e06775820f1d183b4e12d4a2
+    resource: repo://cron/scheduler_check.py
   - id: openwiki-source-ed7166b96533513cf627ba0c
     resource: repo://dashboard/manifest.json
+  - id: openwiki-source-52ae51442f849fdbd57863a3
+    resource: repo://dashboard/models.py
   - id: openwiki-source-ad6531284d0db039367da971
     resource: repo://dashboard/openwiki_service.py
   - id: openwiki-source-556692619b07f09e3b0370a5
     resource: repo://dashboard/precommit_service.py
   - id: openwiki-source-afe67e60bbdbffde9666707f
     resource: repo://dashboard/routes/__init__.py
+  - id: openwiki-source-bd5f75c9f65299ae52978752
+    resource: repo://dashboard/routes/settings.py
+  - id: openwiki-source-c705147b9966f3d6f300034a
+    resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-9e3e91dd19f899c194f7c69e
     resource: repo://dashboard/setup_common.py
   - id: openwiki-source-8bf8788755a522a066b8b827
     resource: repo://scripts/zf_daily_stats.py
+  - id: openwiki-source-20bc44fdf115b28983477777
+    resource: repo://scripts/zf_openwiki_gate.py
   - id: openwiki-source-08cee866d516142aa81f356d
     resource: repo://scripts/zf_queue_watchdog.py
   - id: openwiki-source-bc25bd3bfcf63b730444ea04
     resource: repo://scripts/zf_scanner_gate.py
-generated: { by: "hermes", at: "2026-10-01T13:01:50.039Z" }
+generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-10-03T01:15:19.967Z
 ---
 
 # Dashboard, Cron & Automation
@@ -46,9 +60,14 @@ The dashboard is a Hermes gateway route declared by `repo://dashboard/manifest.j
 eight sub-routers (`repo://dashboard/routes/__init__.py#L39-L46`):
 
 - **boards** — CRUD for repository boards (`git_url`, target branch, concurrency cap).
-- **tasks** — Kanban card lifecycle (create, move, block, comment).
+- **tasks** — Kanban card lifecycle (create, move, block, comment). Task
+  creation accepts an optional explicit `task_id` and `metadata` so external
+  importers can create deterministic, dedup-keyed cards
+  (`repo://dashboard/routes/tasks.py#L267-L284`).
 - **stats** — board velocity/column metrics (`get_stats`).
-- **settings** — global + per-board settings.
+- **settings** — global + per-board settings, including
+  `POST /settings/profiles/sync` which re-syncs the `zf-*` profile templates and
+  skills (`repo://dashboard/routes/settings.py#L243-L268`).
 - **dispatch** — manual dispatch / stuck-worker audit triggers.
 - **cron** — list/sync/run of scheduled jobs.
 - **memories** — the per-board repository-knowledge substrate CRUD.
@@ -82,22 +101,39 @@ rather than duplicated (`repo://dashboard/setup_common.py`).
 ## Cron subsystem
 
 `cron/definitions.py` defines the scheduled jobs the dispatcher syncs into Hermes.
-Two families (`repo://cron/definitions.py`):
+Three families (`repo://cron/definitions.py`), each carrying a `category` field
+(`core`, `scanner`, `openwiki`) used by the dashboard filters and CLI:
 
 - **`zero-factory-task-queue-check`** — a **`no_agent: True`** job on a 120-minute
   interval. It runs pure Python with no LLM and reaps stuck workers / triggers the
-  dispatch cycle (`repo://cron/definitions.py#L207-L222`).
+  dispatch cycle (`repo://cron/definitions.py#L248-L260`).
 - **`zero-factory-improvement-scanner-<slug>`** — one **per board**, running on
   idle (when the board has spare capacity). It wakes `zf-orchestrator` to scan the
-  repo for tech debt and file at most one `zf-builder` `Todo` task.
+  repo for tech debt and file at most one `zf-builder` `Todo` task
+  (`repo://cron/definitions.py#L312-L380`).
+- **`zero-factory-openwiki-update-<slug>`** — one **per board**, daily by default
+  (`ZEROFACTORY_OPENWIKI_INTERVAL_MINUTES`, default 1440), also
+  **`no_agent: True`** with the `zf_openwiki_gate.py` script as its deterministic
+  wake-gate (`repo://cron/definitions.py#L381-L418`). It does **not** wake the LLM
+  to rewrite docs itself: the gate decides whether to create at most one P2
+  `zf-builder` doc-sync task on the board (see below).
 
-`cron/manager.py` persists/updates the job definitions in the settings store and
-`cron/executor.py` runs them; `cron/scheduler_check.py` audits long-running or
-hung worker processes.
+`cron/manager.py` persists/updates the job definitions in the settings store
+(including pruning openwiki jobs whose board was deleted, and keeping the
+canonical `zf-orchestrator` profile in sync) and `cron/executor.py` runs them —
+every `zero-factory-*` job is pinned to the `zf-orchestrator` profile regardless
+of stored fields (`repo://cron/executor.py#L87-L92`). `cron/scheduler_check.py`
+audits long-running or hung worker processes; when it pauses built-in jobs via
+the master scheduler it tags them `paused_by_master` **without** marking
+`custom_config`, so user-tuned job fields survive a scheduler enable/disable
+toggle (`repo://cron/scheduler_check.py#L218-L220`). On-demand
+`hermes cron run` waits up to `CRON_RUN_TIMEOUT` (default **900s**,
+`ZEROFACTORY_CRON_RUN_TIMEOUT`) so multi-step agent runs are not cut off
+(`repo://cron/config.py#L20-L22`).
 
 ## No-Agent Mode scripts (0-token automation)
 
-Two deterministic scripts drive the token-efficient automation and emit a
+Four deterministic scripts drive the token-efficient automation and emit a
 `wakeAgent` signal that Hermes uses to skip the LLM run entirely:
 
 - **`scripts/zf_queue_watchdog.py`** — the queue watchdog. It (1) reaps stuck
@@ -113,6 +149,16 @@ Two deterministic scripts drive the token-efficient automation and emit a
   (`repo://scripts/zf_scanner_gate.py`). It also counts active pipeline tasks
   (`running`, `todo`) and the board's concurrency cap to decide whether the board
   is idle enough to scan (`repo://scripts/zf_scanner_gate.py#L299-L351`).
+- **`scripts/zf_openwiki_gate.py`** — the OpenWiki doc-sync gate. It is a
+  **deterministic task-creation** wake-gate rather than an LLM wake: it skips
+  (`wakeAgent: false`) when `openwiki/` is missing, when the working tree is
+  dirty, or — unless forced (`--force` / `ZEROFACTORY_FORCE_OPENWIKI_UPDATE`) —
+  when an OpenWiki-titled task is already active on the board in `triage`/`todo`/
+  `ready`/`running`/`blocked` (`repo://scripts/zf_openwiki_gate.py#L185-L215`).
+  When HEAD has advanced past the last `openwiki`-touching commit, it creates at
+  most **one** P2 `todo` task for `zf-builder` (deterministic, idempotent via the
+  create-task endpoint) and reports 0-token completion
+  (`repo://scripts/zf_openwiki_gate.py#L50-L102`).
 - **`scripts/zf_daily_stats.py`** — a deterministic 24-hour metrics / velocity
   calculator with no LLM involvement.
 

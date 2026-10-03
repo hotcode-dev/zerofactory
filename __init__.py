@@ -609,9 +609,7 @@ def register(ctx: Any):
                 or "user"
             )
             try:
-                issue = client.fetch_issue(
-                    args.issue, repo=getattr(args, "repo", None)
-                )
+                issue = client.fetch_issue(args.issue, repo=getattr(args, "repo", None))
                 res = import_external_issue(
                     issue=issue,
                     board_slug=getattr(args, "board", None),
@@ -637,7 +635,10 @@ def register(ctx: Any):
                         print(f"  URL:      {res['issue_url']}")
                     print()
             except Exception as e:
-                print(f"\nError importing GitHub issue '{args.issue}': {e}\n", file=sys.stderr)
+                print(
+                    f"\nError importing GitHub issue '{args.issue}': {e}\n",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
 
         elif action == "move":

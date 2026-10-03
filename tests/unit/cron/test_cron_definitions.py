@@ -258,7 +258,9 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                 try:
                     jobs = get_all_builtin_cron_jobs()
                     core_job = jobs.get("zero-factory-task-queue-check")
-                    scanner_job = jobs.get("zero-factory-improvement-scanner-demo-board")
+                    scanner_job = jobs.get(
+                        "zero-factory-improvement-scanner-demo-board"
+                    )
                     openwiki_job = jobs.get("zero-factory-openwiki-update-demo-board")
 
                     self.assertIsNotNone(core_job)

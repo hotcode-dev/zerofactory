@@ -33,18 +33,38 @@ class TestOpenWikiCronE2E(unittest.TestCase):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.lock_path = Path(self.td) / "lock.lock"
         self.cron_jobs_file = (
-            self.fake_home / ".hermes" / "profiles" / "zf-orchestrator" / "cron" / "jobs.json"
+            self.fake_home
+            / ".hermes"
+            / "profiles"
+            / "zf-orchestrator"
+            / "cron"
+            / "jobs.json"
         )
         self.cron_jobs_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.repo_dir = Path(self.td) / "repo"
         self.repo_dir.mkdir()
-        subprocess.run(["git", "init", "-b", "main"], cwd=str(self.repo_dir), check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Wiki E2E"], cwd=str(self.repo_dir), check=True)
-        subprocess.run(["git", "config", "user.email", "wiki@e2e.test"], cwd=str(self.repo_dir), check=True)
+        subprocess.run(
+            ["git", "init", "-b", "main"],
+            cwd=str(self.repo_dir),
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Wiki E2E"],
+            cwd=str(self.repo_dir),
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "wiki@e2e.test"],
+            cwd=str(self.repo_dir),
+            check=True,
+        )
         (self.repo_dir / "README.md").write_text("# Test Repo\n")
         subprocess.run(["git", "add", "."], cwd=str(self.repo_dir), check=True)
-        subprocess.run(["git", "commit", "-m", "chore: init"], cwd=str(self.repo_dir), check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "chore: init"], cwd=str(self.repo_dir), check=True
+        )
 
         self.orig_env = {
             "HOME": os.environ.get("HOME"),
@@ -52,8 +72,12 @@ class TestOpenWikiCronE2E(unittest.TestCase):
             "ZEROFACTORY_CRON_JOBS_FILE": os.environ.get("ZEROFACTORY_CRON_JOBS_FILE"),
             "ZEROFACTORY_LOCK_PATH": os.environ.get("ZEROFACTORY_LOCK_PATH"),
             "ZEROFACTORY_SKIP_GIT": os.environ.get("ZEROFACTORY_SKIP_GIT"),
-            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"),
-            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER"),
+            "ZEROFACTORY_SKIP_WORKER_SPAWN": os.environ.get(
+                "ZEROFACTORY_SKIP_WORKER_SPAWN"
+            ),
+            "ZEROFACTORY_DISABLE_DISPATCHER": os.environ.get(
+                "ZEROFACTORY_DISABLE_DISPATCHER"
+            ),
             "ZEROFACTORY_SKIP_CRON_SYNC": os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"),
         }
 
@@ -96,7 +120,9 @@ class TestOpenWikiCronE2E(unittest.TestCase):
         # 2. Sync to jobs.json
         ensure_builtin_cron_jobs()
         stored_jobs = load_jobs_from_file(self.cron_jobs_file)
-        stored_dict = {j["id"]: j for j in stored_jobs if isinstance(j, dict) and "id" in j}
+        stored_dict = {
+            j["id"]: j for j in stored_jobs if isinstance(j, dict) and "id" in j
+        }
 
         self.assertIn(wiki_job_id, stored_dict)
         stored_wiki = stored_dict[wiki_job_id]
@@ -122,14 +148,18 @@ class TestOpenWikiCronE2E(unittest.TestCase):
             "enabled": True,
             "origin": "zerofactory",
         }
-        self.cron_jobs_file.write_text(json.dumps({"jobs": [bad_job]}), encoding="utf-8")
+        self.cron_jobs_file.write_text(
+            json.dumps({"jobs": [bad_job]}), encoding="utf-8"
+        )
 
         # Run synchronization
         ensure_builtin_cron_jobs()
 
         # Verify profile is healed to zf-orchestrator
         stored_jobs = load_jobs_from_file(self.cron_jobs_file)
-        stored_dict = {j["id"]: j for j in stored_jobs if isinstance(j, dict) and "id" in j}
+        stored_dict = {
+            j["id"]: j for j in stored_jobs if isinstance(j, dict) and "id" in j
+        }
         healed_job = stored_dict.get(wiki_job_id)
         self.assertIsNotNone(healed_job)
         self.assertEqual(healed_job["profile"], "zf-orchestrator")

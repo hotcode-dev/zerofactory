@@ -3,9 +3,6 @@ type: subsystem
 title: Dispatch Engine
 description: The dispatcher subsystem — run_dispatch_cycle lifecycle, isolated Git worktrees, worker spawning, the deterministic precommit self-healing gate, git/PR ops, and the stuck-worker reaper.
 tags: [dispatcher, dispatch-loop, git-worktree, worker-spawning, precommit, github-pr, reaper, self-healing]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-10-01T13:01:50.039Z
 sources:
   - id: openwiki-source-78d773f851580c376cac002d
     resource: repo://dispatcher/config.py
@@ -21,7 +18,10 @@ sources:
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-bd2c9dd479aa89010adee0f5
     resource: repo://dispatcher/worktree.py
-generated: { by: "hermes", at: "2026-10-01T13:01:50.039Z" }
+generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-10-03T01:15:19.967Z
 ---
 
 # Dispatch Engine
@@ -90,7 +90,13 @@ the dashboard and dispatcher agree on which session a task owns
 Prompt context is **pre-digested in Python** before the agent wakes:
 `digest_reviewer_git_context` pre-computes the git log, diffstat, and a bounded
 diff so the reviewer spends tokens on review, not on `git` exploration
-(`repo://dispatcher/context_builder.py#L15-L88`).
+(`repo://dispatcher/context_builder.py#L15-L88`). The reviewer prompt instructs
+a **Ponytail anti-overengineering review** (diff hygiene, dependency veto,
+YAGNI) and submission via `gh pr review --comment` — not `--approve` /
+`--request-changes`, which GitHub blocks for the author's own token — with
+`[AI:zf-reviewer]`-tagged comments; the builder prompt likewise tags its
+GitHub output `[AI:zf-builder]`
+(`repo://dispatcher/worker_spawner.py#L120-L160`).
 
 ## Deterministic precommit + self-healing retry
 
@@ -119,9 +125,31 @@ escalates to a human.
   syncing `main`, detecting and resolving **unresolved conflict markers**, and
   cleaning stale git locks (`repo://dispatcher/git_ops.py#L14-L416`).
 - **`github_pr.py`** — PR interaction: fetching PR review comments, formatting
-  them into task comments, and — critically — **`ai_prefix`**, which prepends
-  `[AI]` to any agent-authored GitHub comment so humans can distinguish agent
-  output (`repo://dispatcher/github_pr.py#L25-L380`).
+  them into task comments, and deciding which comments actually demand builder
+  action. **`ai_prefix(text, role="zf-builder")`** prepends a **role-tagged**
+  marker `[AI:<role>]` (e.g. `[AI:zf-builder]`, `[AI:zf-reviewer]`) to
+  agent-authored GitHub text; it is idempotent — any existing `[AI]` /
+  `[AI:<tag>]` marker (matched by `AI_PREFIX_RE`) is left untouched so
+  re-writes never double-prefix
+  (`repo://dispatcher/github_pr.py#L321-L335`).
+  **`is_actionable_review_comment`** filters PR comments down to genuine
+  reviewer/human critiques: approval verdicts, builder-authored notes,
+  automated notifications, and dedup notes are excluded, so only actionable
+  feedback re-opens a task
+  (`repo://dispatcher/github_pr.py#L477-L532`).
+- **Per-commit review cap** — when a reviewer's actionable comments route a task
+  back to the builder, the dispatcher tracks `commit_review_count` in task
+  metadata keyed to the PR's `headRefOid` (reset to 0 whenever the head commit
+  changes, so a new commit restarts the round budget). The cap is
+  `ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**): exceeding it sets
+  `review_cap_reached`, renames the task with `[Human Review]`, assigns it to
+  `human`, and moves it to `blocked` instead of looping builder ↔ reviewer
+  forever (`repo://dispatcher/scheduler.py#L749-L847`).
+- **External-issue PR linkage** — when a task carries `external_issue` metadata
+  (see [External Issue Import](/openwiki/components/issues-importer.md)), the
+  PR body the dispatcher opens appends `Fixes #<n>` (GitHub) or
+  `Resolves: <KEY>` (Jira) so merging the PR closes the source issue
+  (`repo://dispatcher/scheduler.py#L1277-L1295`).
 
 ## Reaper
 

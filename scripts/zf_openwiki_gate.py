@@ -70,15 +70,18 @@ def create_openwiki_task(
 """
     try:
         from dashboard.plugin_api import TaskCreate, create_task
-        task = create_task(TaskCreate(
-            board_slug=board_slug,
-            title="docs(openwiki): sync architecture documentation with recent changes",
-            category="documentation",
-            priority="P2",
-            status="todo",
-            assignee="zf-builder",
-            description=task_desc,
-        ))
+
+        task = create_task(
+            TaskCreate(
+                board_slug=board_slug,
+                title="docs(openwiki): sync architecture documentation with recent changes",
+                category="documentation",
+                priority="P2",
+                status="todo",
+                assignee="zf-builder",
+                description=task_desc,
+            )
+        )
         return task
     except Exception:
         # Fallback to direct SQLite insertion if plugin_api unavailable
@@ -93,14 +96,20 @@ def create_openwiki_task(
                         INSERT INTO tasks (id, board_slug, title, description, status, assignee, priority, created_at, updated_at)
                         VALUES (?, ?, ?, ?, 'todo', 'zf-builder', 'P2', ?, ?)
                         """,
-                        (task_id, board_slug, "docs(openwiki): sync architecture documentation with recent changes", task_desc, now_ts, now_ts),
+                        (
+                            task_id,
+                            board_slug,
+                            "docs(openwiki): sync architecture documentation with recent changes",
+                            task_desc,
+                            now_ts,
+                            now_ts,
+                        ),
                     )
                     conn.commit()
                     return {"id": task_id}
             except Exception:
                 pass
     return None
-
 
 
 def _run_cmd(cmd: list[str], cwd: Path | None = None) -> str:
@@ -240,7 +249,9 @@ def check_openwiki_gate(
 
     if force_update:
         if auto_create_task:
-            task = create_openwiki_task(slug, "Force OpenWiki documentation sync requested", repo_dir)
+            task = create_openwiki_task(
+                slug, "Force OpenWiki documentation sync requested", repo_dir
+            )
             if task and task.get("id"):
                 return (
                     False,
@@ -274,7 +285,9 @@ def check_openwiki_gate(
 
     if not base_commit:
         if auto_create_task:
-            task = create_openwiki_task(slug, "Initial OpenWiki documentation sync", repo_dir)
+            task = create_openwiki_task(
+                slug, "Initial OpenWiki documentation sync", repo_dir
+            )
             if task and task.get("id"):
                 return (
                     False,

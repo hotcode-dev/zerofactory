@@ -42,9 +42,14 @@ def test_sync_profiles_endpoint(api_client: TestClient, monkeypatch):
     def mock_ensure_zf_profiles(force=False, update_prompts=False):
         called["force"] = force
         called["update_prompts"] = update_prompts
-        return {"created": [], "updated": ["zf-orchestrator", "zf-builder", "zf-reviewer"], "existing": []}
+        return {
+            "created": [],
+            "updated": ["zf-orchestrator", "zf-builder", "zf-reviewer"],
+            "existing": [],
+        }
 
     from dashboard.routes import settings as settings_route
+
     monkeypatch.setattr(settings_route, "ensure_zf_profiles", mock_ensure_zf_profiles)
 
     res = api_client.post("/api/plugins/zerofactory/settings/profiles/sync?force=true")
@@ -54,4 +59,3 @@ def test_sync_profiles_endpoint(api_client: TestClient, monkeypatch):
     assert "result" in data
     assert called["force"] is True
     assert called["update_prompts"] is True
-

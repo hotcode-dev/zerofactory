@@ -82,7 +82,10 @@ class TestActionableReviewComment:
             "body": "[AI:zf-reviewer] [Reviewer Feedback] Approved for human review.",
             "state": "COMMENTED",
         }
-        assert is_actionable_review_comment(comment, builder_assignee="zf-builder") is False
+        assert (
+            is_actionable_review_comment(comment, builder_assignee="zf-builder")
+            is False
+        )
 
     def test_filters_builder_verification_note(self):
         comment = {
@@ -90,7 +93,10 @@ class TestActionableReviewComment:
             "body": "[AI] Builder verification (Round 2): the alias-only refactor from commit 503fffb verified cleanly.",
             "state": "COMMENTED",
         }
-        assert is_actionable_review_comment(comment, builder_assignee="zf-builder") is False
+        assert (
+            is_actionable_review_comment(comment, builder_assignee="zf-builder")
+            is False
+        )
 
     def test_filters_builder_resolution_summary(self):
         comment = {
@@ -98,7 +104,10 @@ class TestActionableReviewComment:
             "body": "[AI:zf-builder] Resolution summary: fixed the comments from Round 1.",
             "state": "COMMENTED",
         }
-        assert is_actionable_review_comment(comment, builder_assignee="zf-builder") is False
+        assert (
+            is_actionable_review_comment(comment, builder_assignee="zf-builder")
+            is False
+        )
 
     def test_filters_dedup_note(self):
         comment = {
@@ -106,7 +115,10 @@ class TestActionableReviewComment:
             "body": "[AI] Dedup note: skipped duplicate task.",
             "state": "COMMENTED",
         }
-        assert is_actionable_review_comment(comment, builder_assignee="zf-builder") is False
+        assert (
+            is_actionable_review_comment(comment, builder_assignee="zf-builder")
+            is False
+        )
 
     def test_filters_builder_assignee_author(self):
         comment = {
@@ -114,7 +126,10 @@ class TestActionableReviewComment:
             "body": "I have updated the implementation.",
             "state": "COMMENTED",
         }
-        assert is_actionable_review_comment(comment, builder_assignee="my-builder-bot") is False
+        assert (
+            is_actionable_review_comment(comment, builder_assignee="my-builder-bot")
+            is False
+        )
 
     def test_allows_actionable_reviewer_critique(self):
         comment = {
@@ -122,7 +137,9 @@ class TestActionableReviewComment:
             "body": "[AI:zf-reviewer] [Reviewer Feedback] Round 1: Please fix the error handling in sync().",
             "state": "COMMENTED",
         }
-        assert is_actionable_review_comment(comment, builder_assignee="zf-builder") is True
+        assert (
+            is_actionable_review_comment(comment, builder_assignee="zf-builder") is True
+        )
 
     def test_allows_inline_review_comment(self):
         comment = {
@@ -131,7 +148,9 @@ class TestActionableReviewComment:
             "state": "COMMENTED",
             "path": "src/utils.py",
         }
-        assert is_actionable_review_comment(comment, builder_assignee="zf-builder") is True
+        assert (
+            is_actionable_review_comment(comment, builder_assignee="zf-builder") is True
+        )
 
     def test_allows_changes_requested_state(self):
         comment = {
@@ -139,7 +158,9 @@ class TestActionableReviewComment:
             "body": "See inline comments.",
             "state": "CHANGES_REQUESTED",
         }
-        assert is_actionable_review_comment(comment, builder_assignee="zf-builder") is True
+        assert (
+            is_actionable_review_comment(comment, builder_assignee="zf-builder") is True
+        )
 
 
 def _init_test_db(db_path: Path):
@@ -282,11 +303,20 @@ class TestReviewCapPerCommit:
         import dispatcher
 
         with (
-            patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
-            patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": "", "ZEROFACTORY_MAX_REVIEW_ROUNDS": "2"}),
+            patch.object(
+                dispatcher, "get_dispatcher_lock_path", return_value=lock_file
+            ),
+            patch.dict(
+                os.environ,
+                {"ZEROFACTORY_SKIP_GIT": "", "ZEROFACTORY_MAX_REVIEW_ROUNDS": "2"},
+            ),
             patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
-            patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run),
-            patch.object(dispatcher, "fetch_pr_review_comments", return_value=fake_review_comment),
+            patch(
+                "dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run
+            ),
+            patch.object(
+                dispatcher, "fetch_pr_review_comments", return_value=fake_review_comment
+            ),
             patch.object(dispatcher, "stop_task_worker"),
             patch.object(dispatcher, "_remove_worktree"),
         ):
@@ -295,7 +325,10 @@ class TestReviewCapPerCommit:
 
         with sqlite3.connect(str(db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT status, assignee, title, metadata FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT status, assignee, title, metadata FROM tasks WHERE id = ?",
+                (task_id,),
+            ).fetchone()
             # Must be escalated to human with status='blocked'
             assert row["assignee"] == "human"
             assert row["status"] == "blocked"
@@ -303,7 +336,10 @@ class TestReviewCapPerCommit:
 
             meta = json.loads(row["metadata"])
             assert meta["review_cap_reached"] is True
-            assert "Review cap reached (2 rounds on commit commit_" in meta["blocked_reason"]
+            assert (
+                "Review cap reached (2 rounds on commit commit_"
+                in meta["blocked_reason"]
+            )
 
             # Verify activity log
             activity = conn.execute(
@@ -311,7 +347,9 @@ class TestReviewCapPerCommit:
                 (task_id,),
             ).fetchone()
             assert activity is not None
-            assert "Review cap reached (2 review rounds on commit)" in activity["details"]
+            assert (
+                "Review cap reached (2 review rounds on commit)" in activity["details"]
+            )
 
     def test_new_commit_resets_review_count(self, tmp_path: Path):
         """When builder pushes a new commit SHA, review count resets to 1 instead of escalating."""
@@ -369,11 +407,20 @@ class TestReviewCapPerCommit:
         import dispatcher
 
         with (
-            patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
-            patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": "", "ZEROFACTORY_MAX_REVIEW_ROUNDS": "2"}),
+            patch.object(
+                dispatcher, "get_dispatcher_lock_path", return_value=lock_file
+            ),
+            patch.dict(
+                os.environ,
+                {"ZEROFACTORY_SKIP_GIT": "", "ZEROFACTORY_MAX_REVIEW_ROUNDS": "2"},
+            ),
             patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
-            patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run),
-            patch.object(dispatcher, "fetch_pr_review_comments", return_value=fake_review_comment),
+            patch(
+                "dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run
+            ),
+            patch.object(
+                dispatcher, "fetch_pr_review_comments", return_value=fake_review_comment
+            ),
             patch.object(dispatcher, "stop_task_worker"),
             patch.object(dispatcher, "_remove_worktree"),
             patch.object(dispatcher, "setup_worktree"),
@@ -383,7 +430,9 @@ class TestReviewCapPerCommit:
 
         with sqlite3.connect(str(db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             # Routes to builder for round 1 of new commit
             assert row["assignee"] == "zf-builder"
             assert row["status"] == "todo"
@@ -446,11 +495,19 @@ class TestReviewCapPerCommit:
         import dispatcher
 
         with (
-            patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+            patch.object(
+                dispatcher, "get_dispatcher_lock_path", return_value=lock_file
+            ),
             patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
             patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
-            patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run),
-            patch.object(dispatcher, "fetch_pr_review_comments", return_value=fake_builder_comment),
+            patch(
+                "dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run
+            ),
+            patch.object(
+                dispatcher,
+                "fetch_pr_review_comments",
+                return_value=fake_builder_comment,
+            ),
             patch.object(dispatcher, "stop_task_worker") as mock_stop,
             patch.object(dispatcher, "setup_worktree") as mock_setup,
         ):
@@ -461,7 +518,9 @@ class TestReviewCapPerCommit:
 
         with sqlite3.connect(str(db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             # Task stays blocked under reviewer, NOT bounced back to builder
             assert row["assignee"] == "zf-reviewer"
             assert row["status"] == "blocked"

@@ -84,7 +84,11 @@ class TestExternalIssueModel:
         assert sec_issue.infer_category() == "security"
 
         perf_issue = ExternalIssue(
-            source="github", id="2", key="#2", title="Slow queries", labels=["performance"]
+            source="github",
+            id="2",
+            key="#2",
+            title="Slow queries",
+            labels=["performance"],
         )
         assert perf_issue.infer_category() == "performance"
 
@@ -120,7 +124,9 @@ class TestExternalIssueModel:
 
 class TestGitHubParserAndClient:
     def test_parse_github_issue_ref_url(self):
-        repo, num = parse_github_issue_ref("https://github.com/octocat/Hello-World/issues/1347")
+        repo, num = parse_github_issue_ref(
+            "https://github.com/octocat/Hello-World/issues/1347"
+        )
         assert repo == "octocat/Hello-World"
         assert num == "1347"
 
@@ -178,7 +184,10 @@ class TestGitHubParserAndClient:
     @patch("subprocess.run")
     def test_fetch_issue_gh_error(self, mock_run):
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=1, stdout="", stderr="GraphQL: Could not resolve to an issue"
+            args=[],
+            returncode=1,
+            stdout="",
+            stderr="GraphQL: Could not resolve to an issue",
         )
         client = GitHubIssueClient(default_repo="my-org/my-repo")
         with pytest.raises(RuntimeError, match="Failed to fetch GitHub issue"):
@@ -187,7 +196,9 @@ class TestGitHubParserAndClient:
 
 class TestJiraParserAndClient:
     def test_parse_jira_issue_ref(self):
-        proj, key = parse_jira_issue_ref("https://mycompany.atlassian.net/browse/PROJ-456")
+        proj, key = parse_jira_issue_ref(
+            "https://mycompany.atlassian.net/browse/PROJ-456"
+        )
         assert proj == "PROJ"
         assert key == "PROJ-456"
 
@@ -200,7 +211,9 @@ class TestJiraParserAndClient:
         assert key == "PROJ-456"
 
     def test_jira_mock_payload_parsing(self):
-        client = JiraIssueClient(base_url="https://company.atlassian.net", default_project="AUTH")
+        client = JiraIssueClient(
+            base_url="https://company.atlassian.net", default_project="AUTH"
+        )
         fake_jira_data = {
             "fields": {
                 "summary": "Implement OAuth2 PKCE",
@@ -229,7 +242,9 @@ class TestImporterIdempotencyAndDeterminism:
         db_file = tmp_path / "zerofactory.db"
         monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
         # Create a test board
-        b_res = create_board(BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory.git"))
+        b_res = create_board(
+            BoardCreate(git_url="https://github.com/hotcode-dev/zerofactory.git")
+        )
         self.board_slug = b_res["slug"]
         self.db_path = db_file
 
@@ -264,7 +279,9 @@ class TestImporterIdempotencyAndDeterminism:
         # 3. Verify task metadata in DB has external_issue properly populated
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             assert row is not None
             meta = json.loads(row["metadata"])
             assert "external_issue" in meta

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0fe2c3a0fa21e442c197b3e8e86de2b1d0345cbc1356a9dc5915745e8b08ac2c",
+  "pageVersion": "sha256:87e28de623af0e054c7b972c5a9c797a73c2ceec66616494e191eb912afb240c",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -65,18 +65,18 @@
       "statement": "cron/definitions.py defines zero-factory-task-queue-check as a no_agent: True job on a 120-minute interval that runs pure Python with no LLM to reap stuck workers and trigger the dispatch cycle.",
       "evidence": [
         {
-          "resource": "repo://cron/definitions.py#L207-L222",
-          "version": "repo-lines-v1:sha256:05a77a6eb407c98ca081701c574fd4786847864628322fb6b0edd2a70e7c73aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOTVmZmE1Mzg5OGY5OGJlNTc0YWEzYjdmMTgyNDIyMDJhN2RlZDdmYWU1OWNiMDFhMGFhMzljYWIxNDljYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2NTQxMTFkMzIwZDFiZjZhZGEzNjE2Nzk2ODYzMDY0ZTFkMDNmOWZjODhiMzJlNzE4NTcwNDNlMzdjODA4NDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzN2Q5ZTRiYzJlZjg4NjVkOWYzODhiMGI0MmYwOTllNDE2NDE0OTFhNTIxNGM1ZjAyODk4YjM5NGY4YmNmNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3OGQxYzRkOGI1YWVkOWE3NWRmM2JiMTQxZjI1NDc5NjBhNjk3MGI0ZWNlNDBkNGNhYTdkYmQ2NGMxNzVmMGMifQ"
+          "resource": "repo://cron/definitions.py#L248-L270",
+          "version": "repo-lines-v1:sha256:a0a467d41fb294e8bc90cba7a6ab24e1d915c0492f47dfb52ab50ed91acb17d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOTVmZmE1Mzg5OGY5OGJlNTc0YWEzYjdmMTgyNDIyMDJhN2RlZDdmYWU1OWNiMDFhMGFhMzljYWIxNDljYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhNGVlNTFjNDI5MTc5YTE5YjIyNDliNmJlNzg3NThiMTEzZWJhNWNkMzhhYjhkMTY0NWI5ZDM5ZTQ3MTUxMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzN2Q5ZTRiYzJlZjg4NjVkOWYzODhiMGI0MmYwOTllNDE2NDE0OTFhNTIxNGM1ZjAyODk4YjM5NGY4YmNmNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkYTY5OTU2MTQyOTE2Y2UzYzc1MmE2YWUwNmY2ZjIwOTQ1OWVmYjU0MmFiNjdhZjc4YTZhM2RmMjhiYmFkN2IifQ"
         }
       ]
     },
     {
       "id": "claim_368f13698deb4f37ad35f581404ac5e0",
-      "statement": "cron/definitions.py defines a per-board zero-factory-improvement-scanner-<slug> job that runs on idle and wakes zf-orchestrator to scan the repo for tech debt and file at most one zf-builder Todo task.",
+      "statement": "cron/definitions.py defines a per-board zero-factory-improvement-scanner-<slug> job that runs on idle (or a 10080m/periodic interval) and wakes zf-orchestrator to scan the repo for tech debt and file at most one zf-builder Todo task.",
       "evidence": [
         {
-          "resource": "repo://cron/definitions.py#L272-L322",
-          "version": "repo-lines-v1:sha256:1f999563151e1c795dad27be7c4aeb0a237f53ef8533fb0f680b5ac7f6edae14:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZDRmMjI4NmE3ZDdjNTI3YzFhNTExYjM5OTEzYTRlMTQzZWQwNjY1NWVhZGNiMmFmYjlhNjhiYTQ1MmU0MzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NjU1OTgzNDcyOGE5ODg1YjQyNDVjODJjNzBiOTZjNzgwZmJhOGUxMmU1OTRjMWQ2ZmI1ZjNmZjFlMjI4Y2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhNGYyZjMzNDYwYjVmMTkyMTEzZjI5Mzc1MjYwYWZjOGJjOWUxZjA1YzUzMTNjZTYwMjY5YWUwNTY5ZTcxZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2YzYyMDE1NDg2NDA3ODYyNGU1NjJhM2RiYjRmNmJmOTdiOTFiODg2MzI5ZmJjMWExZWE2YWE3ZjUxMTE5MWQifQ"
+          "resource": "repo://cron/definitions.py#L312-L380",
+          "version": "repo-lines-v1:sha256:1969a4d8cac80dd04fe35d6808b3a959c08ea6b6570c7f87cda4812a8714d206:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZDRmMjI4NmE3ZDdjNTI3YzFhNTExYjM5OTEzYTRlMTQzZWQwNjY1NWVhZGNiMmFmYjlhNjhiYTQ1MmU0MzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5ODZlNDExYzg1ODc5YzMyYzRmOTI4ZGFjZDkxMTUyMjcwNDI3OWFlMzgyYWYzZWFiNTliOTUwMmYwMjE5ODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhNGYyZjMzNDYwYjVmMTkyMTEzZjI5Mzc1MjYwYWZjOGJjOWUxZjA1YzUzMTNjZTYwMjY5YWUwNTY5ZTcxZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5ZGU1YjAzMTIxNDM5OTgzYjk0ZDk5ZGRkODViNzczZTZiODgwMjZiMzlmM2U0M2MzM2ZiYjM4NmRjZjA4YzIifQ"
         }
       ]
     },
@@ -117,10 +117,102 @@
           "version": "repo-file-v1:sha256:2086ce47a8a8c155befecde44023ab7946a661d0514bcde3a3e29199197b5d69"
         }
       ]
+    },
+    {
+      "id": "claim_606c0446e7fe42f1966be9dc5808a3e3",
+      "statement": "cron/definitions.py defines a third per-board job family zero-factory-openwiki-update-<slug>, a no_agent: True job on a daily interval (ZEROFACTORY_OPENWIKI_INTERVAL_MINUTES, default 1440) whose script is zf_openwiki_gate.py and whose category is 'openwiki'.",
+      "evidence": [
+        {
+          "resource": "repo://cron/definitions.py#L381-L418",
+          "version": "repo-lines-v1:sha256:81f41db3bd63c6cbc1a10e04bbb6db5054a13733447544846464f822369de7e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzN2JhY2U0MGJmYmNhZDE0YzNhMTY4NDBiYjYzM2RmMDcwNDRjMzNjM2IzNjVjNzU0NWZlNmZlOGQ5MzlmMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0YWFhYzBiNTAxMDY0ZGY4M2YxYWFlOWIxODVmNzYwMjVkNmI1YzkzNjg5OTg5MzNmMzdjN2ViNzc3MDUwMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3ZDllYzEzOWFiNzJlN2VjN2IyNmM5ZDA2ZTRjMjgyMzU1ZGRkN2VlZmU2OWUzODEwMWRhZDk1N2QwZTlkZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzYzE0ZWI2Njc5ZGQ2MmJlZjhhNmJlMzNkYTcwMmVmNzNkYmIzMGIyM2RiMjExZmY4YjJjNWVlODJkMzYyOGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bffaaf0da71347e890cdb61ea5397647",
+      "statement": "Built-in cron job definitions carry a category field: 'core' for the task queue check and 'scanner' for the per-board improvement scanner job.",
+      "evidence": [
+        {
+          "resource": "repo://cron/definitions.py#L269-L270",
+          "version": "repo-lines-v1:sha256:63b3d2ca04f2984b29ac3c36f3bbcec39923120426889cf1abd3cbf692bdbb47:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVmYWEyZDE3YWE3MzA0Yzg1OWJlYzZkNzU0YWU1NGNkYzBhOGI3NDIwOTM2MGQ5NDhkYmNmMTMwNGE2NjAxMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmE0ZWU1MWM0MjkxNzlhMTliMjI0OWI2YmU3ODc1OGIxMTNlYmE1Y2QzOGFiOGQxNjQ1YjlkMzllNDcxNTEyYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTgzOTI2MTFhYjUxZDgyZmQ5YzI2NTQwZWI4NmEzY2JhYzlhNTA1OTM5ODExYzI1YzVlMDhiY2E5MWNlOTIyZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGRhNjk5NTYxNDI5MTZjZTNjNzUyYTZhZTA2ZjZmMjA5NDU5ZWZiNTQyYWI2N2FmNzhhNmEzZGYyOGJiYWQ3YiJ9"
+        },
+        {
+          "resource": "repo://cron/definitions.py#L379-L380",
+          "version": "repo-lines-v1:sha256:134387f9afe9cd98845d24d5cc40bc4a8cf3c0fab8f20ae669e907dd3bee4d1a:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjk4NmU0MTFjODU4NzljMzJjNGY5MjhkYWNkOTExNTIyNzA0Mjc5YWUzODJhZjNlYWI1OWI5NTAyZjAyMTk4OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDg3MWJlZDg2MGM4YzQ2MTNlNTk3NzQ4YjQzNGQ5YmY5YTEzYzBhYTE5ODIxODI3YTIxYmZkMjQ3ZmI2OTU0OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjlkZTViMDMxMjE0Mzk5ODNiOTRkOTlkZGQ4NWI3NzNlNmI4ODAyNmIzOWYzZTQzYzMzZmJiMzg2ZGNmMDhjMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d75cefbd1cc64d04accd75280b4b81c3",
+      "statement": "trigger_builtin_job pins every job id starting with zero-factory- to the zf-orchestrator profile regardless of the stored profile field.",
+      "evidence": [
+        {
+          "resource": "repo://cron/executor.py#L87-L92",
+          "version": "repo-lines-v1:sha256:0ba87470c36a78101ef3d7041f177e9b34e758641ca8e5f48b075fd9f7234369:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWRhNWM2NmUxN2IxNDUzOTc4MzRiOGM4NTRkYzQxOTNlMjEyNTE4MGE4OTk2YTE0YzMxODgzMzI2YjJlZmJjZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYThiNzNmYzQzMjBhYmQzYzg1NTgwMjI5OWUwZDU2N2NhNTFmZjlkYjk2YTBiYTVlNGIzN2RiMjYyOTUwZjkzNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzNkYjMwZjQzNTdkMWVmZWMxNDkwMDMzMGEzNmZhOWE2NjBjZGFhZmRkNDkxMmM1ZTA3YTBjZWU4MmJjM2U1ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6fa2c06fea8f4e2395bcb8e8be214ba3",
+      "statement": "When the master cron scheduler is disabled, set_cron_scheduler_enabled pauses built-in jobs by tagging them paused_by_master without marking custom_config, so user-tuned job fields are preserved when the scheduler is re-enabled.",
+      "evidence": [
+        {
+          "resource": "repo://cron/scheduler_check.py#L214-L220",
+          "version": "repo-lines-v1:sha256:9754f6cbe7a5ef760fa6add207e970e22320d7b99a5ed553927be72c13a81dbe:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTQ1M2ExYTIyY2VjZjYyYzE5NmM1ZDU1MWEyMjFlZDdhMjUwM2JhODk2ODBhOWQ3NThmNjNkYzNhMzlhMmQyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODBlOWU3MmY5NjNiNTkxYzAxOWZjZDFmN2E3OGYyNDU0NGVmZDU1MzM2NTdmOTM1NDAwMzQ3OTcxNGRlYTc3MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzVmNTg4Y2NlOWUyZDg4ZTZlYzA2ZTU3ZGFlZTdjZGU2NmQ4YTJiOGQzYjA4ZDhhN2I5MGQ0ODdjMTE2MGRmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmY1NWM4NDYwZGI0YjMzZTQ4N2FhMThhMWJmODM5Yzg1NzRiNDMwYWY4YjRkNGMxZmUxYzBhNjk4NWJjMzM5YyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea542ffdd0b54b38a3be5389c582d557",
+      "statement": "CRON_RUN_TIMEOUT, the bounded synchronous wait for on-demand `hermes cron run` triggered via trigger_builtin_job, defaults to 900 seconds and is overridable via ZEROFACTORY_CRON_RUN_TIMEOUT.",
+      "evidence": [
+        {
+          "resource": "repo://cron/config.py#L20-L22",
+          "version": "repo-lines-v1:sha256:8702e26ab1ee664ab91cc29e763e939656daf54191e12f4d2696b8cd4334becd:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhiOWZlMTVmOWZmNTg3ZDcyZTI1MzY0OWQ1Y2VlNmEyNjQwODYxOGM4MGRkNDQ2Y2JiMTA0ZDQ3OTZiM2NhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQ3MjdhMTMzNjAyZDI3ZmFmMDQ0ZDViMjNlYWZlZTNhMDdkZjM5YjNhNTQwNzRhNDYyMjc4OGU2YTc3NzE4YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTFlMzZiMTU4ZTkxY2U4NTNhYjRkZGY4YjNkYjc5YWI0ZjJiNWZmNDIyYmYwMmE4NmYyMWQwZmZhNzQxZDhjNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWY3YjEzYTQ3MTk5NTFkNjg3OTQxMTZmYmM5OTc3YTYwODFmNzY2OTZlNTg1NTFiZTIxN2M3ODM1NjEyYWFiNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b6ff8497fe5847dfb47bbc404339b1b3",
+      "statement": "The dashboard settings router exposes POST /settings/profiles/sync, which runs ensure_zf_profiles(force, update_prompts=True) to re-sync the zf-* profile templates and skills, equivalent to `hermes zerofactory sync-profiles`.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/settings.py#L243-L268",
+          "version": "repo-lines-v1:sha256:6c6701a279b1aed96f6d0b93c3277448f9f1fcccf6a26b073763ca83b0e500cf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5ZGVkNmI0Y2U1MDIwNGUwYTU2YWJlYzBkODQxNGNmMDAzY2JhN2VmOWM0ZDYzM2Y0ZTFmOGYwYjAyY2QzMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fabad13f93e24e9c8fc024b343a9670e",
+      "statement": "Task creation accepts an optional explicit task_id and metadata: an existing task id returns a duplicate response with its current status instead of creating a row, and provided metadata is merged into the stored task metadata — this supports deterministic external issue imports.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/models.py#L130-L135",
+          "version": "repo-lines-v1:sha256:6b976a6482f467a8bd8c867e1b6fd88fe37330c936ec4f9fc8faf9c7a5f24d4c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZmODFkYjcxNzc5YTYxMWQyMjc5NDdlMTRmODhiYzQ0NjIzNTlkOGFiNWM0ZmQ5ZDQwZWViYzI5ZWJhOTZhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTlhYmFiNmFkMjYzNjgyMjJkMGRkNWFiN2M3YzYzY2ZkZTc1YzZlY2VjYmIzYjdhMjIyNDdjZGQ4NTBhNjdkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTRmYjI4YWE4OGNhYzYwN2Q0ODZkYmQ1NTQ2ZmJlNzk2YzZkYTc2NGQ2MjgxZjUzMDI3OWViOGQ5OGY1MzU3ZCJ9"
+        },
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L267-L284",
+          "version": "repo-lines-v1:sha256:7b3b9559a1cf3431a877a8901ee6f269ed92f0fc116c26623966728e63f4e888:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZDA5ZmE4MDMxMGJkMTk3NzgxMGM4MzFjNWNjMWI3YTQyYTE2NGMzNmU3NGYwOTJlY2FmYzM1YTEyZWRmNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZDc4M2YwNjdiZjMwYTczOGVmZTM0Y2IzMzIyMThkMmYxYjA2MDJkOGM2ZTY4YzljODQxMTRjNTc3MTNjOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3YmE5YzMxZTAzZDBiMzcxOWUzNTNjOWVlM2ZlY2ZiNTYxMmIxNzM4NGNjOWJmMDJiMTRiMjQzNzgwOWU1ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzNzU2Y2M1NzcwZGY4Yjg1ZjU2MWM5ZDM1NmQ3ZDExMzM3MDkxZDMxODE0MGE5MmFhOGEzNDI2Yjk0OGU1OWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5f7b589c9aba416c9b4fff4d63e3c8de",
+      "statement": "scripts/zf_openwiki_gate.py deterministically decides whether OpenWiki docs need a sync: it skips when openwiki/ is missing, the working tree is dirty, or (unless forced) an openwiki-titled task is already active in triage/todo/ready/running/blocked; when HEAD has advanced past the last openwiki-touching commit it creates at most one P2 todo task for zf-builder and never wakes an LLM.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/zf_openwiki_gate.py#L185-L215",
+          "version": "repo-lines-v1:sha256:07daa89bc2cd33a24bd6c70c1400372a081a8a3177241341d19286401e5479f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMTNmNTE0MmE3MzZmYjE3NDU5ZDVlZTlmODc1NWVmMjkzZWIyNjFjN2IzZDEyMzIwZDc3ZmMwY2U1Nzk2ZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZjg5NzFlMTJjZmM0M2YxNmQ4N2M5NzE1ZTVjZjJjMDg2NjcyZThhNDMwOGY1ZmFhNTM3ZDExNGY3OTg0NjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MTI5MjM2MDQ3Y2U4MzEwZmJmY2Y0MTlmYzM2OTdiOWUwMTM4NWMzN2E0MjFhNmEzYWY2MTdkMjA0YTNhYTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNGFmODg2MmFjNDJlYjM1ZGQ2MTcyOGJmODk5MDkzZmJhMjE1NmMzNjdmOGE3ODE0YjUwOTQwZjNkZDFmMTQifQ"
+        },
+        {
+          "resource": "repo://scripts/zf_openwiki_gate.py#L50-L102",
+          "version": "repo-lines-v1:sha256:175491db052b9968cc3122afd3a378d4c26a0d9aa2a7241453e1d8c8d3b1f44e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2FjNjI2MjQ1MTJiYzhjNWQ2ZjZmZGU4NDBmZmI4MjJhMzQ1YTBmZjQ1ZDEzYzBhYjRhYmQ1NDcyZTIzZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2NmNkY2IzZWI2YzY3NDc0MGU0YzQ3NDhkMzIwNjIxMWU5Yjg1ZjYzNDhkM2YwNjg1OGJhYzNkYTY2NmI2OGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjcifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-01T13:01:50.039Z"
+    "at": "2026-10-03T01:15:19.967Z"
   }
 }
