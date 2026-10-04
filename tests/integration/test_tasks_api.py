@@ -173,4 +173,3 @@ def test_task_grill_with_docs_triage_and_interview_reply(
     assert any("[Grill-with-Docs Human Response]" in c["body"] for c in comments)
     assert any("Option A" in c["body"] for c in comments)
     assert any("consistent hashing" in c["body"] for c in comments)
-

@@ -223,10 +223,14 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         self.assertIn(f"Added comment to task {task_id}", out_comment)
 
         # 7. Move with --assignee
-        out_move_assignee = self._run_cli(["move", task_id, "todo", "--assignee", "human"])
+        out_move_assignee = self._run_cli(
+            ["move", task_id, "todo", "--assignee", "human"]
+        )
         self.assertIn(f"Moved task {task_id} to todo", out_move_assignee)
         with sqlite3.connect(str(self.db_path)) as conn:
-            r = conn.execute("SELECT status, assignee FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            r = conn.execute(
+                "SELECT status, assignee FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             self.assertEqual(r[0], "todo")
             self.assertEqual(r[1], "human")
 
@@ -246,7 +250,8 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         self.assertIn(f"Updated task {task_id}", out_update)
         with sqlite3.connect(str(self.db_path)) as conn:
             r = conn.execute(
-                "SELECT description, assignee, priority FROM tasks WHERE id = ?", (task_id,)
+                "SELECT description, assignee, priority FROM tasks WHERE id = ?",
+                (task_id,),
             ).fetchone()
             self.assertEqual(r[0], "Updated specification content")
             self.assertEqual(r[1], "zf-builder")

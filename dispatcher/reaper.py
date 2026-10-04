@@ -134,11 +134,18 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             if retcode is not None:
                 _active_workers.pop(task_id, None)
                 if retcode == 0:
-                    cursor.execute("SELECT assignee, status, title FROM tasks WHERE id = ?", (task_id,))
+                    cursor.execute(
+                        "SELECT assignee, status, title FROM tasks WHERE id = ?",
+                        (task_id,),
+                    )
                     t_check = cursor.fetchone()
                     curr_asgn = t_check["assignee"] if t_check else ""
                     curr_stat = t_check["status"] if t_check else ""
-                    curr_title = t_check["title"] if (t_check and "title" in t_check.keys()) else ""
+                    curr_title = (
+                        t_check["title"]
+                        if (t_check and "title" in t_check.keys())
+                        else ""
+                    )
 
                     meta = _d()._mark_task_session_ended(meta, now, "finished")
                     meta.pop("worker_failure_retries", None)
@@ -150,11 +157,19 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         or "[Triage]" in curr_title
                     )
                     blocked_reason = str(meta.get("blocked_reason") or "").lower()
-                    if is_triage_task and ("grill" in blocked_reason or "interview" in blocked_reason or "human" in blocked_reason or curr_stat == "triage"):
+                    if is_triage_task and (
+                        "grill" in blocked_reason
+                        or "interview" in blocked_reason
+                        or "human" in blocked_reason
+                        or curr_stat == "triage"
+                    ):
                         target_status = "triage"
                         meta.pop("blocked_reason", None)
                         meta["awaiting_interview"] = True
-                        cursor.execute("UPDATE tasks SET assignee = 'human' WHERE id = ? AND assignee != 'human'", (task_id,))
+                        cursor.execute(
+                            "UPDATE tasks SET assignee = 'human' WHERE id = ? AND assignee != 'human'",
+                            (task_id,),
+                        )
                     elif curr_stat in ("blocked", "todo", "triage"):
                         target_status = curr_stat
                     elif is_triage_task:
@@ -168,7 +183,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', ?, ?)",
-                        (task_id, f"Worker process completed successfully (exit 0); status set to {target_status}", now),
+                        (
+                            task_id,
+                            f"Worker process completed successfully (exit 0); status set to {target_status}",
+                            now,
+                        ),
                     )
                     _log.info(
                         "Worker for task %s finished successfully (exit 0); moved to %s",
@@ -176,7 +195,10 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         target_status,
                     )
                 else:
-                    cursor.execute("SELECT assignee, status, title FROM tasks WHERE id = ?", (task_id,))
+                    cursor.execute(
+                        "SELECT assignee, status, title FROM tasks WHERE id = ?",
+                        (task_id,),
+                    )
                     t_check = cursor.fetchone()
                     curr_stat = t_check["status"] if t_check else ""
                     if curr_stat in ("todo", "done"):

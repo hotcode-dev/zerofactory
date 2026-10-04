@@ -125,34 +125,58 @@ class TestExternalIssueModel:
 
     def test_issue_type_inference_bug_and_feature(self):
         bug_issue = ExternalIssue(
-            source="github", id="1", key="#1", title="App crashes on startup", labels=["bug"]
+            source="github",
+            id="1",
+            key="#1",
+            title="App crashes on startup",
+            labels=["bug"],
         )
         assert bug_issue.infer_issue_type() == "bug"
 
         feat_issue = ExternalIssue(
-            source="github", id="2", key="#2", title="Add dark mode support", labels=["enhancement"]
+            source="github",
+            id="2",
+            key="#2",
+            title="Add dark mode support",
+            labels=["enhancement"],
         )
         assert feat_issue.infer_issue_type() == "feature"
         assert feat_issue.infer_category() == "feature"
 
         title_feat_issue = ExternalIssue(
-            source="github", id="3", key="#3", title="[Feature] Export report to CSV", labels=[]
+            source="github",
+            id="3",
+            key="#3",
+            title="[Feature] Export report to CSV",
+            labels=[],
         )
         assert title_feat_issue.infer_issue_type() == "feature"
 
     def test_has_ai_request_label(self):
         labeled_issue = ExternalIssue(
-            source="github", id="1", key="#1", title="Investigate leak", labels=["zerofactory"]
+            source="github",
+            id="1",
+            key="#1",
+            title="Investigate leak",
+            labels=["zerofactory"],
         )
         assert labeled_issue.has_ai_request_label()
 
         ai_inv_issue = ExternalIssue(
-            source="github", id="2", key="#2", title="Investigate leak", labels=["ai-investigate"]
+            source="github",
+            id="2",
+            key="#2",
+            title="Investigate leak",
+            labels=["ai-investigate"],
         )
         assert ai_inv_issue.has_ai_request_label()
 
         unlabeled_issue = ExternalIssue(
-            source="github", id="3", key="#3", title="Random question", labels=["question"]
+            source="github",
+            id="3",
+            key="#3",
+            title="Random question",
+            labels=["question"],
         )
         assert not unlabeled_issue.has_ai_request_label()
 
@@ -326,7 +350,10 @@ class TestJiraParserAndClient:
                         {
                             "type": "listItem",
                             "content": [
-                                {"type": "paragraph", "content": [{"type": "text", "text": "Item 1"}]}
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": "Item 1"}],
+                                }
                             ],
                         }
                     ],
@@ -372,7 +399,9 @@ class TestJiraParserAndClient:
                     "content": [
                         {
                             "type": "paragraph",
-                            "content": [{"type": "text", "text": "Null pointer on submit"}],
+                            "content": [
+                                {"type": "text", "text": "Null pointer on submit"}
+                            ],
                         }
                     ],
                 },
@@ -507,7 +536,9 @@ class TestImporterIdempotencyAndDeterminism:
         alpha = next(b for b in boards if b["slug"] == "myorg-alpha")
         assert alpha["jira_url"] == "https://alpha.atlassian.net"
 
-        update_board("myorg-alpha", BoardUpdate(jira_url="https://new-alpha.atlassian.net"))
+        update_board(
+            "myorg-alpha", BoardUpdate(jira_url="https://new-alpha.atlassian.net")
+        )
         boards_after = list_boards()["boards"]
         alpha_after = next(b for b in boards_after if b["slug"] == "myorg-alpha")
         assert alpha_after["jira_url"] == "https://new-alpha.atlassian.net"
@@ -515,7 +546,9 @@ class TestImporterIdempotencyAndDeterminism:
 
 class TestCliImportGhIssue:
     @patch("issues.github.subprocess.run")
-    def test_cli_import_gh_issue_rejects_without_label(self, mock_gh_run, tmp_path, monkeypatch, capsys):
+    def test_cli_import_gh_issue_rejects_without_label(
+        self, mock_gh_run, tmp_path, monkeypatch, capsys
+    ):
         import argparse
         import __init__ as plugin_main
 
@@ -563,7 +596,9 @@ class TestCliImportGhIssue:
         assert "lacks an explicit human AI investigation label" in err
 
     @patch("issues.github.subprocess.run")
-    def test_cli_import_gh_issue_flow_with_label_and_force(self, mock_gh_run, tmp_path, monkeypatch, capsys):
+    def test_cli_import_gh_issue_flow_with_label_and_force(
+        self, mock_gh_run, tmp_path, monkeypatch, capsys
+    ):
         import argparse
         import __init__ as plugin_main
 
@@ -619,7 +654,9 @@ class TestCliImportGhIssue:
         assert "[Duplicate Skipped]" in out2
 
     @patch("issues.jira.JiraIssueClient.fetch_issue")
-    def test_cli_import_jira_issue(self, mock_jira_fetch, tmp_path, monkeypatch, capsys):
+    def test_cli_import_jira_issue(
+        self, mock_jira_fetch, tmp_path, monkeypatch, capsys
+    ):
         import argparse
         import __init__ as plugin_main
 
@@ -683,7 +720,9 @@ class TestSetupGhIssuesScript:
         assert 'labels: ["bug", "zerofactory"]' in content
         assert "Zero Factory AI Bug Report" in content
 
-        feature_template = tmp_path / ".github" / "ISSUE_TEMPLATE" / "feature_request.yml"
+        feature_template = (
+            tmp_path / ".github" / "ISSUE_TEMPLATE" / "feature_request.yml"
+        )
         assert feature_template.exists()
         f_content = feature_template.read_text(encoding="utf-8")
         assert 'labels: ["feature", "zerofactory"]' in f_content
@@ -695,4 +734,3 @@ class TestSetupGhIssuesScript:
         assert "blank_issues_enabled: false" in c_content
         assert "GitHub Discussions" in c_content
         assert "discussions" in c_content
-

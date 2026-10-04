@@ -121,7 +121,9 @@ def test_sync_and_import_gh_issues_endpoints(
     repo_dir.mkdir(parents=True)
     (repo_dir / ".git").mkdir()
 
-    board_res = create_board(BoardCreate(git_url="https://github.com/testowner/testrepo.git"))
+    board_res = create_board(
+        BoardCreate(git_url="https://github.com/testowner/testrepo.git")
+    )
     slug = board_res["slug"]
 
     mock_issue = ExternalIssue(
@@ -149,6 +151,7 @@ def test_sync_and_import_gh_issues_endpoints(
             return mock_issue
 
     import issues.github
+
     monkeypatch.setattr(issues.github, "GitHubIssueClient", MockClient)
 
     # 1. Sync endpoint
@@ -168,4 +171,3 @@ def test_sync_and_import_gh_issues_endpoints(
     import_res = import_board_gh_issue_endpoint(slug, {"issue": "42"})
     assert import_res["ok"] is True
     assert import_res["duplicate"] is True
-

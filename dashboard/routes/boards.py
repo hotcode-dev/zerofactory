@@ -555,6 +555,7 @@ def sync_board_gh_issues_endpoint(
 
     git_url = board_dict.get("git_url") or ""
     import re
+
     repo = None
     if git_url:
         m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?$", git_url)
@@ -645,6 +646,7 @@ def import_board_gh_issue_endpoint(slug: str, req: dict[str, Any]):
 
     git_url = board_dict.get("git_url") or ""
     import re
+
     repo = None
     if git_url:
         m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?$", git_url)
@@ -731,4 +733,3 @@ def setup_board_jira_endpoint(slug: str, req: JiraSetupRequest | None = None):
 def verify_board_jira_endpoint(slug: str):
     """Test reachability and authentication of configured Jira Cloud link."""
     return setup_board_jira_endpoint(slug, None)
-

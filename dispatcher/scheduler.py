@@ -285,7 +285,9 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             continue
 
                         # Atomic claim to prevent double-dispatch across processes
-                        task_orig_status = str(row["status"]) if "status" in row.keys() else "todo"
+                        task_orig_status = (
+                            str(row["status"]) if "status" in row.keys() else "todo"
+                        )
                         target_dispatch_status = (
                             "triage" if task_orig_status == "triage" else "running"
                         )
@@ -312,7 +314,9 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             _log.error(
                                 "Failed to spawn agent worker for %s: %s", task_id, e
                             )
-                            revert_status = "triage" if task_orig_status == "triage" else "todo"
+                            revert_status = (
+                                "triage" if task_orig_status == "triage" else "todo"
+                            )
                             cursor.execute(
                                 "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
                                 (revert_status, now, task_id),
@@ -389,7 +393,13 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         status = row["status"]
                         # Triage and orchestrator tasks must never be routed to reviewer or PR generation
                         if (
-                            assignee in ("zf-reviewer", "human", "zf-orchestrator", "orchestrator")
+                            assignee
+                            in (
+                                "zf-reviewer",
+                                "human",
+                                "zf-orchestrator",
+                                "orchestrator",
+                            )
                             or status == "triage"
                             or str(title or "").startswith("[Triage]")
                         ) and not row["pr_url"]:
@@ -457,8 +467,17 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             continue
 
                         if row["pr_url"]:
-                            if (row["status"] in ("done", "triage") or str(title or "").startswith("[Triage]")) and (
-                                assignee in ("zf-reviewer", "zf-orchestrator", "orchestrator", "human")
+                            if (
+                                row["status"] in ("done", "triage")
+                                or str(title or "").startswith("[Triage]")
+                            ) and (
+                                assignee
+                                in (
+                                    "zf-reviewer",
+                                    "zf-orchestrator",
+                                    "orchestrator",
+                                    "human",
+                                )
                                 or not workspace_path
                                 or not Path(workspace_path).exists()
                             ):
@@ -995,10 +1014,19 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 )
 
                         if (
-                            assignee not in ("zf-reviewer", "human", "zf-orchestrator", "orchestrator")
+                            assignee
+                            not in (
+                                "zf-reviewer",
+                                "human",
+                                "zf-orchestrator",
+                                "orchestrator",
+                            )
                             and row["status"] != "triage"
                             and not str(title or "").startswith("[Triage]")
-                            and (not row["pr_url"] or row["status"] in ("done", "blocked"))
+                            and (
+                                not row["pr_url"]
+                                or row["status"] in ("done", "blocked")
+                            )
                         ):
                             if meta.get("permanently_blocked") or meta.get(
                                 "last_worker_failure"

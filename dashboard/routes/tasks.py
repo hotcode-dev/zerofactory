@@ -1035,9 +1035,8 @@ def triage_task(task_id: str):
         )
         conn.commit()
 
-        if (
-            not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
-            and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get(
+            "ZEROFACTORY_DISABLE_DISPATCHER"
         ):
             _trigger_async_dispatch("triage_task")
 
@@ -1067,7 +1066,9 @@ def reply_interview(task_id: str, req: InterviewReply):
             f"🎯 **[Grill-with-Docs Human Response]**\n**Selection:** {req.selection.strip()}"
         ]
         if req.notes and req.notes.strip():
-            reply_lines.append(f"**Additional Notes / Constraints:**\n{req.notes.strip()}")
+            reply_lines.append(
+                f"**Additional Notes / Constraints:**\n{req.notes.strip()}"
+            )
         comment_body = "\n\n".join(reply_lines)
 
         author_val = os.environ.get("HERMES_PROFILE") or "human"
