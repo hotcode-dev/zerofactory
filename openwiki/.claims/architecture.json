@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a8c354ae882d28fca3ee8d893fdd57a91ce4a3d7b640f1d487fbc4ecfc038149",
+  "pageVersion": "sha256:49010fae7a46cb106b31726a77134020aff0e42b6dce9aaa44148d9129c1a4cf",
   "claims": [
     {
       "id": "claim_80cf282ecc34488f9bf7da2c69151cc1",
@@ -106,21 +106,49 @@
     },
     {
       "id": "claim_d88946e4e0b34fc286bc7066f4bad17c",
-      "statement": "The issues/ subsystem imports external GitHub/Jira issues into the Kanban board: import_external_issue resolves the target board, derives a deterministic task id and 'issue:' dedup key, infers priority/category from labels, and creates the task; the CLI exposes it as `hermes zerofactory import-gh-issue`.",
+      "statement": "The issues/ subsystem imports external GitHub and Jira issues into the Kanban board: import_external_issue resolves the target board, derives a deterministic task id and an 'issue:'-prefixed dedup key, infers priority/category from labels, and creates the task; the CLI exposes import-gh-issue (with --sync for bulk import of labeled open issues) and import-jira-issue, and setup-gh-issues / setup-jira provision tracker integration for a board.",
       "evidence": [
         {
-          "resource": "repo://__init__.py#L283-L316",
-          "version": "repo-lines-v1:sha256:c2c22c47a9c1927b8a0e62724295b2d5f0115b44a77ae95a15a2e0faf6e3ae20:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmNWYzN2YyZDE0NGVhZmUzYmJkOTI4M2NkNDg0ZTg5ZDgwNzhlYjAxYmVkOTlkYTZkODEwNTE3NGI5NDYyMDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2NDU0ZjBjMTFmYmYxYmYxNTVmMjE5YTQ2OTQ5MGIxMjY1NzI2ZGM1YWNhZTg2ZDhkNmZmMDZjMDAyOGNkYzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3NDNlNmViYmQ5MmQ5ZjQwMjZlNTliM2Q1MWFmNTdmY2RjYWMxMWY1ZTk2YzgwMjc2NjdkY2JmYTgxOGYwZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMjg3Y2UzZWRhMzcyYTU2MzQwZWMxNzljNGQyYzY4OTdkZGEyODIzNDQ0NjlhOWEzNzAwM2FmZWVjOWQwNjkifQ"
+          "resource": "repo://__init__.py#L291-L354",
+          "version": "repo-lines-v1:sha256:3ca43a27502e5e7e313a4e32568829deea2e690facf4cb1227ba64012b7d422a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmNWYzN2YyZDE0NGVhZmUzYmJkOTI4M2NkNDg0ZTg5ZDgwNzhlYjAxYmVkOTlkYTZkODEwNTE3NGI5NDYyMDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3NDNlNmViYmQ5MmQ5ZjQwMjZlNTliM2Q1MWFmNTdmY2RjYWMxMWY1ZTk2YzgwMjc2NjdkY2JmYTgxOGYwZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1MmZmMTQ5MGE0N2JkYjYwZDYzMjkxNzNhYWQ0NDFhMmI5MzI5MDMzNjhjMzBjZjRhYWExMzUxYjE1MDRhMWUifQ"
         },
         {
-          "resource": "repo://issues/importer.py#L98-L178",
-          "version": "repo-lines-v1:sha256:a3bcb6062bf1fcff9a764a1396903730abe488e9b83edd639d85e707e2ac43a7:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MmVmNjEzNjc0Yjk2ZTQ1MTRhNGY2NjdjYTgwZTI4NjNmZjJiYTZlYzkxNjY0YWViZDQxOGYxYmEyZWZhMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1ZGIxOTA3NTE3N2NlMzQzODdlYjNhM2ZjZjk2YWVjY2NkNjVhMDc2ZWE2YjE2Mzk1MTlmNTE1ZjI5ZjViYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://__init__.py#L356-L402",
+          "version": "repo-lines-v1:sha256:953234b86d2b27c6f9006d6e7676122ae4eac50875404a3c01b2e10401bf126c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjNjJiNjdkZmQwNGVjMmFhYTUyOWRiZmFlN2RiNmMzYmRlYmY4YmVlNTU1ZTM3MzExZGQ3YmU0NGRkODBlYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlmODUyYzY0YzRhNDIyNjVkNzBlZDZjNDIxMDFiYTExZTQwZTJhODc0ZmExMzVkZmI2NGQ3ZWZiYTg2ZjA5ZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5OTRjODkzZDdlNWQ2YmJiMjM3YzNlZTNjOTQyNjVhNjIwOGFjMDNlN2I2OGM3ODlkNDViMmUwZTU0OTRkODYifQ"
+        },
+        {
+          "resource": "repo://issues/importer.py#L111-L218",
+          "version": "repo-lines-v1:sha256:26f08555e2e7abdf4dae6330ace8ac845f5270d837b6d22d2a6004c37463444d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NjJlZjYxMzY3NGI5NmU0NTE0YTRmNjY3Y2E4MGUyODYzZmYyYmE2ZWM5MTY2NGFlYmQ0MThmMWJhMmVmYTExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NWRiMTkwNzUxNzdjZTM0Mzg3ZWIzYTNmY2Y5NmFlY2NjZDY1YTA3NmVhNmIxNjM5NTE5ZjUxNWYyOWY1YmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_beea8f2aea8a4a8f855479dd84743820",
+      "statement": "The boards table carries an optional jira_url column (added by migration 0003_add_board_jira_url.sql) that links a board to a Jira Cloud instance; board create/update expose --jira-url for configuring it.",
+      "evidence": [
+        {
+          "resource": "repo://__init__.py#L593-L597",
+          "version": "repo-lines-v1:sha256:9b846f7741f04d9f72728175d8f626eba1ce18c24d5fc92c36ca6b6f5e423f89:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY3NjMyZmJhN2Y2ZDRjZWExZmU2NGY4YzU3OTYzNTUxMWY1YjkzZTBjOTUyMGQ0NzBlMmExMWFmZjVhOGFjZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTkwOWE1M2E2MThkMDI4ZTFkMzAwMGMwYTdhYmNlZWNiZTVmYjM3ZjRlNTExZWZlNDY2NDNmYWQ2ZTY2ODcyZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGUzZjJjODIwYjJkOGZhOTEzY2ZhMDU3YzI0NTJjM2NkMTlmYzlmNGMxNjE5ODIwZjNlOWM2MzQzMzY4ZGYwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTcxZDgxNGQ0NzkzODA5MTY0Nzc3YWRlMjkxOWI4YjhkMWZjOGM1NDU3OWVhMzBiNTJjNWQxYTJlNGM4YTE3OSJ9"
+        },
+        {
+          "resource": "repo://migrations/0003_add_board_jira_url.sql",
+          "version": "repo-file-v1:sha256:3b10ab448ab44de4df1cd51bebe306924c4c9bb5be66801239f3b512feb8a297"
+        }
+      ]
+    },
+    {
+      "id": "claim_b0738e17c670419e97fddf43ff5a6371",
+      "statement": "The CLI surface includes an `update` command (edit a task's title, description, assignee, priority, or status in one call) and an `--assignee` option on `move`, letting handoffs reassign ownership while transitioning columns.",
+      "evidence": [
+        {
+          "resource": "repo://__init__.py#L456-L497",
+          "version": "repo-lines-v1:sha256:ec69331814bf5b00cd1009e4e9b358b9f13ee297924e236d93cd39c1a87acff8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzZDhlMWZiNzJmNzI0NjcwNjMyYTYwYTMxZjkyMTA5ZTBiMzZhMzg0MThkYjhmMDUwNzg2MzllYmZjYmIwMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyMDZiNzE2MTQ0MjRlOWUwZTMwNjBjMzdmOGMyMzIxYWY5NDQ4MWExN2M5YjYxNjM1ODdiOWNhYzljOTVhNzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjYzBkNGIxOGFmYjU0NmUzYzNkYjNlZGNiNTMzYjJhZDc4N2UwYzgxMTg2ZmNjNDhhMjMzYjE5NmVkMjBjMjAifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-03T01:15:19.967Z"
+    "at": "2026-10-04T01:15:35.072Z"
   }
 }

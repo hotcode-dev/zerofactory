@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9ebaca51c50c23249aae5f6ada5a7266e7b0b09c792cbe8c7b1a8def06bb618e",
+  "pageVersion": "sha256:eba62b81e65ce310a0c324ce87a83c0ebea1746ad6099c86561c95e59b8b610b",
   "claims": [
     {
       "id": "claim_f5049d3391c7479baf38776d89ce8a5a",
@@ -108,7 +108,7 @@
         },
         {
           "resource": "repo://tests/unit/dashboard/test_dashboard_css.py",
-          "version": "repo-file-v1:sha256:112914f27e9a0168ca09e94a36869841bd4f67b1f070dfb000971d92c5a39164"
+          "version": "repo-file-v1:sha256:1e63105239ee3c71ebc891adbb1d54735d0959b24123b9eb535b253591c5b2c2"
         }
       ]
     },
@@ -122,13 +122,13 @@
         },
         {
           "resource": "repo://dispatcher/worker_spawner.py#L127-L140",
-          "version": "repo-lines-v1:sha256:2cb5865f808ea097e27c02a214028f1f5d7990c4860a97f855436fcb6f83d70c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOWUzOTViZTI2M2VmMjUzNzk5NmM2NDJhZTBhYTNlYjZlNjBkNWM0ZGVlOGQ1YzRjYjYzNjUyMjc5Y2JmYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMzFhZjFiZmNiNTU1MTBkMGM3NWVkMzU4MDQ4YTM2NDA3NGJmMDQ5NjgwOGY2MjY1MzE4MjM5Mzg0MGRlNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwNDEwYzE2YTE1NWE0YzYyYjhhMjI1ZjU2NGY4NmZhYzYwY2Q3MmM3MDUwOTM0ODE3NTJkM2FjYmEzYTZmZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyOGJiZmZjZWZmZDk4ODc2Y2Q0ZjFjMGE0MDZhMmJhYTY0NmJkNGU1YjkzN2Y3YmRjZGM3YzU5MTRjYjNmMjkifQ"
+          "version": "repo-lines-v1:sha256:92c3d98934054e9f5d7945cf6bb17dbe86541209a968a3d8f8cd1b7705a28647:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOWUzOTViZTI2M2VmMjUzNzk5NmM2NDJhZTBhYTNlYjZlNjBkNWM0ZGVlOGQ1YzRjYjYzNjUyMjc5Y2JmYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMzFhZjFiZmNiNTU1MTBkMGM3NWVkMzU4MDQ4YTM2NDA3NGJmMDQ5NjgwOGY2MjY1MzE4MjM5Mzg0MGRlNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwNDEwYzE2YTE1NWE0YzYyYjhhMjI1ZjU2NGY4NmZhYzYwY2Q3MmM3MDUwOTM0ODE3NTJkM2FjYmEzYTZmZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyOGJiZmZjZWZmZDk4ODc2Y2Q0ZjFjMGE0MDZhMmJhYTY0NmJkNGU1YjkzN2Y3YmRjZGM3YzU5MTRjYjNmMjkifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-03T01:15:19.967Z"
+    "at": "2026-10-04T01:15:35.072Z"
   }
 }

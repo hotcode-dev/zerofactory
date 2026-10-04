@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:87e28de623af0e054c7b972c5a9c797a73c2ceec66616494e191eb912afb240c",
+  "pageVersion": "sha256:84ccc89bb6ea682f7708c2c94ab3425f82e8fb1a49a39c81f9d60b963e835f04",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -178,7 +178,7 @@
       "evidence": [
         {
           "resource": "repo://dashboard/routes/settings.py#L243-L268",
-          "version": "repo-lines-v1:sha256:6c6701a279b1aed96f6d0b93c3277448f9f1fcccf6a26b073763ca83b0e500cf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5ZGVkNmI0Y2U1MDIwNGUwYTU2YWJlYzBkODQxNGNmMDAzY2JhN2VmOWM0ZDYzM2Y0ZTFmOGYwYjAyY2QzMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "version": "repo-lines-v1:sha256:af38f2071c144ea0e3a5f6c4ecdc4176ca6d295d9bc356f23b975ce6f3cb8e6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5ZGVkNmI0Y2U1MDIwNGUwYTU2YWJlYzBkODQxNGNmMDAzY2JhN2VmOWM0ZDYzM2Y0ZTFmOGYwYjAyY2QzMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -192,27 +192,79 @@
         },
         {
           "resource": "repo://dashboard/routes/tasks.py#L267-L284",
-          "version": "repo-lines-v1:sha256:7b3b9559a1cf3431a877a8901ee6f269ed92f0fc116c26623966728e63f4e888:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZDA5ZmE4MDMxMGJkMTk3NzgxMGM4MzFjNWNjMWI3YTQyYTE2NGMzNmU3NGYwOTJlY2FmYzM1YTEyZWRmNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZDc4M2YwNjdiZjMwYTczOGVmZTM0Y2IzMzIyMThkMmYxYjA2MDJkOGM2ZTY4YzljODQxMTRjNTc3MTNjOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3YmE5YzMxZTAzZDBiMzcxOWUzNTNjOWVlM2ZlY2ZiNTYxMmIxNzM4NGNjOWJmMDJiMTRiMjQzNzgwOWU1ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzNzU2Y2M1NzcwZGY4Yjg1ZjU2MWM5ZDM1NmQ3ZDExMzM3MDkxZDMxODE0MGE5MmFhOGEzNDI2Yjk0OGU1OWIifQ"
+          "version": "repo-lines-v1:sha256:bba0f3f5f76e35aa5b0e8b424d166162cfe29eaa85a73f2685d08cd22ebbd87e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZDA5ZmE4MDMxMGJkMTk3NzgxMGM4MzFjNWNjMWI3YTQyYTE2NGMzNmU3NGYwOTJlY2FmYzM1YTEyZWRmNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZDc4M2YwNjdiZjMwYTczOGVmZTM0Y2IzMzIyMThkMmYxYjA2MDJkOGM2ZTY4YzljODQxMTRjNTc3MTNjOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3YmE5YzMxZTAzZDBiMzcxOWUzNTNjOWVlM2ZlY2ZiNTYxMmIxNzM4NGNjOWJmMDJiMTRiMjQzNzgwOWU1ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzNzU2Y2M1NzcwZGY4Yjg1ZjU2MWM5ZDM1NmQ3ZDExMzM3MDkxZDMxODE0MGE5MmFhOGEzNDI2Yjk0OGU1OWIifQ"
         }
       ]
     },
     {
       "id": "claim_5f7b589c9aba416c9b4fff4d63e3c8de",
-      "statement": "scripts/zf_openwiki_gate.py deterministically decides whether OpenWiki docs need a sync: it skips when openwiki/ is missing, the working tree is dirty, or (unless forced) an openwiki-titled task is already active in triage/todo/ready/running/blocked; when HEAD has advanced past the last openwiki-touching commit it creates at most one P2 todo task for zf-builder and never wakes an LLM.",
+      "statement": "scripts/zf_openwiki_gate.py deterministically decides whether OpenWiki docs need a sync: it skips when openwiki/ is missing, the working tree is dirty, or (unless forced) an openwiki-titled task is already active in triage/todo/ready/running/blocked (has_active_openwiki_task); when HEAD has advanced past the last openwiki-touching commit it creates at most one P2 todo task for zf-builder via create_openwiki_task — through the dashboard create-task endpoint with a SQLite fallback — and never wakes an LLM.",
       "evidence": [
         {
-          "resource": "repo://scripts/zf_openwiki_gate.py#L185-L215",
-          "version": "repo-lines-v1:sha256:07daa89bc2cd33a24bd6c70c1400372a081a8a3177241341d19286401e5479f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMTNmNTE0MmE3MzZmYjE3NDU5ZDVlZTlmODc1NWVmMjkzZWIyNjFjN2IzZDEyMzIwZDc3ZmMwY2U1Nzk2ZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZjg5NzFlMTJjZmM0M2YxNmQ4N2M5NzE1ZTVjZjJjMDg2NjcyZThhNDMwOGY1ZmFhNTM3ZDExNGY3OTg0NjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MTI5MjM2MDQ3Y2U4MzEwZmJmY2Y0MTlmYzM2OTdiOWUwMTM4NWMzN2E0MjFhNmEzYWY2MTdkMjA0YTNhYTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNGFmODg2MmFjNDJlYjM1ZGQ2MTcyOGJmODk5MDkzZmJhMjE1NmMzNjdmOGE3ODE0YjUwOTQwZjNkZDFmMTQifQ"
+          "resource": "repo://scripts/zf_openwiki_gate.py#L186-L213",
+          "version": "repo-lines-v1:sha256:6b5713b95c8e2b37d913cc1fccbd5ba8eb02f904a4c8198b8a6c21426b5d2212:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiYTc1NzE2MTYxMGUwNDZkMjY1MTc4NjJiM2Y4MmZkOTA3MGMzNzZmYWFiMmVmMjU1MzIwYmZjYWYyODJlN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzZDdjM2Y0YjJhMGIxYzk4OWJmMDUyNzQ3NjhhNjk2NTYxMTE3Nzk3ZmZiM2YxOTBlYzljOTM2MTAzOTkyNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2MzM3NWY4NmZiYjM1ODZiYjJjMGQ4NDJkZWRmYzliZjcwM2RlMjgzYjljMGMxNWM0Njg2YjBlNjU4NWU2MDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhZDc5NDc2MzBmNzU5ZTY5YjUzMTRjMGI0MWZkOThiMDczMTdkZjNkN2JjNGFkNzc5ZTc3Nzc5Zjk2MzBmY2EifQ"
         },
         {
-          "resource": "repo://scripts/zf_openwiki_gate.py#L50-L102",
-          "version": "repo-lines-v1:sha256:175491db052b9968cc3122afd3a378d4c26a0d9aa2a7241453e1d8c8d3b1f44e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2FjNjI2MjQ1MTJiYzhjNWQ2ZjZmZGU4NDBmZmI4MjJhMzQ1YTBmZjQ1ZDEzYzBhYjRhYmQ1NDcyZTIzZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2NmNkY2IzZWI2YzY3NDc0MGU0YzQ3NDhkMzIwNjIxMWU5Yjg1ZjYzNDhkM2YwNjg1OGJhYzNkYTY2NmI2OGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjcifQ"
+          "resource": "repo://scripts/zf_openwiki_gate.py#L50-L112",
+          "version": "repo-lines-v1:sha256:ec7fdc4e520b1a3bf0249f70c98c2548211475460987dcaba1ad18ceb4b1465e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2FjNjI2MjQ1MTJiYzhjNWQ2ZjZmZGU4NDBmZmI4MjJhMzQ1YTBmZjQ1ZDEzYzBhYjRhYmQ1NDcyZTIzZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2NmNkY2IzZWI2YzY3NDc0MGU0YzQ3NDhkMzIwNjIxMWU5Yjg1ZjYzNDhkM2YwNjg1OGJhYzNkYTY2NmI2OGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyMmQ0N2MwMzBjMWQ4YThiYTNiZDU0MmU2N2UyMGYwODhmOTcxY2JmYmI5YmExNzExYzgwNDkxNmQxOGQwZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0d5150651a1940dcb58ecce621dcda49",
+      "statement": "The boards router exposes external-tracker integration endpoints: GET/POST /boards/{slug}/sync-gh-issues and POST /boards/{slug}/import-gh-issue for GitHub issue synchronization and import, GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues for the deterministic GitHub issues setup flow, and POST /boards/{slug}/setup-jira / POST /boards/{slug}/test-jira for the Jira Cloud link.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/boards.py#L500-L730",
+          "version": "repo-lines-v1:sha256:aafd8b98c44e455a2843586a516970b0db1978b0ab826fd1791023272e83a944:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjOTcwYzY3YzdiNWM2NTYyZjkzZWE2YTA2MDNlMjYyZjY3Y2Q3MjI4OTc4OTY4NzYzZGE5NTNkZWRiMDhiMDJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjODE0MmExODM3ODRjZDA5OWRkYTRmMzk5NGQ5YWJhMDJkYjY5ODI2OTIzYjllNWQ1OTNhYjRlNGRlNTMxNWIxIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_e543e69228f84fd0962cab94798ee6ff",
+      "statement": "The Grill-with-Docs protocol adds POST /tasks/{task_id}/triage (dispatches the task to zf-orchestrator for triage) and POST /tasks/{task_id}/interview-reply (records the human's answer to an open interview question); the frontend GrillInterviewPanel and grillParser.js scan task comments backwards for a 'Grill-with-Docs: Decision Required' marker or an active_interview metadata state to detect open questions and existing replies.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L1002-L1054",
+          "version": "repo-lines-v1:sha256:e9f0e854d370ff20bb9aff98c9490f168e380de09442e11c1106161197a22e68:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Mzc5MjQ1NmQ5N2U1OWU5YzIyNDA1NWViODc2MjYzZGIwZDFkMmYyN2YzZjFkYWFhZTJlMjRjY2VhMzg1MjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZjQyNzdjYWU0ZDdmMWI1NzJkMTUyYWNjZTZiZjkxMDBiNjJiZTMxZDAzMmUxZjliNjkwZDVkMjlhNWVhODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmZGMwYTQzNWI0NDA1MWU5NjQxMjlhMjAyODA2ODdhZDMzYWU4MjVkYzIzMmE4ZDU1MDA5OWU2OGVjZWRiYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkMTlkNGNiMGFmOTIyZjZjYzkwNmJhNmJlOWI3M2UzN2Q3ZjgzNTYyMjUwODdkZTkwYTlhNGY4NGIyYTdjMjUifQ"
+        },
+        {
+          "resource": "repo://dashboard/src/utils/grillParser.js",
+          "version": "repo-file-v1:sha256:f6b1add62d1cbf56db9ba7b673a7da12521273729f88d3794c8187240ca37c80"
+        }
+      ]
+    },
+    {
+      "id": "claim_bff0e4c887c94698964584caa4738b5a",
+      "statement": "The dashboard UI is built from reusable primitives: Modal.jsx is a single standard modal dialog (uniform sizing, backdrop, Escape-key close) that all dashboard modals compose, and MarkdownView.jsx is a lightweight zero-dependency Markdown renderer (headers, bold/italic, inline code, links, lists, Pros/Cons callouts) used to display task descriptions and issue bodies.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/src/components/MarkdownView.jsx",
+          "version": "repo-file-v1:sha256:bf655f8dbaec0d096ed03b24d2ae855d283c5bbf67d00049021f683686bf2b32"
+        },
+        {
+          "resource": "repo://dashboard/src/components/Modal.jsx",
+          "version": "repo-file-v1:sha256:5f94ef92623eb07a4c09a0a82652d5a95f8444ed954c5d5e741b507948442b66"
+        }
+      ]
+    },
+    {
+      "id": "claim_0f2cb25375114cd08ac1c75084527b40",
+      "statement": "The tasks router supports PATCH /tasks/{task_id} to update task fields in one call (mirroring the new `hermes zerofactory update` CLI command), and guards query parameters (board, status, assignee, priority, search) with isinstance string checks so non-string task fields never break grill/conflict status handling.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L101-L120",
+          "version": "repo-lines-v1:sha256:bf6dea5c4f1fd150d77af989e34fbca24178a6631b4b90c7764fec506f2d8597:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NGU3ZTJiNTA5ZTc0NGNmZDYyYTY1NGJiMjFhNTNkZDFjMjQ1NjM2ODFiNjViMTc5ZTc1ZmZlNDgyMzIxZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlYWQyNDIwODA2MjZkODcxNGFlZmJiZDAzODA2NmM0MTUwYzc3MzI2YmRjMWEyZGE1NmFiNTI0ODgyMmU0YTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3YWRlMThlZmI4NDhhNzg1M2VkZmI4NGFmMmY0YmVlNjUwYWM3NzAwNDMxNjhhZTdiOGQ2YTRmMDgzNzVhODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyYWE0NGQ5Y2NkMDYyY2Y4NTMyM2JlNWI5OWUyZGQxOTNmZGNmYmY2MWMwYTY3YzAyOGJlYWEyMmFkMWJmOTkifQ"
+        },
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L626-L630",
+          "version": "repo-lines-v1:sha256:23f36bec100579bf83e9ac37b71c9269070c57fd69e55bfd8ff3307a01a21de7:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjcyOGE1YjM3MzU3OWQ0MjBkMGJkZjNmNjg4MTM4YTU0NjhlYmI4NTZlZTVhZjliOTFiMGYxZDEzZTdiNzY2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjRlODUwMDgxNDEzZTE4ZTUzOGE2YmNjZGNhNjJlMTMyZTM0MWM2YTRhMDU5NjRkMTkxYmNlNTM1MGFjMDIzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGY4Y2Y2ZTYyMGMwODZkMDMxMjJjMjE1OGQxNjY4NmQyYjNjMGRkYTdiNjVkN2QyNzhiNWQ1YWU4YTYwMzEyYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDU5ZjE0ODUwOWNiOGVhOGRjZDcwOTUwNzk3MDQ5MDQ5NWFjZDE1YjUyY2RlNzkzOGIxMzQ3NjQ1ODUxODdkNCJ9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-03T01:15:19.967Z"
+    "at": "2026-10-04T01:15:35.072Z"
   }
 }
