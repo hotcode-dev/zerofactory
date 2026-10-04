@@ -1,8 +1,8 @@
 ---
 type: subsystem
 title: Dashboard, Cron & Automation
-description: The operator and automation layer — the FastAPI dashboard REST surface, the cron subsystem, and the No-Agent Mode scripts that drive 0-token background queue checks and wake-gated codebase scans.
-tags: [dashboard, rest-api, cron, automation, no-agent-mode, fastapi, setup-services]
+description: The operator and automation layer — the FastAPI dashboard REST surface (boards, tasks, settings, GitHub issues sync/import, Jira link setup), the reusable React UI components (Modal, MarkdownView, GrillInterviewPanel), the cron subsystem, and the No-Agent Mode scripts that drive 0-token background queue checks and wake-gated codebase scans.
+tags: [dashboard, rest-api, cron, automation, no-agent-mode, fastapi, setup-services, gh-issues, jira, ui-components]
 sources:
   - id: openwiki-source-0fcd11b2ec72e81b8258e0a7
     resource: repo://cron/config.py
@@ -22,12 +22,20 @@ sources:
     resource: repo://dashboard/precommit_service.py
   - id: openwiki-source-afe67e60bbdbffde9666707f
     resource: repo://dashboard/routes/__init__.py
+  - id: openwiki-source-51d54395961048122dcc244f
+    resource: repo://dashboard/routes/boards.py
   - id: openwiki-source-bd5f75c9f65299ae52978752
     resource: repo://dashboard/routes/settings.py
   - id: openwiki-source-c705147b9966f3d6f300034a
     resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-9e3e91dd19f899c194f7c69e
     resource: repo://dashboard/setup_common.py
+  - id: openwiki-source-bd9db10cf8ae31f7cc14e5a9
+    resource: repo://dashboard/src/components/MarkdownView.jsx
+  - id: openwiki-source-4ed61aeddc44827fa8135492
+    resource: repo://dashboard/src/components/Modal.jsx
+  - id: openwiki-source-8258252e9b79b31153b47276
+    resource: repo://dashboard/src/utils/grillParser.js
   - id: openwiki-source-8bf8788755a522a066b8b827
     resource: repo://scripts/zf_daily_stats.py
   - id: openwiki-source-20bc44fdf115b28983477777
@@ -36,10 +44,10 @@ sources:
     resource: repo://scripts/zf_queue_watchdog.py
   - id: openwiki-source-bc25bd3bfcf63b730444ea04
     resource: repo://scripts/zf_scanner_gate.py
-generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-03T01:15:19.967Z
+    at: 2026-10-04T01:15:35.072Z
 ---
 
 # Dashboard, Cron & Automation
@@ -57,13 +65,28 @@ The dashboard is a Hermes gateway route declared by `repo://dashboard/manifest.j
 `dist/style.css`, with its REST backend in `dashboard/plugin_api.py`.
 
 `plugin_api.py` assembles a **master FastAPI `APIRouter`** that aggregates
-eight sub-routers (`repo://dashboard/routes/__init__.py#L39-L46`):
+eight sub-routers (`repo://dashboard/routes/__init__.py#L46-L54`):
 
-- **boards** — CRUD for repository boards (`git_url`, target branch, concurrency cap).
-- **tasks** — Kanban card lifecycle (create, move, block, comment). Task
-  creation accepts an optional explicit `task_id` and `metadata` so external
-  importers can create deterministic, dedup-keyed cards
-  (`repo://dashboard/routes/tasks.py#L267-L284`).
+- **boards** — CRUD for repository boards (`git_url`, target branch,
+  concurrency cap, `jira_url`), plus the external-tracker integration
+  endpoints: `GET/POST /boards/{slug}/sync-gh-issues` and
+  `POST /boards/{slug}/import-gh-issue` for GitHub issue synchronization and
+  import, `GET /boards/{slug}/gh-issues-status` plus
+  `POST /boards/{slug}/setup-gh-issues` for the deterministic GitHub issues
+  setup flow, and `POST /boards/{slug}/setup-jira` /
+  `POST /boards/{slug}/test-jira` for the Jira Cloud link
+  (`repo://dashboard/routes/boards.py#L500-L730`).
+- **tasks** — Kanban card lifecycle (create, update, move, block, comment).
+  Task creation accepts an optional explicit `task_id` and `metadata` so
+  external importers can create deterministic, dedup-keyed cards
+  (`repo://dashboard/routes/tasks.py#L243-L330`). `PATCH /tasks/{task_id}`
+  edits fields in one call (`repo://dashboard/routes/tasks.py#L626-L630`), and
+  the Grill-with-Docs protocol adds `POST /tasks/{task_id}/triage` (dispatches
+  to `zf-orchestrator` for triage) and
+  `POST /tasks/{task_id}/interview-reply` (records the human's answer to an
+  open interview question) (`repo://dashboard/routes/tasks.py#L1002-L1054`).
+  Query params and metadata fields are type-guarded with `isinstance` checks so
+  non-string values never break grill/conflict status handling.
 - **stats** — board velocity/column metrics (`get_stats`).
 - **settings** — global + per-board settings, including
   `POST /settings/profiles/sync` which re-syncs the `zf-*` profile templates and
@@ -97,6 +120,28 @@ rather than duplicated (`repo://dashboard/setup_common.py`).
 > cron. They do **not** emit `.github/workflows/openwiki-update.yml` or `CLAUDE.md`
 > — external GitHub Actions is explicitly out of scope for this repo's wiki
 > update path. If a tool ever produces them, delete them.
+
+## Web UI components
+
+The React dashboard (built into `dist/index.js`) is built from a small set of
+reusable primitives in `dashboard/src/components/`:
+
+- **`Modal.jsx`** — a single standard modal dialog enforcing uniform responsive
+  sizing, backdrop, mobile padding, and an Escape-key close listener. All
+  modals (add memory, cron, edit board, new board, new task, settings, task
+  detail) compose it instead of reimplementing dialog chrome
+  (`repo://dashboard/src/components/Modal.jsx`).
+- **`MarkdownView.jsx`** — a lightweight, zero-dependency Markdown renderer
+  (headers, bold/italic, inline code, links, lists, Pros/Cons callouts) used
+  to display task descriptions and issue bodies in the UI
+  (`repo://dashboard/src/components/MarkdownView.jsx`).
+- **`GrillInterviewPanel.jsx`** — the interactive Grill-with-Docs requirement
+  panel. It surfaces the active interview question/options for a task and
+  posts the human's reply through the `interview-reply` endpoint. The parser
+  `dashboard/src/utils/grillParser.js` scans task comments backwards for a
+  `Grill-with-Docs: Decision Required` marker (or a task-metadata
+  `active_interview` state) and detects whether a human reply already exists
+  (`repo://dashboard/src/utils/grillParser.js`).
 
 ## Cron subsystem
 
@@ -156,9 +201,13 @@ Four deterministic scripts drive the token-efficient automation and emit a
   when an OpenWiki-titled task is already active on the board in `triage`/`todo`/
   `ready`/`running`/`blocked` (`repo://scripts/zf_openwiki_gate.py#L185-L215`).
   When HEAD has advanced past the last `openwiki`-touching commit, it creates at
-  most **one** P2 `todo` task for `zf-builder` (deterministic, idempotent via the
-  create-task endpoint) and reports 0-token completion
-  (`repo://scripts/zf_openwiki_gate.py#L50-L102`).
+  most **one** P2 `todo` task for `zf-builder` via `create_openwiki_task` —
+  deterministically, idempotent via the create-task endpoint, with a SQLite
+  fallback if the plugin API is unavailable (`repo://scripts/zf_openwiki_gate.py#L50-L112`)
+  — and reports 0-token completion
+  (`repo://scripts/zf_openwiki_gate.py#L185-L215` checks for an
+  already-active OpenWiki-titled task in `triage`/`todo`/`ready`/`running`/
+  `blocked`).
 - **`scripts/zf_daily_stats.py`** — a deterministic 24-hour metrics / velocity
   calculator with no LLM involvement.
 

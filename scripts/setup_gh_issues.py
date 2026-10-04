@@ -115,6 +115,7 @@ body:
           required: false
 """
 
+
 def build_config_template(repo: str | None = None) -> str:
     repo_slug = (repo or "").strip()
     discussions_url = (
@@ -257,7 +258,9 @@ def provision_github_labels(repo: str) -> dict[str, Any]:
             if res.returncode == 0:
                 created.append(lbl["name"])
             else:
-                failed.append(f"{lbl['name']}: {res.stderr.strip() or res.stdout.strip()}")
+                failed.append(
+                    f"{lbl['name']}: {res.stderr.strip() or res.stdout.strip()}"
+                )
         except Exception as e:
             failed.append(f"{lbl['name']}: {e}")
 
@@ -352,7 +355,9 @@ def main():
         if l_res.get("error"):
             print(f"\n⚠️ {l_res['error']}")
 
-    print("\nSetup complete! Issues filed with the 'zerofactory' label can now be triaged by Zero Factory AI.\n")
+    print(
+        "\nSetup complete! Issues filed with the 'zerofactory' label can now be triaged by Zero Factory AI.\n"
+    )
 
 
 if __name__ == "__main__":

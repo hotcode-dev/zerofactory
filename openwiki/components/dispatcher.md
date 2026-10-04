@@ -18,10 +18,10 @@ sources:
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-bd2c9dd479aa89010adee0f5
     resource: repo://dispatcher/worktree.py
-generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-03T01:15:19.967Z
+    at: 2026-10-04T01:15:35.072Z
 ---
 
 # Dispatch Engine
@@ -56,11 +56,11 @@ Within one cycle it:
    precommit gate, commits, merges against latest main, pushes, opens a GitHub
    PR, and routes the ticket to `zf-reviewer`.
 6. **Reaps** — `reap_stuck_tasks` / `reap_active_workers` detect and clean up
-   hung workers (`repo://dispatcher/reaper.py#L94-L453`).
+   hung workers (`repo://dispatcher/reaper.py#L94-L561`).
 
 A background thread (`_dispatcher_loop` → `start_background_dispatcher`,
-`repo://dispatcher/scheduler.py#L1412-L1444`) drives this every
-`DISPATCH_INTERVAL_SECONDS` (30s).
+`repo://dispatcher/scheduler.py#L1577-L1609`) drives this every
+`DISPATCH_INTERVAL_SECONDS` (30s, `repo://dispatcher/config.py#L88`).
 
 ## Isolated-worktree invariant
 
@@ -144,12 +144,12 @@ escalates to a human.
   `ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**): exceeding it sets
   `review_cap_reached`, renames the task with `[Human Review]`, assigns it to
   `human`, and moves it to `blocked` instead of looping builder ↔ reviewer
-  forever (`repo://dispatcher/scheduler.py#L749-L847`).
+  forever (`repo://dispatcher/scheduler.py#L780-L847`).
 - **External-issue PR linkage** — when a task carries `external_issue` metadata
   (see [External Issue Import](/openwiki/components/issues-importer.md)), the
   PR body the dispatcher opens appends `Fixes #<n>` (GitHub) or
   `Resolves: <KEY>` (Jira) so merging the PR closes the source issue
-  (`repo://dispatcher/scheduler.py#L1277-L1295`).
+  (`repo://dispatcher/scheduler.py#L1316-L1335`).
 
 ## Reaper
 
@@ -159,7 +159,7 @@ escalates to a human.
 (`repo://dispatcher/config.py#L79-L85`). `reap_active_workers` terminates a
 worker that exceeded its budget and records the session end; `reap_stuck_tasks`
 is the entry the watchdog and `check-stuck` CLI use
-(`repo://dispatcher/reaper.py#L94-L453`).
+(`repo://dispatcher/reaper.py#L94-L561`).
 
 ## Relationships
 

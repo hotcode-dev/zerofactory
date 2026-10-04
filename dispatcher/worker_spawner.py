@@ -206,7 +206,7 @@ def spawn_agent_worker(
             f"       - [ ] **Option C:** <Details, trade-offs, pros/cons>\n"
             f"       **Documentation Context:** <Citations to openwiki/ or codebase patterns>\n\n"
             f"     * Post the question to the task discussion:\n"
-            f"       hermes zerofactory comment {task_id} \"<formatted interview question>\"\n"
+            f'       hermes zerofactory comment {task_id} "<formatted interview question>"\n'
             f"     * Keep the task in Triage awaiting human reply (assign to human so the dashboard displays the interview options and the dispatcher pauses re-dispatch until answered):\n"
             f"       hermes zerofactory move {task_id} triage --assignee human\n"
             f"     * Finish your turn cleanly (DO NOT mark blocked, DO NOT write implementation code in worktree, DO NOT open PR).\n\n"
@@ -215,7 +215,7 @@ def spawn_agent_worker(
             f'       hermes zerofactory memory add --board {board_slug or "default"} "<rule or decision>" --category decision\n'
             f"     * If needed, update openwiki/ documentation or ADRs in {workdir}.\n"
             f"     * Update the task description with the finalized specification, acceptance criteria, and test plan:\n"
-            f"       hermes zerofactory update {task_id} --description \"<comprehensive specification & acceptance criteria>\"\n"
+            f'       hermes zerofactory update {task_id} --description "<comprehensive specification & acceptance criteria>"\n'
             f"     * Promote the task to Todo and reassign to zf-builder:\n"
             f"       hermes zerofactory move {task_id} todo --assignee zf-builder\n"
             f"     * Provide a clear triage summary confirming the handoff to zf-builder.\n"
