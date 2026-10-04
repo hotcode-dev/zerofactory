@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5c7f8b2d36209dae6082d0028f3c4831ce62b2772e7e18ac1fb0a250f7cb58b8",
+  "pageVersion": "sha256:78d68eb9a72340a8fdf86564e6c90247f66f783edf71caff5b9dad8c321425d3",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
@@ -119,8 +119,8 @@
       "statement": "reaper.py detects hung workers using a per-task max running time and an inactivity timeout: reap_active_workers terminates a worker that exceeded its budget and records the session end, and reap_stuck_tasks is the entry point the queue watchdog and the check-stuck CLI use.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/reaper.py#L94-L453",
-          "version": "repo-lines-v1:sha256:c8f6fd2b0e59600619aacad2a543a7d430374add7ca8ca418b2df0f99e8912dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNzBjZTE5OWZhOWExOTNkZmQ3NDRiNGYyNGUwNjE0NWU1NDQ5MjdhN2RjZDg2OTEzOTE5Y2ViMTdiNjY1NjEwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzM2JjM2MyMmI5N2ExMTExM2IwMmEwZjQ5ZWEzZDI1NDVlOWI5M2JkZmNlOTIxOGY3ZGViZDg4ZTkwMTkyZjUwIn0"
+          "resource": "repo://dispatcher/reaper.py#L94-L561",
+          "version": "repo-lines-v1:sha256:8cf5c8ebad8af0b387a46f4347bdf5c7375bf60cb6d7e17c197e097639143365:eyJzZWxlY3RlZExpbmVDb3VudCI6NDY4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -139,8 +139,8 @@
       "statement": "The dispatcher enforces a per-commit review cap: commit_review_count in task metadata is keyed to the PR head commit (headRefOid, reset when the head changes) and compared against ZEROFACTORY_MAX_REVIEW_ROUNDS (default 2); exceeding the cap sets review_cap_reached, appends [Human Review] to the title, assigns the task to 'human', and moves it to blocked instead of looping between builder and reviewer.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scheduler.py#L749-L847",
-          "version": "repo-lines-v1:sha256:44c2b3ab4f83745fcf625d0e73bfa82db101ea20d92011ac223f2922051ca6fb:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwOTk2YTU5MmUyOTI0OTczMzMwMWMxMjU2ZWVlMGU3MDFlNzYyZDMwYWIyMTVjNjg2ODYyNjc0ODM1MGY2MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwZWEyNzUwZjc1NTNmZjUzOTJkYjk1MzUyMjkxMGM3ZDQxOTY2ODcxMDJkODEyYTc3YjU3Zjk3MDVkZTYzOWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1M2ZkZjA1N2UzMWE2NzQzMWZhZDVjYzM0NDI5ZjQxN2JhMmM0MDBmZTk5NWVjY2EwODFjNzk4MDg3NmQxN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0M2FlM2ExOGQ3YjY4NmU2YjUzMzI0YzVlZDdlMWMxMDFlMjIwNDFkY2NkMzhkZjJiMTU5OGI1OTZjMmI5YTQifQ"
+          "resource": "repo://dispatcher/scheduler.py#L780-L847",
+          "version": "repo-lines-v1:sha256:23bf20aa4904238953b457b3bff3a5dff705d9496d2ab5dbcb296fc189848b16:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwOTk2YTU5MmUyOTI0OTczMzMwMWMxMjU2ZWVlMGU3MDFlNzYyZDMwYWIyMTVjNjg2ODYyNjc0ODM1MGY2MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkN2RmYjExMDg5MjYxMTg3NDQ1Nzg5MWJlYTgyOTU4YmY2NDAzOTg1N2M3NDJlMzQ0ZDc1NDI5ZmU3YTFlNWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1M2ZkZjA1N2UzMWE2NzQzMWZhZDVjYzM0NDI5ZjQxN2JhMmM0MDBmZTk5NWVjY2EwODFjNzk4MDg3NmQxN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkMWVhZjZkOTMyYmExYjBiNjExNWFkZTY0OGVmZGQ0ODM4NTQ3MGUwYWVhNGY0Njk5ZDZiNThlMjY5MTQ4YjIifQ"
         }
       ]
     },
@@ -149,14 +149,14 @@
       "statement": "When a task carries external_issue metadata, the PR body opened by the dispatcher appends 'Fixes #<n>' for GitHub issues or 'Resolves: <KEY>' for Jira issues so merging the PR links the source issue.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scheduler.py#L1277-L1295",
-          "version": "repo-lines-v1:sha256:04dc425779d777ad7a5ad306d9c3eeee24995829b79c82fece62b9a90f08f6d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkYTdhNmE1MTNiOGY1OTVhMGYzZWJlYTRkMzE1MDEzYmZmZjZiZTcwZDU1MDA3ZjlhZmY2ZDNlY2IwYTk0MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MDU4YzliMTgyNGZkNWM1MzhkNjIwNzg4MjE5MjJjZWY2OGU1MTYzOTNlNGVjNDA5M2MzNzg5NTY1NWNjMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmOTJiNzQzY2Q3Y2ZlYTg3OTA3NTBiNDdmYjZjNDQ5YjAwYjViNzQ2MDBlODQ0M2I4ZGIwN2RmMTU5OGU5YjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkZDhlMzNkYTdkNWZhM2ZjOTFjZDdjODVkMGNiNDY2NGZjYTFjMjA1YjJlNzQ2YzlmOWVhYTc2MDA4N2Q4YTAifQ"
+          "resource": "repo://dispatcher/scheduler.py#L1316-L1335",
+          "version": "repo-lines-v1:sha256:198974b1bd41ff945c260450c9671bde8b9bad68cac7e6183ddc37f9caf1466c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZGE2NGE1YzY0YWQ5N2M2OWExMzdmY2QwN2QwZGNlYWU2ZDhmOGRmNDdmMGFhOTQ1MWJiNGI3ZmIwMDE4MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0OWU1YjJjZGNkOWFmYTAyOWNkOTMxMWM1MTA2ZWMwM2NiMzJhYzY3ZGYzODJlMmM4OGNlNGRhOTQ0YjdmMDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwOTQ4OGMzNDdiZTg4ZjVjMDA1MDlkZGU3YjE2ZGRiN2Q2NjRiYWI1NTk0ZDgzYWUwYmYyMjA1ZGViYTRjMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzZGVjNDVjN2U0NzZkM2NmYTEwYWE4MGRiOTI5NDg0YTZkZGVlZDRkN2U0NTY2MTIxZjA0YjgxZDRjMzNmNDIifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-03T01:15:19.967Z"
+    "at": "2026-10-04T01:15:35.072Z"
   }
 }

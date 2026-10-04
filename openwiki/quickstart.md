@@ -14,10 +14,10 @@ sources:
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-03T01:15:19.967Z
+    at: 2026-10-04T01:15:35.072Z
 ---
 
 # Quickstart
@@ -108,7 +108,7 @@ pytest tests/                 # full suite
 pytest tests/unit/            # or a single tier: integration/ / e2e/
 ```
 
-**As of this commit the full suite is green: `233 passed, 1 skipped`.** Re-run
+**As of this commit the full suite is green: `255 passed, 1 skipped`.** Re-run
 it before publishing any claim about the count.
 
 ## Core CLI surface
@@ -117,14 +117,19 @@ it before publishing any claim about the count.
 # Tasks
 hermes zerofactory list [--status <status>] [--assignee <profile>]
 hermes zerofactory create "Implement Feature X"
-hermes zerofactory import-gh-issue 42 [--repo owner/repo] [--board <slug>] [--status triage] [--priority P1] [--assignee zf-builder]
-hermes zerofactory move <task_id> <status> [--reason "..."]
+hermes zerofactory import-gh-issue 42 [--repo owner/repo] [--board <slug>] [--status triage] [--priority P1] [--assignee zf-builder] [--sync] [--force]
+hermes zerofactory import-jira-issue PROJ-123 [--board <slug>] [--priority P1]
+hermes zerofactory update <task_id> [--title "..."] [--description "..."] [--assignee <profile>] [--priority P1] [--status <status>]
+hermes zerofactory move <task_id> <status> [--reason "..."] [--assignee <profile>]
 hermes zerofactory block <task_id> --reason "..."
 hermes zerofactory comment <task_id> "Note..."
 
 # Boards
 hermes zerofactory board list
+hermes zerofactory board update <slug> [--description "..."] [--target-branch <branch>] [--jira-url <url>]
 hermes zerofactory board delete <slug>
+hermes zerofactory setup-gh-issues --board <slug>   # provision GitHub issue templates + labels
+hermes zerofactory setup-jira --board <slug> --url https://your-domain.atlassian.net [--test]
 
 # Repository memory (the per-board knowledge substrate)
 hermes zerofactory memory list --board <slug> [--category <cat>] [-q <query>]
@@ -146,7 +151,10 @@ hermes zerofactory sync-profiles     # update system prompts from templates
 `import-gh-issue` deterministically ingests a GitHub issue (number, `#42`, URL,
 or `owner/repo#42`) into a board as a Kanban task — stable task id, `issue:`
 dedup key, label-inferred priority/category — so re-imports report
-"Duplicate Skipped" instead of double-filing
+"Duplicate Skipped" instead of double-filing; `--sync` bulk-imports all open
+issues flagged with the AI-request label, and `import-jira-issue` does the same
+for Jira Cloud. `update` edits task fields in one call, and `move` accepts
+`--assignee` to reassign ownership while transitioning columns
 ([External Issue Import](/openwiki/components/issues-importer.md)).
 
 OpenWiki architecture docs stay in sync automatically: the per-board

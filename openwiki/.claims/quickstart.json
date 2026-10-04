@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7c5261d5ec42617a7482f0d6ca8ab1b1ab4979eeb16c63bb1d8d6ab3d5e81b00",
+  "pageVersion": "sha256:59fe62cade26db33ddebca8397a930cb3dcd24b14a972b5fbe08c6dce79f12a7",
   "claims": [
     {
       "id": "claim_390ae1a0b32941e4b5bf337f7061ffa7",
@@ -52,15 +52,11 @@
     },
     {
       "id": "claim_1906a2bc184e4200a0a241800b250366",
-      "statement": "The core CLI surface is registered under `hermes zerofactory`: setup / sync-profiles for profiles; list / create / import-gh-issue / move / block / comment for tasks; board list / create / delete plus setup-repo and setup-openwiki for boards; memory list / add / delete for the per-board knowledge substrate; and dispatch / check-stuck / cron list / cron sync / cron run for automation.",
+      "statement": "The core CLI surface is registered under `hermes zerofactory`: setup / sync-profiles for profiles; list / create / import-gh-issue / import-jira-issue / update / move (with --reason and --assignee) / block / comment for tasks; board list / create / update / delete plus setup-repo, setup-openwiki, setup-gh-issues, and setup-jira for boards; memory list / add / delete for the per-board knowledge substrate; and dispatch / check-stuck / cron list / cron sync / cron run for automation.",
       "evidence": [
         {
-          "resource": "repo://__init__.py#L208-L520",
-          "version": "repo-lines-v1:sha256:a651e66eecadbcf116b000d901dbd059798baacf9727f6bec02ac0c74387a154:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmNGZkMWQxNzZlZTgyYzdiYzMzMDMxZWNkYjNiMDgxYWFhMmU5ZGM0YjI4OTcyODM4Y2ExMjgwYjJiYjk5N2VlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjNDg0ZThhZGNjY2VmY2YwOTlkNzIxN2FjZWE0ZDUwMTBkMzE2MTkzYzVkNjEwMDIyNzljNWE5ODJjNDhmOGVjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0ZGVjODIwNjlmMWM1NmViNTQ5MDNmOTMyMDYyODI2MmE4NmFhZTRkZDBhODFlYmEzYzE2MmIwNTRkYjdmMDVkIn0"
-        },
-        {
-          "resource": "repo://__init__.py#L565-L640",
-          "version": "repo-lines-v1:sha256:6b3df052d1b3f4ebc6b8ee33254ae8060e741f6da53cdc857dd0137d13a3e373:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZjg3Zjc4Y2YwZGU1ZjU0YzI2MGM5NTAxOTkzYmQzZWFlMWM5MDYyZGEzOGVjZmI1ZjU3NzZhM2RkMDMzMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiZmQ4NTBjMGQwOWNiZDJjNmIzNTYxODNlYTVlMmYxM2ZjN2Y1NzUyZGYyZGE3NWZiNjZhMzljNTAwYThiY2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhM2FlNWI5YjczMDc3OGE1YzlmNWY2YjdiM2EzMGIzM2I5YzI5YzdkOTFkOWZjMTU3YzM5OGU4NzRkMzY4MGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0ODYzOGUzZjljM2FmODVjMzQ5NDBkYTMxMzZiMTBiMjIwNWM4ZDZlYjNkYzI3YmEwMTliZTViNDY2ZGM3ZTcifQ"
+          "resource": "repo://__init__.py#L208-L640",
+          "version": "repo-lines-v1:sha256:55acd7229254c87bcb4b72d8f0c73e05ea1a36f6051289f37c1122bfbf0996ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZmU1MWQ4OGI5OTkxOTNhMWMyM2JlZGFmZGI5YjA4MWY5OGM5YWVjMTU1MGViMDI5YjcyY2U2MWI1YzQ0MDA0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OTA5YTUzYTYxOGQwMjhlMWQzMDAwYzBhN2FiY2VlY2JlNWZiMzdmNGU1MTFlZmU0NjY0M2ZhZDZlNjY4NzJmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5ODZhMTRmYWE5Y2YwOTM0NzYyY2E2YzA4MzA0NjA4MTQ4ZGM0ZmI5NGVhMDVmZTQ2MjcxZjgzYjgzODM2YTk4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MDc3MzM0MjU5MzFjYzMyZmM5N2I4YmMyYWViMGVkMzU4ZTBiYWFjODE5MTdkMGYyNzViOTBiYWRmM2ZhY2NjIn0"
         }
       ]
     },
@@ -81,6 +77,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-03T01:15:19.967Z"
+    "at": "2026-10-04T01:15:35.072Z"
   }
 }

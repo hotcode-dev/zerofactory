@@ -5,7 +5,7 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-03T01:15:19.967Z
+    at: 2026-10-04T01:15:35.072Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -23,11 +23,13 @@ sources:
     resource: repo://issues/importer.py
   - id: openwiki-source-73f3b62839035304ececba97
     resource: repo://migrations/0001_initial_schema.sql
+  - id: openwiki-source-5ffd0e9f685dd0e957deb822
+    resource: repo://migrations/0003_add_board_jira_url.sql
   - id: openwiki-source-2feae2067f9a49cc4d8f2150
     resource: repo://migrations/runner.py
   - id: openwiki-source-81127d20a2ccc07b7626fc4e
     resource: repo://plugin.yaml
-generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
 ---
 
 # Zero Factory Architecture
@@ -53,18 +55,28 @@ brand-new agent session, keeping context windows small and preventing
 | Dispatcher | Task claiming, worktrees, worker spawn, precommit, PRs | `repo://dispatcher/scheduler.py` |
 | Cron + scripts | 0-token background automation (watchdog, scanner gate, stats, openwiki gate) | `repo://cron/definitions.py` |
 | Dashboard | FastAPI REST + services (db, models, setup services) | `repo://dashboard/plugin_api.py` |
-| Issues import | GitHub/Jira issue → Kanban task ingestion (dedup, priority, board resolution) | `repo://issues/importer.py` |
+| Issues import | GitHub/Jira issue → Kanban task ingestion (dedup, priority, board resolution), plus dashboard sync/import endpoints and deterministic setup flows | `repo://issues/importer.py` |
 | Profile management | Auto-provisioning of `zf-*` profiles | `repo://profile_manager.py` |
 
-External issue ingestion flows through the `issues/` package: `hermes zerofactory
-import-gh-issue` fetches a GitHub (or Jira) issue via `GitHubIssueClient`,
-normalizes it into an `ExternalIssue` (labels drive deterministic priority and
-category inference), and `import_external_issue` resolves the target board,
-derives a deterministic task id + `issue:` dedup key, and creates the Kanban task
-(`repo://issues/importer.py#L98-L178`). The stored `external_issue` metadata is
-later read back by the dispatcher so the PR it opens for the task links the
-source issue (`Fixes #42` / `Resolves: PROJ-123`). See
+External issue ingestion flows through the `issues/` package:
+`hermes zerofactory import-gh-issue` and `hermes zerofactory
+import-jira-issue` fetch a GitHub or Jira issue, normalize it into an
+`ExternalIssue` (labels drive deterministic priority and category inference),
+and `import_external_issue` resolves the target board, derives a deterministic
+task id and an `issue:`-prefixed dedup key, and creates the Kanban task
+(`repo://issues/importer.py#L111-L218`). `import-gh-issue --sync` bulk-imports
+all open issues flagged with the AI request label, and
+`hermes zerofactory setup-gh-issues` / `setup-jira` provision tracker
+integration for a board. The dashboard also exposes REST endpoints that drive
+the same synchronization and import flows. The stored `external_issue`
+metadata is later read back by the dispatcher so the PR it opens for the task
+links the source issue (`Fixes #42` / `Resolves: PROJ-123`). See
 [External Issue Import](/openwiki/components/issues-importer.md).
+
+The CLI surface also gained a `hermes zerofactory update` command (edit a task's
+title, description, assignee, priority, or status in one call) and an
+`--assignee` option on `move`, letting handoffs reassign ownership while
+transitioning columns (`repo://__init__.py#L456-L497`).
 
 ## Control / data flow
 
@@ -97,7 +109,8 @@ numbered migrations tracked in `schema_migrations`
 The core schema (`repo://migrations/0001_initial_schema.sql`) defines:
 
 - **`boards`** — one row per repository board with its `git_url`, target
-  branch, and per-board concurrency cap (`#L4-L14`).
+  branch, per-board concurrency cap, and an optional `jira_url` link to a Jira
+  Cloud instance (added by migration 0003; `#L4-L14`).
 - **`tasks`** — the Kanban cards: status, assignee, priority, workspace path/
   kind, branch, `pr_url`, and a `metadata` JSON column, keyed by `id` and
   scoped by `board_slug` (`#L16-L35`).

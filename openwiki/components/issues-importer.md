@@ -1,14 +1,15 @@
 ---
 type: subsystem
 title: External Issue Import (GitHub & Jira)
-description: The issues/ subsystem that deterministically ingests external tracker issues (GitHub via gh CLI, Jira) into Kanban tasks — label-driven priority/category inference, deterministic task IDs and dedup keys, board resolution, and PR linkage back to the source issue.
-tags: [issues-import, github, jira, external-issue-tracker, dedup, kanban-import]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-10-03T01:15:19.967Z
+description: The issues/ subsystem that deterministically ingests external tracker issues (GitHub via gh CLI, Jira Cloud via REST) into Kanban tasks — label-driven priority/category/type inference, deterministic task IDs and dedup keys, board resolution, and PR linkage back to the source issue; plus the dashboard endpoints that drive synchronization/import and the deterministic GitHub issues setup flow.
+tags: [issues-import, github, jira, external-issue-tracker, dedup, kanban-import, gh-issues-setup]
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
+  - id: openwiki-source-4751ad71b24eb2ac313122ba
+    resource: repo://dashboard/gh_issues_service.py
+  - id: openwiki-source-51d54395961048122dcc244f
+    resource: repo://dashboard/routes/boards.py
   - id: openwiki-source-c705147b9966f3d6f300034a
     resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-9f9b3c9d5afeac588f3cdae1
@@ -23,7 +24,10 @@ sources:
     resource: repo://issues/jira.py
   - id: openwiki-source-6b26d87a1c92fff15057316c
     resource: repo://tests/unit/issues/test_issues.py
-generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-10-04T01:15:35.072Z
 ---
 
 # External Issue Import (GitHub & Jira)
@@ -36,47 +40,57 @@ hand-typed ticket, and the PR that fixes it links back to the source issue.
 
 ## The `ExternalIssue` model
 
-`ExternalIssue` (`repo://issues/base.py#L32-L46`) is the tracker-agnostic
+`ExternalIssue` (`repo://issues/base.py#L65-L80`) is the tracker-agnostic
 dataclass: `source` (`github`/`jira`), `id`, display `key` (`#42`, `PROJ-123`),
 title, body, url, author, labels, and the owning `repo_or_project`. Two derived
 identities make ingestion idempotent across repeated runs:
 
 - **dedup key** — `to_dedup_key()` yields `issue:<source>:<repo_lower>:<id>`
-  (`repo://issues/base.py#L48-L56`), stored as the task's `dedup_key` so a
+  (`repo://issues/base.py#L82-L90`), stored as the task's `dedup_key` so a
   re-import of the same issue resolves to the existing task.
 - **task id** — `to_task_id(board_slug)` derives a stable id from the board code
   (up to 3 initials) + source + sanitized issue id, e.g. board
   `hotcode-dev-zerofactory` + GitHub `#42` → `zf-hdz-gh42`
-  (`repo://issues/base.py#L58-L78`). Because the id is a pure function of
+  (`repo://issues/base.py#L92-L112`). Because the id is a pure function of
   board + source + issue, imports are deterministic and repeat-safe.
 
 **Label inference** is deterministic and evaluated in order:
 `infer_priority()` maps labels to `P0` (critical/blocker/security/hotfix),
 `P1` (high/major/bug), `P3` (low/trivial/nice-to-have), defaulting to `P2`
-(`repo://issues/base.py#L80-L90`); `infer_category()` maps labels to
+(`repo://issues/base.py#L161-L171`); `infer_category()` maps labels to
 `security`, `performance`, `bug-fix`, `refactoring`, `documentation`,
-`testing`, or `config`, defaulting to `bug-fix`
-(`repo://issues/base.py#L92-L99`). Both are overridable by explicit
+`testing`, or `config`, defaulting to `feature` when the issue type is a
+feature, else `bug-fix` (`repo://issues/base.py#L173-L182`).
+`infer_issue_type()` (`repo://issues/base.py#L114-L147`) infers `bug`/`feature`
+from raw tracker fields (e.g. Jira `issuetype`), labels, then title prefixes.
+`has_ai_request_label()` (`repo://issues/base.py#L149-L158`) recognizes the
+human AI-investigation labels (`zerofactory`, `ai-investigate`, `ai-triage`,
+`ai-review`, `ai`). Both priority and category are overridable by explicit
 `--priority` / task fields at import time.
 
 ## Tracker clients
 
-Both clients implement `BaseIssueClient` (`repo://issues/base.py#L145-L156`)
+Both clients implement `BaseIssueClient` (`repo://issues/base.py#L237-L248`)
 (`fetch_issue`, `test_connection`):
 
-- **`GitHubIssueClient`** (`repo://issues/github.py#L64-L166`) — fetches via the
+- **`GitHubIssueClient`** (`repo://issues/github.py#L64-L215`) — fetches via the
   authenticated `gh` CLI (`gh auth status` for `test_connection`).
   `parse_github_issue_ref` accepts a bare number, `owner/repo#42`, or a full
-  issue URL.
-- **`JiraIssueClient`** (`repo://issues/jira.py#L68-L112`) — accepts a
+  issue URL. `fetch_investigation_issues` (`repo://issues/github.py#L175-L215`)
+  lists all open issues carrying the AI-investigation label for bulk
+  synchronization.
+- **`JiraIssueClient`** (`repo://issues/jira.py#L94-L255`) — accepts a
   `PROJ-123`-style key (optionally prefixed with a project) and parses issue
-  payloads; live REST fetching is gated on `JIRA_BASE_URL` + `JIRA_API_TOKEN`
-  and raises `NotImplementedError` until that integration lands, while
-  `mock_data` payloads are parsed for tests/webhooks.
+  payloads via the Jira REST API 3 endpoint
+  (`repo://issues/jira.py#L212-L255`); the instance URL resolves from the
+  board's `jira_url` column or `JIRA_BASE_URL`, credentials from
+  `JIRA_EMAIL` / `JIRA_API_TOKEN`, and a missing URL raises a descriptive
+  `ValueError` rather than a hard stub; `mock_data` payloads are parsed for
+  tests/webhooks.
 
 ## The import flow
 
-`import_external_issue` (`repo://issues/importer.py#L98-L178`) is the single
+`import_external_issue` (`repo://issues/importer.py#L111-L218`) is the single
 entry point:
 
 1. **Board resolution** — `resolve_board_for_issue`
@@ -90,39 +104,67 @@ entry point:
 3. **Task creation** — builds a `TaskCreate` with an explicit `task_id` and
    merged `metadata` (including `external_issue`, `dedup_key`, `category`),
    tags (`issue:github`, `github-42`, `cat:bug-fix`, sanitized label tags), and
-   a `[<key>] <title>` title. The dashboard create-task endpoint honors the
-   explicit `task_id`: if the row already exists it returns a `duplicate`
-   response with the current status instead of inserting
-   (`repo://dashboard/routes/tasks.py#L267-L284`,
-   `repo://dashboard/models.py#L130-L135`).
+   a `[Triage] [<Type>] [<key>] <title>` title. The dashboard create-task
+   endpoint honors the explicit `task_id`: if the row already exists it returns
+   a `duplicate` response with the current status instead of inserting
+   (`repo://dashboard/routes/tasks.py#L272-L286`,
+   `repo://dashboard/models.py#L130-L135`). An optional
+   `require_ai_request` guard rejects issues lacking the human AI-investigation
+   label unless `--force` is passed.
 4. **Result** — the caller receives `{ok, id, duplicate, board_slug, status,
    priority, category, source, issue_key, issue_url}` so the CLI can report a
    "Duplicate Skipped" cleanly.
 
+## Dashboard-driven sync & import
+
+The dashboard wires the same import machinery into the operator UI
+(`repo://dashboard/gh_issues_service.py` + `repo://dashboard/routes/boards.py`):
+
+- **Synchronization** — `GET/POST /boards/{slug}/sync-gh-issues` scans the
+  board's repository for open issues flagged with the AI-investigation label
+  and imports each via the same deterministic path
+  (`repo://dashboard/routes/boards.py#L543-L544`).
+- **Single import** — `POST /boards/{slug}/import-gh-issue` imports one issue
+  by number/URL (`repo://dashboard/routes/boards.py#L628`).
+- **Deterministic setup** — `GET /boards/{slug}/gh-issues-status` reports
+  whether the repo has the standard `.github/ISSUE_TEMPLATE` configuration and
+  labels; `POST /boards/{slug}/setup-gh-issues` runs the deterministic setup
+  (`setup_board_gh_issues_deterministic` in `repo://dashboard/gh_issues_service.py`,
+  which provisions the issue templates and labels via the `gh` CLI — the same
+  flow the CLI `setup-gh-issues` and `.zerofactory/setup_gh_issues.sh`
+  drive, `repo://scripts/setup_gh_issues.py`).
+- **Jira link** — `POST /boards/{slug}/setup-jira` writes the board's
+  `jira_url` and `POST /boards/{slug}/test-jira` runs
+  `JiraIssueClient.check_connection` against it
+  (`repo://dashboard/routes/boards.py#L691-L730`).
+
 ## CLI surface
 
 `hermes zerofactory import-gh-issue <issue>` registers the command in the
-plugin shell (`repo://__init__.py#L283-L316`): `<issue>` may be a number,
+plugin shell (`repo://__init__.py#L291-L354`): `<issue>` may be a number,
 `#42`, a full GitHub URL, or `owner/repo#42`; `--repo` (inferred from the
 board `git_url` or git remote when omitted), `--board`, `--status` (default
-`triage`), `--priority`, `--assignee` (default `unassigned`), and `--actor`
-round out the flags. The handler fetches via `GitHubIssueClient` and prints the
-imported task id, board, status, priority, and URL
-(`repo://__init__.py#L604-L640`).
+`triage`), `--priority`, `--assignee` (default `zf-orchestrator`), `--label`
+(default `zerofactory`), `--force`, `--sync` (bulk-import all labeled open
+issues), `--type`, and `--actor` round out the flags. The handler
+(`repo://__init__.py#L773-L810`) fetches via `GitHubIssueClient` and prints the
+imported task id, board, status, priority, and URL. A sibling
+`hermes zerofactory import-jira-issue` (`repo://__init__.py#L356-L402`) does the
+same for Jira Cloud issues.
 
 ## Downstream: PR linkage
 
 Tasks carrying `external_issue` metadata are closed the loop on the source
 tracker: when the dispatcher opens the PR for such a task, the body appends
 `Fixes #<n>` (GitHub) or `Resolves: <KEY>` (Jira)
-(`repo://dispatcher/scheduler.py#L1277-L1295`), so a human merge on GitHub also
+(`repo://dispatcher/scheduler.py#L1316-L1335`), so a human merge on GitHub also
 closes or references the original issue.
 
 ## Tests
 
 `tests/unit/issues/test_issues.py` covers ref parsing, priority/category
 inference, task-id and dedup-key derivation, board resolution, and import
-behavior (16 tests, part of the `tests/unit` tier; see
+behavior (part of the `tests/unit` tier; see
 [Conventions](/openwiki/conventions.md#tests-pytest-three-tiers)).
 
 ## Relationships
