@@ -514,23 +514,15 @@ def get_board_gh_issues_status_endpoint(slug: str):
 
 
 @router.post("/boards/{slug}/setup-gh-issues")
-def setup_board_gh_issues_endpoint(slug: str, deterministic: bool = False):
-    """Trigger setup of GitHub Issue templates and labels for a board."""
+def setup_board_gh_issues_endpoint(slug: str):
+    """Create (or deduplicate to) a P0 setup task that ships GitHub Issue
+    templates and labels via worktree -> zf-builder -> precommit -> PR."""
     try:
-        from ..gh_issues_service import (
-            create_gh_issues_setup_task,
-            setup_board_gh_issues_deterministic,
-        )
+        from ..gh_issues_service import create_gh_issues_setup_task
     except (ImportError, ValueError):
-        from gh_issues_service import (  # type: ignore
-            create_gh_issues_setup_task,
-            setup_board_gh_issues_deterministic,
-        )
+        from gh_issues_service import create_gh_issues_setup_task  # type: ignore
 
-    if deterministic:
-        res = setup_board_gh_issues_deterministic(slug)
-    else:
-        res = create_gh_issues_setup_task(slug, deterministic=False)
+    res = create_gh_issues_setup_task(slug)
 
     if not res.get("ok"):
         raise HTTPException(

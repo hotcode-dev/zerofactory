@@ -964,27 +964,28 @@ def register(ctx: Any):
             if board_slug:
                 try:
                     from .dashboard.gh_issues_service import (
-                        setup_board_gh_issues_deterministic,
+                        create_gh_issues_setup_task,
                     )
                 except Exception:
                     from dashboard.gh_issues_service import (
-                        setup_board_gh_issues_deterministic,
+                        create_gh_issues_setup_task,
                     )
 
-                res = setup_board_gh_issues_deterministic(board_slug, actor=actor_val)
+                res = create_gh_issues_setup_task(board_slug, actor=actor_val)
                 if res.get("ok"):
-                    print(
-                        f"\n✓ Configured GitHub Issue templates and AI labels deterministically for board '{board_slug}'."
-                    )
-                    for t in res.get("templates", []):
-                        print(f"  - {t}")
-                    if res.get("labels", {}).get("created"):
+                    if res.get("already_exists"):
                         print(
-                            f"  Labels provisioned: {', '.join(res['labels']['created'])}"
+                            f"✓ GitHub Issues setup task already active: {res.get('task_id')} ({res.get('status')})"
                         )
-                    print()
+                    else:
+                        print(
+                            f"✓ Created P0 GitHub Issues setup task: {res.get('task_id')}"
+                        )
+                    print(
+                        f"  Task '{res.get('task_id')}' will ship a PR with the aligned templates after precommit verification."
+                    )
                 else:
-                    print(f"✗ Failed to configure GitHub issues: {res.get('error')}")
+                    print(f"✗ Failed to initiate setup task: {res.get('error')}")
                 return
 
             from scripts.setup_gh_issues import setup_github_issues

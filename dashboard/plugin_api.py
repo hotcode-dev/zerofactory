@@ -247,7 +247,6 @@ try:
         build_gh_issues_setup_task_prompt,
         check_board_gh_issues_status,
         create_gh_issues_setup_task,
-        setup_board_gh_issues_deterministic,
     )
 except (ImportError, ValueError):
     from gh_issues_service import (  # type: ignore
@@ -257,7 +256,6 @@ except (ImportError, ValueError):
         build_gh_issues_setup_task_prompt,
         check_board_gh_issues_status,
         create_gh_issues_setup_task,
-        setup_board_gh_issues_deterministic,
     )
 
 # --- Routes and Master APIRouter ---------------------------------------------

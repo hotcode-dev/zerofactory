@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,21 +14,9 @@ if _DASHBOARD_ROOT not in sys.path:
     sys.path.insert(0, _DASHBOARD_ROOT)
 
 try:
-    from .db import get_db_conn, init_db
-    from .setup_common import (
-        check_board_setup_status,
-        create_setup_task,
-        get_repo_resolver,
-    )
+    from .setup_common import check_board_setup_status, create_setup_task
 except (ImportError, ValueError):
-    from db import get_db_conn, init_db  # type: ignore
-    from setup_common import (  # type: ignore
-        check_board_setup_status,
-        create_setup_task,
-        get_repo_resolver,
-    )
-
-_log = logging.getLogger("zerofactory.dashboard.gh_issues_service")
+    from setup_common import check_board_setup_status, create_setup_task  # type: ignore
 
 GH_ISSUES_RELATIVE_DIR = ".github/ISSUE_TEMPLATE"
 BUG_REPORT_RELPATH = f"{GH_ISSUES_RELATIVE_DIR}/bug_report.yml"
@@ -67,18 +54,22 @@ This requires:
    - `p0` (#b60205), `p1` (#d93f0b), `p2` (#fbca04), `p3` (#0e8a16): Standard priority tiers.
 
 ### Builder Execution Steps
-1. **Generate Issue Templates**:
-   You can run the built-in generator script:
+1. **Generate/Align Issue Templates**:
+   Run the built-in generator script in ALIGN mode so that an existing
+   `.github/ISSUE_TEMPLATE` is aligned/updated instead of blindly clobbered:
    ```bash
-   python3 scripts/setup_gh_issues.py --path .
+   python3 scripts/setup_gh_issues.py --path . --align
    ```
-   Or ensure `{BUG_REPORT_RELPATH}`, `{FEATURE_REQUEST_RELPATH}`, and `{CONFIG_RELPATH}` are written according to the Zero Factory standard.
+   Align mode guarantees:
+   - `{CONFIG_RELPATH}` is ALWAYS regenerated repo-aware (from the repo's git origin or target repository).
+   - `{BUG_REPORT_RELPATH}` and `{FEATURE_REQUEST_RELPATH}` are rewritten ONLY when missing or when they lack the expected `zerofactory` label. Repository-customized templates that already carry the label are preserved.
 
 2. **Provision Labels (if gh CLI is available and authenticated)**:
+   The same script provisions the standard labels when `gh` is installed and
+   authenticated (label creation is skipped gracefully otherwise):
    ```bash
-   python3 scripts/setup_gh_issues.py --path .
+   python3 scripts/setup_gh_issues.py --path . --align
    ```
-   (If `gh` CLI is not authenticated in this environment, writing the template files is sufficient; label creation will be skipped gracefully).
 
 3. **Verify Files**:
    - Confirm `{BUG_REPORT_RELPATH}` exists and contains `labels: ["bug", "zerofactory"]`.
@@ -106,62 +97,9 @@ def check_board_gh_issues_status(board_slug: str) -> dict[str, Any]:
     )
 
 
-def setup_board_gh_issues_deterministic(
-    board_slug: str, actor: str = "user"
-) -> dict[str, Any]:
-    """Deterministically provision GitHub Issue templates and standard labels for a board."""
-    init_db()
-    with get_db_conn() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM boards WHERE slug = ?", (board_slug,))
-        row = cursor.fetchone()
-        if not row:
-            return {"ok": False, "error": f"Board '{board_slug}' not found"}
-        board = dict(row)
-
-    # Resolve board repository root
-    repo_path: Path | None = None
-    resolver = get_repo_resolver()
-    if resolver:
-        try:
-            repo_path = resolver(board)
-        except Exception as e:
-            _log.warning("Could not resolve repo path for board %s: %s", board_slug, e)
-
-    if not repo_path or not repo_path.is_dir():
-        repo_path = Path(".").resolve()
-
-    try:
-        from ..scripts.setup_gh_issues import setup_github_issues
-    except Exception:
-        try:
-            from scripts.setup_gh_issues import setup_github_issues
-        except Exception:
-            _scripts_path = Path(__file__).resolve().parent.parent / "scripts"
-            if str(_scripts_path) not in sys.path:
-                sys.path.insert(0, str(_scripts_path))
-            from setup_gh_issues import setup_github_issues  # type: ignore
-
-    res = setup_github_issues(
-        repo_root=repo_path,
-        repo=board.get("git_url") or None,
-        create_labels=True,
-    )
-    res["board_slug"] = board_slug
-    res["deterministic"] = True
-    res["has_gh_issues"] = True
-    res["message"] = (
-        "Configured GitHub Issue templates and AI labels deterministically."
-    )
-    return res
-
-
-def create_gh_issues_setup_task(
-    board_slug: str, actor: str = "user", deterministic: bool = False
-) -> dict[str, Any]:
-    """Provision GitHub Issue templates. Defaults to creating a P0 setup task."""
-    if deterministic:
-        return setup_board_gh_issues_deterministic(board_slug, actor=actor)
+def create_gh_issues_setup_task(board_slug: str, actor: str = "user") -> dict[str, Any]:
+    """Create (or deduplicate to) a P0 setup task that provisions GitHub
+    Issue templates via worktree -> zf-builder -> precommit -> GitHub PR."""
     return create_setup_task(
         board_slug,
         status_checker=check_board_gh_issues_status,

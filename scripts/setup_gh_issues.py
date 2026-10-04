@@ -134,7 +134,70 @@ contact_links:
 """
 
 
-CONFIG_TEMPLATE = build_config_template("hotcode-dev/zerofactory")
+def _template_has_expected_labels(
+    content: str, expected_labels: tuple[str, ...]
+) -> bool:
+    """Check whether template content carries the expected Zero Factory labels."""
+    normalized = " ".join(content.split())
+    return all(f'"{label}"' in normalized for label in expected_labels)
+
+
+BUG_REPORT_EXPECTED_LABELS = ("bug", "zerofactory")
+FEATURE_REQUEST_EXPECTED_LABELS = ("feature", "zerofactory")
+
+
+def setup_github_issue_templates(
+    target_dir: Path,
+    repo: str | None = None,
+    align: bool = False,
+) -> list[Path]:
+    """Write issue template YAML files into target_dir/.github/ISSUE_TEMPLATE/.
+
+    When align=True, config.yml is always regenerated (repo-aware) while
+    bug_report.yml / feature_request.yml are rewritten only when missing or
+    when they lack the expected Zero Factory labels — preserving
+    repo-customized templates that already carry the label.
+    """
+    template_dir = target_dir / ".github" / "ISSUE_TEMPLATE"
+    template_dir.mkdir(parents=True, exist_ok=True)
+
+    files_written = []
+
+    def write_if_aligned(
+        file_path: Path, template: str, expected_labels: tuple[str, ...]
+    ) -> bool:
+        if not file_path.is_file() or not _template_has_expected_labels(
+            file_path.read_text(encoding="utf-8"), expected_labels
+        ):
+            file_path.write_text(template, encoding="utf-8")
+            files_written.append(file_path)
+            return True
+        return False
+
+    bug_file = template_dir / "bug_report.yml"
+    feature_file = template_dir / "feature_request.yml"
+
+    if align:
+        write_if_aligned(bug_file, BUG_REPORT_TEMPLATE, BUG_REPORT_EXPECTED_LABELS)
+        write_if_aligned(
+            feature_file,
+            FEATURE_REQUEST_TEMPLATE,
+            FEATURE_REQUEST_EXPECTED_LABELS,
+        )
+    else:
+        bug_file.write_text(BUG_REPORT_TEMPLATE, encoding="utf-8")
+        files_written.append(bug_file)
+        feature_file.write_text(FEATURE_REQUEST_TEMPLATE, encoding="utf-8")
+        files_written.append(feature_file)
+
+    # config.yml is always (re)generated so it stays repo-aware.
+    effective_repo = repo or detect_repo_from_git(target_dir)
+    config_file = template_dir / "config.yml"
+    config_file.write_text(build_config_template(effective_repo), encoding="utf-8")
+    files_written.append(config_file)
+
+    return files_written
+
 
 STANDARD_LABELS = [
     {
@@ -201,31 +264,6 @@ def detect_repo_from_git(cwd: Path) -> str | None:
     return None
 
 
-def setup_github_issue_templates(
-    target_dir: Path, repo: str | None = None
-) -> list[Path]:
-    """Write issue template YAML files into target_dir/.github/ISSUE_TEMPLATE/."""
-    template_dir = target_dir / ".github" / "ISSUE_TEMPLATE"
-    template_dir.mkdir(parents=True, exist_ok=True)
-
-    files_written = []
-
-    bug_file = template_dir / "bug_report.yml"
-    bug_file.write_text(BUG_REPORT_TEMPLATE, encoding="utf-8")
-    files_written.append(bug_file)
-
-    feature_file = template_dir / "feature_request.yml"
-    feature_file.write_text(FEATURE_REQUEST_TEMPLATE, encoding="utf-8")
-    files_written.append(feature_file)
-
-    effective_repo = repo or detect_repo_from_git(target_dir)
-    config_file = template_dir / "config.yml"
-    config_file.write_text(build_config_template(effective_repo), encoding="utf-8")
-    files_written.append(config_file)
-
-    return files_written
-
-
 def provision_github_labels(repo: str) -> dict[str, Any]:
     """Create or update required labels in the target GitHub repository via `gh` CLI."""
     if not shutil.which("gh"):
@@ -276,13 +314,22 @@ def setup_github_issues(
     repo_root: Path,
     repo: str | None = None,
     create_labels: bool = True,
+    align: bool = False,
 ) -> dict[str, Any]:
-    """Unified setup function for issue templates and repository labels."""
+    """Unified setup function for issue templates and repository labels.
+
+    When align=True, existing templates are aligned rather than blindly
+    clobbered: config.yml is always regenerated repo-aware, while
+    bug_report.yml / feature_request.yml are rewritten only when missing or
+    when they lack the expected Zero Factory labels.
+    """
     repo_root = repo_root.resolve()
     effective_repo = repo or detect_repo_from_git(repo_root)
 
     # 1. Write issue templates
-    templates = setup_github_issue_templates(repo_root, repo=effective_repo)
+    templates = setup_github_issue_templates(
+        repo_root, repo=effective_repo, align=align
+    )
 
     # 2. Provision labels if requested and repo is available
     label_res: dict[str, Any] | None = None
@@ -325,20 +372,35 @@ def main():
         action="store_true",
         help="Skip creating labels in GitHub via gh CLI.",
     )
+    parser.add_argument(
+        "--align",
+        action="store_true",
+        help=(
+            "Align with existing templates instead of clobbering: config.yml is "
+            "always regenerated repo-aware; bug_report.yml / feature_request.yml "
+            "are rewritten only when missing or when they lack the expected "
+            "'zerofactory' label."
+        ),
+    )
 
     args = parser.parse_args()
     root = Path(args.path)
 
     print("\nZero Factory GitHub Issue Setup:")
     print(f"  Target Directory: {root.resolve()}")
+    if args.align:
+        print(
+            "  Mode: align (preserve repo-customized templates that carry the zerofactory label)"
+        )
 
     res = setup_github_issues(
         repo_root=root,
         repo=args.repo,
         create_labels=not args.no_labels,
+        align=args.align,
     )
 
-    print("\n✓ Generated GitHub Issue Templates:")
+    print("\n✓ Generated/Aligned GitHub Issue Templates:")
     for t in res["templates"]:
         print(f"  - {t}")
 
