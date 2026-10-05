@@ -5,7 +5,7 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-04T01:15:35.072Z
+    at: 2026-10-05T10:11:27.384Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -29,7 +29,7 @@ sources:
     resource: repo://migrations/runner.py
   - id: openwiki-source-81127d20a2ccc07b7626fc4e
     resource: repo://plugin.yaml
-generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
+generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
 ---
 
 # Zero Factory Architecture
@@ -64,7 +64,7 @@ import-jira-issue` fetch a GitHub or Jira issue, normalize it into an
 `ExternalIssue` (labels drive deterministic priority and category inference),
 and `import_external_issue` resolves the target board, derives a deterministic
 task id and an `issue:`-prefixed dedup key, and creates the Kanban task
-(`repo://issues/importer.py#L111-L218`). `import-gh-issue --sync` bulk-imports
+(`repo://issues/importer.py#L111-L220`). `import-gh-issue --sync` bulk-imports
 all open issues flagged with the AI request label, and
 `hermes zerofactory setup-gh-issues` / `setup-jira` provision tracker
 integration for a board. The dashboard also exposes REST endpoints that drive

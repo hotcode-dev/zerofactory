@@ -1,7 +1,7 @@
 ---
 type: subsystem
 title: External Issue Import (GitHub & Jira)
-description: The issues/ subsystem that deterministically ingests external tracker issues (GitHub via gh CLI, Jira Cloud via REST) into Kanban tasks — label-driven priority/category/type inference, deterministic task IDs and dedup keys, board resolution, and PR linkage back to the source issue; plus the dashboard endpoints that drive synchronization/import and the deterministic GitHub issues setup flow.
+description: The issues/ subsystem that deterministically ingests external tracker issues (GitHub via gh CLI, Jira Cloud via REST) into Kanban tasks — label-driven priority/category/type inference, deterministic task IDs and dedup keys, board resolution, and PR linkage back to the source issue; plus the dashboard endpoints that drive synchronization/import and the task-based GitHub issues setup flow (P0 zf-builder task, align-mode template generator).
 tags: [issues-import, github, jira, external-issue-tracker, dedup, kanban-import, gh-issues-setup]
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
@@ -24,10 +24,10 @@ sources:
     resource: repo://issues/jira.py
   - id: openwiki-source-6b26d87a1c92fff15057316c
     resource: repo://tests/unit/issues/test_issues.py
-generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
+generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-04T01:15:35.072Z
+    at: 2026-10-05T10:11:27.384Z
 ---
 
 # External Issue Import (GitHub & Jira)
@@ -90,7 +90,7 @@ Both clients implement `BaseIssueClient` (`repo://issues/base.py#L237-L248`)
 
 ## The import flow
 
-`import_external_issue` (`repo://issues/importer.py#L111-L218`) is the single
+`import_external_issue` (`repo://issues/importer.py#L111-L220`) is the single
 entry point:
 
 1. **Board resolution** — `resolve_board_for_issue`
@@ -123,16 +123,22 @@ The dashboard wires the same import machinery into the operator UI
 - **Synchronization** — `GET/POST /boards/{slug}/sync-gh-issues` scans the
   board's repository for open issues flagged with the AI-investigation label
   and imports each via the same deterministic path
-  (`repo://dashboard/routes/boards.py#L543-L544`).
+  (`repo://dashboard/routes/boards.py#L535-L560`).
 - **Single import** — `POST /boards/{slug}/import-gh-issue` imports one issue
-  by number/URL (`repo://dashboard/routes/boards.py#L628`).
-- **Deterministic setup** — `GET /boards/{slug}/gh-issues-status` reports
-  whether the repo has the standard `.github/ISSUE_TEMPLATE` configuration and
-  labels; `POST /boards/{slug}/setup-gh-issues` runs the deterministic setup
-  (`setup_board_gh_issues_deterministic` in `repo://dashboard/gh_issues_service.py`,
-  which provisions the issue templates and labels via the `gh` CLI — the same
-  flow the CLI `setup-gh-issues` and `.zerofactory/setup_gh_issues.sh`
-  drive, `repo://scripts/setup_gh_issues.py`).
+  by number/URL (`repo://dashboard/routes/boards.py#L621-L680`).
+- **Task-based setup** — `GET /boards/{slug}/gh-issues-status` reports
+  whether the repo has the standard `.github/ISSUE_TEMPLATE` configuration;
+  `POST /boards/{slug}/setup-gh-issues` no longer writes templates in place —
+  it routes through the shared setup-task helper
+  (`create_gh_issues_setup_task` in `repo://dashboard/gh_issues_service.py#L100-L118`)
+  to file (or dedup to) a P0 `zf-builder` task whose prompt runs
+  `python3 scripts/setup_gh_issues.py --path . --align`: in align mode
+  `config.yml` is always regenerated repo-aware, while `bug_report.yml` /
+  `feature_request.yml` are rewritten only when missing or when they lack the
+  expected `zerofactory` label, so repository-customized templates are
+  preserved; labels are provisioned via the `gh` CLI when authenticated
+  (`repo://scripts/setup_gh_issues.py`). The CLI `setup-gh-issues` now reports
+  the created/already-active task id instead of inline template output.
 - **Jira link** — `POST /boards/{slug}/setup-jira` writes the board's
   `jira_url` and `POST /boards/{slug}/test-jira` runs
   `JiraIssueClient.check_connection` against it
@@ -147,10 +153,10 @@ board `git_url` or git remote when omitted), `--board`, `--status` (default
 `triage`), `--priority`, `--assignee` (default `zf-orchestrator`), `--label`
 (default `zerofactory`), `--force`, `--sync` (bulk-import all labeled open
 issues), `--type`, and `--actor` round out the flags. The handler
-(`repo://__init__.py#L773-L810`) fetches via `GitHubIssueClient` and prints the
+(`repo://__init__.py#L779-L905`) fetches via `GitHubIssueClient` and prints the
 imported task id, board, status, priority, and URL. A sibling
 `hermes zerofactory import-jira-issue` (`repo://__init__.py#L356-L402`) does the
-same for Jira Cloud issues.
+same for Jira Cloud issues (handler at `repo://__init__.py#L907-L1024`).
 
 ## Downstream: PR linkage
 

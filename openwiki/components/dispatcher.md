@@ -18,10 +18,10 @@ sources:
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-bd2c9dd479aa89010adee0f5
     resource: repo://dispatcher/worktree.py
-generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
+generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-04T01:15:35.072Z
+    at: 2026-10-05T10:11:27.384Z
 ---
 
 # Dispatch Engine
@@ -56,7 +56,7 @@ Within one cycle it:
    precommit gate, commits, merges against latest main, pushes, opens a GitHub
    PR, and routes the ticket to `zf-reviewer`.
 6. **Reaps** — `reap_stuck_tasks` / `reap_active_workers` detect and clean up
-   hung workers (`repo://dispatcher/reaper.py#L94-L561`).
+   hung workers (`repo://dispatcher/reaper.py`).
 
 A background thread (`_dispatcher_loop` → `start_background_dispatcher`,
 `repo://dispatcher/scheduler.py#L1577-L1609`) drives this every
@@ -159,7 +159,7 @@ escalates to a human.
 (`repo://dispatcher/config.py#L79-L85`). `reap_active_workers` terminates a
 worker that exceeded its budget and records the session end; `reap_stuck_tasks`
 is the entry the watchdog and `check-stuck` CLI use
-(`repo://dispatcher/reaper.py#L94-L561`).
+(`repo://dispatcher/reaper.py`).
 
 ## Relationships
 

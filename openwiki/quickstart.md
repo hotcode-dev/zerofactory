@@ -14,10 +14,10 @@ sources:
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
+generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-04T01:15:35.072Z
+    at: 2026-10-05T10:11:27.384Z
 ---
 
 # Quickstart
@@ -108,7 +108,7 @@ pytest tests/                 # full suite
 pytest tests/unit/            # or a single tier: integration/ / e2e/
 ```
 
-**As of this commit the full suite is green: `255 passed, 1 skipped`.** Re-run
+**As of this commit the full suite is green: `256 passed, 1 skipped`.** Re-run
 it before publishing any claim about the count.
 
 ## Core CLI surface
@@ -128,7 +128,7 @@ hermes zerofactory comment <task_id> "Note..."
 hermes zerofactory board list
 hermes zerofactory board update <slug> [--description "..."] [--target-branch <branch>] [--jira-url <url>]
 hermes zerofactory board delete <slug>
-hermes zerofactory setup-gh-issues --board <slug>   # provision GitHub issue templates + labels
+hermes zerofactory setup-gh-issues --board <slug>   # file a P0 zf-builder task that ships the issue templates + labels
 hermes zerofactory setup-jira --board <slug> --url https://your-domain.atlassian.net [--test]
 
 # Repository memory (the per-board knowledge substrate)

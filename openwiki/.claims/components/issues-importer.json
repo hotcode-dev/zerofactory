@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:272d596c436101b6603a0ce84fdc8e462095254957b8da9fd0f60226de49b863",
+  "pageVersion": "sha256:171ccb7f18162c9a96e81c7d92a1636d2f3bd2a0d5c301551d00bd11451aee90",
   "claims": [
     {
       "id": "claim_be552b6d7ec04f239ee42608bf0f568d",
@@ -41,8 +41,8 @@
       "statement": "JiraIssueClient accepts PROJ-123-style keys and fetches issues over the Jira REST API 3 endpoint; the instance URL resolves from the board's jira_url column or JIRA_BASE_URL and credentials from JIRA_EMAIL/JIRA_API_TOKEN, a missing URL raising a descriptive ValueError; mock_data payloads are parsed for tests and webhooks.",
       "evidence": [
         {
-          "resource": "repo://issues/jira.py#L94-L255",
-          "version": "repo-lines-v1:sha256:36989bb17e2465ecf4cc61e15d38d86deb8b9d96e7760e94d4e940454e4bd8f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxNzQwMjdiZjIyOGQwZWI2ZjhiYjZjN2YyN2ZlZTZmODY1YzIzNDIzNDAxNGFmMGNlZjhhMWNhYTU0YThjMTIyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5OTQzY2U3OGU5NjJmOWYxNjA3OTQ4ZDIyMmYwOGYwNDJhNTFhYjYwYTZjNzFkYzYwYmQ5OGFhOGNiZjgxMDRhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4Y2M0YTdkMWNjNzk2YWJhM2U0NjcyMzMyN2Y1MTdlOWY4MTE5ODJkMjUwZjA3MDI5ODZlNGI1NzY0YWQ5NTg5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3MDZlMjFlYTg3ODA0MWRlYzQ5NjE4ODk0YjVjNmIwYjhjYTQxODBmYWI4MTExMTJlNjYwZmY2MTA4ZWM4ZTVhIn0"
+          "resource": "repo://issues/jira.py",
+          "version": "repo-file-v1:sha256:3a857576a3b7dabdb0c3e475c8ae513f0e18b2de05844c9b232ae8b224852622"
         }
       ]
     },
@@ -61,8 +61,8 @@
       "statement": "import_external_issue creates the Kanban task deterministically: it resolves the board, derives the task id and 'issue:' dedup key, infers priority/category unless overridden, builds a '[Triage] [<Type>] [<key>] <title>' title, and passes an explicit task_id plus external_issue/dedup_key metadata through TaskCreate to the dashboard create-task endpoint; a require_ai_request guard rejects issues lacking the human AI-investigation label unless forced.",
       "evidence": [
         {
-          "resource": "repo://issues/importer.py#L111-L218",
-          "version": "repo-lines-v1:sha256:26f08555e2e7abdf4dae6330ace8ac845f5270d837b6d22d2a6004c37463444d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NjJlZjYxMzY3NGI5NmU0NTE0YTRmNjY3Y2E4MGUyODYzZmYyYmE2ZWM5MTY2NGFlYmQ0MThmMWJhMmVmYTExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NWRiMTkwNzUxNzdjZTM0Mzg3ZWIzYTNmY2Y5NmFlY2NjZDY1YTA3NmVhNmIxNjM5NTE5ZjUxNWYyOWY1YmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://issues/importer.py#L111-L220",
+          "version": "repo-lines-v1:sha256:5d81852da78c57aba4b8240f9b16551e731a3d715c46c852734617429c28c41a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NjJlZjYxMzY3NGI5NmU0NTE0YTRmNjY3Y2E4MGUyODYzZmYyYmE2ZWM5MTY2NGFlYmQ0MThmMWJhMmVmYTExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NWRiMTkwNzUxNzdjZTM0Mzg3ZWIzYTNmY2Y5NmFlY2NjZDY1YTA3NmVhNmIxNjM5NTE5ZjUxNWYyOWY1YmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -89,8 +89,8 @@
           "version": "repo-lines-v1:sha256:953234b86d2b27c6f9006d6e7676122ae4eac50875404a3c01b2e10401bf126c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjNjJiNjdkZmQwNGVjMmFhYTUyOWRiZmFlN2RiNmMzYmRlYmY4YmVlNTU1ZTM3MzExZGQ3YmU0NGRkODBlYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlmODUyYzY0YzRhNDIyNjVkNzBlZDZjNDIxMDFiYTExZTQwZTJhODc0ZmExMzVkZmI2NGQ3ZWZiYTg2ZjA5ZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5OTRjODkzZDdlNWQ2YmJiMjM3YzNlZTNjOTQyNjVhNjIwOGFjMDNlN2I2OGM3ODlkNDViMmUwZTU0OTRkODYifQ"
         },
         {
-          "resource": "repo://__init__.py#L773-L810",
-          "version": "repo-lines-v1:sha256:12eb7f791f55570ca8e737dfec15c04c64568b2272e1992d856df7a66ddd05dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMWUzNWMwZDdjZDYwZjQ0ZmU1MjcyYzI1Y2Q0NTM3YmI1OTcxYzU5MjYxMmY0MDI3YmI5NmQ1NWRhMDE3MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1ODYwMTY2ZTg1ZjljZjIwMDJiZDkyNWE5YTE1ZTEzNTYyZDA4NTU0YTRlYjJhYjRhMmIxODQyOWViZDIxZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhNWFjMzg0ZjA1NGU3NzUyOTFlYzgxODFhOTQ3NzY3MzMzMDZkZTVhZjM3ZmY2ZDBhODdlYTk3ZmQxZDZiMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmYzFkNDk4NmM5NmI4NTY4NTA2OWE2OTQ0YmI5N2E1ZjIwZTI1ZWYzZWVhMWJjNTdkNDg2ZjgwNDA2YjI5OGMifQ"
+          "resource": "repo://__init__.py#L779-L905",
+          "version": "repo-lines-v1:sha256:892d122c3d84eebf50de4b8762d6c803abf0f46edf1eeb8030be7959f795dc05:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMjFlMzVjMGQ3Y2Q2MGY0NGZlNTI3MmMyNWNkNDUzN2JiNTk3MWM1OTI2MTJmNDAyN2JiOTZkNTVkYTAxNzA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiOGY3MWIyN2UwNTJiNWQ4MTRkMjcwYzZkYzc3MTY0ODJmYjViYTFhZmYwODk2ZDBlM2U5NjhiNWY1YmVmODg5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYTVhYzM4NGYwNTRlNzc1MjkxZWM4MTgxYTk0Nzc2NzMzMzA2ZGU1YWYzN2ZmNmQwYTg3ZWE5N2ZkMWQ2YjA5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiY2YxMTY4NjQ0NjFiZGNiNWE4Mzk1NjUwY2ZkYTk2ZTM2NmZjYzM1ZmM3YTAwM2UxZDk5ZThkNDJmODk0OGE4In0"
         }
       ]
     },
@@ -106,31 +106,31 @@
     },
     {
       "id": "claim_287e7638e7914772b01ff77c06ae312b",
-      "statement": "tests/unit/issues/test_issues.py covers issue ref parsing, priority/category inference, deterministic task-id and dedup-key derivation, board resolution, and import behavior in the unit test tier.",
+      "statement": "tests/unit/issues/test_issues.py covers issue ref parsing, priority/category inference, deterministic task-id and dedup-key derivation, board resolution, import behavior, and setup_github_issues template generation (including align-mode writes) in the unit test tier.",
       "evidence": [
         {
           "resource": "repo://tests/unit/issues/test_issues.py",
-          "version": "repo-file-v1:sha256:c41141ffd47613bf015b26bcf950fc59d28226e5d1b4abe04c7f1076ecbf9f23"
+          "version": "repo-file-v1:sha256:5e7c7d27da2d55634bb1f3ac08d095c22f58392ae27684dfa5c3a4b3e569dfd6"
         }
       ]
     },
     {
       "id": "claim_60a0037ddea74492ac944d331df5ddee",
-      "statement": "The dashboard exposes the external-tracker integration surface: GET/POST /boards/{slug}/sync-gh-issues and POST /boards/{slug}/import-gh-issue drive GitHub issue synchronization and import, GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues run the deterministic GitHub issues setup (issue templates + labels via gh CLI, as in scripts/setup_gh_issues.py), and POST /boards/{slug}/setup-jira / POST /boards/{slug}/test-jira configure and test the board's Jira Cloud link.",
+      "statement": "The dashboard exposes the external-tracker integration surface: GET/POST /boards/{slug}/sync-gh-issues and POST /boards/{slug}/import-gh-issue drive GitHub issue synchronization and import, GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues drive the task-based GitHub issues setup (create_gh_issues_setup_task files or dedups a P0 zf-builder task whose prompt runs scripts/setup_gh_issues.py in --align mode: config.yml always regenerated, bug_report.yml/feature_request.yml rewritten only when missing or lacking the expected zerofactory labels; labels via gh CLI when authenticated), and POST /boards/{slug}/setup-jira / POST /boards/{slug}/test-jira configure and test the board's Jira Cloud link.",
       "evidence": [
         {
           "resource": "repo://dashboard/gh_issues_service.py",
-          "version": "repo-file-v1:sha256:0455bfe80978c671c69d3a8bc9cd60100f21e3449be101ddf2c499c45b9d592b"
+          "version": "repo-file-v1:sha256:83100da12c9611fab990aaa4154ebd0f4240c4a8e8e1fb5e5a265e2cb7fc955a"
         },
         {
-          "resource": "repo://dashboard/routes/boards.py#L500-L730",
-          "version": "repo-lines-v1:sha256:aafd8b98c44e455a2843586a516970b0db1978b0ab826fd1791023272e83a944:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjOTcwYzY3YzdiNWM2NTYyZjkzZWE2YTA2MDNlMjYyZjY3Y2Q3MjI4OTc4OTY4NzYzZGE5NTNkZWRiMDhiMDJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjODE0MmExODM3ODRjZDA5OWRkYTRmMzk5NGQ5YWJhMDJkYjY5ODI2OTIzYjllNWQ1OTNhYjRlNGRlNTMxNWIxIn0"
+          "resource": "repo://dashboard/routes/boards.py#L500-L727",
+          "version": "repo-lines-v1:sha256:e0b4ef0a1b200db965be9621e62bda0e408466bf04cdff4a09c6b7561421692e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTk2OGE4ZjgzMDE4ZjY2NDM5YWExODVhYmZiZjAwNjM0OTNiNTJhZjJjMGYyNzNiNmM0YTYxNTlmMGNjYzIzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-04T01:15:35.072Z"
+    "at": "2026-10-05T10:11:27.384Z"
   }
 }
