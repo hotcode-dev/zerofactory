@@ -227,7 +227,10 @@ export function KanbanBoard(props) {
                                         titleStr.toLowerCase().includes("grill");
 
                                       const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview);
-                                      const isHumanReview = titleStr.includes("[Human Review]");
+                                      // Only treat the [Human Review] title marker as "awaiting merge" while the
+                                      // task is actually blocked — merged/closed tasks keep the marker in their
+                                      // title and must not show the "Waiting for Human to Merge" badge.
+                                      const isHumanReview = t.status === "blocked" && titleStr.includes("[Human Review]");
                                       const isBlocked = t.status === "blocked";
 
                                       if (!isBlocked && !isHumanTriage && !isHumanReview) {

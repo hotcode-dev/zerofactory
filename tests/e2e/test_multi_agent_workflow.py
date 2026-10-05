@@ -233,6 +233,11 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         # Task is done and worktree is cleaned up
         t_info4 = get_task(task_id)["task"]
         self.assertEqual(t_info4["status"], "done")
+        self.assertNotIn(
+            "[Human Review]",
+            t_info4["title"],
+            "Merged tasks must not keep the [Human Review] title marker",
+        )
         self.assertFalse(
             worktree_path.exists(), "Worktree directory must be cleaned up on merge"
         )

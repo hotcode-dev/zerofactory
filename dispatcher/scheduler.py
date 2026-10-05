@@ -528,9 +528,20 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             workspace_path, repo_path
                                         )
                                         _disp._delete_remote_branch(task_id, repo_path)
+                                        done_title = (
+                                            title.replace(" [Human Review]", "")
+                                            .replace("[Human Review]", "")
+                                            .strip()
+                                        )
+                                        meta.pop("blocked_reason", None)
                                         cursor.execute(
-                                            "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                            (now, task_id),
+                                            "UPDATE tasks SET status = 'done', title = ?, metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                            (
+                                                done_title,
+                                                json.dumps(meta),
+                                                now,
+                                                task_id,
+                                            ),
                                         )
                                         cursor.execute(
                                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
@@ -543,9 +554,20 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             workspace_path, repo_path
                                         )
                                         _disp._delete_remote_branch(task_id, repo_path)
+                                        done_title = (
+                                            title.replace(" [Human Review]", "")
+                                            .replace("[Human Review]", "")
+                                            .strip()
+                                        )
+                                        meta.pop("blocked_reason", None)
                                         cursor.execute(
-                                            "UPDATE tasks SET status = 'done', workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                            (now, task_id),
+                                            "UPDATE tasks SET status = 'done', title = ?, metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                            (
+                                                done_title,
+                                                json.dumps(meta),
+                                                now,
+                                                task_id,
+                                            ),
                                         )
                                         cursor.execute(
                                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'closed', 'PR closed on GitHub, task archived', ?)",

@@ -398,7 +398,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					const titleStr = typeof t.title === "string" ? t.title : "";
 					const isGrillInterview = metaStr.includes("Grill-with-Docs") || metaStr.includes("Awaiting Human Input") || metaStr.includes("awaiting_interview") || descStr.includes("Grill-with-Docs") || titleStr.toLowerCase().includes("grill");
 					const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview);
-					const isHumanReview = titleStr.includes("[Human Review]");
+					const isHumanReview = t.status === "blocked" && titleStr.includes("[Human Review]");
 					const isBlocked = t.status === "blocked";
 					if (!isBlocked && !isHumanTriage && !isHumanReview) return null;
 					let badgeClass = "";
