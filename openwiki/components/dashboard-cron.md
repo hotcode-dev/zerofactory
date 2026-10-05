@@ -12,6 +12,8 @@ sources:
     resource: repo://cron/executor.py
   - id: openwiki-source-e06775820f1d183b4e12d4a2
     resource: repo://cron/scheduler_check.py
+  - id: openwiki-source-4751ad71b24eb2ac313122ba
+    resource: repo://dashboard/gh_issues_service.py
   - id: openwiki-source-ed7166b96533513cf627ba0c
     resource: repo://dashboard/manifest.json
   - id: openwiki-source-52ae51442f849fdbd57863a3
@@ -36,6 +38,8 @@ sources:
     resource: repo://dashboard/src/components/Modal.jsx
   - id: openwiki-source-8258252e9b79b31153b47276
     resource: repo://dashboard/src/utils/grillParser.js
+  - id: openwiki-source-9f27c77f1584beee490e0abd
+    resource: repo://scripts/setup_gh_issues.py
   - id: openwiki-source-8bf8788755a522a066b8b827
     resource: repo://scripts/zf_daily_stats.py
   - id: openwiki-source-20bc44fdf115b28983477777
@@ -44,10 +48,10 @@ sources:
     resource: repo://scripts/zf_queue_watchdog.py
   - id: openwiki-source-bc25bd3bfcf63b730444ea04
     resource: repo://scripts/zf_scanner_gate.py
-generated: { by: "hermes", at: "2026-10-04T01:15:35.072Z" }
+generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-04T01:15:35.072Z
+    at: 2026-10-05T10:11:27.384Z
 ---
 
 # Dashboard, Cron & Automation
@@ -72,19 +76,20 @@ eight sub-routers (`repo://dashboard/routes/__init__.py#L46-L54`):
   endpoints: `GET/POST /boards/{slug}/sync-gh-issues` and
   `POST /boards/{slug}/import-gh-issue` for GitHub issue synchronization and
   import, `GET /boards/{slug}/gh-issues-status` plus
-  `POST /boards/{slug}/setup-gh-issues` for the deterministic GitHub issues
-  setup flow, and `POST /boards/{slug}/setup-jira` /
+  `POST /boards/{slug}/setup-gh-issues` for the GitHub issues setup flow
+  (files or deduplicates a P0 `zf-builder` setup task instead of writing
+  templates directly), and `POST /boards/{slug}/setup-jira` /
   `POST /boards/{slug}/test-jira` for the Jira Cloud link
-  (`repo://dashboard/routes/boards.py#L500-L730`).
+  (`repo://dashboard/routes/boards.py#L500-L727`).
 - **tasks** — Kanban card lifecycle (create, update, move, block, comment).
   Task creation accepts an optional explicit `task_id` and `metadata` so
   external importers can create deterministic, dedup-keyed cards
   (`repo://dashboard/routes/tasks.py#L243-L330`). `PATCH /tasks/{task_id}`
   edits fields in one call (`repo://dashboard/routes/tasks.py#L626-L630`), and
   the Grill-with-Docs protocol adds `POST /tasks/{task_id}/triage` (dispatches
-  to `zf-orchestrator` for triage) and
-  `POST /tasks/{task_id}/interview-reply` (records the human's answer to an
-  open interview question) (`repo://dashboard/routes/tasks.py#L1002-L1054`).
+ to `zf-orchestrator` for triage) and
+ `POST /tasks/{task_id}/interview-reply` (records the human's answer to an
+ open interview question) (`repo://dashboard/routes/tasks.py#L1003-L1122`).
   Query params and metadata fields are type-guarded with `isinstance` checks so
   non-string values never break grill/conflict status handling.
 - **stats** — board velocity/column metrics (`get_stats`).
@@ -113,7 +118,21 @@ and file a **P0 setup task** for `zf-builder`:
 
 Both route through the shared `setup_common.py` helper (`check_board_setup_status`,
 `create_setup_task`) with a `setup:` dedup key so a superseded task is replaced
-rather than duplicated (`repo://dashboard/setup_common.py`).
+rather than duplicated (`repo://dashboard/setup_common.py`). The GitHub issues
+setup reuses the same helper: `create_gh_issues_setup_task`
+(`repo://dashboard/gh_issues_service.py#L100-L118`) files the P0 task whose
+prompt runs `python3 scripts/setup_gh_issues.py --path . --align` — align mode
+always regenerates `config.yml` repo-aware and rewrites `bug_report.yml` /
+`feature_request.yml` only when missing or when they lack the expected
+`zerofactory` label, so repository-customized templates are preserved
+(`repo://scripts/setup_gh_issues.py`). Deduplication is deliberately
+**active-only** (`_find_setup_task(active_only=True)` restricts to
+`triage`/`todo`/`running`): `blocked` means "awaiting human merge", not active
+work, so a finished-but-unmerged setup task must not dedup or it permanently
+wedges regenerate/retry flows; `check_board_setup_status` therefore reports a
+`pending_task_id` (any non-done, for the UI "Setup in Progress" badge) alongside
+a `dedup_task_id` (active only, for `create_setup_task`)
+(`repo://dashboard/setup_common.py#L56-L97`, `#L121-L127`).
 
 > **Native-cron, not GitHub Actions.** These setup services file a `zf-builder`
 > task that runs natively through the Zero Factory dispatcher + Hermes background

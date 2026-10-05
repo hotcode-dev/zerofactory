@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:78d68eb9a72340a8fdf86564e6c90247f66f783edf71caff5b9dad8c321425d3",
+  "pageVersion": "sha256:1c89d06ed0703d4c2490d6ad5a8abf7a76d4bd8bbda1d9e443a74ec11a370f30",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
@@ -119,8 +119,8 @@
       "statement": "reaper.py detects hung workers using a per-task max running time and an inactivity timeout: reap_active_workers terminates a worker that exceeded its budget and records the session end, and reap_stuck_tasks is the entry point the queue watchdog and the check-stuck CLI use.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/reaper.py#L94-L561",
-          "version": "repo-lines-v1:sha256:8cf5c8ebad8af0b387a46f4347bdf5c7375bf60cb6d7e17c197e097639143365:eyJzZWxlY3RlZExpbmVDb3VudCI6NDY4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dispatcher/reaper.py",
+          "version": "repo-file-v1:sha256:2d6d1a747213b645f68711c43da86d17dabc2e82dc956ea01f96e8d1d7440d1f"
         }
       ]
     },
@@ -157,6 +157,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-04T01:15:35.072Z"
+    "at": "2026-10-05T10:11:27.384Z"
   }
 }

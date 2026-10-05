@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:84ccc89bb6ea682f7708c2c94ab3425f82e8fb1a49a39c81f9d60b963e835f04",
+  "pageVersion": "sha256:7802189d65932fff99aa76828ce41a85946769357e4ce6113db7fd1e8c07b3ef",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -212,11 +212,11 @@
     },
     {
       "id": "claim_0d5150651a1940dcb58ecce621dcda49",
-      "statement": "The boards router exposes external-tracker integration endpoints: GET/POST /boards/{slug}/sync-gh-issues and POST /boards/{slug}/import-gh-issue for GitHub issue synchronization and import, GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues for the deterministic GitHub issues setup flow, and POST /boards/{slug}/setup-jira / POST /boards/{slug}/test-jira for the Jira Cloud link.",
+      "statement": "The boards router exposes external-tracker integration endpoints: GET/POST /boards/{slug}/sync-gh-issues and POST /boards/{slug}/import-gh-issue for GitHub issue synchronization and import, GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues for the GitHub issues setup flow (files or deduplicates a P0 zf-builder setup task rather than writing templates directly), and POST /boards/{slug}/setup-jira / POST /boards/{slug}/test-jira for the Jira Cloud link.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/boards.py#L500-L730",
-          "version": "repo-lines-v1:sha256:aafd8b98c44e455a2843586a516970b0db1978b0ab826fd1791023272e83a944:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjOTcwYzY3YzdiNWM2NTYyZjkzZWE2YTA2MDNlMjYyZjY3Y2Q3MjI4OTc4OTY4NzYzZGE5NTNkZWRiMDhiMDJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjODE0MmExODM3ODRjZDA5OWRkYTRmMzk5NGQ5YWJhMDJkYjY5ODI2OTIzYjllNWQ1OTNhYjRlNGRlNTMxNWIxIn0"
+          "resource": "repo://dashboard/routes/boards.py#L500-L727",
+          "version": "repo-lines-v1:sha256:e0b4ef0a1b200db965be9621e62bda0e408466bf04cdff4a09c6b7561421692e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTk2OGE4ZjgzMDE4ZjY2NDM5YWExODVhYmZiZjAwNjM0OTNiNTJhZjJjMGYyNzNiNmM0YTYxNTlmMGNjYzIzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -225,8 +225,8 @@
       "statement": "The Grill-with-Docs protocol adds POST /tasks/{task_id}/triage (dispatches the task to zf-orchestrator for triage) and POST /tasks/{task_id}/interview-reply (records the human's answer to an open interview question); the frontend GrillInterviewPanel and grillParser.js scan task comments backwards for a 'Grill-with-Docs: Decision Required' marker or an active_interview metadata state to detect open questions and existing replies.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/tasks.py#L1002-L1054",
-          "version": "repo-lines-v1:sha256:e9f0e854d370ff20bb9aff98c9490f168e380de09442e11c1106161197a22e68:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Mzc5MjQ1NmQ5N2U1OWU5YzIyNDA1NWViODc2MjYzZGIwZDFkMmYyN2YzZjFkYWFhZTJlMjRjY2VhMzg1MjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZjQyNzdjYWU0ZDdmMWI1NzJkMTUyYWNjZTZiZjkxMDBiNjJiZTMxZDAzMmUxZjliNjkwZDVkMjlhNWVhODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmZGMwYTQzNWI0NDA1MWU5NjQxMjlhMjAyODA2ODdhZDMzYWU4MjVkYzIzMmE4ZDU1MDA5OWU2OGVjZWRiYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkMTlkNGNiMGFmOTIyZjZjYzkwNmJhNmJlOWI3M2UzN2Q3ZjgzNTYyMjUwODdkZTkwYTlhNGY4NGIyYTdjMjUifQ"
+          "resource": "repo://dashboard/routes/tasks.py#L1003-L1122",
+          "version": "repo-lines-v1:sha256:bc42bbbf910fcd9c446ed79058b40ae959db62109bce6d462dc1c31fe46dbcc0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NGM3MDI3MjhmYWMwYTQyN2E4OGMwOTJjNzk0ZjhlOGE5ZjUwMWI2MmUwMWI0YjU1OWVmNDhlNWEwOTQ0MjJkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjYTM3MTNmOGQ3ODdhNzRhNTM2NTAwZGM3MjcyNjc2NjE4ZDNhMzUxMGFhMDhhMGFhZGNlYTBmYThhZTM1M2ZlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://dashboard/src/utils/grillParser.js",
@@ -261,10 +261,32 @@
           "version": "repo-lines-v1:sha256:23f36bec100579bf83e9ac37b71c9269070c57fd69e55bfd8ff3307a01a21de7:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjcyOGE1YjM3MzU3OWQ0MjBkMGJkZjNmNjg4MTM4YTU0NjhlYmI4NTZlZTVhZjliOTFiMGYxZDEzZTdiNzY2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjRlODUwMDgxNDEzZTE4ZTUzOGE2YmNjZGNhNjJlMTMyZTM0MWM2YTRhMDU5NjRkMTkxYmNlNTM1MGFjMDIzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGY4Y2Y2ZTYyMGMwODZkMDMxMjJjMjE1OGQxNjY4NmQyYjNjMGRkYTdiNjVkN2QyNzhiNWQ1YWU4YTYwMzEyYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDU5ZjE0ODUwOWNiOGVhOGRjZDcwOTUwNzk3MDQ5MDQ5NWFjZDE1YjUyY2RlNzkzOGIxMzQ3NjQ1ODUxODdkNCJ9"
         }
       ]
+    },
+    {
+      "id": "claim_0fc16191dfd74afa811c8e8a5ae60fae",
+      "statement": "Setup-task deduplication is active-only: _find_setup_task(active_only=True) restricts to triage/todo/running because a 'blocked' task means 'awaiting human merge', not active work, so a finished-but-unmerged setup task must not dedup or it permanently wedges regenerate/retry flows; check_board_setup_status therefore reports pending_task_id (any non-done, for the UI badge) alongside dedup_task_id (active only, used by create_setup_task). The GitHub issues setup reuses this via create_gh_issues_setup_task, whose P0 prompt runs scripts/setup_gh_issues.py in --align mode: config.yml is always regenerated repo-aware, while bug_report.yml / feature_request.yml are rewritten only when missing or when they lack the expected 'zerofactory' label, preserving repo-customized templates.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/gh_issues_service.py#L100-L118",
+          "version": "repo-lines-v1:sha256:4b404be5b8fd3b373db5fdb1c1ec0747f0b3a24b4c1097bf121a5733a0eda8fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5OWFiNWFmMTAxODI3YThhZDIyZjI1OTY5YmRlNTk3NDQyNGVhY2U1ZWRiMzA2NDM1MjA3ZjBhZDAyYTQyZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://dashboard/setup_common.py#L121-L127",
+          "version": "repo-lines-v1:sha256:3fd03bf10996e21bfa0b368a90c905a18e56538d0d5462353dfbc07390f874a6:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDY4MzQ4NWE3ZWE5MTNmM2ZkMmI0ZDQ2MWU5ZjNlZGI4MmNmNTMzNWVkM2U2MzU4NWFlYTBjOTczNDM3ZDY3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDU5NWI2Njg1NjNjYzg3OTM1ZWU1ZGM4NzBlMzgwYzNhN2M4Y2RjODdhYmZjYTM5YTdhYzZiNWI5M2MzM2QxZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYxMTRkNzAwZjRhMWFlNmZhNmQ0ODQ5MWYzOTFhZTdiY2Y1ZThlN2VlZmJjZmNmNjhhOTQxZTUzYjAxOTdiNiJ9"
+        },
+        {
+          "resource": "repo://dashboard/setup_common.py#L56-L97",
+          "version": "repo-lines-v1:sha256:b3623462f5fe1841a82273183c0a1643a63fa89e331834651427a188b713d436:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3ZWY3MDlmYWJiOGM3NDA0ZDUwOTUzOTExODRiNDAxODZhOWQzNGUzODE5NTQwN2Y1ZTlhYjA5ZmM5ZTAyN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkOTYzYWI4NzI1NDdiYTUwYjczYzZiZjVjZWU1Njk1MmE5M2E2YWJmMDQzNDdkMmU5M2IxN2JlYTQxNWU0ZTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczM2U4NDg3Yzg1ZGZkY2Y5ZmE3YjkzYzc0NmM5NDYyNWFlNDdlMTIwYzc5N2U3OTFlNzM3ZjllZDdmZmM3M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1MDhhN2RlZTA0ZGQyMWQ5YmMwNzY4Y2Q5YjNjMGRiNGZlZDFlNjg3MjkzZmY2NGRlM2E0NTlmMjBlMTZhOTUifQ"
+        },
+        {
+          "resource": "repo://scripts/setup_gh_issues.py",
+          "version": "repo-file-v1:sha256:b29ecc9fc9903f921cbaaa23f4db29311b3f8d1c287b695f6aeaa74749ed7f0e"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-04T01:15:35.072Z"
+    "at": "2026-10-05T10:11:27.384Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:59fe62cade26db33ddebca8397a930cb3dcd24b14a972b5fbe08c6dce79f12a7",
+  "pageVersion": "sha256:bd529d876325117a5c13867a084b7024b4d9ad651654dc987ce10ab30f379f37",
   "claims": [
     {
       "id": "claim_390ae1a0b32941e4b5bf337f7061ffa7",
@@ -38,7 +38,7 @@
     },
     {
       "id": "claim_e020c865291e476ca3be6d06cd5dd2ba",
-      "statement": "As of this commit the full pytest suite is green at 179 passed, 1 skipped (verified by running `python3 -m pytest tests/ -q` / `.zerofactory/precommit.sh`), organized in three tiers: tests/unit, tests/integration (FastAPI REST), and tests/e2e (multi-agent workflow + resilience).",
+      "statement": "As of this commit the full pytest suite is green at 256 passed, 1 skipped (verified by running `python3 -m pytest tests/ -q` / `.zerofactory/precommit.sh`), organized in three tiers: tests/unit, tests/integration (FastAPI REST), and tests/e2e (multi-agent workflow + resilience).",
       "evidence": [
         {
           "resource": "repo://.zerofactory/precommit.sh",
@@ -55,8 +55,8 @@
       "statement": "The core CLI surface is registered under `hermes zerofactory`: setup / sync-profiles for profiles; list / create / import-gh-issue / import-jira-issue / update / move (with --reason and --assignee) / block / comment for tasks; board list / create / update / delete plus setup-repo, setup-openwiki, setup-gh-issues, and setup-jira for boards; memory list / add / delete for the per-board knowledge substrate; and dispatch / check-stuck / cron list / cron sync / cron run for automation.",
       "evidence": [
         {
-          "resource": "repo://__init__.py#L208-L640",
-          "version": "repo-lines-v1:sha256:55acd7229254c87bcb4b72d8f0c73e05ea1a36f6051289f37c1122bfbf0996ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZmU1MWQ4OGI5OTkxOTNhMWMyM2JlZGFmZGI5YjA4MWY5OGM5YWVjMTU1MGViMDI5YjcyY2U2MWI1YzQ0MDA0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OTA5YTUzYTYxOGQwMjhlMWQzMDAwYzBhN2FiY2VlY2JlNWZiMzdmNGU1MTFlZmU0NjY0M2ZhZDZlNjY4NzJmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5ODZhMTRmYWE5Y2YwOTM0NzYyY2E2YzA4MzA0NjA4MTQ4ZGM0ZmI5NGVhMDVmZTQ2MjcxZjgzYjgzODM2YTk4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MDc3MzM0MjU5MzFjYzMyZmM5N2I4YmMyYWViMGVkMzU4ZTBiYWFjODE5MTdkMGYyNzViOTBiYWRmM2ZhY2NjIn0"
+          "resource": "repo://__init__.py#L208-L694",
+          "version": "repo-lines-v1:sha256:5f23c7c90f71b1795f1e0e40e753a6b842177a49968e3bfb5801fbccce3856fc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZmU1MWQ4OGI5OTkxOTNhMWMyM2JlZGFmZGI5YjA4MWY5OGM5YWVjMTU1MGViMDI5YjcyY2U2MWI1YzQ0MDA0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0OTNlMTNjY2Q1YjI5ZjBmMGZjNzg1NzExZDIzZjc1MWI5MjQxZTFlYjYxODliMDc0NDkxMWZjODExOGNhNDgyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5ODZhMTRmYWE5Y2YwOTM0NzYyY2E2YzA4MzA0NjA4MTQ4ZGM0ZmI5NGVhMDVmZTQ2MjcxZjgzYjgzODM2YTk4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NGI1MjNiMTIzMGIyYTU0Y2Q2MGRjNDNmNTc1NzUwOTIzOWYzZmQxOWJkN2FmNGFjNTVhYzNmODE2ZWYwMjg4In0"
         }
       ]
     },
@@ -77,6 +77,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-04T01:15:35.072Z"
+    "at": "2026-10-05T10:11:27.384Z"
   }
 }
