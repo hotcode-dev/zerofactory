@@ -109,7 +109,8 @@ def test_mark_task_session_ended():
 
 
 def test_reap_active_workers_transitions_stuck_task(tmp_path: Path):
-    """reap_active_workers identifies stuck running task, stops worker, and blocks task."""
+    """Stuck running task is stopped and queued for retry (claimable 'todo')
+    while its failure budget lasts."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.execute(
@@ -185,6 +186,98 @@ def test_reap_active_workers_transitions_stuck_task(tmp_path: Path):
     row = conn.execute(
         "SELECT status, metadata FROM tasks WHERE id = 't-stuck'"
     ).fetchone()
-    assert row["status"] == "blocked"
+    assert row["status"] == "todo"
     saved_meta = json.loads(row["metadata"])
     assert "blocked_reason" in saved_meta
+    assert saved_meta["worker_failure_retries"] == 1
+    assert not saved_meta.get("permanently_blocked")
+
+    comments = conn.execute(
+        "SELECT body FROM task_comments WHERE task_id = 't-stuck'"
+    ).fetchall()
+    assert any(c[0].startswith("Retrying:") for c in comments)
+
+
+def test_reap_active_workers_parks_exhausted_stuck_task(tmp_path: Path):
+    """Once the failure budget is exhausted, the stuck task is parked in
+    'blocked' for a human (permanently_blocked)."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            status TEXT,
+            assignee TEXT,
+            metadata TEXT,
+            updated_at INTEGER,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            actor TEXT,
+            action TEXT,
+            details TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            author TEXT,
+            body TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+
+    now = 5000
+    started_at = now - 4000  # Exceeded default timeout (3600s)
+    meta = json.dumps(
+        {
+            "started_at": started_at,
+            "worker_pid": 2222,
+            "worker_failure_retries": 2,
+            "sessions": [
+                {"session_id": "s1", "status": "ongoing", "started_at": started_at}
+            ],
+        }
+    )
+    conn.execute(
+        "INSERT INTO tasks VALUES ('t-stuck2', 'Stuck Task', 'running', 'zf-builder', ?, ?, ?)",
+        (meta, started_at, started_at),
+    )
+    conn.commit()
+
+    from dispatcher.config import _active_workers
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 2222
+    mock_proc.poll.return_value = None
+    _active_workers["t-stuck2"] = mock_proc
+
+    import dispatcher
+
+    with patch.object(dispatcher, "terminate_worker_process") as mock_term:
+        reaped = reap_active_workers(conn.cursor(), now=now)
+        conn.commit()
+
+    assert reaped == 1
+    mock_term.assert_called_once_with(mock_proc, 2222)
+
+    row = conn.execute(
+        "SELECT status, metadata FROM tasks WHERE id = 't-stuck2'"
+    ).fetchone()
+    assert row["status"] == "blocked"
+    saved_meta = json.loads(row["metadata"])
+    assert saved_meta["permanently_blocked"] is True
+    assert saved_meta["worker_failure_retries"] == 3

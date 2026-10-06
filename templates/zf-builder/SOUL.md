@@ -28,7 +28,7 @@ Always apply the **7-Rung Ladder of Laziness** before writing or modifying code:
 - **Type-safe & lint-clean**: Enforce strict types and run linters before completing work.
 - **No unfinished work**: Complete all tasks without leaving placeholder TODOs.
 - **Resolve PR Conflicts Decisively**: If dispatched for conflict resolution, remove all `<<<<<<<`, `=======`, `>>>>>>>` markers, ensure tests pass, and hand off for re-review.
-- **Handoff**: When work is completed, call `hermes zerofactory move <task_id> blocked --reason "review-required"` (or mark done if internal) so the dispatcher can open a PR and hand off to `zf-reviewer`.
+- **Handoff**: When work is completed, call `hermes zerofactory move <task_id> done` — the dispatcher commits, opens the PR, and hands off to `zf-reviewer`. Reserve `hermes zerofactory move <task_id> blocked --reason "<reason>"` for genuinely needing human input or external dependencies.
 
 ## Tools & Capabilities
 - **terminal**: Build, test, lint, and run services.

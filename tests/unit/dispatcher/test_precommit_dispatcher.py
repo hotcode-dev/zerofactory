@@ -96,7 +96,8 @@ def test_handle_precommit_failure_retries(initialized_db: Path, tmp_path: Path):
 
         cursor.execute("SELECT status, metadata FROM tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
-        assert row["status"] == "running"
+        # Retry routes back to a claimable 'todo' (builder respawned on claim)
+        assert row["status"] == "todo"
         meta = json.loads(row["metadata"])
         assert meta["precommit_retries"] == 1
         assert "Syntax error on line 5" in meta["last_precommit_error"]

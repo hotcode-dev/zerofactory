@@ -108,10 +108,9 @@ def _run_cycle(db_path: Path, fake_run):
 
 
 def _seed_task(db_path: Path, metadata: dict, workspace_dir: Path):
-    # 'done' + awaiting_pr=True marks builder-finished work that still needs
-    # dispatcher packaging (PR sync); without it a 'done' task is terminal and
-    # the dispatch cycle early-exits before the PR-open path (see main's
-    # terminal-done handling).
+    # 'running' + awaiting_pr=True marks builder-finished work that still needs
+    # dispatcher packaging (PR sync); 'done' is strictly terminal and would be
+    # finalized instead of packaged.
     metadata.setdefault("awaiting_pr", True)
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
@@ -120,7 +119,7 @@ def _seed_task(db_path: Path, metadata: dict, workspace_dir: Path):
             "VALUES ('b1', 'Board', 'https://github.com/foo/bar.git', 'main')"
         )
         conn.execute(
-            "INSERT INTO tasks VALUES (?, 'Work Item', '', 'done', 'zf-builder', "
+            "INSERT INTO tasks VALUES (?, 'Work Item', '', 'running', 'zf-builder', "
             "'P1', ?, '[]', '', ?, '', 'b1', '', '', ?, ?)",
             (TASK_ID, json.dumps(metadata), str(workspace_dir), now, now),
         )

@@ -385,10 +385,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata FROM tasks
                         WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
                            OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator', 'orchestrator'))
-                           OR (status = 'done' AND (
-                                (assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator', 'orchestrator') AND workspace_path IS NOT NULL)
-                                OR metadata LIKE '%"close_pr": true%'
-                           ))
+                           OR (status = 'running' AND metadata LIKE '%"awaiting_pr": true%')
+                           OR (status = 'done' AND (workspace_path IS NOT NULL OR metadata LIKE '%"close_pr": true%'))
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -470,8 +468,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         if not repo_path or not repo_path.exists():
                             continue
 
-                        if status == "done" and not meta.get("awaiting_pr"):
-                            # Terminal done (human-closed): never commit, push, open
+                        if status == "done":
+                            # 'done' is strictly terminal: never commit, push, open
                             # PRs, or route the task back to review. Only clean up
                             # leftovers (stale worker / worktree / open PR & branch).
                             if workspace_path and Path(workspace_path).exists():
@@ -620,9 +618,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         )
                                         continue
 
-                                    if meta.get("permanently_blocked") or row[
-                                        "status"
-                                    ] in ("running", "todo"):
+                                    if meta.get("permanently_blocked") or (
+                                        row["status"] in ("running", "todo")
+                                        and not meta.get("awaiting_pr")
+                                    ):
                                         continue
 
                                     if mergeable == "CONFLICTING":
@@ -717,9 +716,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                                     )
                                                 continue
 
-                                    if assignee not in ("zf-reviewer", "human") and row[
-                                        "status"
-                                    ] in ("done", "blocked"):
+                                    if assignee not in ("zf-reviewer", "human") and (
+                                        row["status"] in ("done", "blocked")
+                                        or meta.get("awaiting_pr")
+                                    ):
                                         pass
                                     else:
                                         task_meta = {}
@@ -1075,6 +1075,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             and (
                                 not row["pr_url"]
                                 or row["status"] in ("done", "blocked")
+                                or meta.get("awaiting_pr")
                             )
                         ):
                             if meta.get("permanently_blocked") or meta.get(

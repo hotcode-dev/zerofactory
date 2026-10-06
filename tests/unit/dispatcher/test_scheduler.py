@@ -394,10 +394,10 @@ def test_run_dispatch_cycle_logs_conflict_resolved_activity(tmp_path: Path):
 
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
-        # 'awaiting_pr' marks builder-finished work that still needs dispatcher
-        # packaging (PR sync); without it a 'done' task is terminal.
+        # 'running' + awaiting_pr marks builder-finished work in the dispatcher
+        # packaging phase (PR sync); 'done' is strictly terminal.
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-res', 'Fix feature [PR Conflict]', 'desc', 'done', 'zf-builder', 'P1', '{\"conflict_retries\": 1, \"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-conf-res', 'Fix feature [PR Conflict]', 'desc', 'running', 'zf-builder', 'P1', '{\"conflict_retries\": 1, \"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()

@@ -278,8 +278,8 @@ def spawn_agent_worker(
                 f"3. Ensure NO conflict markers remain in any files.\n"
                 f"4. Apply targeted edits (search/replace or localized chunk edits) rather than rewriting entire files to conserve tokens.\n"
                 f"5. Run the repository test suites and linters to verify everything compiles and passes cleanly.\n"
-                f"6. Hand off for re-review:\n"
-                f'   hermes zerofactory move {task_id} blocked --reason "review-required"\n\n'
+                f"6. Hand off for re-review (marks work finished; the dispatcher re-commits, pushes, and syncs the PR):\n"
+                f"   hermes zerofactory move {task_id} done\n\n"
                 f"NOTE: Do NOT run git commands (git add/commit/push). The factory dispatcher automatically verifies clean conflict resolution and commits with 'fix(merge): resolve merge conflicts with main' upon handoff.\n"
             )
         else:
@@ -353,8 +353,8 @@ def spawn_agent_worker(
                     f"1. Carefully address every review comment listed above in your workspace ({workdir}).\n"
                     f"2. Apply targeted, concise code edits rather than rewriting or bloating files.\n"
                     f"3. Run automated tests and linters in your workspace to verify correctness.\n"
-                    f"4. When finished, hand off for re-review:\n"
-                    f'   hermes zerofactory move {task_id} blocked --reason "review-required"\n'
+                    f"4. When finished, hand off for re-review (marks work finished; the dispatcher re-commits, pushes, and syncs the PR):\n"
+                    f"   hermes zerofactory move {task_id} done\n"
                     f"5. Provide a summary of how each review comment was resolved.\n"
                     f'   - You may also reply to each addressed review comment on GitHub so the discussion thread shows the resolution: for inline review comments use the replies endpoint `gh api repos/<owner>/<repo>/pulls/<pr>/comments/<comment_id>/replies -f body="[AI:zf-builder] <response>" -F commit_id=<head sha>` (the `<comment_id>` is the numeric \'GitHub review comment id\' in each comment\'s footer; the PR number/owner/repo come from `gh pr view <branch> --json number,url`); for plain conversation comments, post `gh pr comment <pr> --body "[AI:zf-builder] <response>"` instead.\n'
                     f"   - AI ATTRIBUTION: Any GitHub PR comment you post (e.g. `gh pr comment`) MUST begin with `[AI:zf-builder]` so humans can distinguish agent output.\n\n"
@@ -369,8 +369,8 @@ def spawn_agent_worker(
                     f"3. Verify your changes with tests, linters, or typechecks.\n"
                     f"4. When finished, mark the task as complete using:\n"
                     f"   hermes zerofactory move {task_id} done\n"
-                    f"   (or if human review or external dependencies are required, run:\n"
-                    f'   hermes zerofactory move {task_id} blocked --reason "review-required")\n'
+                    f"   (or if you are genuinely blocked on human input or external dependencies, run:\n"
+                    f'   hermes zerofactory move {task_id} blocked --reason "<reason>")\n'
                     f"5. Provide a summary of your changes.\n"
                     f"   - AI ATTRIBUTION: Any GitHub PR comment you post (e.g. `gh pr comment`) MUST begin with `[AI:zf-builder]` so humans can distinguish agent output.\n\n"
                     f"NOTE: Do NOT run git commands (git add/commit/push/checkout). Your worktree is already synced with latest main. The factory dispatcher automatically stages, commits, and opens PRs upon task completion.\n"

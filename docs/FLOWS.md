@@ -54,7 +54,7 @@ flowchart TD
 | 1 | Agents never run `git add/commit/push` — the dispatcher packages all work | worker prompts + dispatcher step 3 |
 | 2 | `main` is never touched by agents — every task runs in `~/git/<repo>-worktrees/<task_id>` | `worktree.setup_worktree` |
 | 3 | A PR is only created after the deterministic precommit gate passes | `worktree.run_deterministic_precommit` |
-| 4 | `done` is terminal unless the system itself is mid-packaging (`awaiting_pr`) | scheduler terminal-done guard |
+| 4 | `done` is strictly terminal — packaging runs while the task is `running` (`awaiting_pr`) | scheduler terminal-done guard |
 | 5 | Exactly one status reply is posted to a source GitHub issue, only at PR-open time | `scheduler.post_issue_pr_comment` |
 | 6 | Nothing runs unbounded: worker timeout 3600s, retries capped, review rounds capped | reaper + `_handle_precommit_failure` + review cap |
 
@@ -68,15 +68,15 @@ flowchart TD
 |---|---|---|
 | `triage` | Goal/issue awaiting decomposition or human interview | importer, orchestrator, human |
 | `todo` | Atomic, actionable, ready to claim | orchestrator, human, dispatcher (review reroute / unblock) |
-| `running` | Claimed by the dispatcher; a worker process is active | dispatcher (atomic claim) |
-| `blocked` | Needs human action, is in review, or failed with retry budget | reviewer, dispatcher (failures), human |
-| `done` | Completed — **terminal** unless `awaiting_pr` is set | reaper, dispatcher (MERGED/CLOSED), human, agents |
+| `running` | Worker active **or** dispatcher packaging (`awaiting_pr`) | dispatcher (atomic claim, packaging phase) |
+| `blocked` | **Human gate only**: awaiting merge, review cap, exhausted budgets, unverifiable state | reviewer, dispatcher (budgets exhausted), human |
+| `done` | Completed — **strictly terminal** | dispatcher (MERGED/CLOSED/no-diff), human, orchestrator |
 
 ### 2.2 Metadata flags & counters
 
 | Key | Set by | Meaning |
 |---|---|---|
-| `awaiting_pr` | reaper (worker exit 0), `move_task` by agents | Builder work finished; dispatcher must package → PR → reviewer |
+| `awaiting_pr` | reaper (worker exit 0), `move_task` by agents | Builder work finished; the task stays `running` while the dispatcher packages → PR → reviewer |
 | `close_pr` | `move_task` by humans when `pr_url` exists | Human closed task; dispatcher must archive the PR + remote branch |
 | `issue_pr_comment_posted` | dispatcher after issue reply | Source-issue reply already sent (extra dedup guard) |
 | `packaged_by` | dispatcher at PR packaging | Assignee that authored the packaged PR (review reroute target) — replaces the old `[PR Opened by X]` title marker |
@@ -110,13 +110,13 @@ stateDiagram-v2
     blocked --> triage: human interview reply
 
     todo --> running: dispatcher claims<br/>capacity available
-    running --> done: worker exit 0<br/>awaiting_pr set
-
-    done --> todo: awaiting_pr packaging<br/>PR opened -> zf-reviewer
+    running --> running: worker exit 0<br/>awaiting_pr: packaging phase
+    running --> todo: PR opened<br/>routed to zf-reviewer
+    running --> todo: crash/timeout within budget<br/>queued for auto-retry
     done --> done: MERGED / CLOSED<br/>terminal guard
 
-    todo --> blocked: conflicts / failures
-    running --> blocked: timeout, crash,<br/>review-required, changes-requested
+    todo --> blocked: budget exhausted /<br/>unverifiable state
+    running --> blocked: budget exhausted
     blocked --> todo: parents done (unblock)<br/>or review reroute
     blocked --> done: human close (terminal,<br/>archives PR via close_pr)
 
@@ -139,7 +139,7 @@ flowchart TD
     S2B["Step 2b — claim tasks<br/>capacity guards -> atomic UPDATE -> spawn worker"] --> S3
     S3{"ZEROFACTORY_SKIP_GIT?"} -->|no| S3B["Step 3 — completion & PR handling"]
     S3 -->|yes| S4
-    S3B --> GUARD{"done and not awaiting_pr?"}
+    S3B --> GUARD{"status = done?"}
     GUARD -->|yes| CLEAN["terminal-done guard:<br/>stop worker, remove worktree,<br/>close PR if close_pr, clear pointer"] --> S4
     GUARD -->|no| POLL["gh pr view"]
     POLL --> ST{"PR state"} 
@@ -171,9 +171,9 @@ flowchart TD
 
 ### Step 3 — Completion & PR handling
 Polls tasks matching: `pr_url` set and not `done`, OR `blocked` with a builder assignee, OR
-`done` awaiting packaging (`workspace_path` / `close_pr`). Per task:
+`running` + `awaiting_pr` (packaging phase), OR `done` with leftovers (`workspace_path` / `close_pr`). Per task:
 
-1. **Terminal-done guard** — `done` **without** `awaiting_pr` is terminal: stop worker, remove
+1. **Terminal-done guard** — `done` is strictly terminal: stop worker, remove
    worktree, if `close_pr` → `gh pr close <pr_url>` + delete remote branch + `manual_done`
    activity, clear `workspace_path`, `continue`. Never commit/push/PR/reroute again.
 2. **PR poll** (`gh pr view --json reviewDecision,state,url,mergeable,headRefOid`):
@@ -211,11 +211,11 @@ flowchart TD
     POLL -->|"exit 0"| OK{"target status?"}
     OK -->|"triage + interview"| TRI["triage + human<br/>awaiting_interview"]
     OK -->|"already blocked/todo/triage"| KEEP["keep status"]
-    OK -->|"builder/reviewer finished"| AUTO["done + awaiting_pr = true<br/>-> step 3 packages PR"]
-    POLL -->|"exit != 0"| FAIL["worker_failure_retries++<br/>blocked with reason"]
-    FAIL --> FB{"retries >= 3?"}
-    FB -->|yes| PERM["blocked + permanently_blocked"]
-    FB -->|no| RETRY["blocked (retryable)"]
+    OK -->|"builder/reviewer finished"| AUTO["running + awaiting_pr = true<br/>-> step 3 packages PR"]
+    POLL -->|"exit != 0"| FAIL["worker_failure_retries++"]
+    FAIL --> FB{"budget left?"}
+    FB -->|no| PERM["blocked + permanently_blocked<br/>human gate"]
+    FB -->|yes| RETRY["todo — auto-retry on claim"]
     POLL -->|"PID gone / stuck"| STUCK["terminate, retries++, blocked<br/>timeout 3600s / inactivity 900s"]
     RUN -.->|"no proc, no PID, no session,<br/>claim age >= 30s"| ORPH["orphaned running -> todo<br/>activity worker_recovered"]
 ```
@@ -345,7 +345,7 @@ so an agent that ignores the cap still gets escalated to a human.
 
 ```mermaid
 stateDiagram-v2
-    state "done + awaiting_pr" as AW
+    state "running + awaiting_pr" as AW
     state "done (terminal)" as TERM
 
     running --> AW: reaper, worker exit 0
@@ -357,7 +357,7 @@ stateDiagram-v2
     TERM --> TERM: step 3 guard: cleanup only<br/>stop worker, rm worktree,<br/>gh pr close + rm branch if close_pr
 ```
 
-- **Agent** `move done` (actor `zf-*`): "builder finished" → `awaiting_pr` → packaging pipeline.
+- **Agent** `move done` (actor `zf-*`): "builder finished" → the task stays **`running`** with `awaiting_pr` → packaging pipeline → `todo` + reviewer. `done` appears only after merge/close/human close.
 - **Human** `move done` (actor `user`, e.g. drag-and-drop): **terminal** — aborts sessions,
   stops the worker, and if a PR is open sets `close_pr` so the next cycle
   archives the PR (close + branch delete, activity `manual_done`). Never re-dispatched.

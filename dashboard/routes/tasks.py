@@ -744,15 +744,20 @@ def move_task(task_id: str, req: TaskMove):
                 or req.actor in ("orchestrator", "builder", "reviewer")
             )
         )
+        is_orchestrator_actor = req.actor in ("zf-orchestrator", "orchestrator")
 
-        # 'awaiting_pr' marks builder completion that still needs dispatcher
-        # packaging (precommit -> commit -> push -> PR -> reviewer). An agent moving
-        # the task to 'done' reports work finished and keeps that pipeline running,
-        # while a human moving it to 'done' is terminal: the dispatcher must never
-        # re-dispatch the task afterwards, and any open PR/remote branch is archived
-        # (marked via 'close_pr') so GitHub matches the board.
+        # 'done' is strictly terminal. An agent reporting completion (builder/
+        # reviewer) means "work finished — package it": the task stays 'running'
+        # and the dispatcher runs precommit -> commit -> push -> PR -> reviewer,
+        # marked via 'awaiting_pr'. Humans (and the orchestrator closing tickets)
+        # close tasks terminally; any open PR/remote branch is archived via
+        # 'close_pr' so GitHub matches the board.
+        wants_packaging = is_agent_actor and not is_orchestrator_actor
+        new_status = (
+            "running" if (req.status == "done" and wants_packaging) else req.status
+        )
         if req.status == "done":
-            if is_agent_actor:
+            if wants_packaging:
                 if not meta.get("awaiting_pr"):
                     meta["awaiting_pr"] = True
                     meta_updated = True
@@ -840,21 +845,26 @@ def move_task(task_id: str, req: TaskMove):
             if new_assignee:
                 cursor.execute(
                     "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                    (req.status, new_assignee, json.dumps(meta), now, task_id),
+                    (new_status, new_assignee, json.dumps(meta), now, task_id),
                 )
             else:
                 cursor.execute(
                     "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                    (req.status, json.dumps(meta), now, task_id),
+                    (new_status, json.dumps(meta), now, task_id),
                 )
             if prev_status != req.status:
                 move_actor = req.actor or "user"
+                move_detail = (
+                    "Agent reported completion; awaiting PR packaging"
+                    if new_status != req.status
+                    else f"Moved from {prev_status} to {req.status}"
+                )
                 log_activity(
                     conn,
                     task_id,
                     move_actor,
                     "move",
-                    f"Moved from {prev_status} to {req.status}",
+                    move_detail,
                 )
 
         if req.status == "blocked" and req.reason:
@@ -902,7 +912,7 @@ def move_task(task_id: str, req: TaskMove):
     return {
         "ok": True,
         "id": task_id,
-        "status": req.status,
+        "status": new_status,
         "prev_status": prev_status,
         "reason": req.reason,
     }

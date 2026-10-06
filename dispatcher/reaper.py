@@ -175,11 +175,13 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     elif is_triage_task:
                         target_status = "triage"
                     else:
-                        target_status = "done"
-                        # Auto-detected builder completion: flag the dispatcher to
-                        # package the worktree (precommit -> commit -> push -> PR ->
-                        # reviewer). Human-closed tasks never carry this flag and are
-                        # therefore terminal once marked done.
+                        # Builder/reviewer work finished: the task stays
+                        # 'running' while the deterministic pipeline packages
+                        # the worktree (precommit -> commit -> push -> PR ->
+                        # reviewer). 'done' is strictly terminal and only set
+                        # after merge/close/human close; the awaiting_pr flag
+                        # marks the packaging phase for the dispatcher.
+                        target_status = "running"
                         meta["awaiting_pr"] = True
 
                     cursor.execute(
@@ -258,24 +260,25 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         meta["blocked_reason"] = (
                             f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})"
                         )
+                        retry_status = "todo" if row_status == "running" else "blocked"
                         cursor.execute(
-                            "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-                            (json.dumps(meta), now, task_id),
+                            "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                            (retry_status, json.dumps(meta), now, task_id),
                         )
                         cursor.execute(
                             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                            (task_id, f"Blocked: {meta['blocked_reason']}", now),
+                            (task_id, f"Retrying: {meta['blocked_reason']}", now),
                         )
                         cursor.execute(
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed', ?, ?)",
                             (
                                 task_id,
-                                f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})",
+                                f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries}); queued for retry",
                                 now,
                             ),
                         )
                         _log.warning(
-                            "Worker for task %s failed with exit code %d; moved to blocked",
+                            "Worker for task %s failed with exit code %d; queued for retry",
                             task_id,
                             retcode,
                         )
@@ -317,19 +320,20 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta["blocked_reason"] = (
                         f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries})"
                     )
+                    retry_status = "todo" if row_status == "running" else "blocked"
                     cursor.execute(
-                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-                        (json.dumps(meta), now, task_id),
+                        "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                        (retry_status, json.dumps(meta), now, task_id),
                     )
                     cursor.execute(
                         "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                        (task_id, f"Blocked: {meta['blocked_reason']}", now),
+                        (task_id, f"Retrying: {meta['blocked_reason']}", now),
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_lost', ?, ?)",
                         (
                             task_id,
-                            f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries}); moved to blocked",
+                            f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries}); queued for retry",
                             now,
                         ),
                     )
@@ -340,6 +344,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 )
                 reaped += 1
                 continue
+        elif row_status == "running" and meta.get("awaiting_pr"):
+            # Deterministic packaging phase (LLM finished; precommit/commit/PR
+            # pipeline active in the dispatcher) — not an orphan. Step 3 of the
+            # dispatch cycle owns this task until it routes onward.
+            continue
         elif row_status == "running" and not has_ongoing_session:
             # Task is marked 'running' but has no active process, PID, or ongoing session
             claim_age = max(0, now - int(row["updated_at"] or now))
@@ -409,19 +418,20 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 meta["blocked_reason"] = (
                     f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})"
                 )
+                retry_status = "todo" if row_status == "running" else "blocked"
                 cursor.execute(
-                    "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-                    (json.dumps(meta), now, task_id),
+                    "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                    (retry_status, json.dumps(meta), now, task_id),
                 )
                 cursor.execute(
                     "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                    (task_id, f"Blocked: {meta['blocked_reason']}", now),
+                    (task_id, f"Retrying: {meta['blocked_reason']}", now),
                 )
                 cursor.execute(
                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
                     (
                         task_id,
-                        f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})",
+                        f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries}); queued for retry",
                         now,
                     ),
                 )

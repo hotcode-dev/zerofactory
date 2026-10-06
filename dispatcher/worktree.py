@@ -320,6 +320,7 @@ def _handle_local_merge_conflict(
         return
     retries += 1
     meta["conflict_retries"] = retries
+    meta.pop("awaiting_pr", None)
 
     file_msg = f" in: {', '.join(conflict_files)}" if conflict_files else ""
 
@@ -511,6 +512,7 @@ def _handle_pr_conflict_from_github(
         return
     retries += 1
     meta["conflict_retries"] = retries
+    meta.pop("awaiting_pr", None)
 
     _d().stop_task_worker(task_id, cursor)
     if workspace_path and Path(workspace_path).exists():
@@ -701,8 +703,12 @@ def _handle_precommit_failure(
                 "Failed to insert precommit failure comment for task %s: %s", task_id, e
             )
     else:
+        # Route back to the builder as a claimable 'todo' retry (the precommit
+        # failure output is injected into the respawned worker's prompt); clear
+        # awaiting_pr — this is builder work again, not the packaging phase.
+        meta.pop("awaiting_pr", None)
         cursor.execute(
-            "UPDATE tasks SET assignee = 'zf-builder', status = 'running', metadata = ?, updated_at = ? WHERE id = ?",
+            "UPDATE tasks SET assignee = 'zf-builder', status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
             (json.dumps(meta), now, task_id),
         )
         cursor.execute(
