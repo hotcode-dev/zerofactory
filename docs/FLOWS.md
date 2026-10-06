@@ -201,7 +201,7 @@ remains. Otherwise the cron wake-gate suppresses it at 0 token cost (§11).
 
 ```mermaid
 flowchart TD
-    SP["spawn_agent_worker<br/>hermes -p <profile> --yolo --cli --accept-hooks chat -q <prompt>"] --> META["write metadata:<br/>worker_pid / session_id / sessions[] ongoing"]
+    SP["spawn_agent_worker<br/>hermes -p PROFILE --yolo --cli --accept-hooks chat -q PROMPT"] --> META["write metadata:<br/>worker_pid / session_id / sessions[] ongoing"]
     META --> RUN["agentic session runs<br/>in worktree; logs to worker log"]
     RUN --> POLL{"reaper: proc.poll()"}
     POLL -->|"exit 0"| OK{"target status?"}
@@ -275,9 +275,9 @@ flowchart LR
     T --> P{"exit 0?"}
     P -->|yes| OK["staged, packaging continues"]
     P -->|no| R{"precommit_retries++"}
-    R -->|"<= 3"| FIX["zf-builder session:<br/>failure output + fix loop"]
+    R -->|"within limit (3)"| FIX["zf-builder session:<br/>failure output + fix loop"]
     FIX --> F
-    R -->|"> 3"| BLOCK["blocked for inspection"]
+    R -->|"over limit"| BLOCK["blocked for inspection"]
 ```
 
 - **Self-bootstrapping**: missing `ruff` or the pinned test stack (`pytest==9.0.3`,
@@ -297,7 +297,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    W["setup_worktree<br/>~/git/repo-worktrees/<task_id><br/>branch task/<task_id>"] --> WORK["agentic edits + tests in worktree"]
+    W["setup_worktree<br/>~/git/repo-worktrees/TASK_ID<br/>branch task/TASK_ID"] --> WORK["agentic edits + tests in worktree"]
     WORK --> PRE["precommit gate (§6)"]
     PRE --> STAGE["auto-format results staged<br/>conventional commit authored"]
     STAGE --> MERGE["pull_and_merge_main<br/>target branch of the board"]
@@ -305,9 +305,9 @@ flowchart TD
     CF -->|yes| CFB["[PR Conflict] title marker<br/>zf-builder conflict session<br/>-> back to precommit"]
     CFB --> PRE
     CF -->|no| CFE["blocked — conflict escalation"]
-    MERGE -->|clean| PUSH["git push -u origin task/<id>"]
-    PUSH --> PRC["gh pr create --base <target><br/>body: Fixes #N / Resolves: JIRA"]
-    PRC --> RR["todo + zf-reviewer<br/>[PR Opened by <agent>]"]
+    MERGE -->|clean| PUSH["git push -u origin task/TASK_ID"]
+    PUSH --> PRC["gh pr create --base TARGET<br/>body: Fixes issue N / Resolves: JIRA"]
+    PRC --> RR["todo + zf-reviewer<br/>[PR Opened by AGENT]"]
     PRC --> IRE["post_issue_pr_comment (§10)"]
 ```
 
@@ -407,7 +407,7 @@ flowchart TD
     W2 -->|"no git changes since last scan<br/>or capacity/cooldown guard"| SUP2["{'wakeAgent': false}"]
     W2 -->|"new commits + spare capacity"| WAKE2["wakeAgent + pre-digested context"]
     WAKE2 --> ORCH["zf-orchestrator session<br/>files at most 1 Todo task"]
-    W3 -->|"no doc-relevant changes / task queued"| SUP3["{\"wakeAgent\": false}"]
+    W3 -->|"no doc-relevant changes / task queued"| SUP3["{'wakeAgent': false}"]
     W3 -->|"stale docs"| WAKE3["creates 1 OpenWiki update task"]
 ```
 
