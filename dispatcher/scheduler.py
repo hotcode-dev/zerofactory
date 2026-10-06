@@ -155,7 +155,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                 if active_count < max_active_tasks and llm_workers < max_llm_workers:
                     cursor.execute("""
                         SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug, status FROM tasks
-                        WHERE status IN ('todo', 'ready') OR (status = 'triage' AND assignee = 'zf-orchestrator')
+                        WHERE status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator')
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
                     """)
                     for row in cursor.fetchall():
@@ -292,7 +292,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             "triage" if task_orig_status == "triage" else "running"
                         )
                         cursor.execute(
-                            "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND (status IN ('todo', 'ready') OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
+                            "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND (status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
                             (target_dispatch_status, now, task_id),
                         )
                         if cursor.rowcount == 0:
@@ -633,7 +633,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                                     if meta.get("permanently_blocked") or row[
                                         "status"
-                                    ] in ("running", "todo", "ready"):
+                                    ] in ("running", "todo"):
                                         continue
 
                                     if mergeable == "CONFLICTING":

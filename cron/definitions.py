@@ -103,7 +103,7 @@ def build_board_openwiki_prompt(board: dict[str, Any], workdir: str | None) -> s
 ## STEP 1: Pre-Flight Board Check (CRITICAL)
 Before inspecting files or creating tasks, review existing tasks on the board:
 Run: `hermes zerofactory list --board "{slug}"`
-1. Check all open tasks in `todo`, `ready`, `running`, `blocked`, or `triage`.
+1. Check all open tasks in `todo`, `running`, `blocked`, or `triage`.
 2. If an OpenWiki update or setup task already exists (e.g., title containing 'OpenWiki' or 'openwiki'):
    STOP immediately and report:
    "An active OpenWiki task is already queued or in progress on board '{slug}'. Skipping task creation."

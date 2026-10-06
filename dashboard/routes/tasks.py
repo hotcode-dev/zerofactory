@@ -766,13 +766,13 @@ def move_task(task_id: str, req: TaskMove):
             meta.pop("close_pr", None)
             meta_updated = True
 
-        if req.status in ("todo", "ready", "running", "done") or (
+        if req.status in ("todo", "running", "done") or (
             req.status == "blocked" and req.reason == "review-required"
         ):
             if "last_worker_failure" in meta:
                 meta.pop("last_worker_failure", None)
                 meta_updated = True
-            if req.status in ("todo", "ready", "running", "done"):
+            if req.status in ("todo", "running", "done"):
                 if "permanently_blocked" in meta:
                     meta.pop("permanently_blocked", None)
                     meta_updated = True
@@ -788,9 +788,7 @@ def move_task(task_id: str, req: TaskMove):
             if req.status == "blocked" and req.reason:
                 meta["blocked_reason"] = req.reason
                 meta_updated = True
-            if req.status in ("todo", "ready") or (
-                req.status == "done" and not is_agent_actor
-            ):
+            if req.status == "todo" or (req.status == "done" and not is_agent_actor):
                 if "worker_pid" in meta or "session_id" in meta or "started_at" in meta:
                     meta.pop("worker_pid", None)
                     meta.pop("session_id", None)
@@ -902,7 +900,7 @@ def move_task(task_id: str, req: TaskMove):
         conn.commit()
 
         if (
-            req.status in ("todo", "ready", "done")
+            req.status in ("todo", "done")
             and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
             and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
         ):

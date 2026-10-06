@@ -16,7 +16,7 @@ edit the worktree, and report back via CLI.
 flowchart TD
     subgraph DET["Deterministic Engine — Python, 0 LLM tokens"]
         LOOP["dispatcher loop — every 30s<br/>run_dispatch_cycle"] --> REAP["reaper.py<br/>worker health & retries"]
-        LOOP --> CLAIM["scheduler.py step 2<br/>claim todo/ready -> running"]
+        LOOP --> CLAIM["scheduler.py step 2<br/>claim todo -> running"]
         LOOP --> PR["scheduler.py step 3<br/>precommit / commit / PR / review routing"]
         LOOP --> SCAN["scheduler.py step 4<br/>idle scanner gating"]
         CRON["builtin_cron + scripts/<br/>watchdog / gates — no-agent mode"] --> LOOP
@@ -67,7 +67,6 @@ flowchart TD
 |---|---|---|
 | `triage` | Goal/issue awaiting decomposition or human interview | importer, orchestrator, human |
 | `todo` | Atomic, actionable, ready to claim | orchestrator, human, dispatcher (review reroute / unblock) |
-| `ready` | Supported alias of `todo` in the claim query | human / API |
 | `running` | Claimed by the dispatcher; a worker process is active | dispatcher (atomic claim) |
 | `blocked` | Needs human action, is in review, or failed with retry budget | reviewer, dispatcher (failures), human |
 | `done` | Completed — **terminal** unless `awaiting_pr` is set | reaper, dispatcher (MERGED/CLOSED), human, agents |
@@ -155,7 +154,7 @@ flowchart TD
 
 ### Step 2 — Reap, then claim
 - **Reap** first (see §4). Then select claim candidates:
-  `status IN ('todo','ready') OR (status='triage' AND assignee='zf-orchestrator')`,
+  `status = 'todo' OR (status='triage' AND assignee='zf-orchestrator')`,
   ordered by priority (`P0`→`P3`) then age.
 - **Capacity guards** (all must pass): global `max_active_tasks`, global
   `max_concurrent_llm_workers` (counts running tasks + active scanners + in-flight LLM cron jobs),
@@ -163,7 +162,7 @@ flowchart TD
 - **Pre-flight (git boards)**: `check_unresolved_conflicts_safe` + `pull_and_merge_main` —
   conflicts route the task to the conflict handler **before** any worker burns tokens
   (fail-closed: unverifiable state → skip claim).
-- **Atomic claim**: `UPDATE ... WHERE id=? AND status IN ('todo','ready',...)` — zero rowcount
+- **Atomic claim**: `UPDATE ... WHERE id=? AND status IN ('todo',...)` — zero rowcount
   means another cycle won the race; skip. On success, write session metadata and spawn the worker.
 
 ### Step 3 — Completion & PR handling
@@ -358,7 +357,7 @@ stateDiagram-v2
 - **Human** `move done` (actor `user`, e.g. drag-and-drop): **terminal** — strips `[Human Review]`,
   aborts sessions, stops the worker, and if a PR is open sets `close_pr` so the next cycle
   archives the PR (close + branch delete, activity `manual_done`). Never re-dispatched.
-- **Reviving** (`move todo/ready/running/...`): clears `awaiting_pr` / `close_pr` and resets
+- **Reviving** (`move todo/running/...`): clears `awaiting_pr` / `close_pr` and resets
   worker failure bookkeeping; the task dispatches normally again.
 - **Delete** remains reserved for invalid/duplicate tickets (erases history).
 

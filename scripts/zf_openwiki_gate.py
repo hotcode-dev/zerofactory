@@ -196,7 +196,7 @@ def has_active_openwiki_task(board_slug: str) -> tuple[bool, str]:
                 """
                 SELECT id, title, status FROM tasks
                 WHERE board_slug = ?
-                  AND status IN ('todo', 'ready', 'running', 'blocked', 'triage')
+                  AND status IN ('todo', 'running', 'blocked', 'triage')
                   AND LOWER(title) LIKE '%openwiki%'
                 ORDER BY created_at DESC LIMIT 1
                 """,

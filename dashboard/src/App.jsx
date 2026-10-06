@@ -1165,9 +1165,6 @@ export function ZeroFactoryKanbanApp() {
       const map = { triage: [], todo: [], running: [], blocked: [], done: [] };
       filteredTasks.forEach((t) => {
         let col = t.status || "triage";
-        if (col === "ready") {
-          col = "todo";
-        }
         if (map[col]) {
           map[col].push(t);
         } else {

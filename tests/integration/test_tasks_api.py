@@ -250,3 +250,22 @@ def test_move_done_semantics_human_terminal_vs_agent_awaiting_pr(
         json={"status": "todo", "actor": "user"},
     )
     assert _metadata(task_id).get("close_pr") is None
+
+
+def test_legacy_ready_status_rejected(api_client: TestClient, default_board: str):
+    """The 'ready' Kanban column/status was removed — moves to it are rejected."""
+    task_id = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={
+            "title": "Legacy ready status",
+            "board_slug": default_board,
+            "status": "todo",
+        },
+    ).json()["id"]
+
+    res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "ready", "actor": "user"},
+    )
+    # Rejected by model validation (422) or status validation (400)
+    assert res.status_code in (400, 422)

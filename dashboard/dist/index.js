@@ -60,7 +60,6 @@ var ZeroFactoryDashboard = (function(exports) {
 	var NEXT_STATUS_MAP = {
 		triage: "todo",
 		todo: "running",
-		ready: "running",
 		running: "blocked",
 		blocked: "done",
 		done: "triage"
@@ -4262,7 +4261,6 @@ var ZeroFactoryDashboard = (function(exports) {
 			};
 			filteredTasks.forEach((t) => {
 				let col = t.status || "triage";
-				if (col === "ready") col = "todo";
 				if (map[col]) map[col].push(t);
 				else map["triage"].push(t);
 			});

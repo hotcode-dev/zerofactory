@@ -11,7 +11,6 @@ export const COLUMNS = [
 export const NEXT_STATUS_MAP = {
   triage: "todo",
   todo: "running",
-  ready: "running",
   running: "blocked",
   blocked: "done",
   done: "triage"

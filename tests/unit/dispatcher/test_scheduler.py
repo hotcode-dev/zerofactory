@@ -196,7 +196,7 @@ def test_run_dispatch_cycle_promotes_todo_to_running(tmp_path: Path):
 def test_run_dispatch_cycle_skips_pr_conflict_for_queued_or_builder_task(
     tmp_path: Path,
 ):
-    """PR conflict check must not burn retries for tasks already in todo/ready or assigned to builder."""
+    """PR conflict check must not burn retries for tasks already in todo or assigned to builder."""
     db_path = tmp_path / "test.db"
     _init_test_db(db_path)
 
