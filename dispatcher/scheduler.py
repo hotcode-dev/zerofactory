@@ -1500,6 +1500,24 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 ):
                                     meta.pop(key, None)
 
+                                ext_issue = meta.get("external_issue") or {}
+                                if ext_issue.get("source") == "github" and pr_url:
+                                    try:
+                                        if post_issue_pr_comment(
+                                            task_id,
+                                            ext_issue,
+                                            pr_url,
+                                            cursor=cursor,
+                                            board_slug=board_slug,
+                                        ):
+                                            meta["issue_pr_comment_posted"] = True
+                                    except Exception as _cmt_err:
+                                        _log.warning(
+                                            "Issue PR reply failed for task %s (non-fatal): %s",
+                                            task_id,
+                                            _cmt_err,
+                                        )
+
                                 cursor.execute(
                                     "UPDATE tasks SET title = ?, assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'todo', updated_at = ? WHERE id = ?",
                                     (new_title, pr_url, json.dumps(meta), now, task_id),
@@ -1679,6 +1697,167 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     os.close(lock_fd)
                 except Exception:
                     pass
+
+
+_ZF_GITHUB_GIT_URL_RE = re.compile(
+    r"^(?:git\+)?https?://(?:[^@/]+@)?github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$"
+)
+
+
+def _zf_board_git_url(cursor: "sqlite3.Cursor | None", board_slug: str | None) -> str:
+    """Best-effort board git_url used as owner/repo fallback for issue comments."""
+    if not board_slug or cursor is None:
+        return ""
+    try:
+        row = cursor.execute(
+            "SELECT git_url FROM boards WHERE slug = ?", (board_slug,)
+        ).fetchone()
+        return str(row[0]).strip() if row and row[0] else ""
+    except Exception:
+        return ""
+
+
+def _zf_board_owner_repo(
+    cursor: "sqlite3.Cursor | None", board_slug: str | None
+) -> str:
+    """Extract 'owner/repo' from a board git_url, or '' if unparseable."""
+    git_url = _zf_board_git_url(cursor, board_slug).strip()
+    if not git_url:
+        return ""
+    match = _ZF_GITHUB_GIT_URL_RE.match(git_url)
+    if match:
+        return f"{match.group(1)}/{match.group(2)}"
+    parts = git_url.rstrip("/").split("/")
+    if len(parts) >= 2:
+        return f"{parts[-2]}/{parts[-1]}"
+    return ""
+
+
+def _zf_issue_has_pr_marker(issue_id: str, target_repo: str, marker: str) -> bool:
+    """Check existing issue comments for the task's dedup marker via `gh issue view`.
+
+    A fetch failure returns False so the caller can still attempt posting (the
+    post itself is guarded by its own try/except and stays non-fatal).
+    """
+    try:
+        res = subprocess.run(
+            [
+                "gh",
+                "issue",
+                "view",
+                issue_id,
+                "--repo",
+                target_repo,
+                "--json",
+                "comments",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if res.returncode != 0:
+            return False
+        comments = json.loads(res.stdout or "[]")
+        if not isinstance(comments, list):
+            return False
+        return any(
+            marker in ((c.get("body") or "") if isinstance(c, dict) else str(c or ""))
+            for c in comments
+        )
+    except Exception as e:
+        _log.debug(
+            "Issue comment dedup check failed for %s#%s: %s", target_repo, issue_id, e
+        )
+        return False
+
+
+def post_issue_pr_comment(
+    task_id: str,
+    ext_issue: dict[str, Any],
+    pr_url: str,
+    *,
+    cursor: "sqlite3.Cursor | None" = None,
+    board_slug: str | None = None,
+) -> bool:
+    """Post a single 'PR opened' status reply onto the source GitHub issue.
+
+    Option B of the reply-on-issue decision: exactly one comment, posted only
+    when a PR has just been opened successfully. Gated on
+    ``external_issue.source == 'github'`` + a present issue id +
+    ``has_ai_request`` (baked in at import time — no label re-fetch). Idempotent
+    via the ``<!-- zf-task:<task_id> -->`` HTML marker: existing comments are
+    checked through ``gh issue view --json comments`` and a posted comment is
+    recorded by the caller in task metadata. Any failure is logged as a
+    warning and never propagates.
+    """
+    marker = f"<!-- zf-task:{task_id} -->"
+    issue_id = str(ext_issue.get("id") or "").strip()
+    target_repo = str(ext_issue.get("repo_or_project") or "").strip()
+    try:
+        if ext_issue.get("source") != "github" or not issue_id:
+            return False
+        if not ext_issue.get("has_ai_request"):
+            return False
+        if not pr_url:
+            return False
+        if not target_repo:
+            target_repo = _zf_board_owner_repo(cursor, board_slug)
+        if not target_repo:
+            _log.warning(
+                "Cannot resolve owner/repo for issue PR comment on task %s; skipping.",
+                task_id,
+            )
+            return False
+        if _zf_issue_has_pr_marker(issue_id, target_repo, marker):
+            _log.info(
+                "Issue PR comment already posted for task %s (marker found on %s#%s); skipping.",
+                task_id,
+                target_repo,
+                issue_id,
+            )
+            return True
+        body = (
+            f"🔀 **PR opened** — task `{task_id}` is now under review.\n\n"
+            f"PR: {pr_url}\n\n"
+            f"Fixes #{issue_id}\n\n"
+            f"{marker}"
+        )
+        res = subprocess.run(
+            [
+                "gh",
+                "issue",
+                "comment",
+                issue_id,
+                "--repo",
+                target_repo,
+                "--body",
+                body,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if res.returncode == 0:
+            _log.info(
+                "Posted PR-opened comment on issue %s#%s for task %s: %s",
+                target_repo,
+                issue_id,
+                task_id,
+                pr_url,
+            )
+            return True
+        _log.warning(
+            "Failed to post issue PR comment for task %s on %s#%s (exit %s): %s",
+            task_id,
+            target_repo,
+            issue_id,
+            res.returncode,
+            (res.stderr or res.stdout or "").strip(),
+        )
+        return False
+    except Exception as e:
+        _log.warning("Failed to post issue PR comment for task %s: %s", task_id, e)
+        return False
 
 
 def _dispatcher_loop():
