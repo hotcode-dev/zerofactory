@@ -384,7 +384,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata FROM tasks
                         WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
                            OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator', 'orchestrator'))
-                           OR (status = 'done' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator', 'orchestrator') AND workspace_path IS NOT NULL)
+                           OR (status = 'done' AND (
+                                (assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator', 'orchestrator') AND workspace_path IS NOT NULL)
+                                OR metadata LIKE '%"close_pr": true%'
+                           ))
                     """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
@@ -464,6 +467,59 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             )
 
                         if not repo_path or not repo_path.exists():
+                            continue
+
+                        if status == "done" and not meta.get("awaiting_pr"):
+                            # Terminal done (human-closed): never commit, push, open
+                            # PRs, or route the task back to review. Only clean up
+                            # leftovers (stale worker / worktree / open PR & branch).
+                            if workspace_path and Path(workspace_path).exists():
+                                try:
+                                    _disp.stop_task_worker(task_id, cursor)
+                                    _disp._remove_worktree(workspace_path, repo_path)
+                                except Exception as cleanup_err:
+                                    _log.debug(
+                                        "Terminal-done cleanup failed for task %s: %s",
+                                        task_id,
+                                        cleanup_err,
+                                    )
+                            if meta.pop("close_pr", None):
+                                # Human closed the task with an open PR: archive it
+                                # (close PR + delete remote branch) so GitHub matches
+                                # the board instead of lingering open forever.
+                                try:
+                                    _subprocess.run(
+                                        [
+                                            "gh",
+                                            "pr",
+                                            "close",
+                                            row["pr_url"] or f"task/{task_id}",
+                                            "--comment",
+                                            "Task manually closed in Zero Factory; archiving this PR.",
+                                        ],
+                                        cwd=str(repo_path),
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=30,
+                                    )
+                                except Exception as close_err:
+                                    _log.debug(
+                                        "PR archive for manually-done task %s failed: %s",
+                                        task_id,
+                                        close_err,
+                                    )
+                                try:
+                                    _disp._delete_remote_branch(task_id, repo_path)
+                                except Exception:
+                                    pass
+                                cursor.execute(
+                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'manual_done', 'Task manually closed by human; PR closed and remote branch deleted', ?)",
+                                    (task_id, now),
+                                )
+                            cursor.execute(
+                                "UPDATE tasks SET workspace_path = NULL, metadata = ?, updated_at = ? WHERE id = ?",
+                                (json.dumps(meta), now, task_id),
+                            )
                             continue
 
                         if row["pr_url"]:
@@ -1440,6 +1496,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                     "worker_failure_retries",
                                     "blocked_reason",
                                     "permanently_blocked",
+                                    "awaiting_pr",
                                 ):
                                     meta.pop(key, None)
 

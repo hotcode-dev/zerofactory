@@ -394,8 +394,10 @@ def test_run_dispatch_cycle_logs_conflict_resolved_activity(tmp_path: Path):
 
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
+        # 'awaiting_pr' marks builder-finished work that still needs dispatcher
+        # packaging (PR sync); without it a 'done' task is terminal.
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-res', 'Fix feature [PR Conflict]', 'desc', 'done', 'zf-builder', 'P1', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-conf-res', 'Fix feature [PR Conflict]', 'desc', 'done', 'zf-builder', 'P1', '{\"conflict_retries\": 1, \"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -443,6 +445,82 @@ def test_run_dispatch_cycle_logs_conflict_resolved_activity(tmp_path: Path):
         actions = [a["action"] for a in acts]
         assert "conflict_resolved" in actions
         assert "pr_opened" in actions
+
+
+def test_run_dispatch_cycle_manual_done_archives_pr_and_stays_done(tmp_path: Path):
+    """A human-closed ('done') task with an open PR is archived once (PR closed,
+    remote branch deleted) and never dispatched back to todo."""
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+
+    now = 1000
+    with sqlite3.connect(str(db_path)) as conn:
+        # 'close_pr' is set by move_task when a human closes a task with an open PR
+        conn.execute(
+            "INSERT INTO tasks VALUES ('t-manual-done', 'Ship feature [Human Review]', 'desc', 'done', 'zf-reviewer', 'P1', '{\"close_pr\": true}', '[]', '', NULL, '', 'b1', '', 'https://github.com/foo/bar/pull/77', ?, ?)",
+            (now, now),
+        )
+        conn.commit()
+
+    lock_file = tmp_path / "dispatcher.lock"
+    import dispatcher
+
+    captured = []
+
+    def fake_subprocess_run(cmd, *args, **kwargs):
+        captured.append(list(cmd))
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+        patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
+        patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run),
+        patch.object(dispatcher, "stop_task_worker"),
+        patch.object(dispatcher, "_remove_worktree"),
+        patch.object(dispatcher, "_delete_remote_branch") as mock_del_branch,
+    ):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+
+    close_cmds = [c for c in captured if c[:3] == ["gh", "pr", "close"]]
+    assert close_cmds, "gh pr close was never invoked for manually-done task"
+    assert "https://github.com/foo/bar/pull/77" in close_cmds[0]
+    mock_del_branch.assert_called_once()
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT status, assignee, workspace_path, metadata FROM tasks WHERE id = 't-manual-done'"
+        ).fetchone()
+        # Terminal: still done, never re-routed to reviewer/todo
+        assert row["status"] == "done"
+        assert row["assignee"] == "zf-reviewer"
+        assert row["workspace_path"] is None
+        assert "close_pr" not in (row["metadata"] or "")
+        acts = [
+            a["action"]
+            for a in conn.execute(
+                "SELECT action FROM task_activity WHERE task_id = 't-manual-done'"
+            ).fetchall()
+        ]
+        assert "manual_done" in acts
+
+    # Idempotent: a second cycle must not try to archive the PR again
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+        patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
+        patch("dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run),
+        patch.object(dispatcher, "stop_task_worker"),
+        patch.object(dispatcher, "_remove_worktree"),
+        patch.object(dispatcher, "_delete_remote_branch"),
+    ):
+        res2 = run_dispatch_cycle(db_path)
+        assert res2["ok"] is True
+
+    close_cmds_2 = [c for c in captured if c[:3] == ["gh", "pr", "close"]]
+    assert len(close_cmds_2) == 1, "PR archival must run exactly once"
 
 
 def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(

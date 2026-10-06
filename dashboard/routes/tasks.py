@@ -715,7 +715,8 @@ def move_task(task_id: str, req: TaskMove):
     with get_db_conn() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT status, metadata, board_slug FROM tasks WHERE id = ?", (task_id,)
+            "SELECT status, metadata, board_slug, title, pr_url FROM tasks WHERE id = ?",
+            (task_id,),
         )
         curr = cursor.fetchone()
         if not curr:
@@ -730,6 +731,41 @@ def move_task(task_id: str, req: TaskMove):
             pass
 
         meta_updated = False
+        is_agent_actor = bool(
+            req.actor
+            and (
+                req.actor.startswith("zf-")
+                or req.actor in ("orchestrator", "builder", "reviewer")
+            )
+        )
+
+        # 'awaiting_pr' marks builder completion that still needs dispatcher
+        # packaging (precommit -> commit -> push -> PR -> reviewer). An agent moving
+        # the task to 'done' reports work finished and keeps that pipeline running,
+        # while a human moving it to 'done' is terminal: the dispatcher must never
+        # re-dispatch the task afterwards, and any open PR/remote branch is archived
+        # (marked via 'close_pr') so GitHub matches the board.
+        if req.status == "done":
+            if is_agent_actor:
+                if not meta.get("awaiting_pr"):
+                    meta["awaiting_pr"] = True
+                    meta_updated = True
+                if "close_pr" in meta:
+                    meta.pop("close_pr", None)
+                    meta_updated = True
+            else:
+                if "awaiting_pr" in meta:
+                    meta.pop("awaiting_pr", None)
+                    meta_updated = True
+                existing_pr = curr["pr_url"] if "pr_url" in curr.keys() else None
+                if prev_status != "done" and existing_pr:
+                    meta["close_pr"] = True
+                    meta_updated = True
+        elif "awaiting_pr" in meta or "close_pr" in meta:
+            meta.pop("awaiting_pr", None)
+            meta.pop("close_pr", None)
+            meta_updated = True
+
         if req.status in ("todo", "ready", "running", "done") or (
             req.status == "blocked" and req.reason == "review-required"
         ):
@@ -752,7 +788,9 @@ def move_task(task_id: str, req: TaskMove):
             if req.status == "blocked" and req.reason:
                 meta["blocked_reason"] = req.reason
                 meta_updated = True
-            if req.status in ("todo", "ready"):
+            if req.status in ("todo", "ready") or (
+                req.status == "done" and not is_agent_actor
+            ):
                 if "worker_pid" in meta or "session_id" in meta or "started_at" in meta:
                     meta.pop("worker_pid", None)
                     meta.pop("session_id", None)
@@ -773,13 +811,6 @@ def move_task(task_id: str, req: TaskMove):
                         from dispatcher import stop_task_worker  # type: ignore
                     except Exception:
                         stop_task_worker = None
-                is_agent_actor = bool(
-                    req.actor
-                    and (
-                        req.actor.startswith("zf-")
-                        or req.actor in ("orchestrator", "builder", "reviewer")
-                    )
-                )
                 if stop_task_worker is not None and not is_agent_actor:
                     try:
                         stop_task_worker(task_id, cursor=cursor)
@@ -822,6 +853,19 @@ def move_task(task_id: str, req: TaskMove):
                     f"Moved from {prev_status} to {req.status}",
                 )
 
+        if req.status == "done":
+            # [Human Review] markers must never linger on completed tasks
+            done_title = (
+                str(curr["title"] or "")
+                .replace(" [Human Review]", "")
+                .replace("[Human Review]", "")
+                .strip()
+            )
+            if done_title != str(curr["title"] or ""):
+                cursor.execute(
+                    "UPDATE tasks SET title = ? WHERE id = ?", (done_title, task_id)
+                )
+
         if req.status == "blocked" and req.reason:
             actor = req.actor or "user"
             comment_body = f"Blocked: {req.reason}"
@@ -858,7 +902,7 @@ def move_task(task_id: str, req: TaskMove):
         conn.commit()
 
         if (
-            req.status in ("todo", "ready")
+            req.status in ("todo", "ready", "done")
             and not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
             and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
         ):

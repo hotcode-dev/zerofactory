@@ -1,5 +1,7 @@
 """Integration tests for Task API endpoints (/api/plugins/zerofactory/tasks)."""
 
+import json
+
 from fastapi.testclient import TestClient
 
 
@@ -173,3 +175,78 @@ def test_task_grill_with_docs_triage_and_interview_reply(
     assert any("[Grill-with-Docs Human Response]" in c["body"] for c in comments)
     assert any("Option A" in c["body"] for c in comments)
     assert any("consistent hashing" in c["body"] for c in comments)
+
+
+def test_move_done_semantics_human_terminal_vs_agent_awaiting_pr(
+    api_client: TestClient, default_board: str
+):
+    """A human move to 'done' is terminal (task is never re-dispatched), while an
+    agent (zf-builder) move to 'done' flags the task for dispatcher PR packaging."""
+
+    def _metadata(task_id: str) -> dict:
+        task = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()[
+            "task"
+        ]
+        meta = task.get("metadata") or {}
+        if isinstance(meta, str):
+            meta = json.loads(meta or "{}")
+        return meta
+
+    task_id = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={
+            "title": "Done Semantics Task",
+            "board_slug": default_board,
+            "status": "todo",
+            "assignee": "zf-builder",
+        },
+    ).json()["id"]
+
+    # Human closes the task -> terminal: no awaiting_pr flag set
+    res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "done", "actor": "user"},
+    )
+    assert res.status_code == 200
+    assert _metadata(task_id).get("awaiting_pr") is None
+
+    # Revive, then let the builder report completion -> PR packaging may proceed
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "todo", "actor": "user"},
+    )
+    assert _metadata(task_id).get("awaiting_pr") is None
+
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "done", "actor": "zf-builder"},
+    )
+    assert _metadata(task_id).get("awaiting_pr") is True
+
+    # Reviving clears the flag again so the task dispatches normally
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "todo", "actor": "zf-builder"},
+    )
+    assert _metadata(task_id).get("awaiting_pr") is None
+
+    # A human close with an open PR additionally marks it for archival
+    # (dispatcher closes the PR and deletes the remote branch)
+    api_client.patch(
+        f"/api/plugins/zerofactory/tasks/{task_id}",
+        json={"pr_url": "https://github.com/example/repo/pull/42"},
+    )
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "done", "actor": "user"},
+    )
+    meta = _metadata(task_id)
+    assert meta.get("close_pr") is True
+    assert meta.get("awaiting_pr") is None
+
+    # Reviving the task drops the archival marker as well
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "todo", "actor": "user"},
+    )
+    assert _metadata(task_id).get("close_pr") is None
