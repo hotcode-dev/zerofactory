@@ -5,7 +5,7 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-05T10:11:27.384Z
+    at: 2026-10-06T19:22:52.001Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -13,6 +13,10 @@ sources:
     resource: repo://.zerofactory/precommit.sh
   - id: openwiki-source-594f18a4ed0f4f061e35fdc9
     resource: repo://dashboard/db.py
+  - id: openwiki-source-52ae51442f849fdbd57863a3
+    resource: repo://dashboard/models.py
+  - id: openwiki-source-c705147b9966f3d6f300034a
+    resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-e9d50a52581348b013457083
     resource: repo://dispatcher/context_builder.py
   - id: openwiki-source-9f9b3c9d5afeac588f3cdae1
@@ -27,9 +31,11 @@ sources:
     resource: repo://migrations/0003_add_board_jira_url.sql
   - id: openwiki-source-2feae2067f9a49cc4d8f2150
     resource: repo://migrations/runner.py
+  - id: openwiki-source-0d153fd68e7210eb5d3be49d
+    resource: repo://paths.py
   - id: openwiki-source-81127d20a2ccc07b7626fc4e
     resource: repo://plugin.yaml
-generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
+generated: { by: "hermes", at: "2026-10-06T19:22:52.001Z" }
 ---
 
 # Zero Factory Architecture
@@ -74,26 +80,33 @@ links the source issue (`Fixes #42` / `Resolves: PROJ-123`). See
 [External Issue Import](/openwiki/components/issues-importer.md).
 
 The CLI surface also gained a `hermes zerofactory update` command (edit a task's
-title, description, assignee, priority, or status in one call) and an
-`--assignee` option on `move`, letting handoffs reassign ownership while
-transitioning columns (`repo://__init__.py#L456-L497`).
+title, description, assignee, or priority in one call; a `--status` on `update`
+routes through the `move_task` code path so lifecycle side effects — worker
+stop, flag cleanup, dispatch trigger — always apply, the same rule enforced
+server-side by `PATCH /tasks/{id}` refusing status changes) plus an `--assignee`
+option on `move`, letting handoffs reassign ownership while transitioning
+columns (`repo://__init__.py#L1084-L1105`,
+`repo://dashboard/routes/tasks.py#L655-L665`).
 
 ## Control / data flow
 
 The core loop is `run_dispatch_cycle`, which acquires a process-level exclusive
 file lock before mutating state so concurrent cycles are serialized
-(`repo://dispatcher/scheduler.py#L36-L70`). Each cycle unblocks due tasks,
-promotes them to `ready`, provisions an isolated Git worktree per task, spawns
-the assigned specialist's Hermes worker, and — when the worker finishes — runs
-the deterministic precommit gate, opens a GitHub PR, and routes the ticket to
-`zf-reviewer`. A background reaper audits and cleans up hung workers.
+(`repo://dispatcher/scheduler.py#L36-L70`). Each cycle unblocks due tasks
+(promoting them to `todo`), claims `todo` tasks under the board and global
+concurrency caps, provisions an isolated Git worktree per task, spawns the
+assigned specialist's Hermes worker, and — when the worker finishes — keeps the
+task in `running` with `awaiting_pr` set so the deterministic packaging phase
+(precommit → commit → push → PR → reviewer) can package it; only after a
+terminal close (merge, human close, or PR archive) does the task leave the
+packaging phase. A background reaper audits and cleans up hung workers.
 
 Worker spawning is deliberately isolated: `spawn_agent_worker` launches
 `hermes -p <assignee> ... --yolo --accept-hooks chat -q <prompt>` as a detached
 subprocess with the worker's `HERMES_HOME` pinned to the profile's home
 directory, then correlates the new `session_id` against the profile's
-`state.db` (`repo://dispatcher/worker_spawner.py#L67-L86`,
-`#L303-L378`). The prompt is pre-digested in Python before the agent wakes —
+`state.db` (`repo://dispatcher/worker_spawner.py#L68-L95`,
+`#L395-L491`). The prompt is pre-digested in Python before the agent wakes —
 `digest_reviewer_git_context` pre-computes the git log, diffstat, and a bounded
 diff so the reviewer does not burn turns on exploratory `git` calls
 (`repo://dispatcher/context_builder.py#L15-L88`).
@@ -126,6 +139,33 @@ The core schema (`repo://migrations/0001_initial_schema.sql`) defines:
 Because the database and worktrees are the source of truth, any worker can be
 killed and re-spawned without losing progress — the substrate survives the
 session.
+
+## Task status taxonomy & the packaging phase
+
+The task status is strictly **`triage`, `todo`, `running`, `blocked`,
+`done`** — the legacy `ready` column was retired (its migration, which folded
+stranded `ready` rows into `todo`, was itself removed as dead code
+(`repo://migrations/0001_initial_schema.sql#L22`,
+`repo://dashboard/models.py#L35`)). Status changes have exactly one code path:
+`move_task` on the dashboard (`repo://dashboard/routes/tasks.py#L718-L840`),
+reached by `POST /tasks/{id}/move` and `hermes zerofactory move`; `PATCH
+/tasks/{id}` refuses a status change with a 400 pointing the caller back to the
+move endpoint (`repo://dashboard/routes/tasks.py#L655-L665`).
+
+`done` is **strictly terminal**: the moment an agent actor (builder/reviewer)
+reports completion the task deliberately stays `running` and is marked
+`metadata["awaiting_pr"] = true` — the *packaging phase* — during which the
+dispatcher runs the deterministic pipeline (precommit → commit → push → PR →
+route to reviewer) via `_package_and_open_pr`. Only a terminal event (a human
+closing the task, a merged PR, or a PR archive via `close_pr`) clears the flag
+and finalizes the task through `_finalize_terminal_done`, which never commits,
+pushes, or re-opens review (`repo://dispatcher/scheduler.py#L1261-L1330`,
+`#L1676-L1710`). Blocked tasks carry a canonical `metadata["blocked_reason_type"]`
+classified by `normalize_blocked_reason_type` into `changes-requested`,
+`approved`, `human-gate`, or `stuck` (stamped by the dispatcher when a retry
+budget is exhausted; any other free-text reason falls through to
+`human-gate`), so downstream routing is deterministic instead of
+prose-matching (`repo://paths.py#L81-L97`).
 
 ## Session-per-handoff model
 

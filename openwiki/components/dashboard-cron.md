@@ -4,6 +4,8 @@ title: Dashboard, Cron & Automation
 description: The operator and automation layer — the FastAPI dashboard REST surface (boards, tasks, settings, GitHub issues sync/import, Jira link setup), the reusable React UI components (Modal, MarkdownView, GrillInterviewPanel), the cron subsystem, and the No-Agent Mode scripts that drive 0-token background queue checks and wake-gated codebase scans.
 tags: [dashboard, rest-api, cron, automation, no-agent-mode, fastapi, setup-services, gh-issues, jira, ui-components]
 sources:
+  - id: openwiki-source-4942bcbe129130ccad2b7e2a
+    resource: repo://__init__.py
   - id: openwiki-source-0fcd11b2ec72e81b8258e0a7
     resource: repo://cron/config.py
   - id: openwiki-source-334dcccc8c22be32509cfb1e
@@ -38,6 +40,8 @@ sources:
     resource: repo://dashboard/src/components/Modal.jsx
   - id: openwiki-source-8258252e9b79b31153b47276
     resource: repo://dashboard/src/utils/grillParser.js
+  - id: openwiki-source-0d153fd68e7210eb5d3be49d
+    resource: repo://paths.py
   - id: openwiki-source-9f27c77f1584beee490e0abd
     resource: repo://scripts/setup_gh_issues.py
   - id: openwiki-source-8bf8788755a522a066b8b827
@@ -48,10 +52,10 @@ sources:
     resource: repo://scripts/zf_queue_watchdog.py
   - id: openwiki-source-bc25bd3bfcf63b730444ea04
     resource: repo://scripts/zf_scanner_gate.py
-generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
+generated: { by: "hermes", at: "2026-10-06T19:22:52.001Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-05T10:11:27.384Z
+    at: 2026-10-06T19:22:52.001Z
 ---
 
 # Dashboard, Cron & Automation
@@ -80,16 +84,21 @@ eight sub-routers (`repo://dashboard/routes/__init__.py#L46-L54`):
   (files or deduplicates a P0 `zf-builder` setup task instead of writing
   templates directly), and `POST /boards/{slug}/setup-jira` /
   `POST /boards/{slug}/test-jira` for the Jira Cloud link
-  (`repo://dashboard/routes/boards.py#L500-L727`).
+  (`repo://dashboard/routes/boards.py#L500-L719`).
 - **tasks** — Kanban card lifecycle (create, update, move, block, comment).
   Task creation accepts an optional explicit `task_id` and `metadata` so
   external importers can create deterministic, dedup-keyed cards
-  (`repo://dashboard/routes/tasks.py#L243-L330`). `PATCH /tasks/{task_id}`
-  edits fields in one call (`repo://dashboard/routes/tasks.py#L626-L630`), and
-  the Grill-with-Docs protocol adds `POST /tasks/{task_id}/triage` (dispatches
- to `zf-orchestrator` for triage) and
- `POST /tasks/{task_id}/interview-reply` (records the human's answer to an
- open interview question) (`repo://dashboard/routes/tasks.py#L1003-L1122`).
+  (`repo://dashboard/routes/tasks.py#L245-L330`). `PATCH /tasks/{task_id}`
+  edits fields in one call but **refuses status changes** — status is a
+  lifecycle transition with side effects (worker stop, flag cleanup, dispatch
+  trigger) owned by a single code path, `POST /tasks/{task_id}/move`
+  (`move_task`), which also classifies `blocked_reason_type` and manages the
+  `awaiting_pr` / `close_pr` packaging flags
+  (`repo://dashboard/routes/tasks.py#L633-L665`, `#L720-L918`); the Grill-with-Docs
+  protocol adds `POST /tasks/{task_id}/triage` (dispatches
+  to `zf-orchestrator` for triage) and
+  `POST /tasks/{task_id}/interview-reply` (records the human's answer to an
+  open interview question) (`repo://dashboard/routes/tasks.py#L1046-L1122`).
   Query params and metadata fields are type-guarded with `isinstance` checks so
   non-string values never break grill/conflict status handling.
 - **stats** — board velocity/column metrics (`get_stats`).
@@ -178,7 +187,7 @@ Three families (`repo://cron/definitions.py`), each carrying a `category` field
 - **`zero-factory-openwiki-update-<slug>`** — one **per board**, daily by default
   (`ZEROFACTORY_OPENWIKI_INTERVAL_MINUTES`, default 1440), also
   **`no_agent: True`** with the `zf_openwiki_gate.py` script as its deterministic
-  wake-gate (`repo://cron/definitions.py#L381-L418`). It does **not** wake the LLM
+  wake-gate (`repo://cron/definitions.py#L380-L423`). It does **not** wake the LLM
   to rewrite docs itself: the gate decides whether to create at most one P2
   `zf-builder` doc-sync task on the board (see below).
 
@@ -218,15 +227,15 @@ Four deterministic scripts drive the token-efficient automation and emit a
   (`wakeAgent: false`) when `openwiki/` is missing, when the working tree is
   dirty, or — unless forced (`--force` / `ZEROFACTORY_FORCE_OPENWIKI_UPDATE`) —
   when an OpenWiki-titled task is already active on the board in `triage`/`todo`/
-  `ready`/`running`/`blocked` (`repo://scripts/zf_openwiki_gate.py#L185-L215`).
+  `running`/`blocked` (`repo://scripts/zf_openwiki_gate.py#L192-L216`,
+  `#L262-L271`).
   When HEAD has advanced past the last `openwiki`-touching commit, it creates at
   most **one** P2 `todo` task for `zf-builder` via `create_openwiki_task` —
   deterministically, idempotent via the create-task endpoint, with a SQLite
-  fallback if the plugin API is unavailable (`repo://scripts/zf_openwiki_gate.py#L50-L112`)
+  fallback if the plugin API is unavailable (`repo://scripts/zf_openwiki_gate.py#L51-L118`)
   — and reports 0-token completion
-  (`repo://scripts/zf_openwiki_gate.py#L185-L215` checks for an
-  already-active OpenWiki-titled task in `triage`/`todo`/`ready`/`running`/
-  `blocked`).
+  (`repo://scripts/zf_openwiki_gate.py#L364-L369` prints `{"wakeAgent": ...}` and
+  always exits 0, so the LLM run is suppressed either way).
 - **`scripts/zf_daily_stats.py`** — a deterministic 24-hour metrics / velocity
   calculator with no LLM involvement.
 

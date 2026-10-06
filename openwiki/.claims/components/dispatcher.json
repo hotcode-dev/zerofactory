@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1c89d06ed0703d4c2490d6ad5a8abf7a76d4bd8bbda1d9e443a74ec11a370f30",
+  "pageVersion": "sha256:d1aa21889f79719a765a6054ff87903cbf80d99c10e1542b411a5375ff193ec5",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
@@ -51,8 +51,8 @@
       "statement": "Merge conflicts are routed, not swallowed: _handle_local_merge_conflict and _handle_pr_conflict_from_github send a conflicted task back to zf-builder for conflict resolution rather than aborting.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/worktree.py#L292-L607",
-          "version": "repo-lines-v1:sha256:808fe3d023a9c61ccd02ca6cb349a5d4a52e96d36ade852b930ab658bc8f4ce1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzE2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxY2FmMjIwYjUwMmI0MmRkNzI1MWMyY2QyYzcyNDIyOGJkMDc0NjFhMWVhZTQyNjBhZTk1YWQ4YTZlNGJhMzdmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MzNlODQ4N2M4NWRmZGNmOWZhN2I5M2M3NDZjOTQ2MjVhZTQ3ZTEyMGM3OTdlNzkxZTczN2Y5ZWQ3ZmZjNzNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OTc3MzcwMzUzM2JiMDk4OGMzMzk0YWY4N2JiM2IyYzBlYTQzYjMxN2IxMjg3NDM1MDczNTQ5MjlhMjQ4ZWJmIn0"
+          "resource": "repo://dispatcher/worktree.py#L291-L607",
+          "version": "repo-lines-v1:sha256:a6da4e77db75a59874c801c620d591bbf8ed96fa991626052bb182ebaab30e8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxY2FmMjIwYjUwMmI0MmRkNzI1MWMyY2QyYzcyNDIyOGJkMDc0NjFhMWVhZTQyNjBhZTk1YWQ4YTZlNGJhMzdmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MzNlODQ4N2M4NWRmZGNmOWZhN2I5M2M3NDZjOTQ2MjVhZTQ3ZTEyMGM3OTdlNzkxZTczN2Y5ZWQ3ZmZjNzNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OTc3MzcwMzUzM2JiMDk4OGMzMzk0YWY4N2JiM2IyYzBlYTQzYjMxN2IxMjg3NDM1MDczNTQ5MjlhMjQ4ZWJmIn0"
         }
       ]
     },
@@ -82,11 +82,11 @@
     },
     {
       "id": "claim_536bb4ec7e714e93bcd2cb95f9359445",
-      "statement": "_handle_precommit_failure implements the self-healing loop: it increments metadata[precommit_retries] and, within ZEROFACTORY_MAX_PRECOMMIT_RETRIES (default 3), routes the task back to zf-builder in running status with the exact failing output; once retries are exhausted it moves the task to blocked for human inspection and posts a failure comment.",
+      "statement": "_handle_precommit_failure implements the self-healing loop: it increments metadata[precommit_retries] and, within ZEROFACTORY_MAX_PRECOMMIT_RETRIES (default 3), routes the task back to zf-builder as a claimable todo retry (clearing awaiting_pr) with the exact failing output injected into the respawned worker's prompt; once retries are exhausted it moves the task to blocked with blocked_reason_type='stuck' and assignee 'human' for inspection and posts a failure comment.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/worktree.py#L658-L700",
-          "version": "repo-lines-v1:sha256:9e0232b69564fbc9480f6d71f346c07bedbd2a2f4f3e558ffb691e8f010c2b58:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4ODY5YjMyNGE5OTU4ZjEwYmE1NjZhNTczYzZmMGQwNGYyZTJhNGFjOTVlNzE0N2M3N2QzZjY3MjNiMDVjMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMDhjZjZlMDA3ZjdiNTdkNWVhNDVjMGExNWFmNTBjNTc3ZjA1MzY5NDE1NTM3MDhhZDJiMzJlYjMyZGIwNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OGViMTc0OWUwMjAxYWNkOGMwNTcxYzU3NWEyY2YyYjM5OWM4MTcwNTBlNTRiZTEyYjBmMzBjYWYxYTQ4OGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4MjdkYWZjZmU4OWVkMDJiNmM4ZWRlOGYwYzE1NWRjM2M1ZTA4ZGI2NzQwYzNhYTNkNzBkMTEyMzczMmM3MGMifQ"
+          "resource": "repo://dispatcher/worktree.py#L658-L747",
+          "version": "repo-lines-v1:sha256:81fa60225e98468ac7a5b60316f301f1bbc8e9314724eee018f9fef5f5d78dfe:eyJzZWxlY3RlZExpbmVDb3VudCI6OTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4ODY5YjMyNGE5OTU4ZjEwYmE1NjZhNTczYzZmMGQwNGYyZTJhNGFjOTVlNzE0N2M3N2QzZjY3MjNiMDVjMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OGViMTc0OWUwMjAxYWNkOGMwNTcxYzU3NWEyY2YyYjM5OWM4MTcwNTBlNTRiZTEyYjBmMzBjYWYxYTQ4OGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -102,25 +102,25 @@
     },
     {
       "id": "claim_5bfad96eee7646e8953599b022c3a02c",
-      "statement": "github_pr.py fetches PR review comments and formats them into task comments; ai_prefix(text, role) prepends a role-tagged [AI:<role>] marker (default zf-builder) to agent-authored GitHub text and is idempotent for any existing [AI] / [AI:<tag>] marker, so humans can distinguish agent output from human output.",
+      "statement": "github_pr.py fetches PR review comments and formats them into task comments; ai_prefix(text, role) prepends a role-tagged [AI:<role>] marker (default zf-builder) to agent-authored GitHub text and is idempotent for any existing role-tagged [AI:<tag>] marker, so humans can distinguish agent output from human output.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/github_pr.py#L25-L380",
-          "version": "repo-lines-v1:sha256:ee72c50056f66dbd12b50b6531974bf73261437e0d7a1098a9bd675e7e445dc9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzU2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxN2ZkYmY5NGIwOThmYzQwNWNmOTEwYzM2MWMwNmJhYjljMzA3NDE2NDA2NzNkNWIzNWNlMjc0YWIyMWM3NzBkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMGZkM2YyYzIwOWY0ZGVjZDJhNmVlOTc3NDdmOGVjOTdjNzRmZWViZmZiNzQ3NDg2MDgyNjcxZTgwZTIwMGZiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjZGVmMzQzNDE0MjI4ZTc4ZDUzYTcxYzc3NWY0MWE0MTAyMmVlZTc1ZWE5NjliNTBmYzAzZTQyMzk4NjcwNDc3In0"
-        },
-        {
           "resource": "repo://dispatcher/github_pr.py#L321-L335",
-          "version": "repo-lines-v1:sha256:b79bb45e452aba9c783942fe51bdb980c9a36dd56d1fb486ce2894bd8fc71b11:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwZDA4M2YzYWY3MTMxMDUwZTFlNWJjOGE3NmZhYTliYjhmZjBhOTFmZDg4ZTU3NTVlNWUzNjMxNzc3OTAzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwY2VjZDBmNmI3NzNmMTFhMjlmYWJiMmM0NDBkYzk2YzVkNjBlZGFmOTgyZmQ0MjVkZjQxMWU2MTIzODU5NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZDZkMjU2YmNmYWE1NWJiNTRiY2M3ZjMzMWEyN2YzNWI4N2ZhMmU5NzU2YTY5ZTk2NWNlZWJjNGY2MTdkOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MmI4MThlZDJjZGY1YjY4NTAzNWVjYTgxODdhMGQ0YWI0OWY3MjhjZTI1NzgyYmVlYTUyOGNiNDA5ZTFiNTEifQ"
+          "version": "repo-lines-v1:sha256:39d717a26183e83da4b175dd76fd6db7ca885434cfd4b212d0399b8d5ce99d45:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MDRkYTUzOGNlNDA4OGI0MTg3NGI1MDFjMjE3Yjg1YjRiNDkxMjBlMjQyOWZkOTA2ZTkxOTFkNjUwNmI2OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZDZkMjU2YmNmYWE1NWJiNTRiY2M3ZjMzMWEyN2YzNWI4N2ZhMmU5NzU2YTY5ZTk2NWNlZWJjNGY2MTdkOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzODdkYTk1NDY3YzJkNjZjYzQ5MzdkNDcxMzA0OGQ5YzEzOGNlNGVjM2MwYzc5OTg1MTk2MGEzYTdkZGIwNjIifQ"
         }
       ]
     },
     {
       "id": "claim_7414caddf45c4549ae10dc50ac6b83c1",
-      "statement": "reaper.py detects hung workers using a per-task max running time and an inactivity timeout: reap_active_workers terminates a worker that exceeded its budget and records the session end, and reap_stuck_tasks is the entry point the queue watchdog and the check-stuck CLI use.",
+      "statement": "reaper.py detects hung workers using a per-task max running time and an inactivity timeout: reap_active_workers terminates a worker that exceeded its budget and records the session end, and reap_stuck_tasks is the entry point the queue watchdog and the check-stuck CLI use; worker-failure handling is retry-oriented (a failed or vanished running worker returns to todo for re-spawn up to DEFAULT_MAX_WORKER_RETRIES), and the exhausted-retry path stamps blocked_reason_type='stuck' with assignee 'human'.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/reaper.py",
-          "version": "repo-file-v1:sha256:2d6d1a747213b645f68711c43da86d17dabc2e82dc956ea01f96e8d1d7440d1f"
+          "resource": "repo://dispatcher/reaper.py#L24-L66",
+          "version": "repo-lines-v1:sha256:bc187e1214e357a18aaa4cdf1431e79d0cad3e88c998a077a7fba3794f4567bc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwMmRjYzE1Yzg3NTg3MGE3MDI3N2FmZGYxZDM2ZmRhY2YxYzAwMjhmY2RjYTcxZTk5NzNlZjcyMzJiMDJhODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3N2I3MzAwMWUzNGU4MjM2ODI1YWMwMzY5ODE3NzRlYTc1OTc3MDA1ODg5MWQ3Zjg2ODBiZGI5MzQ2MmU4ZmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlOGRjYTg0MjJlM2ZlMmUwYWY3NDFiNDFjYjIwZWQxYmRmZGRmMDRkYzZmMGJjMWIyNTY5ODg0ZWJiYWYzNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkN2JkMGVhYzQ2YTFlNzg3ODc1YWEwYmJkNjAxMDhlMWMzOGI5ZTQ5NGY0NTg4ZTIzOTk2OWIyNTMxNmU1MTgifQ"
+        },
+        {
+          "resource": "repo://dispatcher/reaper.py#L94-L348",
+          "version": "repo-lines-v1:sha256:61bce53f6e87046149619391010c8936fe2c523661d4d3afb74a2f525591f1c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjU1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5ZDhhOWU5YzMyNTI4MjBjNjVhODE2NTIwYjhkYjQ5MzIyODA4NDllYzhjN2QyZWI2MjcyYWZkZmViZTA1OWMzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNjJmYzdmNTQ0MGM2Y2E2ODdhZDBjNWE0NjZlZTA0NTRlYjBiNWE3MDUyMDNjNDg1NDMyMGZhNWVhZjU5YTA1In0"
         }
       ]
     },
@@ -129,18 +129,18 @@
       "statement": "is_actionable_review_comment filters PR comments to genuine reviewer/human critiques: approval verdicts, builder-authored or automated notes (e.g. '[AI:zf-builder]' markers, 'builder verification', 'dedup note:'), and empty bodies are excluded, so only actionable feedback routes a task back to the builder.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/github_pr.py#L477-L532",
-          "version": "repo-lines-v1:sha256:42da1c887b275f5fc1379ac99ea76177507b79b5eda00adabf7f4a20a511d651:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiZGVhODk5OTQ3Y2FmYTE5YjNiZjA5MzMzNmNmODYxMTFhNGE5NzE0YWI3ODM3ZDAwN2NiNzZmYThjNmE0Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwYjIxYmY4OTVmYWUyZDczOTIwZDkzMTc4Y2ZkNTg0MWNkZjhmOTUyNDUxNmM4YTU2NTg0MzZhNGFjNDhmM2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://dispatcher/github_pr.py#L475-L526",
+          "version": "repo-lines-v1:sha256:95bc018ed2ac9812ff4ea825ebbd485db14a7ff2c1fa085550260c564ba41ecc:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiZGVhODk5OTQ3Y2FmYTE5YjNiZjA5MzMzNmNmODYxMTFhNGE5NzE0YWI3ODM3ZDAwN2NiNzZmYThjNmE0Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwYjIxYmY4OTVmYWUyZDczOTIwZDkzMTc4Y2ZkNTg0MWNkZjhmOTUyNDUxNmM4YTU2NTg0MzZhNGFjNDhmM2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
     {
       "id": "claim_f12dbdbe23344518b15eaa7f7535a24a",
-      "statement": "The dispatcher enforces a per-commit review cap: commit_review_count in task metadata is keyed to the PR head commit (headRefOid, reset when the head changes) and compared against ZEROFACTORY_MAX_REVIEW_ROUNDS (default 2); exceeding the cap sets review_cap_reached, appends [Human Review] to the title, assigns the task to 'human', and moves it to blocked instead of looping between builder and reviewer.",
+      "statement": "The dispatcher enforces a per-commit review cap: commit_review_count in task metadata is keyed to the PR head commit (headRefOid, reset when the head changes) and compared against ZEROFACTORY_MAX_REVIEW_ROUNDS (default 2); exceeding the cap sets review_cap_reached and blocked_reason_type='human-gate', assigns the task to 'human', and moves it to blocked instead of looping between builder and reviewer.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scheduler.py#L780-L847",
-          "version": "repo-lines-v1:sha256:23bf20aa4904238953b457b3bff3a5dff705d9496d2ab5dbcb296fc189848b16:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwOTk2YTU5MmUyOTI0OTczMzMwMWMxMjU2ZWVlMGU3MDFlNzYyZDMwYWIyMTVjNjg2ODYyNjc0ODM1MGY2MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkN2RmYjExMDg5MjYxMTg3NDQ1Nzg5MWJlYTgyOTU4YmY2NDAzOTg1N2M3NDJlMzQ0ZDc1NDI5ZmU3YTFlNWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1M2ZkZjA1N2UzMWE2NzQzMWZhZDVjYzM0NDI5ZjQxN2JhMmM0MDBmZTk5NWVjY2EwODFjNzk4MDg3NmQxN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkMWVhZjZkOTMyYmExYjBiNjExNWFkZTY0OGVmZGQ0ODM4NTQ3MGUwYWVhNGY0Njk5ZDZiNThlMjY5MTQ4YjIifQ"
+          "resource": "repo://dispatcher/scheduler.py#L1113-L1150",
+          "version": "repo-lines-v1:sha256:e61806bf83593d03a22c2f09ca119de70ad089f4d46522a7155f84273fa68c12:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMzM2MWZlZjhiZWQ0M2E0ODBlNzc2N2IwN2EwZTI4YjZmNzIzN2QxOTViMmQ3N2RhM2YwZDk3YzdkMjIzZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2ZDM3ZmNkZDVjNmIxNjY0ZWFhNjE5OTk3YzZiOWM0ZTg0ZTgwNWYwYmZlYmYyZmY0Yzk4OTdlNzU0ZDM0NDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjODgzMjIxNmU0NTkyZTkwY2YxODRiOGRhZjBmMjM1NjU0NGJmZmNhMTc2MGIxNGJhYTA0OTY4OWMxY2E3OGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlNTk1OTg3M2NlZmYwOTQyZDZlM2FhNzNhNTMxNzE4MjRmOGI0YzRjYTg5NTIwZjE1MWY5MGE3N2ZjZGJkMDMifQ"
         }
       ]
     },
@@ -149,14 +149,38 @@
       "statement": "When a task carries external_issue metadata, the PR body opened by the dispatcher appends 'Fixes #<n>' for GitHub issues or 'Resolves: <KEY>' for Jira issues so merging the PR links the source issue.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scheduler.py#L1316-L1335",
-          "version": "repo-lines-v1:sha256:198974b1bd41ff945c260450c9671bde8b9bad68cac7e6183ddc37f9caf1466c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZGE2NGE1YzY0YWQ5N2M2OWExMzdmY2QwN2QwZGNlYWU2ZDhmOGRmNDdmMGFhOTQ1MWJiNGI3ZmIwMDE4MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0OWU1YjJjZGNkOWFmYTAyOWNkOTMxMWM1MTA2ZWMwM2NiMzJhYzY3ZGYzODJlMmM4OGNlNGRhOTQ0YjdmMDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwOTQ4OGMzNDdiZTg4ZjVjMDA1MDlkZGU3YjE2ZGRiN2Q2NjRiYWI1NTk0ZDgzYWUwYmYyMjA1ZGViYTRjMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzZGVjNDVjN2U0NzZkM2NmYTEwYWE4MGRiOTI5NDg0YTZkZGVlZDRkN2U0NTY2MTIxZjA0YjgxZDRjMzNmNDIifQ"
+          "resource": "repo://dispatcher/scheduler.py#L1538-L1550",
+          "version": "repo-lines-v1:sha256:c416a7baa1df6da48cbc4104347c715b1799874b3a2fda68c6ece9f3586be68a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxNDFjMDdlMjMyOTFlMjljNmI1ZWFjZDZiMDNlOTRjZDBkODFhMjkyM2VkNTE0NTAwNDc3NGM1MDM3YmY2OGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZDNiNjUyMTY4OTM1NmQ3MmZlZWMxN2E2ZGFiNzJmNDllMTdlYTI5NTE2NmYwNDgzYmRiNDliNWEwMjM1ZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkN2IxMzRlMTRmOGFmZWM2N2I3MTUyMWE0N2E1N2E3ZDM4NWY4NGE5OTZjNWVkZmYyYTg4M2MxMzcxNzM0MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkOWYzYzQ3MjJhOTUxYjdlMjgzZjM3M2Y4ZDM0ODgyZWYzNzU1OTJkMTBhZGI1ZWY3YTg4NTFkOGRiM2VmNTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dfa80aa93d1a4b0886e05e6d11c2d1dc",
+      "statement": "When an agent actor reports done the task stays running with metadata['awaiting_pr']=true and _package_and_open_pr is the single owner of the packaging phase: idempotently running precommit, commit, merge against latest main, push, opening the GitHub PR, and routing the ticket to zf-reviewer on each cycle until it succeeds; _finalize_terminal_done (L1684-L1743) only cleans up (stop stale worker, prune worktree, close the open PR when close_pr is set) and never commits, pushes, opens a PR, or routes the task back to review.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L720-L918",
+          "version": "repo-lines-v1:sha256:ae5380f046d004c48fcb12d216841be8672d77e876019baaf5f683ff6207858b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTk5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0ODNjMWU0ODgzZTlkNWFkOTI4NzhiZjExOWQ5YmRkZTIxZTU1MzQ0Nzc5YzBjMDU0NDdhNmUzYTljZDE1MTdkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhNjUwMjYyYjdlMmRkNDQ1ZGFlMzBjMjA4NzlmOGU2MWZiY2MyNDg4MGRjZjUxMDU0YTA4NmFiZmViYjRmMmQ2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmYzFmZDBjNzdlODBkMjc0MzA4Yjc0YWJkYzlkMjQ4YmIyYmMwMTQ3ODRjODRlZTk0OTVkZTQ3NWI2NTg5YjZkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNWJiNzMxZTY2NjZiNTZhZmJiNWY2ZjEyZjZiNTIyNGVmOWQwZWE5NzM2NjNjNDU5ZDY2OTk3YTY2M2E1MjhiIn0"
+        },
+        {
+          "resource": "repo://dispatcher/scheduler.py#L1261-L1261",
+          "version": "repo-lines-v1:sha256:bb4f609de125f2399aa44553cac746759a6f874210c17346e75033f5e0966917:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmI0ZjYwOWRlMTI1ZjIzOTlhYTQ0NTUzY2FjNzQ2NzU5YTZmODc0MjEwYzE3MzQ2ZTc1MDMzZjVlMDk2NjkxNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmI0ZjYwOWRlMTI1ZjIzOTlhYTQ0NTUzY2FjNzQ2NzU5YTZmODc0MjEwYzE3MzQ2ZTc1MDMzZjVlMDk2NjkxNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjk5ZWZlZGZkMmQ5NzA2ZDg5MWM3YmE5ODNlN2Y4NGUwNWFkMGUwMTkxYzEzMjc5OGJlNWUzYzFjYzUzMDQyNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWNkMGJmNWQxMDNlYzY2ZWU2YTFiNTZmODIyNmYxODZiNmEwMzBkNjkwYWQzNzExMzQ2MjE2Njk5YmQ2NzIxZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_50940fbdcd40421782dac8532658d0c8",
+      "statement": "post_issue_pr_comment posts exactly one 'PR opened' status reply onto the source GitHub issue when a PR is opened: gated on external_issue.source=='github', a present issue id, and has_ai_request (baked in at import time), and idempotent via the '<!-- zf-task:<task_id> -->' HTML marker checked through gh issue view; any failure is logged and never propagates.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L741-L828",
+          "version": "repo-lines-v1:sha256:6f5329e41e2cfa3ed9d6559bf291361b129139019c3c186806c97fa5daaa6579:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlM2NiOTMxOTYxMjY0OGQwOGU4NzY5YzM1ODViMmU3Y2Y3YTdjZjkwYmE0ZjFmMmM0ZjJhMzQwNWM2ZTAxZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5OWVmZWRmZDJkOTcwNmQ4OTFjN2JhOTgzZTdmODRlMDVhZDBlMDE5MWMxMzI3OThiZTVlM2MxY2M1MzA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0NzgzYjc0NzBkNDJhNTdjZmFhNTViOTQ5MTVlNmFjN2UzYzBlZWViMWE5NjIyZDg3OWNkNzVjMzRmZjBmNTYifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-05T10:11:27.384Z"
+    "at": "2026-10-06T19:22:52.001Z"
   }
 }

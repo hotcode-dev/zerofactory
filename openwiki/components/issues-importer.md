@@ -24,10 +24,10 @@ sources:
     resource: repo://issues/jira.py
   - id: openwiki-source-6b26d87a1c92fff15057316c
     resource: repo://tests/unit/issues/test_issues.py
-generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
+generated: { by: "hermes", at: "2026-10-06T19:22:52.001Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-05T10:11:27.384Z
+    at: 2026-10-06T19:22:52.001Z
 ---
 
 # External Issue Import (GitHub & Jira)
@@ -125,7 +125,7 @@ The dashboard wires the same import machinery into the operator UI
   and imports each via the same deterministic path
   (`repo://dashboard/routes/boards.py#L535-L560`).
 - **Single import** — `POST /boards/{slug}/import-gh-issue` imports one issue
-  by number/URL (`repo://dashboard/routes/boards.py#L621-L680`).
+  by number/URL (`repo://dashboard/routes/boards.py#L618-L676`).
 - **Task-based setup** — `GET /boards/{slug}/gh-issues-status` reports
   whether the repo has the standard `.github/ISSUE_TEMPLATE` configuration;
   `POST /boards/{slug}/setup-gh-issues` no longer writes templates in place —
@@ -142,7 +142,7 @@ The dashboard wires the same import machinery into the operator UI
 - **Jira link** — `POST /boards/{slug}/setup-jira` writes the board's
   `jira_url` and `POST /boards/{slug}/test-jira` runs
   `JiraIssueClient.check_connection` against it
-  (`repo://dashboard/routes/boards.py#L691-L730`).
+  (`repo://dashboard/routes/boards.py#L677-L719`).
 
 ## CLI surface
 
@@ -163,8 +163,13 @@ same for Jira Cloud issues (handler at `repo://__init__.py#L907-L1024`).
 Tasks carrying `external_issue` metadata are closed the loop on the source
 tracker: when the dispatcher opens the PR for such a task, the body appends
 `Fixes #<n>` (GitHub) or `Resolves: <KEY>` (Jira)
-(`repo://dispatcher/scheduler.py#L1316-L1335`), so a human merge on GitHub also
-closes or references the original issue.
+(`repo://dispatcher/scheduler.py#L1538-L1550`), so a human merge on GitHub also
+closes or references the original issue. In addition, for GitHub issues the
+dispatcher posts **exactly one** "PR opened" status reply on the source issue
+itself via `post_issue_pr_comment` (PR URL + `Fixes #<n>`, gated on
+`has_ai_request`, idempotent via the `<!-- zf-task:<task_id> -->` HTML marker)
+(`repo://dispatcher/scheduler.py#L741-L828`) — so the reporter sees the
+progress without digging through the PR.
 
 ## Tests
 

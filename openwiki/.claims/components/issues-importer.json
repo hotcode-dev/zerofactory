@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:171ccb7f18162c9a96e81c7d92a1636d2f3bd2a0d5c301551d00bd11451aee90",
+  "pageVersion": "sha256:6fffe6e082898aa06f354b42a04829aac8cf18f46c7024839370216243b7ead1",
   "claims": [
     {
       "id": "claim_be552b6d7ec04f239ee42608bf0f568d",
@@ -99,8 +99,8 @@
       "statement": "Tasks carrying external_issue metadata get their source issue linked in the PR: the dispatcher appends 'Fixes #<n>' for GitHub issues or 'Resolves: <KEY>' for Jira issues to the PR body it opens.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scheduler.py#L1316-L1335",
-          "version": "repo-lines-v1:sha256:198974b1bd41ff945c260450c9671bde8b9bad68cac7e6183ddc37f9caf1466c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZGE2NGE1YzY0YWQ5N2M2OWExMzdmY2QwN2QwZGNlYWU2ZDhmOGRmNDdmMGFhOTQ1MWJiNGI3ZmIwMDE4MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0OWU1YjJjZGNkOWFmYTAyOWNkOTMxMWM1MTA2ZWMwM2NiMzJhYzY3ZGYzODJlMmM4OGNlNGRhOTQ0YjdmMDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwOTQ4OGMzNDdiZTg4ZjVjMDA1MDlkZGU3YjE2ZGRiN2Q2NjRiYWI1NTk0ZDgzYWUwYmYyMjA1ZGViYTRjMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzZGVjNDVjN2U0NzZkM2NmYTEwYWE4MGRiOTI5NDg0YTZkZGVlZDRkN2U0NTY2MTIxZjA0YjgxZDRjMzNmNDIifQ"
+          "resource": "repo://dispatcher/scheduler.py#L1538-L1550",
+          "version": "repo-lines-v1:sha256:c416a7baa1df6da48cbc4104347c715b1799874b3a2fda68c6ece9f3586be68a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxNDFjMDdlMjMyOTFlMjljNmI1ZWFjZDZiMDNlOTRjZDBkODFhMjkyM2VkNTE0NTAwNDc3NGM1MDM3YmY2OGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZDNiNjUyMTY4OTM1NmQ3MmZlZWMxN2E2ZGFiNzJmNDllMTdlYTI5NTE2NmYwNDgzYmRiNDliNWEwMjM1ZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkN2IxMzRlMTRmOGFmZWM2N2I3MTUyMWE0N2E1N2E3ZDM4NWY4NGE5OTZjNWVkZmYyYTg4M2MxMzcxNzM0MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkOWYzYzQ3MjJhOTUxYjdlMjgzZjM3M2Y4ZDM0ODgyZWYzNzU1OTJkMTBhZGI1ZWY3YTg4NTFkOGRiM2VmNTQifQ"
         }
       ]
     },
@@ -123,14 +123,24 @@
           "version": "repo-file-v1:sha256:83100da12c9611fab990aaa4154ebd0f4240c4a8e8e1fb5e5a265e2cb7fc955a"
         },
         {
-          "resource": "repo://dashboard/routes/boards.py#L500-L727",
-          "version": "repo-lines-v1:sha256:e0b4ef0a1b200db965be9621e62bda0e408466bf04cdff4a09c6b7561421692e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTk2OGE4ZjgzMDE4ZjY2NDM5YWExODVhYmZiZjAwNjM0OTNiNTJhZjJjMGYyNzNiNmM0YTYxNTlmMGNjYzIzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dashboard/routes/boards.py#L500-L719",
+          "version": "repo-lines-v1:sha256:2d8a08b6525df8f398d6e02330c7f04fa17868f8a8541b41f65a954d4554c88a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTk2OGE4ZjgzMDE4ZjY2NDM5YWExODVhYmZiZjAwNjM0OTNiNTJhZjJjMGYyNzNiNmM0YTYxNTlmMGNjYzIzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_5040b40725474017afe958d2694c0e18",
+      "statement": "For GitHub issues, the dispatcher additionally posts exactly one 'PR opened' status reply on the source issue itself via post_issue_pr_comment (PR URL + 'Fixes #<n>'), gated on external_issue.source=='github' + a present issue id + has_ai_request, and idempotent via the '<!-- zf-task:<task_id> -->' HTML marker; any failure is logged and never propagates.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L741-L828",
+          "version": "repo-lines-v1:sha256:6f5329e41e2cfa3ed9d6559bf291361b129139019c3c186806c97fa5daaa6579:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlM2NiOTMxOTYxMjY0OGQwOGU4NzY5YzM1ODViMmU3Y2Y3YTdjZjkwYmE0ZjFmMmM0ZjJhMzQwNWM2ZTAxZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5OWVmZWRmZDJkOTcwNmQ4OTFjN2JhOTgzZTdmODRlMDVhZDBlMDE5MWMxMzI3OThiZTVlM2MxY2M1MzA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0NzgzYjc0NzBkNDJhNTdjZmFhNTViOTQ5MTVlNmFjN2UzYzBlZWViMWE5NjIyZDg3OWNkNzVjMzRmZjBmNTYifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-05T10:11:27.384Z"
+    "at": "2026-10-06T19:22:52.001Z"
   }
 }
