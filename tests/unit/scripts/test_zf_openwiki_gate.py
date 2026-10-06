@@ -150,6 +150,47 @@ class TestOpenWikiGate(unittest.TestCase):
                 self.assertIn("created task", reason)
                 self.assertIn("for zf-builder", reason)
 
+    def test_code_commit_touching_openwiki_does_not_reset_sync_point(self):
+        """A code commit that also edits openwiki/ must not count as a docs sync."""
+        (self.tmp / ".git").mkdir()
+        (self.tmp / "openwiki").mkdir()
+        db_file = self.tmp / "zerofactory.db"
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute(
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT, status TEXT, assignee TEXT, priority TEXT, created_at REAL, updated_at REAL)"
+            )
+            conn.commit()
+
+        # State marker equals HEAD: only the sync-commit marker may suppress.
+        self.state_file.write_text(
+            json.dumps({"test-board": {"last_scanned_sha": "head22222"}}),
+            encoding="utf-8",
+        )
+        with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}):
+            with patch.object(self.gate, "_run_cmd") as mock_cmd:
+
+                def _fake_run(cmd, cwd=None):
+                    if "status" in cmd:
+                        return ""
+                    if "rev-parse" in cmd:
+                        return "head22222"
+                    if any(str(c).startswith("--format=%H%x09%s") for c in cmd):
+                        # Subject scan: latest docs sync commit.
+                        return "sync11111\tdocs(openwiki): sync architecture documentation with recent changes"
+                    if ":(exclude)openwiki" in cmd:
+                        return "head22222 refactor: code change"
+                    if "log" in cmd:
+                        return "head22222"  # newest openwiki-touching commit == HEAD
+                    return ""
+
+                mock_cmd.side_effect = _fake_run
+                wake, reason = self.gate.check_openwiki_gate(
+                    self.tmp, board_slug="test-board"
+                )
+                self.assertFalse(wake)
+                self.assertIn("Detected 1 branch update(s)", reason)
+                self.assertIn("created task", reason)
+
     def test_active_task_in_todo_suppresses_wake(self):
         (self.tmp / ".git").mkdir()
         (self.tmp / "openwiki").mkdir()

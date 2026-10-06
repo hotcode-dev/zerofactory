@@ -401,6 +401,8 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
             "provider": eff_provider,
             "base_url": eff_base_url,
             "script": "zf_openwiki_gate.py",
+            # Deterministic task creation: the gate script files the OpenWiki
+            # update task on the board itself; no agent wake is needed.
             "no_agent": True,
             "context_from": None,
             "continuity": False,

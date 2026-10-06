@@ -6,11 +6,12 @@ Runs locally in the target repository workdir before the Hermes OpenWiki cron fi
    If missing: outputs `{"wakeAgent": false}` (skips run until openwiki is initialized).
 2. Checks git working tree cleanliness.
    If uncommitted changes exist: outputs `{"wakeAgent": false}` (prevents conflicts).
-3. Compares HEAD commit against the last OpenWiki commit / state.
-   If NO new non-openwiki commits exist on the branch:
-   Outputs `{"wakeAgent": false}`. (0 LLM tokens!).
+3. Compares HEAD against the last docs sync point (the conventional
+   `docs(openwiki): sync ...` commit, falling back to state / the newest
+   openwiki-touching commit). If NO new non-openwiki commits exist:
+   outputs `{"wakeAgent": false}`. (0 LLM tokens!).
 4. If branch updates exist (new commits landed on the default branch):
-   Outputs `{"wakeAgent": true}` to wake the agent for doc synchronization.
+   deterministically creates the single OpenWiki update task for zf-builder.
 """
 
 from __future__ import annotations
@@ -87,7 +88,12 @@ def create_openwiki_task(
         # Fallback to direct SQLite insertion if plugin_api unavailable
         db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
         if db_path.exists():
-            task_id = f"zf-{board_slug[:3]}-{uuid.uuid4().hex[:8]}"
+            try:
+                from dashboard.db import generate_task_id
+
+                task_id = generate_task_id(board_slug)
+            except Exception:
+                task_id = f"zf-{uuid.uuid4().hex[:8]}"
             now_ts = int(time.time())
             try:
                 with sqlite3.connect(str(db_path), timeout=5.0) as conn:
@@ -241,7 +247,7 @@ def check_openwiki_gate(
             f"OpenWiki not initialized for board '{slug}' (no openwiki/ directory found); skipping.",
         )
 
-    # 4. Check if active OpenWiki task already exists on the board (TODO, Running, Blocked, Ready, Triage)
+    # 4. Check if an active OpenWiki task already exists on the board (triage/todo/running/blocked)
     if not force_update:
         has_active, active_reason = has_active_openwiki_task(slug)
         if has_active:
@@ -272,7 +278,20 @@ def check_openwiki_gate(
     if not head_sha:
         return False, f"Unable to resolve git HEAD at {repo_dir}; skipping."
 
-    # 6. Check last openwiki commit from git log (or state fallback)
+    # 6. Resolve the last docs sync point. The conventional sync commit subject
+    #    ("docs(openwiki): sync ...") is authoritative: a code commit that also
+    #    edits openwiki/ — or merely mentions the phrase in its body — must not
+    #    reset the marker. Fall back to state, then to the newest openwiki commit.
+    sync_commit = ""
+    marker_log = _run_cmd(
+        ["git", "log", "-n", "200", "--format=%H%x09%s"],
+        cwd=repo_dir,
+    )
+    for line in marker_log.splitlines():
+        sha, _, subject = line.partition("\t")
+        if subject.startswith("docs(openwiki): sync"):
+            sync_commit = sha
+            break
     last_openwiki_commit = _run_cmd(
         ["git", "log", "-1", "--format=%H", "--", "openwiki"],
         cwd=repo_dir,
@@ -281,7 +300,7 @@ def check_openwiki_gate(
     state = load_state()
     board_state = state.get(slug, {})
     last_scanned_sha = board_state.get("last_scanned_sha")
-    base_commit = last_openwiki_commit or last_scanned_sha
+    base_commit = sync_commit or last_scanned_sha or last_openwiki_commit
 
     if not base_commit:
         if auto_create_task:

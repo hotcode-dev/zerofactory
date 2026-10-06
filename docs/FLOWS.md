@@ -423,7 +423,7 @@ flowchart TD
 |---|---|---|---|---|
 | `zero-factory-task-queue-check` | 120m | **no-agent** (0 tokens) | healthy queue → `wakeAgent: false` | auto-sync GitHub issues, reap stuck workers, run dispatch cycle, emit stats/alert |
 | `zero-factory-improvement-scanner-{slug}` | on-idle / 60m | agent (`zf-orchestrator`, `continuity: false`) | unchanged git state, `running >= 2`, `todo >= 2`, 15m cooldown | file **≤ 1** `Todo` improvement task (categories: bug-fix, refactoring, performance, documentation, testing, security, config) |
-| `zero-factory-openwiki-update-{slug}` | daily | agent | docs fresh / task already queued | file 1 OpenWiki refresh task |
+| `zero-factory-openwiki-update-{slug}` | daily | **no-agent** (0 tokens) | docs fresh / task already queued | gate files 1 OpenWiki refresh task |
 
 Global LLM capacity (`max_concurrent_llm_workers`) counts scanners and cron LLM jobs together
 with running tasks — busy boards suppress scans automatically.
