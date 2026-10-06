@@ -54,7 +54,7 @@ Automate and standardize code formatting, building/typechecking, and test execut
      - **Python**:
        - `run_format`: `ruff check --fix . && ruff format .` (with `ruff.toml` configuration)
        - `run_build`: `python3 -m compileall -q .` (built-in bytecode compilation)
-       - `run_test`: `python3 -m pytest tests/ -q` (or `python3 -m unittest discover -s .`)
+       - `run_test`: `python3 -m pytest tests/ -q` (pytest is the framework; NEVER fall back to `python3 -m unittest discover` for a pytest-based suite — conftest fixtures and module-level `import pytest` produce bogus collection errors)
      - **Go** (All built-in to Go toolchain):
        - `run_format`: `gofmt -s -w .`
        - `run_build`: `go build -v ./...` (and `go vet ./...`)
@@ -71,7 +71,7 @@ Automate and standardize code formatting, building/typechecking, and test execut
 
 2. **Force Install Required Tools to System**:
    You MUST install all missing commands and tools to the system environment before creating the precommit script. Do NOT skip or bypass tools due to them being missing:
-   - **Python**: Install `ruff` if missing (`uv tool install ruff@latest` or `pip install ruff` / `pip3 install --user ruff`). If tests require pytest, ensure `pytest` is installed. When configuring ruff, write a clean `ruff.toml` with appropriate lint rules and per-file ignores for `__init__.py` and tests so `ruff check --fix .` and `ruff format .` both exit 0 cleanly.
+   - **Python**: Install `ruff` if missing (`uv tool install ruff@latest` or `pip install ruff` / `pip3 install --user ruff`). If tests require pytest, ensure `pytest` is installed. **Self-bootstrapping is mandatory in the generated script itself**: the dispatcher runs the gate with a bare `python3` that may lack project dependencies, so `run_test` must verify imports (e.g. `python3 -c "import pytest"`) and auto-install a pinned test stack at gate runtime (`uv pip install --python "$(command -v python3)" pytest==<pinned> ...` or `python3 -m pip install --user`), exiting non-zero with an actionable hint if installation fails — never silently degrade to a broken fallback. When configuring ruff, write a clean `ruff.toml` with appropriate lint rules and per-file ignores for `__init__.py` and tests so `ruff check --fix .` and `ruff format .` both exit 0 cleanly.
    - **Node.js / TypeScript**: If `package.json` exists, run `npm install`. Use `npx -y` for on-demand tool execution (Prettier, Vitest, TSC).
    - **Go / Rust**: Ensure respective compilers and formatters are present in PATH.
    - If any required tool is missing, install it on the system before completing the task.
@@ -87,7 +87,7 @@ Automate and standardize code formatting, building/typechecking, and test execut
    - Structure with three phase functions:
      - `run_format`: In-place code formatting & lint auto-fixing (e.g. `ruff check --fix . && ruff format .`, Prettier, or `gofmt -s -w .`).
      - `run_build`: Compilation or static typechecking (e.g. `python3 -m compileall -q .`, `tsc --noEmit` / `npm run build`, `go build ./...`).
-     - `run_test`: Test suite execution (e.g. `python3 -m pytest tests/ -q`, Vitest / `npm test`, `go test -race ./...`).
+     - `run_test`: Test suite execution (e.g. `python3 -m pytest tests/ -q`, Vitest / `npm test`, `go test -race ./...`). Must self-bootstrap missing pinned test tooling at gate runtime (see step 2) — never fall back to `unittest discover`.
    - Add a subcommand dispatcher supporting individual phases and git hook linking:
      ```bash
      install_hook() {{

@@ -27,7 +27,13 @@ def test_build_precommit_setup_task_prompt():
     assert "ruff" in prompt
     assert "prettier" in prompt
     assert "gofmt" in prompt
-    assert "unittest" in prompt
+    assert "pytest" in prompt
+    # The unittest fallback caused false precommit failures on pytest suites —
+    # it must only ever appear as an explicit prohibition, never as a suggestion.
+    assert "unittest discover -s" not in prompt
+    assert "NEVER fall back" in prompt
+    assert "Self-bootstrapping is mandatory" in prompt
+    assert "uv pip install" in prompt
     assert "compileall" in prompt
     assert "Vitest" in prompt
 
