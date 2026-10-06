@@ -222,7 +222,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
 
         t_info3 = get_task(task_id)["task"]
         self.assertEqual(t_info3["status"], "blocked")
-        self.assertIn("[Human Review]", t_info3["title"])
+        self.assertEqual(t_info3["assignee"], "human")
 
         # Step 7: PR is Merged
         fake_gh_state["state"] = "MERGED"
@@ -233,11 +233,13 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         # Task is done and worktree is cleaned up
         t_info4 = get_task(task_id)["task"]
         self.assertEqual(t_info4["status"], "done")
-        self.assertNotIn(
-            "[Human Review]",
-            t_info4["title"],
-            "Merged tasks must not keep the [Human Review] title marker",
-        )
+        # Titles carry no lifecycle state markers at all
+        for marker in ("[Human Review]", "[PR Conflict]", "[PR Opened by"):
+            self.assertNotIn(
+                marker,
+                t_info4["title"],
+                "Task titles must not carry lifecycle state markers",
+            )
         self.assertFalse(
             worktree_path.exists(), "Worktree directory must be cleaned up on merge"
         )
@@ -331,7 +333,8 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         self.assertEqual(t_rerouted["assignee"], "zf-reviewer")
 
     def test_03_merge_conflict_detection_and_builder_reroute(self):
-        """PR merge conflict routes task back to zf-builder with [PR Conflict] tag."""
+        """PR merge conflict routes task back to zf-builder for resolution
+        (conflict state tracked in metadata.conflict_retries, not the title)."""
         # Create a worktree for reviewer task
         rev_ws = self.fake_home / "git" / "main_repo-worktrees" / "ws_conf"
         rev_ws.parent.mkdir(parents=True, exist_ok=True)
@@ -346,7 +349,7 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         t_res = create_task(
             TaskCreate(
                 board_slug=self.board_slug,
-                title="Add Config Parser [PR Opened by zf-builder]",
+                title="Add Config Parser",
                 status="blocked",
                 assignee="zf-reviewer",
             )
@@ -391,7 +394,10 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         t_conf = get_task(task_id)["task"]
         self.assertEqual(t_conf["status"], "todo")
         self.assertEqual(t_conf["assignee"], "zf-builder")
-        self.assertIn("[PR Conflict]", t_conf["title"])
+        conf_meta = t_conf["metadata"] or {}
+        if isinstance(conf_meta, str):
+            conf_meta = json.loads(conf_meta or "{}")
+        self.assertGreaterEqual(int(conf_meta.get("conflict_retries", 0)), 1)
 
     def test_04_dependency_dag_blocking_and_cascading_unblock(self):
         """Parent task completion unblocks dependent child task."""

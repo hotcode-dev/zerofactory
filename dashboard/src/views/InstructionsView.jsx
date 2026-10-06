@@ -251,7 +251,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             "Round 2: Performance, memory overhead, and algorithmic efficiency",
             "Round 3: Clean code & Ponytail anti-overengineering review (vetoing dependency bloat, diff creep, and premature abstractions)",
             "Pre-digested git diff and commit history provided directly in prompt context to minimize redundant exploration",
-            "Approves PR and moves task to Blocked [Human Review] for merge"
+            "Approves PR and moves task to Blocked (assigned to human) for merge"
           ],
           dir: "~/.hermes/profiles/zf-reviewer/"
         }

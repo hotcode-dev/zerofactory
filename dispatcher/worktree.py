@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -322,16 +321,12 @@ def _handle_local_merge_conflict(
     retries += 1
     meta["conflict_retries"] = retries
 
-    new_title = title
-    if "[PR Conflict]" not in new_title and "[Merge Conflict]" not in new_title:
-        new_title = f"{new_title} [PR Conflict]"
-
     file_msg = f" in: {', '.join(conflict_files)}" if conflict_files else ""
 
     if retries > max_conflict_retries:
         cursor.execute(
-            "UPDATE tasks SET title = ?, assignee = 'zf-builder', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (new_title, json.dumps(meta), now, task_id),
+            "UPDATE tasks SET assignee = 'zf-builder', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(meta), now, task_id),
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
@@ -358,8 +353,8 @@ def _handle_local_merge_conflict(
         return
 
     cursor.execute(
-        "UPDATE tasks SET title = ?, assignee = 'zf-builder', status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-        (new_title, json.dumps(meta), now, task_id),
+        "UPDATE tasks SET assignee = 'zf-builder', status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
+        (json.dumps(meta), now, task_id),
     )
     cursor.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
@@ -521,20 +516,15 @@ def _handle_pr_conflict_from_github(
     if workspace_path and Path(workspace_path).exists():
         _d()._remove_worktree(workspace_path, repo_path)
 
-    match = re.search(r"\[PR Opened by (.*?)\]", title)
-    author = match.group(1) if match else "zf-builder"
-    author = normalize_assignee(author)
+    # PR author lives in metadata (set at packaging); titles carry no state.
+    author = normalize_assignee(meta.get("packaged_by") or "zf-builder")
     if author == "zf-reviewer":
         author = "zf-builder"
 
-    new_title = title
-    if "[PR Conflict]" not in new_title and "[Merge Conflict]" not in new_title:
-        new_title = f"{new_title} [PR Conflict]"
-
     if retries > max_conflict_retries:
         cursor.execute(
-            "UPDATE tasks SET title = ?, assignee = ?, status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (new_title, author, json.dumps(meta), now, task_id),
+            "UPDATE tasks SET assignee = ?, status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            (author, json.dumps(meta), now, task_id),
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
@@ -563,7 +553,7 @@ def _handle_pr_conflict_from_github(
     wt_path = _d().setup_worktree(
         cursor,
         task_id,
-        new_title,
+        title,
         author,
         tenant,
         db_path,
@@ -578,8 +568,8 @@ def _handle_pr_conflict_from_github(
 
     file_msg = f" in {', '.join(conflict_files)}" if conflict_files else ""
     cursor.execute(
-        "UPDATE tasks SET title = ?, assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-        (new_title, author, json.dumps(meta), now, task_id),
+        "UPDATE tasks SET assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
+        (author, json.dumps(meta), now, task_id),
     )
     cursor.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",

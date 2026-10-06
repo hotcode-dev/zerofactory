@@ -397,7 +397,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					const titleStr = typeof t.title === "string" ? t.title : "";
 					const isGrillInterview = metaStr.includes("Grill-with-Docs") || metaStr.includes("Awaiting Human Input") || metaStr.includes("awaiting_interview") || descStr.includes("Grill-with-Docs") || titleStr.toLowerCase().includes("grill");
 					const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview);
-					const isHumanReview = t.status === "blocked" && titleStr.includes("[Human Review]");
+					const isHumanReview = t.status === "blocked" && t.assignee === "human";
 					const isBlocked = t.status === "blocked";
 					if (!isBlocked && !isHumanTriage && !isHumanReview) return null;
 					let badgeClass = "";
@@ -407,7 +407,7 @@ var ZeroFactoryDashboard = (function(exports) {
 						badgeClass = "bg-indigo-500/20 border-indigo-500/40 text-indigo-200";
 						dotClass = "bg-indigo-400 zfk-pulse-active";
 						labelText = isGrillInterview ? "🎯 Waiting for Human Decision • Grill Interview" : "🎯 Waiting for Human Input";
-					} else if (titleStr.includes("[PR Conflict]") || titleStr.includes("[Merge Conflict]")) {
+					} else if (metaStr.includes("\"conflict_retries\"")) {
 						badgeClass = "bg-amber-500/15 border-amber-500/30 text-amber-300";
 						dotClass = "bg-amber-400";
 						labelText = "🟠 Merge Conflict";
@@ -1335,7 +1335,7 @@ var ZeroFactoryDashboard = (function(exports) {
 						"Round 2: Performance, memory overhead, and algorithmic efficiency",
 						"Round 3: Clean code & Ponytail anti-overengineering review (vetoing dependency bloat, diff creep, and premature abstractions)",
 						"Pre-digested git diff and commit history provided directly in prompt context to minimize redundant exploration",
-						"Approves PR and moves task to Blocked [Human Review] for merge"
+						"Approves PR and moves task to Blocked (assigned to human) for merge"
 					],
 					dir: "~/.hermes/profiles/zf-reviewer/"
 				}

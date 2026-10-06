@@ -534,7 +534,7 @@ def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-rev-conf', 'Fix conflict [PR Opened by zf-builder] [PR Conflict]', 'desc', 'blocked', 'zf-builder', 'P1', '{\"blocked_reason\": \"review-required\"}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-rev-conf', 'Fix conflict', 'desc', 'blocked', 'zf-builder', 'P1', '{\"blocked_reason\": \"review-required\"}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()

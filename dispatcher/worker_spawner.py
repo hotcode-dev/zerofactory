@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sqlite3
@@ -73,6 +74,7 @@ def spawn_agent_worker(
     workspace_path: str | None,
     branch_name: str | None,
     board_slug: str | None = None,
+    metadata: str | None = None,
 ) -> tuple[int | None, str | None]:
     """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"):
@@ -234,9 +236,15 @@ def spawn_agent_worker(
             )
         except Exception as e:  # defensive: safe wrapper should not raise
             conflict_check_verified, _cc_err = False, str(e)
+        # Conflict state lives in metadata (conflict_retries set by the
+        # conflict handlers); titles carry no state markers.
+        task_meta: dict = {}
+        try:
+            task_meta = json.loads(metadata or "{}")
+        except Exception:
+            task_meta = {}
         has_conflict = (
-            "[pr conflict]" in title.lower()
-            or "[merge conflict]" in title.lower()
+            int(task_meta.get("conflict_retries") or 0) > 0
             or (not conflict_check_verified and Path(workdir).exists())
             or (conflict_check_verified and Path(workdir).exists() and bool(_files))
         )

@@ -332,7 +332,8 @@ class TestReviewCapPerCommit:
             # Must be escalated to human with status='blocked'
             assert row["assignee"] == "human"
             assert row["status"] == "blocked"
-            assert "[Human Review]" in row["title"]
+            # Titles carry no lifecycle state markers
+            assert "[Human Review]" not in row["title"]
 
             meta = json.loads(row["metadata"])
             assert meta["review_cap_reached"] is True

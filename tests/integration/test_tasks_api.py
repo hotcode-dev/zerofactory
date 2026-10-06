@@ -269,3 +269,27 @@ def test_legacy_ready_status_rejected(api_client: TestClient, default_board: str
     )
     # Rejected by model validation (422) or status validation (400)
     assert res.status_code in (400, 422)
+
+
+def test_patch_cannot_change_status(api_client: TestClient, default_board: str):
+    """Status is a lifecycle transition owned by /move — PATCH must reject it."""
+    task_id = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={
+            "title": "Patch status guard",
+            "board_slug": default_board,
+            "status": "todo",
+        },
+    ).json()["id"]
+
+    res = api_client.patch(
+        f"/api/plugins/zerofactory/tasks/{task_id}",
+        json={"status": "running"},
+    )
+    assert res.status_code == 400
+    assert (
+        api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()["task"][
+            "status"
+        ]
+        == "todo"
+    )

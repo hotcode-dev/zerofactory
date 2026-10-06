@@ -177,7 +177,8 @@ def test_handle_local_merge_conflict_increments_retries_and_routes_to_builder():
     row = conn.execute(
         "SELECT title, status, assignee, metadata FROM tasks WHERE id = 't1'"
     ).fetchone()
-    assert "[PR Conflict]" in row["title"]
+    # Conflict state lives in metadata; the handler must not mark the title
+    assert "[PR Conflict]" not in row["title"]
     assert row["status"] == "todo"
     assert row["assignee"] == "zf-builder"
     meta = json.loads(row["metadata"])

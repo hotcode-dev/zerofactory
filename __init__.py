@@ -1082,14 +1082,23 @@ def register(ctx: Any):
                 print(f"Moved task {args.task_id} to {args.status}")
 
         elif action == "update":
+            status_val = getattr(args, "status", None)
             req = TaskUpdate(
                 title=getattr(args, "title", None),
                 description=getattr(args, "description", None),
                 assignee=getattr(args, "assignee", None),
                 priority=getattr(args, "priority", None),
-                status=getattr(args, "status", None),
             )
             res = _update_task(args.task_id, req)
+            if status_val:
+                # Status is a lifecycle transition — always via move_task so the
+                # move semantics (flags, worker stop, dispatch trigger) apply.
+                actor = (
+                    getattr(args, "actor", None)
+                    or os.environ.get("HERMES_PROFILE")
+                    or "user"
+                )
+                _move_task(args.task_id, TaskMove(status=status_val, actor=actor))
             print(f"Updated task {args.task_id}")
 
         elif action == "block":

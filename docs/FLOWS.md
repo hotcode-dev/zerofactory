@@ -3,6 +3,7 @@
 > Step-by-step reference for **every flow in the system**, split by nature:
 > **Deterministic** (Python, no LLM, always runs) vs **Agentic** (LLM workers, invoked per handoff).
 > Complements [`AGENTS.md`](../AGENTS.md) (overview) — this document is the precise logic reference.
+> When something deviates from these flows, use the [`DEBUGGING.md`](DEBUGGING.md) incident playbook.
 
 ---
 
@@ -78,6 +79,7 @@ flowchart TD
 | `awaiting_pr` | reaper (worker exit 0), `move_task` by agents | Builder work finished; dispatcher must package → PR → reviewer |
 | `close_pr` | `move_task` by humans when `pr_url` exists | Human closed task; dispatcher must archive the PR + remote branch |
 | `issue_pr_comment_posted` | dispatcher after issue reply | Source-issue reply already sent (extra dedup guard) |
+| `packaged_by` | dispatcher at PR packaging | Assignee that authored the packaged PR (review reroute target) — replaces the old `[PR Opened by X]` title marker |
 | `external_issue` | issue importer | `{source: github\|jira, id, key, repo_or_project, has_ai_request, url}` |
 | `worker_pid`, `session_id`, `started_at` | worker spawner | Active worker bookkeeping |
 | `sessions[]` | worker spawner / reaper | Per-handoff session log (`ongoing` → `finished`/`aborted`/`timed_out`/`failed`) |
@@ -88,11 +90,13 @@ flowchart TD
 | `permanently_blocked`, `blocked_reason` | reaper / dispatcher | Hard-stop marker + human-readable cause |
 | `awaiting_interview`, `last_interview_reply` | orchestrator grill flow | Human interview state |
 
-### 2.3 Title markers (UI badges)
+### 2.3 Titles are state-free
 
-`[Triage]`, `[Human Review]`, `[PR Conflict]`, `[Merge Conflict]`, `[PR Opened by <agent>]`,
-and the `[AI:<profile>]` attribution prefix. Rule: **strip `[Human Review]` on every path that
-marks a task `done`** (the dashboard also gates badges on `status`).
+Task titles never carry mutable lifecycle state — UI badges derive from structured fields:
+"waiting for merge" = `status=blocked && assignee=human`, "merge conflict" =
+`metadata.conflict_retries` present, PR author = `metadata.packaged_by`. Two immutable labels
+survive by convention: `[Triage]` (set once at issue import) and the `[AI:<profile>]`
+attribution prefix on GitHub PR titles/bodies (`ai_prefix`).
 
 ### 2.4 State machine
 
@@ -143,7 +147,7 @@ flowchart TD
     ST -->|CLOSED| DONE1
     ST -->|CONFLICTING| CONF["conflict flow -> builder"] --> S4
     ST -->|review feedback| REVIEW["review routing:<br/>reroute to builder or escalate"] --> S4
-    ST -->|approved| HUMAN["blocked + human<br/>[Human Review]"] --> S4
+    ST -->|approved| HUMAN["blocked + human<br/>awaiting merge"] --> S4
     ST -->|open / no PR| PACK["packaging fallback:<br/>precommit -> commit -> merge -><br/>push -> gh pr create -> todo + zf-reviewer<br/>post_issue_pr_comment"] --> S4
     S4["Step 4 — idle improvement scanner gate<br/>capacity + cooldown + wake-gate"] --> R["return counters<br/>unblocked/promoted/dispatched/prs_opened/..."]
 ```
@@ -173,21 +177,21 @@ Polls tasks matching: `pr_url` set and not `done`, OR `blocked` with a builder a
    worktree, if `close_pr` → `gh pr close <pr_url>` + delete remote branch + `manual_done`
    activity, clear `workspace_path`, `continue`. Never commit/push/PR/reroute again.
 2. **PR poll** (`gh pr view --json reviewDecision,state,url,mergeable,headRefOid`):
-   - `MERGED` / `CLOSED` → stop worker, remove worktree, delete remote branch, strip
-     `[Human Review]`, status `done`.
+   - `MERGED` / `CLOSED` → stop worker, remove worktree, delete remote branch,
+     status `done`.
    - `CONFLICTING` → conflict resolution flow (unless a builder already resolved and is
      handing off — then fall through to packaging).
    - **Actionable review comments or `CHANGES_REQUESTED`** → record comments (memory
      auto-extraction runs here), bump `commit_review_count` (reset when the head SHA changes),
      remove worktree, route back to builder: `todo` + `assignee=<PR author>` + review-comment
      prompt block. When `commit_review_count > ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**)
-     → escalate: `blocked` + `assignee=human` + title `[Human Review]` + `review_cap_reached`.
+     → escalate: `blocked` + `assignee=human` + `review_cap_reached`.
    - **`APPROVED`** (or approval comments and no actionable feedback) → `blocked` +
-     `assignee=human` + `[Human Review]` ("Reviewer approved; awaiting human merge").
+     `assignee=human` ("Reviewer approved; awaiting human merge").
 3. **Packaging fallback** (no PR yet, or `done`/`blocked` handoff): deterministic
    **precommit gate** (§6) → conflict checks → commit (conventional message) → merge latest
    target branch → push `task/<id>` → `gh pr create` (body carries `Fixes #N` / Jira link) →
-   `todo` + `assignee=zf-reviewer` + title `[PR Opened by <agent>]` → worktree removed →
+   `todo` + `assignee=zf-reviewer` + `metadata.packaged_by` → worktree removed →
    **issue reply** (§10). No diff vs base ("No commits between") → `done` directly.
 
 ### Step 4 — Idle improvement scanner gate
@@ -256,7 +260,7 @@ sequenceDiagram
     B-->>D: blocked review-required -> packaging re-sync
     D->>R: session 4 — re-review (round 2, per commit SHA)
     R-->>D: block --reason "Human Review & Merge"
-    D->>H: blocked + [Human Review] — awaiting merge
+    D->>H: blocked + assignee=human — awaiting merge
     H->>GitHub: merge PR
     D->>D: gh pr view MERGED -> done (terminal)
 ```
@@ -302,12 +306,12 @@ flowchart TD
     PRE --> STAGE["auto-format results staged<br/>conventional commit authored"]
     STAGE --> MERGE["pull_and_merge_main<br/>target branch of the board"]
     MERGE -->|conflicts| CF{"conflict_retries under limit?"}
-    CF -->|yes| CFB["[PR Conflict] title marker<br/>zf-builder conflict session<br/>-> back to precommit"]
+    CF -->|yes| CFB["conflict_retries++ in metadata<br/>zf-builder conflict session<br/>-> back to precommit"]
     CFB --> PRE
     CF -->|no| CFE["blocked — conflict escalation"]
     MERGE -->|clean| PUSH["git push -u origin task/TASK_ID"]
     PUSH --> PRC["gh pr create --base TARGET<br/>body: Fixes issue N / Resolves: JIRA"]
-    PRC --> RR["todo + zf-reviewer<br/>[PR Opened by AGENT]"]
+    PRC --> RR["todo + zf-reviewer<br/>packaged_by in metadata"]
     PRC --> IRE["post_issue_pr_comment (§10)"]
 ```
 
@@ -327,7 +331,7 @@ interprets them deterministically:
 | Signal detected in step 3 | Route |
 |---|---|
 | Actionable comments or `reviewDecision == CHANGES_REQUESTED` | `todo` + builder + 🚨 review-comment block (round counter++) |
-| `APPROVED` (or approval comment, no actionable feedback) | `blocked` + `human` + `[Human Review]` |
+| `APPROVED` (or approval comment, no actionable feedback) | `blocked` + `human` |
 | `commit_review_count > 2` (per commit SHA; resets on new commits) | escalate `blocked` + `human` + `review_cap_reached` |
 | Neither (neutral chatter) | record comments only; no routing |
 
@@ -354,8 +358,8 @@ stateDiagram-v2
 ```
 
 - **Agent** `move done` (actor `zf-*`): "builder finished" → `awaiting_pr` → packaging pipeline.
-- **Human** `move done` (actor `user`, e.g. drag-and-drop): **terminal** — strips `[Human Review]`,
-  aborts sessions, stops the worker, and if a PR is open sets `close_pr` so the next cycle
+- **Human** `move done` (actor `user`, e.g. drag-and-drop): **terminal** — aborts sessions,
+  stops the worker, and if a PR is open sets `close_pr` so the next cycle
   archives the PR (close + branch delete, activity `manual_done`). Never re-dispatched.
 - **Reviving** (`move todo/running/...`): clears `awaiting_pr` / `close_pr` and resets
   worker failure bookkeeping; the task dispatches normally again.

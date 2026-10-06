@@ -645,11 +645,17 @@ def update_task(task_id: str, req: TaskUpdate):
         params.append(req.board_slug)
         changes.append(f"moved to board {req.board_slug}")
     if req.status is not None:
-        if req.status not in VALID_STATUSES:
-            raise HTTPException(status_code=400, detail=f"Invalid status: {req.status}")
-        updates.append("status = ?")
-        params.append(req.status)
-        changes.append(f"status changed to {req.status}")
+        # Status is a lifecycle TRANSITION with side effects (worker stop, flags,
+        # marker cleanup, dispatch trigger) — always applied by /move so exactly
+        # one code path owns status changes.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Status cannot be changed via PATCH; use "
+                f"POST /tasks/{task_id}/move (or `hermes zerofactory move`) "
+                "so lifecycle side effects are applied"
+            ),
+        )
     if req.assignee is not None:
         asgn = normalize_assignee(req.assignee)
         updates.append("assignee = ?")
@@ -849,19 +855,6 @@ def move_task(task_id: str, req: TaskMove):
                     move_actor,
                     "move",
                     f"Moved from {prev_status} to {req.status}",
-                )
-
-        if req.status == "done":
-            # [Human Review] markers must never linger on completed tasks
-            done_title = (
-                str(curr["title"] or "")
-                .replace(" [Human Review]", "")
-                .replace("[Human Review]", "")
-                .strip()
-            )
-            if done_title != str(curr["title"] or ""):
-                cursor.execute(
-                    "UPDATE tasks SET title = ? WHERE id = ?", (done_title, task_id)
                 )
 
         if req.status == "blocked" and req.reason:

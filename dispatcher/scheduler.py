@@ -309,6 +309,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 workspace_path,
                                 branch_name,
                                 board_slug=row["board_slug"],
+                                metadata=row["metadata"],
                             )
                         except Exception as e:
                             _log.error(
@@ -584,16 +585,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             workspace_path, repo_path
                                         )
                                         _disp._delete_remote_branch(task_id, repo_path)
-                                        done_title = (
-                                            title.replace(" [Human Review]", "")
-                                            .replace("[Human Review]", "")
-                                            .strip()
-                                        )
                                         meta.pop("blocked_reason", None)
                                         cursor.execute(
-                                            "UPDATE tasks SET status = 'done', title = ?, metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                            "UPDATE tasks SET status = 'done', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
                                             (
-                                                done_title,
                                                 json.dumps(meta),
                                                 now,
                                                 task_id,
@@ -610,16 +605,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             workspace_path, repo_path
                                         )
                                         _disp._delete_remote_branch(task_id, repo_path)
-                                        done_title = (
-                                            title.replace(" [Human Review]", "")
-                                            .replace("[Human Review]", "")
-                                            .strip()
-                                        )
                                         meta.pop("blocked_reason", None)
                                         cursor.execute(
-                                            "UPDATE tasks SET status = 'done', title = ?, metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                            "UPDATE tasks SET status = 'done', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
                                             (
-                                                done_title,
                                                 json.dumps(meta),
                                                 now,
                                                 task_id,
@@ -783,14 +772,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             if c["comment_id"] not in processed_cmt_ids
                                         ]
 
-                                        match = re.search(
-                                            r"\[PR Opened by (.*?)\]", title
-                                        )
-                                        builder_author = (
-                                            match.group(1) if match else "zf-builder"
-                                        )
+                                        # PR author lives in metadata (set at
+                                        # packaging); titles carry no state.
                                         builder_author = normalize_assignee(
-                                            builder_author
+                                            task_meta.get("packaged_by") or "zf-builder"
                                         )
 
                                         actionable_comments = [
@@ -932,12 +917,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                                 workspace_path, repo_path
                                             )
 
-                                            clean_title = (
-                                                title.replace(" [Human Review]", "")
-                                                .replace("[Human Review]", "")
-                                                .strip()
-                                            )
-
                                             if commit_review_count > max_review_rounds:
                                                 commit_tag = (
                                                     f" on commit {head_commit_sha[:7]}"
@@ -948,13 +927,9 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                                     f"Review cap reached ({max_review_rounds} rounds{commit_tag}); escalating to human review."
                                                 )
                                                 task_meta["review_cap_reached"] = True
-                                                new_title = (
-                                                    f"{clean_title} [Human Review]"
-                                                )
                                                 cursor.execute(
-                                                    "UPDATE tasks SET title = ?, assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                                    "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
                                                     (
-                                                        new_title,
                                                         json.dumps(task_meta),
                                                         now,
                                                         task_id,
@@ -971,9 +946,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                                 continue
 
                                             cursor.execute(
-                                                "UPDATE tasks SET title = ?, assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
+                                                "UPDATE tasks SET assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
                                                 (
-                                                    clean_title,
                                                     builder_author,
                                                     json.dumps(task_meta),
                                                     now,
@@ -983,7 +957,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             _disp.setup_worktree(
                                                 cursor,
                                                 task_id,
-                                                clean_title,
+                                                title,
                                                 builder_author,
                                                 tenant,
                                                 db_path,
@@ -1065,15 +1039,12 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                             _disp._remove_worktree(
                                                 workspace_path, repo_path
                                             )
-                                            new_title = (
-                                                title
-                                                if "[Human Review]" in title
-                                                else f"{title} [Human Review]"
-                                            )
+                                            # Awaiting-human-merge state lives in
+                                            # assignee/status only (assignee=human
+                                            # + blocked); titles carry no state.
                                             cursor.execute(
-                                                "UPDATE tasks SET title = ?, assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                                                "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
                                                 (
-                                                    new_title,
                                                     json.dumps(task_meta),
                                                     now,
                                                     task_id,
@@ -1135,10 +1106,13 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 is_merging = bool(
                                     git_dir and (git_dir / "MERGE_HEAD").exists()
                                 )
+                                # Conflict history lives in metadata
+                                # (conflict_retries set by the conflict handlers);
+                                # titles carry no state.
                                 had_conflict = bool(
                                     is_merging
-                                    or "[PR Conflict]" in title
-                                    or "[Merge Conflict]" in title
+                                    or int((meta or {}).get("conflict_retries") or 0)
+                                    > 0
                                 )
 
                                 unmerged_files = _disp.get_unmerged_status_files(
@@ -1465,16 +1439,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 _disp.stop_task_worker(task_id, cursor)
                                 _disp._remove_worktree(workspace_path, repo_path)
 
-                                new_title = title
-                                for tag in ("[PR Conflict]", "[Merge Conflict]"):
-                                    new_title = (
-                                        new_title.replace(f" {tag}", "")
-                                        .replace(tag, "")
-                                        .strip()
-                                    )
-                                if not re.search(r"\[PR Opened by .*?\]", new_title):
-                                    new_title = f"{new_title} [PR Opened by {assignee}]"
-
                                 meta = {}
                                 try:
                                     cursor.execute(
@@ -1500,6 +1464,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 ):
                                     meta.pop(key, None)
 
+                                # PR author is tracked in metadata; titles carry
+                                # no state (no [PR Opened by ...] markers).
+                                meta["packaged_by"] = assignee
+
                                 ext_issue = meta.get("external_issue") or {}
                                 if ext_issue.get("source") == "github" and pr_url:
                                     try:
@@ -1519,13 +1487,13 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         )
 
                                 cursor.execute(
-                                    "UPDATE tasks SET title = ?, assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'todo', updated_at = ? WHERE id = ?",
-                                    (new_title, pr_url, json.dumps(meta), now, task_id),
+                                    "UPDATE tasks SET assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'todo', updated_at = ? WHERE id = ?",
+                                    (pr_url, json.dumps(meta), now, task_id),
                                 )
                                 _disp.setup_worktree(
                                     cursor,
                                     task_id,
-                                    new_title,
+                                    title,
                                     "zf-reviewer",
                                     tenant,
                                     db_path,
