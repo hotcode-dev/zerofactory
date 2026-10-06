@@ -67,7 +67,7 @@ def test_digest_board_memories_context(tmp_path: Path):
         conn.execute(
             """
             INSERT INTO board_memories (board_slug, category, content, tags, author, created_at)
-            VALUES ('repo-a', 'gotcha', 'Always run lint before commit', '["lint", "ci"]', 'reviewer', 1000)
+            VALUES ('repo-a', 'gotcha', 'Always run lint before commit', '["lint", "ci"]', 'zf-reviewer', 1000)
             """
         )
         conn.commit()

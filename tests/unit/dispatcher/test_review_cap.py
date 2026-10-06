@@ -246,6 +246,81 @@ def _init_test_db(db_path: Path):
 
 
 class TestReviewCapPerCommit:
+    def test_structured_changes_requested_routes_without_comments(self, tmp_path: Path):
+        """Signal-first routing: the reviewer's `block --reason changes-requested`
+        verdict routes to the builder even when no comments are parseable."""
+        db_path = tmp_path / "test.db"
+        _init_test_db(db_path)
+        lock_file = tmp_path / "dispatcher.lock"
+
+        task_id = "t-structured-verdict"
+        initial_meta = {
+            "processed_review_comment_ids": [],
+            "blocked_reason_type": "changes-requested",
+            "packaged_by": "zf-builder",
+        }
+
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.execute(
+                """
+                INSERT INTO tasks (id, title, status, assignee, pr_url, metadata, workspace_path)
+                VALUES (?, ?, 'blocked', 'zf-reviewer', 'https://github.com/acme/repo/pull/2', ?, ?)
+                """,
+                (
+                    task_id,
+                    "feat: structured verdict",
+                    json.dumps(initial_meta),
+                    str(tmp_path / "wt"),
+                ),
+            )
+            conn.commit()
+
+        (tmp_path / "wt").mkdir(parents=True, exist_ok=True)
+
+        fake_pr_data = {
+            "state": "OPEN",
+            "reviewDecision": "",
+            "url": "https://github.com/acme/repo/pull/2",
+            "mergeable": "MERGEABLE",
+            "headRefOid": "commit_sha_abc",
+        }
+
+        def fake_subprocess_run(cmd, *args, **kwargs):
+            if "view" in cmd:
+                return MagicMock(returncode=0, stdout=json.dumps(fake_pr_data))
+            return MagicMock(returncode=0, stdout="")
+
+        import dispatcher
+
+        with (
+            patch.object(
+                dispatcher, "get_dispatcher_lock_path", return_value=lock_file
+            ),
+            patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+            patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
+            patch(
+                "dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run
+            ),
+            # No comments at all — only the structured verdict can route this.
+            patch.object(dispatcher, "fetch_pr_review_comments", return_value=[]),
+            patch.object(dispatcher, "stop_task_worker"),
+            patch.object(dispatcher, "_remove_worktree"),
+            patch.object(dispatcher, "setup_worktree"),
+        ):
+            res = run_dispatch_cycle(db_path)
+            assert res["ok"] is True
+
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT status, assignee, metadata FROM tasks WHERE id = ?",
+                (task_id,),
+            ).fetchone()
+            assert row["status"] == "todo"
+            assert row["assignee"] == "zf-builder"
+            meta = json.loads(row["metadata"])
+            assert meta["commit_review_count"] == 1
+
     def test_review_cap_escalation_after_two_rounds(self, tmp_path: Path):
         """When 2 review rounds on the same commit are exceeded, task escalates to human review."""
         db_path = tmp_path / "test.db"
@@ -258,6 +333,7 @@ class TestReviewCapPerCommit:
             "last_reviewed_commit": "commit_sha_123",
             "commit_review_count": 2,
             "processed_review_comment_ids": [],
+            "blocked_reason_type": "changes-requested",
         }
 
         with sqlite3.connect(str(db_path)) as conn:
@@ -363,6 +439,7 @@ class TestReviewCapPerCommit:
             "last_reviewed_commit": "old_commit_111",
             "commit_review_count": 2,  # Was at 2 on old commit
             "processed_review_comment_ids": [],
+            "blocked_reason_type": "changes-requested",
         }
 
         with sqlite3.connect(str(db_path)) as conn:

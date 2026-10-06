@@ -22,11 +22,9 @@ order. Each candidate is checked for on-disk existence and the first hit wins;
 
 1. ``~/.hermes/profiles/<canonical>/state.db`` — the canonical, per-profile
    layout (the primary location in current deployments).
-2. ``~/.hermes/profiles/<canonical-without-zf-prefix>/state.db`` — legacy
-   un-prefixed profile directories.
-3. ``<3 levels up from this file>/<canonical>/state.db`` — plugin-relative
+2. ``<3 levels up from this file>/<canonical>/state.db`` — plugin-relative
    layout (profiles colocated next to the plugin checkout).
-4. ``~/.hermes/state.db`` — the global/default Hermes state database.
+3. ``~/.hermes/state.db`` — the global/default Hermes state database.
 
 The helper is **path-blind by design**: it recomputes every candidate on each
 call and never caches a resolved path, so a change of ``ZEROFACTORY_DB``,
@@ -69,7 +67,7 @@ def normalize_assignee(assignee: str | None) -> str:
 
     * empty / ``None`` / ``"unassigned"`` -> ``"unassigned"``
     * ``"human"`` -> ``"human"``
-    * a recognized profile (or an alias that maps to one) -> its canonical name
+    * a recognized profile -> its canonical name
     * any other value -> ``"unassigned"`` (unknown assignees are not valid
       specialist profiles and are treated as unassigned rather than passed
       through verbatim)
@@ -79,6 +77,25 @@ def normalize_assignee(assignee: str | None) -> str:
     if assignee == HUMAN:
         return HUMAN
     return PROFILE_MAP.get(assignee, UNASSIGNED)
+
+
+#: Deterministic taxonomy for ``metadata.blocked_reason_type``. Agents emit one
+#: of these codes verbatim via ``hermes zerofactory block <id> --reason <code>``;
+#: ``blocked_reason`` stays free text for humans. Anything else classifies as
+#: the human gate.
+BLOCKED_REASON_TYPES = frozenset({"changes-requested", "approved", "human-gate"})
+BLOCKED_REASON_TYPE_HUMAN_GATE = "human-gate"
+
+
+def normalize_blocked_reason_type(reason: str | None) -> str:
+    """Classify a ``block --reason`` value into a canonical ``blocked_reason_type``.
+
+    Deterministic exact-match classification — no prose heuristics: a canonical
+    code passes through (lower-cased, stripped), every other value is the human
+    gate (``"human-gate"``).
+    """
+    raw = (reason or "").strip().lower()
+    return raw if raw in BLOCKED_REASON_TYPES else BLOCKED_REASON_TYPE_HUMAN_GATE
 
 
 def _hermes_profiles_root() -> Path:
@@ -124,14 +141,7 @@ def resolve_profile_state_db(assignee: str) -> Path | None:
     if p1.exists():
         return p1
 
-    # 2. Legacy un-prefixed profile directory.
-    unprefixed = norm_asgn.replace("zf-", "")
-    if unprefixed != norm_asgn:
-        p2 = _hermes_profiles_root() / unprefixed / "state.db"
-        if p2.exists():
-            return p2
-
-    # 3. Plugin-relative location (profiles colocated with the plugin checkout).
+    # 2. Plugin-relative location (profiles colocated with the plugin checkout).
     plugin_root = _plugin_profiles_root()
     if plugin_root is not None:
         try:
@@ -141,7 +151,7 @@ def resolve_profile_state_db(assignee: str) -> Path | None:
         except Exception:
             pass
 
-    # 4. Global/default Hermes state database (last resort).
+    # 3. Global/default Hermes state database (last resort).
     p4 = Path.home() / ".hermes" / "state.db"
     if p4.exists():
         return p4

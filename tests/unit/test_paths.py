@@ -88,19 +88,8 @@ class TestPathsResolution(unittest.TestCase):
             with home_ctx, plug_ctx:
                 self.assertIsNone(P.resolve_profile_state_db("zf-builder"))
 
-    def test_state_db_legacy_unprefixed_and_priority(self):
-        """Legacy un-prefixed profile dir is honored, and priority is honored."""
-        with tempfile.TemporaryDirectory() as td:
-            home_root = Path(td) / "home"
-            self._mk(home_root, ".hermes", "profiles", "builder", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=None)
-            with home_ctx, plug_ctx:
-                self.assertEqual(
-                    P.resolve_profile_state_db("zf-builder"),
-                    home_root / ".hermes" / "profiles" / "builder" / "state.db",
-                )
-
-        # Priority: canonical beats plugin-relative beats global.
+    def test_state_db_priority(self):
+        """Resolution priority: canonical beats plugin-relative beats global."""
         with tempfile.TemporaryDirectory() as td:
             home_root = Path(td) / "home"
             plugin_root = Path(td) / "plugin_profiles"

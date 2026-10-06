@@ -499,11 +499,11 @@ def is_actionable_review_comment(
 
     author = (comment.get("author") or "").strip().lower()
     norm_builder = (builder_assignee or "").strip().lower()
-    if norm_builder and norm_builder not in ("zf-reviewer", "reviewer", "human"):
+    if norm_builder and norm_builder not in ("zf-reviewer", "human"):
         if author == norm_builder:
             return False
 
-    if author in ("zf-builder", "builder", "github-actions[bot]", "web-flow"):
+    if author in ("zf-builder", "github-actions[bot]", "web-flow"):
         return False
 
     lower_body = body.lower()

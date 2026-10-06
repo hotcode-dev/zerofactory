@@ -384,7 +384,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     cursor.execute("""
                         SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata FROM tasks
                         WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
-                           OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator', 'orchestrator'))
+                           OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator'))
                            OR (status = 'running' AND metadata LIKE '%"awaiting_pr": true%')
                            OR (status = 'done' AND (workspace_path IS NOT NULL OR metadata LIKE '%"close_pr": true%'))
                     """)
@@ -400,7 +400,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 "zf-reviewer",
                                 "human",
                                 "zf-orchestrator",
-                                "orchestrator",
                             )
                             or status == "triage"
                             or str(title or "").startswith("[Triage]")
@@ -469,55 +468,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             continue
 
                         if status == "done":
-                            # 'done' is strictly terminal: never commit, push, open
-                            # PRs, or route the task back to review. Only clean up
-                            # leftovers (stale worker / worktree / open PR & branch).
-                            if workspace_path and Path(workspace_path).exists():
-                                try:
-                                    _disp.stop_task_worker(task_id, cursor)
-                                    _disp._remove_worktree(workspace_path, repo_path)
-                                except Exception as cleanup_err:
-                                    _log.debug(
-                                        "Terminal-done cleanup failed for task %s: %s",
-                                        task_id,
-                                        cleanup_err,
-                                    )
-                            if meta.pop("close_pr", None):
-                                # Human closed the task with an open PR: archive it
-                                # (close PR + delete remote branch) so GitHub matches
-                                # the board instead of lingering open forever.
-                                try:
-                                    _subprocess.run(
-                                        [
-                                            "gh",
-                                            "pr",
-                                            "close",
-                                            row["pr_url"] or f"task/{task_id}",
-                                            "--comment",
-                                            "Task manually closed in Zero Factory; archiving this PR.",
-                                        ],
-                                        cwd=str(repo_path),
-                                        capture_output=True,
-                                        text=True,
-                                        timeout=30,
-                                    )
-                                except Exception as close_err:
-                                    _log.debug(
-                                        "PR archive for manually-done task %s failed: %s",
-                                        task_id,
-                                        close_err,
-                                    )
-                                try:
-                                    _disp._delete_remote_branch(task_id, repo_path)
-                                except Exception:
-                                    pass
-                                cursor.execute(
-                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'manual_done', 'Task manually closed by human; PR closed and remote branch deleted', ?)",
-                                    (task_id, now),
-                                )
-                            cursor.execute(
-                                "UPDATE tasks SET workspace_path = NULL, metadata = ?, updated_at = ? WHERE id = ?",
-                                (json.dumps(meta), now, task_id),
+                            _finalize_terminal_done(
+                                cursor, row, meta, workspace_path, repo_path, now
                             )
                             continue
 
@@ -530,7 +482,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 in (
                                     "zf-reviewer",
                                     "zf-orchestrator",
-                                    "orchestrator",
                                     "human",
                                 )
                                 or not workspace_path
@@ -538,537 +489,25 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             ):
                                 continue
 
-                            try:
-                                res = _subprocess.run(
-                                    [
-                                        "gh",
-                                        "pr",
-                                        "view",
-                                        f"task/{task_id}",
-                                        "--json",
-                                        "reviewDecision,state,url,mergeable,headRefOid",
-                                    ],
-                                    capture_output=True,
-                                    text=True,
-                                    cwd=str(repo_path),
-                                    timeout=10,
-                                )
-                                if res.returncode != 0 and row["pr_url"]:
-                                    res = _subprocess.run(
-                                        [
-                                            "gh",
-                                            "pr",
-                                            "view",
-                                            row["pr_url"],
-                                            "--json",
-                                            "reviewDecision,state,url,mergeable,headRefOid",
-                                        ],
-                                        capture_output=True,
-                                        text=True,
-                                        cwd=str(repo_path),
-                                        timeout=10,
-                                    )
-                                if res.returncode == 0:
-                                    pr_data = json.loads(res.stdout)
-                                    pr_state = pr_data.get("state")
-                                    decision = pr_data.get("reviewDecision")
-                                    mergeable = pr_data.get("mergeable")
-                                    current_pr_url = (
-                                        pr_data.get("url") or row["pr_url"] or ""
-                                    )
-
-                                    if pr_state == "MERGED":
-                                        _disp.stop_task_worker(task_id, cursor)
-                                        _disp._remove_worktree(
-                                            workspace_path, repo_path
-                                        )
-                                        _disp._delete_remote_branch(task_id, repo_path)
-                                        meta.pop("blocked_reason", None)
-                                        cursor.execute(
-                                            "UPDATE tasks SET status = 'done', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                            (
-                                                json.dumps(meta),
-                                                now,
-                                                task_id,
-                                            ),
-                                        )
-                                        cursor.execute(
-                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
-                                            (task_id, now),
-                                        )
-                                        continue
-                                    elif pr_state == "CLOSED":
-                                        _disp.stop_task_worker(task_id, cursor)
-                                        _disp._remove_worktree(
-                                            workspace_path, repo_path
-                                        )
-                                        _disp._delete_remote_branch(task_id, repo_path)
-                                        meta.pop("blocked_reason", None)
-                                        cursor.execute(
-                                            "UPDATE tasks SET status = 'done', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                            (
-                                                json.dumps(meta),
-                                                now,
-                                                task_id,
-                                            ),
-                                        )
-                                        cursor.execute(
-                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'closed', 'PR closed on GitHub, task archived', ?)",
-                                            (task_id, now),
-                                        )
-                                        continue
-
-                                    if meta.get("permanently_blocked") or (
-                                        row["status"] in ("running", "todo")
-                                        and not meta.get("awaiting_pr")
-                                    ):
-                                        continue
-
-                                    if mergeable == "CONFLICTING":
-                                        if row["status"] in ("blocked", "done"):
-                                            # If assignee is zf-builder and reason is review-required (worker just finished in worktree),
-                                            # builder has completed conflict resolution and is handing off to dispatcher to commit/push.
-                                            # Do not wipe the worktree; fall through to local commit/merge/push in step 3!
-                                            last_comment_is_review = False
-                                            try:
-                                                cursor.execute(
-                                                    "SELECT body FROM task_comments WHERE task_id = ? ORDER BY id DESC LIMIT 1",
-                                                    (task_id,),
-                                                )
-                                                c_row = cursor.fetchone()
-                                                if c_row and any(
-                                                    kw in str(c_row[0] or "").lower()
-                                                    for kw in (
-                                                        "review-required",
-                                                        "review required",
-                                                        "review_required",
-                                                    )
-                                                ):
-                                                    last_comment_is_review = True
-                                            except Exception:
-                                                pass
-
-                                            is_review_handoff = (
-                                                assignee not in ("zf-reviewer", "human")
-                                                and (
-                                                    str(
-                                                        meta.get("blocked_reason") or ""
-                                                    ).lower()
-                                                    in (
-                                                        "review-required",
-                                                        "review required",
-                                                        "review_required",
-                                                    )
-                                                    or last_comment_is_review
-                                                )
-                                                and workspace_path
-                                                and Path(workspace_path).exists()
-                                            )
-                                            if is_review_handoff:
-                                                pass
-                                            else:
-                                                task_meta = {}
-                                                try:
-                                                    cursor.execute(
-                                                        "SELECT metadata FROM tasks WHERE id = ?",
-                                                        (task_id,),
-                                                    )
-                                                    m_res = cursor.fetchone()
-                                                    if m_res and m_res[0]:
-                                                        task_meta = json.loads(m_res[0])
-                                                except Exception:
-                                                    pass
-                                                max_conflict_retries = int(
-                                                    os.environ.get(
-                                                        "ZEROFACTORY_MAX_CONFLICT_RETRIES",
-                                                        "3",
-                                                    )
-                                                )
-                                                if (
-                                                    int(
-                                                        task_meta.get(
-                                                            "conflict_retries", 0
-                                                        )
-                                                    )
-                                                    > max_conflict_retries
-                                                ):
-                                                    _log.debug(
-                                                        "Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling",
-                                                        task_id,
-                                                        int(
-                                                            task_meta.get(
-                                                                "conflict_retries", 0
-                                                            )
-                                                        ),
-                                                        max_conflict_retries,
-                                                    )
-                                                else:
-                                                    _disp._handle_pr_conflict_from_github(
-                                                        cursor,
-                                                        task_id,
-                                                        title,
-                                                        workspace_path,
-                                                        repo_path,
-                                                        tenant,
-                                                        db_path,
-                                                        board_slug,
-                                                        now,
-                                                    )
-                                                continue
-
-                                    if assignee not in ("zf-reviewer", "human") and (
-                                        row["status"] in ("done", "blocked")
-                                        or meta.get("awaiting_pr")
-                                    ):
-                                        pass
-                                    else:
-                                        task_meta = {}
-                                        try:
-                                            cursor.execute(
-                                                "SELECT metadata FROM tasks WHERE id = ?",
-                                                (task_id,),
-                                            )
-                                            m_res = cursor.fetchone()
-                                            if m_res and m_res[0]:
-                                                task_meta = json.loads(m_res[0])
-                                        except Exception:
-                                            pass
-
-                                        processed_cmt_ids = set(
-                                            task_meta.get(
-                                                "processed_review_comment_ids", []
-                                            )
-                                        )
-                                        additional_reviewer_usernames: set[str] = set()
-                                        if board_slug:
-                                            try:
-                                                board_row = cursor.execute(
-                                                    "SELECT additional_reviewer_usernames FROM boards WHERE slug = ?",
-                                                    (board_slug,),
-                                                ).fetchone()
-                                                if board_row and board_row[0]:
-                                                    additional_reviewer_usernames = set(
-                                                        json.loads(board_row[0])
-                                                    )
-                                            except (
-                                                TypeError,
-                                                ValueError,
-                                                json.JSONDecodeError,
-                                            ):
-                                                _log.warning(
-                                                    "Ignoring malformed additional reviewer allowlist for board %s",
-                                                    board_slug,
-                                                )
-                                        all_pr_comments = _disp.fetch_pr_review_comments(
-                                            repo_path=repo_path,
-                                            pr_url=current_pr_url,
-                                            task_id=task_id,
-                                            pr_data=pr_data,
-                                            additional_reviewer_usernames=additional_reviewer_usernames,
-                                        )
-                                        new_pr_comments = [
-                                            c
-                                            for c in all_pr_comments
-                                            if c["comment_id"] not in processed_cmt_ids
-                                        ]
-
-                                        # PR author lives in metadata (set at
-                                        # packaging); titles carry no state.
-                                        builder_author = normalize_assignee(
-                                            task_meta.get("packaged_by") or "zf-builder"
-                                        )
-
-                                        actionable_comments = [
-                                            c
-                                            for c in new_pr_comments
-                                            if _disp.is_actionable_review_comment(
-                                                c, builder_assignee=builder_author
-                                            )
-                                        ]
-                                        approval_comments = [
-                                            c
-                                            for c in new_pr_comments
-                                            if _disp.is_reviewer_approval_comment(
-                                                c.get("body", ""), c.get("state")
-                                            )
-                                        ]
-
-                                        has_actionable_feedback = bool(
-                                            actionable_comments
-                                        ) or (decision == "CHANGES_REQUESTED")
-                                        is_approved = (decision == "APPROVED") or (
-                                            bool(approval_comments)
-                                            and not has_actionable_feedback
-                                        )
-
-                                        if has_actionable_feedback and row[
-                                            "status"
-                                        ] in ("blocked", "todo"):
-                                            for c in new_pr_comments:
-                                                cmt_body = (
-                                                    _disp.format_task_comment_body(c)
-                                                )
-                                                cursor.execute(
-                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                                                    (
-                                                        task_id,
-                                                        c["author"],
-                                                        cmt_body,
-                                                        now,
-                                                    ),
-                                                )
-                                                cursor.execute(
-                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
-                                                    (
-                                                        task_id,
-                                                        c["author"],
-                                                        f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}",
-                                                        now,
-                                                    ),
-                                                )
-                                                processed_cmt_ids.add(c["comment_id"])
-
-                                                if board_slug and c.get("body"):
-                                                    try:
-                                                        try:
-                                                            from ..dashboard.plugin_api import (
-                                                                extract_and_record_memory,
-                                                            )
-                                                        except (
-                                                            ImportError,
-                                                            ValueError,
-                                                        ):
-                                                            from dashboard.plugin_api import (
-                                                                extract_and_record_memory,
-                                                            )
-                                                        extract_and_record_memory(
-                                                            conn,
-                                                            board_slug=board_slug,
-                                                            text=c["body"],
-                                                            task_id=task_id,
-                                                            author=c.get("author")
-                                                            or "zf-reviewer",
-                                                        )
-                                                    except Exception as _mem_e:
-                                                        _log.debug(
-                                                            "Auto-record memory from review comment failed: %s",
-                                                            _mem_e,
-                                                        )
-
-                                            task_meta[
-                                                "processed_review_comment_ids"
-                                            ] = list(processed_cmt_ids)
-
-                                            head_commit_sha = (
-                                                pr_data.get("headRefOid") or ""
-                                            ).strip()
-                                            if not head_commit_sha and repo_path:
-                                                try:
-                                                    rev_res = _subprocess.run(
-                                                        [
-                                                            "git",
-                                                            "rev-parse",
-                                                            f"origin/task/{task_id}",
-                                                        ],
-                                                        cwd=str(repo_path),
-                                                        capture_output=True,
-                                                        text=True,
-                                                        timeout=5,
-                                                    )
-                                                    if rev_res.returncode == 0:
-                                                        head_commit_sha = (
-                                                            rev_res.stdout.strip()
-                                                        )
-                                                except Exception:
-                                                    pass
-
-                                            last_reviewed_commit = task_meta.get(
-                                                "last_reviewed_commit"
-                                            )
-                                            commit_review_count = int(
-                                                task_meta.get("commit_review_count", 0)
-                                            )
-                                            if (
-                                                head_commit_sha
-                                                and last_reviewed_commit
-                                                != head_commit_sha
-                                            ):
-                                                commit_review_count = 0
-                                                task_meta["last_reviewed_commit"] = (
-                                                    head_commit_sha
-                                                )
-
-                                            commit_review_count += 1
-                                            task_meta["commit_review_count"] = (
-                                                commit_review_count
-                                            )
-                                            task_meta["review_round"] = (
-                                                commit_review_count
-                                            )
-
-                                            max_review_rounds = int(
-                                                os.environ.get(
-                                                    "ZEROFACTORY_MAX_REVIEW_ROUNDS", "2"
-                                                )
-                                            )
-
-                                            _disp.stop_task_worker(task_id, cursor)
-                                            _disp._remove_worktree(
-                                                workspace_path, repo_path
-                                            )
-
-                                            if commit_review_count > max_review_rounds:
-                                                commit_tag = (
-                                                    f" on commit {head_commit_sha[:7]}"
-                                                    if head_commit_sha
-                                                    else ""
-                                                )
-                                                task_meta["blocked_reason"] = (
-                                                    f"Review cap reached ({max_review_rounds} rounds{commit_tag}); escalating to human review."
-                                                )
-                                                task_meta["review_cap_reached"] = True
-                                                cursor.execute(
-                                                    "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                                    (
-                                                        json.dumps(task_meta),
-                                                        now,
-                                                        task_id,
-                                                    ),
-                                                )
-                                                cursor.execute(
-                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'review_cap_reached', ?, ?)",
-                                                    (
-                                                        task_id,
-                                                        f"Review cap reached ({max_review_rounds} review rounds on commit); escalating to human review and merge decision",
-                                                        now,
-                                                    ),
-                                                )
-                                                continue
-
-                                            cursor.execute(
-                                                "UPDATE tasks SET assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-                                                (
-                                                    builder_author,
-                                                    json.dumps(task_meta),
-                                                    now,
-                                                    task_id,
-                                                ),
-                                            )
-                                            _disp.setup_worktree(
-                                                cursor,
-                                                task_id,
-                                                title,
-                                                builder_author,
-                                                tenant,
-                                                db_path,
-                                                board_slug=board_slug,
-                                            )
-                                            reason_text = (
-                                                f"Review feedback received (Round {commit_review_count}/{max_review_rounds}, {len(actionable_comments)} actionable comment(s)), routed back to {builder_author}"
-                                                if actionable_comments
-                                                else f"Changes requested by reviewer (Round {commit_review_count}/{max_review_rounds}), routed back to {builder_author}"
-                                            )
-                                            cursor.execute(
-                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', ?, ?)",
-                                                (task_id, reason_text, now),
-                                            )
-                                            continue
-                                        elif not is_approved and new_pr_comments:
-                                            for c in new_pr_comments:
-                                                cmt_body = (
-                                                    _disp.format_task_comment_body(c)
-                                                )
-                                                cursor.execute(
-                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                                                    (
-                                                        task_id,
-                                                        c["author"],
-                                                        cmt_body,
-                                                        now,
-                                                    ),
-                                                )
-                                                processed_cmt_ids.add(c["comment_id"])
-                                            task_meta[
-                                                "processed_review_comment_ids"
-                                            ] = list(processed_cmt_ids)
-                                            cursor.execute(
-                                                "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
-                                                (
-                                                    json.dumps(task_meta),
-                                                    now,
-                                                    task_id,
-                                                ),
-                                            )
-                                        elif is_approved and row["status"] in (
-                                            "blocked",
-                                            "todo",
-                                            "running",
-                                        ):
-                                            for c in new_pr_comments:
-                                                cmt_body = (
-                                                    _disp.format_task_comment_body(c)
-                                                )
-                                                cursor.execute(
-                                                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                                                    (
-                                                        task_id,
-                                                        c["author"],
-                                                        cmt_body,
-                                                        now,
-                                                    ),
-                                                )
-                                                cursor.execute(
-                                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
-                                                    (
-                                                        task_id,
-                                                        c["author"],
-                                                        f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}",
-                                                        now,
-                                                    ),
-                                                )
-                                                processed_cmt_ids.add(c["comment_id"])
-
-                                            task_meta[
-                                                "processed_review_comment_ids"
-                                            ] = list(processed_cmt_ids)
-                                            task_meta["blocked_reason"] = (
-                                                "Reviewer approved; awaiting human merge"
-                                            )
-
-                                            _disp.stop_task_worker(task_id, cursor)
-                                            _disp._remove_worktree(
-                                                workspace_path, repo_path
-                                            )
-                                            # Awaiting-human-merge state lives in
-                                            # assignee/status only (assignee=human
-                                            # + blocked); titles carry no state.
-                                            cursor.execute(
-                                                "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
-                                                (
-                                                    json.dumps(task_meta),
-                                                    now,
-                                                    task_id,
-                                                ),
-                                            )
-                                            cursor.execute(
-                                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved PR; task assigned to human awaiting merge', ?)",
-                                                (task_id, now),
-                                            )
-                                            continue
-                            except Exception as e:
-                                _log.info(
-                                    "Reviewer PR check skipped for task %s: %s",
-                                    task_id,
-                                    e,
-                                )
-
+                            if _poll_pr_and_route_review(
+                                conn,
+                                cursor,
+                                row,
+                                meta,
+                                workspace_path,
+                                repo_path,
+                                board_slug,
+                                tenant,
+                                db_path,
+                                now,
+                            ):
+                                continue
                         if (
                             assignee
                             not in (
                                 "zf-reviewer",
                                 "human",
                                 "zf-orchestrator",
-                                "orchestrator",
                             )
                             and row["status"] != "triage"
                             and not str(title or "").startswith("[Triage]")
@@ -1101,460 +540,19 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         continue
                                 else:
                                     continue
-                            try:
-                                _disp.clean_stale_git_locks(Path(workspace_path))
-                                git_dir = _disp.get_git_dir(Path(workspace_path))
-                                is_merging = bool(
-                                    git_dir and (git_dir / "MERGE_HEAD").exists()
-                                )
-                                # Conflict history lives in metadata
-                                # (conflict_retries set by the conflict handlers);
-                                # titles carry no state.
-                                had_conflict = bool(
-                                    is_merging
-                                    or int((meta or {}).get("conflict_retries") or 0)
-                                    > 0
-                                )
-
-                                unmerged_files = _disp.get_unmerged_status_files(
-                                    Path(workspace_path)
-                                )
-                                if is_merging or unmerged_files:
-                                    files_to_scan = (
-                                        unmerged_files
-                                        if unmerged_files
-                                        else _disp.get_modified_status_files(
-                                            Path(workspace_path)
-                                        )
-                                    )
-                                    markers = _disp.check_files_for_conflict_markers(
-                                        Path(workspace_path), files_to_scan
-                                    )
-                                    if markers:
-                                        _log.warning(
-                                            "Task %s has unresolved conflict markers in worktree: %s",
-                                            task_id,
-                                            markers,
-                                        )
-                                        _disp._handle_local_merge_conflict(
-                                            cursor,
-                                            task_id,
-                                            title,
-                                            workspace_path,
-                                            markers,
-                                            now,
-                                            "Unresolved conflict markers in worktree",
-                                        )
-                                        continue
-                                    try:
-                                        _subprocess.run(
-                                            ["git", "add", "."],
-                                            check=True,
-                                            cwd=workspace_path,
-                                            capture_output=True,
-                                            timeout=60,
-                                        )
-                                    except Exception as e:
-                                        _log.warning(
-                                            "Task %s failed to stage resolved conflict files: %s",
-                                            task_id,
-                                            e,
-                                        )
-
-                                _initial_verified, initial_conflicts, _initial_err = (
-                                    _disp.check_unresolved_conflicts_safe(
-                                        Path(workspace_path)
-                                    )
-                                )
-                                if not _initial_verified:
-                                    _log.warning(
-                                        "Task %s worktree conflict state unverifiable; leaving blocked: %s",
-                                        task_id,
-                                        _initial_err,
-                                    )
-                                    cursor.execute(
-                                        "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
-                                        (now, task_id),
-                                    )
-                                    cursor.execute(
-                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_unverifiable', ?, ?)",
-                                        (
-                                            task_id,
-                                            f"Worktree conflict state could not be verified; left in blocked state (fail-closed): {_initial_err}",
-                                            now,
-                                        ),
-                                    )
-                                    conn.commit()
-                                    continue
-                                if initial_conflicts:
-                                    _log.warning(
-                                        "Task %s has unresolved conflicts in worktree: %s",
-                                        task_id,
-                                        initial_conflicts,
-                                    )
-                                    _disp._handle_local_merge_conflict(
-                                        cursor,
-                                        task_id,
-                                        title,
-                                        workspace_path,
-                                        initial_conflicts,
-                                        now,
-                                        "Unresolved conflicts in worktree",
-                                    )
-                                    continue
-
-                                # Deterministic Precommit check
-                                precommit_ok, precommit_out, precommit_code = (
-                                    _disp.run_deterministic_precommit(
-                                        Path(workspace_path)
-                                    )
-                                )
-                                if not precommit_ok:
-                                    _log.warning(
-                                        "Task %s deterministic precommit check failed (code %s): %s",
-                                        task_id,
-                                        precommit_code,
-                                        precommit_out,
-                                    )
-                                    _disp._handle_precommit_failure(
-                                        cursor,
-                                        task_id,
-                                        title,
-                                        workspace_path,
-                                        precommit_out,
-                                        now,
-                                    )
-                                    conn.commit()
-                                    continue
-
-                                if meta and (
-                                    "precommit_retries" in meta
-                                    or "last_precommit_error" in meta
-                                ):
-                                    meta.pop("precommit_retries", None)
-                                    meta.pop("last_precommit_error", None)
-                                    cursor.execute(
-                                        "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
-                                        (json.dumps(meta), now, task_id),
-                                    )
-                                    conn.commit()
-
-                                subject, commit_body = (
-                                    _disp.format_conventional_message(title, task_id)
-                                )
-                                status_res = _subprocess.run(
-                                    ["git", "status", "--porcelain"],
-                                    cwd=workspace_path,
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=5,
-                                )
-                                if status_res.stdout.strip() or is_merging:
-                                    _subprocess.run(
-                                        ["git", "add", "."],
-                                        check=True,
-                                        cwd=workspace_path,
-                                        capture_output=True,
-                                        timeout=60,
-                                    )
-                                    commit_cmd = ["git", "commit", "--no-verify"]
-                                    if is_merging:
-                                        commit_cmd.extend(
-                                            [
-                                                "-m",
-                                                "fix(merge): resolve merge conflicts with main",
-                                                "-m",
-                                                f"Task: {task_id}\n\n{title}",
-                                            ]
-                                        )
-                                    else:
-                                        commit_cmd.extend(
-                                            ["-m", subject, "-m", commit_body]
-                                        )
-                                    _subprocess.run(
-                                        commit_cmd,
-                                        check=True,
-                                        cwd=workspace_path,
-                                        capture_output=True,
-                                        timeout=60,
-                                    )
-
-                                target_branch = ""
-                                if board_slug:
-                                    try:
-                                        cursor.execute(
-                                            "SELECT target_branch FROM boards WHERE slug = ?",
-                                            (board_slug,),
-                                        )
-                                        b_row = cursor.fetchone()
-                                        if b_row and b_row[0]:
-                                            target_branch = str(b_row[0]).strip()
-                                    except Exception:
-                                        pass
-
-                                merged_ok, conflict_files, merge_err = (
-                                    _disp.pull_and_merge_main(
-                                        Path(workspace_path),
-                                        repo_path,
-                                        default_branch=target_branch or None,
-                                    )
-                                )
-                                if not merged_ok:
-                                    _log.warning(
-                                        "Task %s merge conflict with main detected: %s (%s)",
-                                        task_id,
-                                        conflict_files,
-                                        merge_err,
-                                    )
-                                    _disp._handle_local_merge_conflict(
-                                        cursor,
-                                        task_id,
-                                        title,
-                                        workspace_path,
-                                        conflict_files,
-                                        now,
-                                        merge_err,
-                                    )
-                                    continue
-
-                                (
-                                    _leftover_verified,
-                                    leftover_conflicts,
-                                    _leftover_err,
-                                ) = _disp.check_unresolved_conflicts_safe(
-                                    Path(workspace_path)
-                                )
-                                if not _leftover_verified:
-                                    _log.warning(
-                                        "Task %s post-merge conflict state unverifiable; not pushing: %s",
-                                        task_id,
-                                        _leftover_err,
-                                    )
-                                    cursor.execute(
-                                        "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
-                                        (now, task_id),
-                                    )
-                                    cursor.execute(
-                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_unverifiable', ?, ?)",
-                                        (
-                                            task_id,
-                                            f"Post-merge conflict state could not be verified; not pushing (fail-closed): {_leftover_err}",
-                                            now,
-                                        ),
-                                    )
-                                    conn.commit()
-                                    continue
-                                if leftover_conflicts:
-                                    _disp._handle_local_merge_conflict(
-                                        cursor,
-                                        task_id,
-                                        title,
-                                        workspace_path,
-                                        leftover_conflicts,
-                                        now,
-                                        "Leftover conflict markers detected after merge",
-                                    )
-                                    continue
-
-                                _subprocess.run(
-                                    ["git", "push", "-u", "origin", f"task/{task_id}"],
-                                    check=True,
-                                    cwd=workspace_path,
-                                    capture_output=True,
-                                    timeout=180,
-                                    env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-                                )
-
-                                pr_url = row["pr_url"] or ""
-                                if not pr_url:
-                                    gh_view = _subprocess.run(
-                                        [
-                                            "gh",
-                                            "pr",
-                                            "view",
-                                            f"task/{task_id}",
-                                            "--json",
-                                            "url",
-                                        ],
-                                        cwd=workspace_path,
-                                        capture_output=True,
-                                        text=True,
-                                        timeout=30,
-                                    )
-                                    if gh_view.returncode == 0:
-                                        try:
-                                            pr_url = (
-                                                json.loads(gh_view.stdout).get("url")
-                                                or ""
-                                            )
-                                        except Exception:
-                                            pr_url = ""
-                                    else:
-                                        pr_title = _disp.ai_prefix(
-                                            subject, role=assignee or "zf-builder"
-                                        )
-                                        ext_issue = (meta or {}).get(
-                                            "external_issue"
-                                        ) or {}
-                                        issue_ref = ""
-                                        if ext_issue.get(
-                                            "source"
-                                        ) == "github" and ext_issue.get("id"):
-                                            issue_ref = f"\n\nFixes #{ext_issue['id']}"
-                                        elif ext_issue.get(
-                                            "source"
-                                        ) == "jira" and ext_issue.get("key"):
-                                            j_key = ext_issue["key"]
-                                            j_url = ext_issue.get("url")
-                                            issue_ref = (
-                                                f"\n\nResolves: [{j_key}]({j_url})"
-                                                if j_url
-                                                else f"\n\nResolves: {j_key}"
-                                            )
-
-                                        pr_body = _disp.ai_prefix(
-                                            f"{commit_body}\n\nAutomated PR for task {task_id}{issue_ref}\n\nCompleted by: @{assignee}",
-                                            role=assignee or "zf-builder",
-                                        )
-                                        pr_cmd = [
-                                            "gh",
-                                            "pr",
-                                            "create",
-                                            "--title",
-                                            pr_title,
-                                            "--body",
-                                            pr_body,
-                                        ]
-                                        if target_branch:
-                                            pr_cmd.extend(["--base", target_branch])
-                                        pr_res = _subprocess.run(
-                                            pr_cmd,
-                                            check=True,
-                                            cwd=workspace_path,
-                                            capture_output=True,
-                                            text=True,
-                                            timeout=180,
-                                        )
-                                        pr_url = pr_res.stdout.strip()
-
-                                _disp.stop_task_worker(task_id, cursor)
-                                _disp._remove_worktree(workspace_path, repo_path)
-
-                                meta = {}
-                                try:
-                                    cursor.execute(
-                                        "SELECT metadata FROM tasks WHERE id = ?",
-                                        (task_id,),
-                                    )
-                                    m_row = cursor.fetchone()
-                                    if m_row and m_row[0]:
-                                        meta = json.loads(m_row[0])
-                                        meta.pop("conflict_retries", None)
-                                except Exception:
-                                    pass
-
-                                for key in (
-                                    "worker_pid",
-                                    "session_id",
-                                    "started_at",
-                                    "last_worker_failure",
-                                    "worker_failure_retries",
-                                    "blocked_reason",
-                                    "permanently_blocked",
-                                    "awaiting_pr",
-                                ):
-                                    meta.pop(key, None)
-
-                                # PR author is tracked in metadata; titles carry
-                                # no state (no [PR Opened by ...] markers).
-                                meta["packaged_by"] = assignee
-
-                                ext_issue = meta.get("external_issue") or {}
-                                if ext_issue.get("source") == "github" and pr_url:
-                                    try:
-                                        if post_issue_pr_comment(
-                                            task_id,
-                                            ext_issue,
-                                            pr_url,
-                                            cursor=cursor,
-                                            board_slug=board_slug,
-                                        ):
-                                            meta["issue_pr_comment_posted"] = True
-                                    except Exception as _cmt_err:
-                                        _log.warning(
-                                            "Issue PR reply failed for task %s (non-fatal): %s",
-                                            task_id,
-                                            _cmt_err,
-                                        )
-
-                                cursor.execute(
-                                    "UPDATE tasks SET assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'todo', updated_at = ? WHERE id = ?",
-                                    (pr_url, json.dumps(meta), now, task_id),
-                                )
-                                _disp.setup_worktree(
-                                    cursor,
-                                    task_id,
-                                    title,
-                                    "zf-reviewer",
-                                    tenant,
-                                    db_path,
-                                    board_slug=board_slug,
-                                )
-                                if had_conflict:
-                                    cursor.execute(
-                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_resolved', ?, ?)",
-                                        (
-                                            task_id,
-                                            f"Merge conflicts resolved and verified cleanly with main branch. PR updated: {pr_url}",
-                                            now,
-                                        ),
-                                    )
-                                cursor.execute(
-                                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
-                                    (
-                                        task_id,
-                                        f"PR synced with main, routed to reviewer: {pr_url}",
-                                        now,
-                                    ),
-                                )
+                            if _package_and_open_pr(
+                                conn,
+                                cursor,
+                                row,
+                                meta,
+                                workspace_path,
+                                repo_path,
+                                board_slug,
+                                tenant,
+                                db_path,
+                                now,
+                            ):
                                 prs_opened += 1
-                            except subprocess.CalledProcessError as e:
-                                err_msg = (e.stderr or "").strip() or str(e)
-                                if "No commits between" in err_msg:
-                                    _log.info(
-                                        "Task %s has no commits between main and branch; completing task without PR.",
-                                        task_id,
-                                    )
-                                    _disp.stop_task_worker(task_id, cursor)
-                                    _disp._remove_worktree(workspace_path, repo_path)
-                                    cursor.execute(
-                                        "UPDATE tasks SET workspace_path = NULL, status = 'done', updated_at = ? WHERE id = ?",
-                                        (now, task_id),
-                                    )
-                                    if had_conflict:
-                                        cursor.execute(
-                                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_resolved', 'Merge conflicts resolved cleanly with main branch', ?)",
-                                            (task_id, now),
-                                        )
-                                    cursor.execute(
-                                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'completed_no_diff', 'No commits between branch and main; task marked done', ?)",
-                                        (task_id, now),
-                                    )
-                                else:
-                                    _log.warning(
-                                        "Task %s commit/PR command failed: %s",
-                                        task_id,
-                                        err_msg,
-                                    )
-                            except subprocess.TimeoutExpired as e:
-                                _log.warning(
-                                    "Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)",
-                                    task_id,
-                                    e.timeout,
-                                    e.cmd,
-                                )
-                            except Exception as e:
-                                _log.warning("Task %s commit/PR failed: %s", task_id, e)
 
                 # 4. Capacity-driven / Idle Improvement Scanner Check
                 _disp.reap_active_scanners()
@@ -1827,6 +825,912 @@ def post_issue_pr_comment(
     except Exception as e:
         _log.warning("Failed to post issue PR comment for task %s: %s", task_id, e)
         return False
+
+
+def _poll_pr_and_route_review(
+    conn: sqlite3.Connection,
+    cursor: sqlite3.Cursor,
+    row: sqlite3.Row,
+    meta: dict[str, Any],
+    workspace_path: str | None,
+    repo_path: Path,
+    board_slug: str | None,
+    tenant: str | None,
+    db_path: Path,
+    now: int,
+) -> bool:
+    """Poll the task's PR and route on its state and review verdicts.
+
+    Returns True when the row is fully handled (the caller moves on); False
+    means fall through to the packaging flow. Handles MERGED/CLOSED
+    finalization, GitHub CONFLICTING -> builder conflict flow, and deterministic
+    verdict routing (blocked_reason_type code or GitHub reviewDecision).
+    """
+    _disp = _d()
+    task_id = str(row["id"])
+    title = row["title"]
+    assignee = row["assignee"]
+    try:
+        res = subprocess.run(
+            [
+                "gh",
+                "pr",
+                "view",
+                f"task/{task_id}",
+                "--json",
+                "reviewDecision,state,url,mergeable,headRefOid",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_path),
+            timeout=10,
+        )
+        if res.returncode != 0 and row["pr_url"]:
+            res = subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "view",
+                    row["pr_url"],
+                    "--json",
+                    "reviewDecision,state,url,mergeable,headRefOid",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=str(repo_path),
+                timeout=10,
+            )
+        if res.returncode != 0:
+            return False
+        pr_data = json.loads(res.stdout)
+        pr_state = pr_data.get("state")
+        decision = pr_data.get("reviewDecision")
+        mergeable = pr_data.get("mergeable")
+        current_pr_url = pr_data.get("url") or row["pr_url"] or ""
+
+        if pr_state == "MERGED":
+            _disp.stop_task_worker(task_id, cursor)
+            _disp._remove_worktree(workspace_path, repo_path)
+            _disp._delete_remote_branch(task_id, repo_path)
+            meta.pop("blocked_reason", None)
+            meta.pop("blocked_reason_type", None)
+            cursor.execute(
+                "UPDATE tasks SET status = 'done', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                (
+                    json.dumps(meta),
+                    now,
+                    task_id,
+                ),
+            )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
+                (task_id, now),
+            )
+            return True
+        elif pr_state == "CLOSED":
+            _disp.stop_task_worker(task_id, cursor)
+            _disp._remove_worktree(workspace_path, repo_path)
+            _disp._delete_remote_branch(task_id, repo_path)
+            meta.pop("blocked_reason", None)
+            meta.pop("blocked_reason_type", None)
+            cursor.execute(
+                "UPDATE tasks SET status = 'done', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                (
+                    json.dumps(meta),
+                    now,
+                    task_id,
+                ),
+            )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'closed', 'PR closed on GitHub, task archived', ?)",
+                (task_id, now),
+            )
+            return True
+
+        if meta.get("permanently_blocked") or (
+            row["status"] in ("running", "todo") and not meta.get("awaiting_pr")
+        ):
+            return True
+
+        if mergeable == "CONFLICTING" and row["status"] in ("blocked", "done"):
+            # PR is conflicted on GitHub: route to
+            # the builder's conflict flow (bounded
+            # by ZEROFACTORY_MAX_CONFLICT_RETRIES).
+            task_meta = {}
+            try:
+                cursor.execute(
+                    "SELECT metadata FROM tasks WHERE id = ?",
+                    (task_id,),
+                )
+                m_res = cursor.fetchone()
+                if m_res and m_res[0]:
+                    task_meta = json.loads(m_res[0])
+            except Exception:
+                pass
+            max_conflict_retries = int(
+                os.environ.get(
+                    "ZEROFACTORY_MAX_CONFLICT_RETRIES",
+                    "3",
+                )
+            )
+            if int(task_meta.get("conflict_retries", 0)) > max_conflict_retries:
+                _log.debug(
+                    "Task %s is blocked and already exceeded conflict retries (%d > %d); skipping PR conflict handling",
+                    task_id,
+                    int(task_meta.get("conflict_retries", 0)),
+                    max_conflict_retries,
+                )
+            else:
+                _disp._handle_pr_conflict_from_github(
+                    cursor,
+                    task_id,
+                    title,
+                    workspace_path,
+                    repo_path,
+                    tenant,
+                    db_path,
+                    board_slug,
+                    now,
+                )
+            return True
+
+        if assignee not in ("zf-reviewer", "human") and (
+            row["status"] in ("done", "blocked") or meta.get("awaiting_pr")
+        ):
+            return False
+
+        task_meta = {}
+        try:
+            cursor.execute(
+                "SELECT metadata FROM tasks WHERE id = ?",
+                (task_id,),
+            )
+            m_res = cursor.fetchone()
+            if m_res and m_res[0]:
+                task_meta = json.loads(m_res[0])
+        except Exception:
+            pass
+
+        processed_cmt_ids = set(task_meta.get("processed_review_comment_ids", []))
+        additional_reviewer_usernames: set[str] = set()
+        if board_slug:
+            try:
+                board_row = cursor.execute(
+                    "SELECT additional_reviewer_usernames FROM boards WHERE slug = ?",
+                    (board_slug,),
+                ).fetchone()
+                if board_row and board_row[0]:
+                    additional_reviewer_usernames = set(json.loads(board_row[0]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                _log.warning(
+                    "Ignoring malformed additional reviewer allowlist for board %s",
+                    board_slug,
+                )
+        all_pr_comments = _disp.fetch_pr_review_comments(
+            repo_path=repo_path,
+            pr_url=current_pr_url,
+            task_id=task_id,
+            pr_data=pr_data,
+            additional_reviewer_usernames=additional_reviewer_usernames,
+        )
+        new_pr_comments = [
+            c for c in all_pr_comments if c["comment_id"] not in processed_cmt_ids
+        ]
+
+        # PR author lives in metadata (set at
+        # packaging); titles carry no state.
+        builder_author = normalize_assignee(
+            task_meta.get("packaged_by") or "zf-builder"
+        )
+
+        actionable_comments = [
+            c
+            for c in new_pr_comments
+            if _disp.is_actionable_review_comment(c, builder_assignee=builder_author)
+        ]
+
+        # Verdict routing is deterministic: GitHub
+        # reviewDecision (human reviewers) or the
+        # reviewer's canonical blocked_reason_type
+        # code (`block --reason <code>`). Comments
+        # are forwarded as content only; a reviewer
+        # that crashes before signaling self-heals
+        # via the worker retry budget.
+        blocked_type = str(task_meta.get("blocked_reason_type") or "human-gate")
+        has_actionable_feedback = (
+            decision == "CHANGES_REQUESTED" or blocked_type == "changes-requested"
+        )
+        is_approved = decision == "APPROVED" or blocked_type == "approved"
+
+        if has_actionable_feedback and row["status"] in ("blocked", "todo"):
+            for c in new_pr_comments:
+                cmt_body = _disp.format_task_comment_body(c)
+                cursor.execute(
+                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                    (
+                        task_id,
+                        c["author"],
+                        cmt_body,
+                        now,
+                    ),
+                )
+                cursor.execute(
+                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
+                    (
+                        task_id,
+                        c["author"],
+                        f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}",
+                        now,
+                    ),
+                )
+                processed_cmt_ids.add(c["comment_id"])
+
+                if board_slug and c.get("body"):
+                    try:
+                        try:
+                            from ..dashboard.plugin_api import (
+                                extract_and_record_memory,
+                            )
+                        except (ImportError, ValueError):
+                            from dashboard.plugin_api import (
+                                extract_and_record_memory,
+                            )
+                        extract_and_record_memory(
+                            conn,
+                            board_slug=board_slug,
+                            text=c["body"],
+                            task_id=task_id,
+                            author=c.get("author") or "zf-reviewer",
+                        )
+                    except Exception as _mem_e:
+                        _log.debug(
+                            "Auto-record memory from review comment failed: %s",
+                            _mem_e,
+                        )
+
+            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
+
+            head_commit_sha = (pr_data.get("headRefOid") or "").strip()
+            if not head_commit_sha and repo_path:
+                try:
+                    rev_res = subprocess.run(
+                        [
+                            "git",
+                            "rev-parse",
+                            f"origin/task/{task_id}",
+                        ],
+                        cwd=str(repo_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    if rev_res.returncode == 0:
+                        head_commit_sha = rev_res.stdout.strip()
+                except Exception:
+                    pass
+
+            last_reviewed_commit = task_meta.get("last_reviewed_commit")
+            commit_review_count = int(task_meta.get("commit_review_count", 0))
+            if head_commit_sha and last_reviewed_commit != head_commit_sha:
+                commit_review_count = 0
+                task_meta["last_reviewed_commit"] = head_commit_sha
+
+            commit_review_count += 1
+            task_meta["commit_review_count"] = commit_review_count
+            task_meta["review_round"] = commit_review_count
+
+            max_review_rounds = int(
+                os.environ.get("ZEROFACTORY_MAX_REVIEW_ROUNDS", "2")
+            )
+
+            _disp.stop_task_worker(task_id, cursor)
+            _disp._remove_worktree(workspace_path, repo_path)
+
+            if commit_review_count > max_review_rounds:
+                commit_tag = (
+                    f" on commit {head_commit_sha[:7]}" if head_commit_sha else ""
+                )
+                task_meta["blocked_reason"] = (
+                    f"Review cap reached ({max_review_rounds} rounds{commit_tag}); escalating to human review."
+                )
+                task_meta["blocked_reason_type"] = "human-gate"
+                task_meta["review_cap_reached"] = True
+                cursor.execute(
+                    "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                    (
+                        json.dumps(task_meta),
+                        now,
+                        task_id,
+                    ),
+                )
+                cursor.execute(
+                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'review_cap_reached', ?, ?)",
+                    (
+                        task_id,
+                        f"Review cap reached ({max_review_rounds} review rounds on commit); escalating to human review and merge decision",
+                        now,
+                    ),
+                )
+                return True
+
+            cursor.execute(
+                "UPDATE tasks SET assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
+                (
+                    builder_author,
+                    json.dumps(task_meta),
+                    now,
+                    task_id,
+                ),
+            )
+            _disp.setup_worktree(
+                cursor,
+                task_id,
+                title,
+                builder_author,
+                tenant,
+                db_path,
+                board_slug=board_slug,
+            )
+            reason_text = (
+                f"Review feedback received (Round {commit_review_count}/{max_review_rounds}, {len(actionable_comments)} actionable comment(s)), routed back to {builder_author}"
+                if actionable_comments
+                else f"Changes requested by reviewer (Round {commit_review_count}/{max_review_rounds}), routed back to {builder_author}"
+            )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'changes_requested', ?, ?)",
+                (task_id, reason_text, now),
+            )
+            return True
+        elif not is_approved and new_pr_comments:
+            for c in new_pr_comments:
+                cmt_body = _disp.format_task_comment_body(c)
+                cursor.execute(
+                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                    (
+                        task_id,
+                        c["author"],
+                        cmt_body,
+                        now,
+                    ),
+                )
+                processed_cmt_ids.add(c["comment_id"])
+            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
+            cursor.execute(
+                "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                (
+                    json.dumps(task_meta),
+                    now,
+                    task_id,
+                ),
+            )
+        elif is_approved and row["status"] in (
+            "blocked",
+            "todo",
+            "running",
+        ):
+            for c in new_pr_comments:
+                cmt_body = _disp.format_task_comment_body(c)
+                cursor.execute(
+                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                    (
+                        task_id,
+                        c["author"],
+                        cmt_body,
+                        now,
+                    ),
+                )
+                cursor.execute(
+                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, ?, 'review_comment', ?, ?)",
+                    (
+                        task_id,
+                        c["author"],
+                        f"PR review comment on {c.get('path') or 'PR'}: {c['body'][:80]}",
+                        now,
+                    ),
+                )
+                processed_cmt_ids.add(c["comment_id"])
+
+            task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
+            task_meta["blocked_reason"] = "Reviewer approved; awaiting human merge"
+            task_meta["blocked_reason_type"] = "approved"
+
+            _disp.stop_task_worker(task_id, cursor)
+            _disp._remove_worktree(workspace_path, repo_path)
+            # Awaiting-human-merge state lives in
+            # assignee/status only (assignee=human
+            # + blocked); titles carry no state.
+            cursor.execute(
+                "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                (
+                    json.dumps(task_meta),
+                    now,
+                    task_id,
+                ),
+            )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved PR; task assigned to human awaiting merge', ?)",
+                (task_id, now),
+            )
+            return True
+        return False
+    except Exception as e:
+        _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
+        return False
+
+
+def _package_and_open_pr(
+    conn: sqlite3.Connection,
+    cursor: sqlite3.Cursor,
+    row: sqlite3.Row,
+    meta: dict[str, Any],
+    workspace_path: str | None,
+    repo_path: Path,
+    board_slug: str | None,
+    tenant: str | None,
+    db_path: Path,
+    now: int,
+) -> bool:
+    """Deterministic packaging: precommit -> commit -> merge -> push -> PR.
+
+    Returns True when a PR was opened/synced and the task was routed to the
+    reviewer. On failure the task is left in place and the next cycle retries
+    idempotently. "No commits between" completes the task as done.
+    """
+    _disp = _d()
+    task_id = str(row["id"])
+    title = row["title"]
+    assignee = row["assignee"]
+    had_conflict = False
+    try:
+        _disp.clean_stale_git_locks(Path(workspace_path))
+        git_dir = _disp.get_git_dir(Path(workspace_path))
+        is_merging = bool(git_dir and (git_dir / "MERGE_HEAD").exists())
+        # Conflict history lives in metadata
+        # (conflict_retries set by the conflict handlers);
+        # titles carry no state.
+        had_conflict = bool(
+            is_merging or int((meta or {}).get("conflict_retries") or 0) > 0
+        )
+
+        unmerged_files = _disp.get_unmerged_status_files(Path(workspace_path))
+        if is_merging or unmerged_files:
+            files_to_scan = (
+                unmerged_files
+                if unmerged_files
+                else _disp.get_modified_status_files(Path(workspace_path))
+            )
+            markers = _disp.check_files_for_conflict_markers(
+                Path(workspace_path), files_to_scan
+            )
+            if markers:
+                _log.warning(
+                    "Task %s has unresolved conflict markers in worktree: %s",
+                    task_id,
+                    markers,
+                )
+                _disp._handle_local_merge_conflict(
+                    cursor,
+                    task_id,
+                    title,
+                    workspace_path,
+                    markers,
+                    now,
+                    "Unresolved conflict markers in worktree",
+                )
+                return False
+            try:
+                subprocess.run(
+                    ["git", "add", "."],
+                    check=True,
+                    cwd=workspace_path,
+                    capture_output=True,
+                    timeout=60,
+                )
+            except Exception as e:
+                _log.warning(
+                    "Task %s failed to stage resolved conflict files: %s", task_id, e
+                )
+
+        _initial_verified, initial_conflicts, _initial_err = (
+            _disp.check_unresolved_conflicts_safe(Path(workspace_path))
+        )
+        if not _initial_verified:
+            _log.warning(
+                "Task %s worktree conflict state unverifiable; leaving blocked: %s",
+                task_id,
+                _initial_err,
+            )
+            cursor.execute(
+                "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
+                (now, task_id),
+            )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_unverifiable', ?, ?)",
+                (
+                    task_id,
+                    f"Worktree conflict state could not be verified; left in blocked state (fail-closed): {_initial_err}",
+                    now,
+                ),
+            )
+            conn.commit()
+            return False
+        if initial_conflicts:
+            _log.warning(
+                "Task %s has unresolved conflicts in worktree: %s",
+                task_id,
+                initial_conflicts,
+            )
+            _disp._handle_local_merge_conflict(
+                cursor,
+                task_id,
+                title,
+                workspace_path,
+                initial_conflicts,
+                now,
+                "Unresolved conflicts in worktree",
+            )
+            return False
+
+        # Deterministic Precommit check
+        precommit_ok, precommit_out, precommit_code = _disp.run_deterministic_precommit(
+            Path(workspace_path)
+        )
+        if not precommit_ok:
+            _log.warning(
+                "Task %s deterministic precommit check failed (code %s): %s",
+                task_id,
+                precommit_code,
+                precommit_out,
+            )
+            _disp._handle_precommit_failure(
+                cursor, task_id, title, workspace_path, precommit_out, now
+            )
+            conn.commit()
+            return False
+
+        if meta and ("precommit_retries" in meta or "last_precommit_error" in meta):
+            meta.pop("precommit_retries", None)
+            meta.pop("last_precommit_error", None)
+            cursor.execute(
+                "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
+            )
+            conn.commit()
+
+        subject, commit_body = _disp.format_conventional_message(title, task_id)
+        status_res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if status_res.stdout.strip() or is_merging:
+            subprocess.run(
+                ["git", "add", "."],
+                check=True,
+                cwd=workspace_path,
+                capture_output=True,
+                timeout=60,
+            )
+            commit_cmd = ["git", "commit", "--no-verify"]
+            if is_merging:
+                commit_cmd.extend(
+                    [
+                        "-m",
+                        "fix(merge): resolve merge conflicts with main",
+                        "-m",
+                        f"Task: {task_id}\n\n{title}",
+                    ]
+                )
+            else:
+                commit_cmd.extend(["-m", subject, "-m", commit_body])
+            subprocess.run(
+                commit_cmd,
+                check=True,
+                cwd=workspace_path,
+                capture_output=True,
+                timeout=60,
+            )
+
+        target_branch = ""
+        if board_slug:
+            try:
+                cursor.execute(
+                    "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
+                )
+                b_row = cursor.fetchone()
+                if b_row and b_row[0]:
+                    target_branch = str(b_row[0]).strip()
+            except Exception:
+                pass
+
+        merged_ok, conflict_files, merge_err = _disp.pull_and_merge_main(
+            Path(workspace_path), repo_path, default_branch=target_branch or None
+        )
+        if not merged_ok:
+            _log.warning(
+                "Task %s merge conflict with main detected: %s (%s)",
+                task_id,
+                conflict_files,
+                merge_err,
+            )
+            _disp._handle_local_merge_conflict(
+                cursor,
+                task_id,
+                title,
+                workspace_path,
+                conflict_files,
+                now,
+                merge_err,
+            )
+            return False
+
+        _leftover_verified, leftover_conflicts, _leftover_err = (
+            _disp.check_unresolved_conflicts_safe(Path(workspace_path))
+        )
+        if not _leftover_verified:
+            _log.warning(
+                "Task %s post-merge conflict state unverifiable; not pushing: %s",
+                task_id,
+                _leftover_err,
+            )
+            cursor.execute(
+                "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
+                (now, task_id),
+            )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_unverifiable', ?, ?)",
+                (
+                    task_id,
+                    f"Post-merge conflict state could not be verified; not pushing (fail-closed): {_leftover_err}",
+                    now,
+                ),
+            )
+            conn.commit()
+            return False
+        if leftover_conflicts:
+            _disp._handle_local_merge_conflict(
+                cursor,
+                task_id,
+                title,
+                workspace_path,
+                leftover_conflicts,
+                now,
+                "Leftover conflict markers detected after merge",
+            )
+            return False
+
+        subprocess.run(
+            ["git", "push", "-u", "origin", f"task/{task_id}"],
+            check=True,
+            cwd=workspace_path,
+            capture_output=True,
+            timeout=180,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+
+        pr_url = row["pr_url"] or ""
+        if not pr_url:
+            gh_view = subprocess.run(
+                ["gh", "pr", "view", f"task/{task_id}", "--json", "url"],
+                cwd=workspace_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if gh_view.returncode == 0:
+                try:
+                    pr_url = json.loads(gh_view.stdout).get("url") or ""
+                except Exception:
+                    pr_url = ""
+            else:
+                pr_title = _disp.ai_prefix(subject, role=assignee or "zf-builder")
+                ext_issue = (meta or {}).get("external_issue") or {}
+                issue_ref = ""
+                if ext_issue.get("source") == "github" and ext_issue.get("id"):
+                    issue_ref = f"\n\nFixes #{ext_issue['id']}"
+                elif ext_issue.get("source") == "jira" and ext_issue.get("key"):
+                    j_key = ext_issue["key"]
+                    j_url = ext_issue.get("url")
+                    issue_ref = (
+                        f"\n\nResolves: [{j_key}]({j_url})"
+                        if j_url
+                        else f"\n\nResolves: {j_key}"
+                    )
+
+                pr_body = _disp.ai_prefix(
+                    f"{commit_body}\n\nAutomated PR for task {task_id}{issue_ref}\n\nCompleted by: @{assignee}",
+                    role=assignee or "zf-builder",
+                )
+                pr_cmd = ["gh", "pr", "create", "--title", pr_title, "--body", pr_body]
+                if target_branch:
+                    pr_cmd.extend(["--base", target_branch])
+                pr_res = subprocess.run(
+                    pr_cmd,
+                    check=True,
+                    cwd=workspace_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                )
+                pr_url = pr_res.stdout.strip()
+
+        _disp.stop_task_worker(task_id, cursor)
+        _disp._remove_worktree(workspace_path, repo_path)
+
+        meta = {}
+        try:
+            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+            m_row = cursor.fetchone()
+            if m_row and m_row[0]:
+                meta = json.loads(m_row[0])
+                meta.pop("conflict_retries", None)
+        except Exception:
+            pass
+
+        for key in (
+            "worker_pid",
+            "session_id",
+            "started_at",
+            "last_worker_failure",
+            "worker_failure_retries",
+            "blocked_reason",
+            "blocked_reason_type",
+            "permanently_blocked",
+            "awaiting_pr",
+        ):
+            meta.pop(key, None)
+
+        # PR author is tracked in metadata; titles carry
+        # no state (no [PR Opened by ...] markers).
+        meta["packaged_by"] = assignee
+
+        ext_issue = meta.get("external_issue") or {}
+        if ext_issue.get("source") == "github" and pr_url:
+            try:
+                if post_issue_pr_comment(
+                    task_id,
+                    ext_issue,
+                    pr_url,
+                    cursor=cursor,
+                    board_slug=board_slug,
+                ):
+                    meta["issue_pr_comment_posted"] = True
+            except Exception as _cmt_err:
+                _log.warning(
+                    "Issue PR reply failed for task %s (non-fatal): %s",
+                    task_id,
+                    _cmt_err,
+                )
+
+        cursor.execute(
+            "UPDATE tasks SET assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'todo', updated_at = ? WHERE id = ?",
+            (pr_url, json.dumps(meta), now, task_id),
+        )
+        _disp.setup_worktree(
+            cursor,
+            task_id,
+            title,
+            "zf-reviewer",
+            tenant,
+            db_path,
+            board_slug=board_slug,
+        )
+        if had_conflict:
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_resolved', ?, ?)",
+                (
+                    task_id,
+                    f"Merge conflicts resolved and verified cleanly with main branch. PR updated: {pr_url}",
+                    now,
+                ),
+            )
+        cursor.execute(
+            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_opened', ?, ?)",
+            (
+                task_id,
+                f"PR synced with main, routed to reviewer: {pr_url}",
+                now,
+            ),
+        )
+        return True
+    except subprocess.CalledProcessError as e:
+        err_msg = (e.stderr or "").strip() or str(e)
+        if "No commits between" in err_msg:
+            _log.info(
+                "Task %s has no commits between main and branch; completing task without PR.",
+                task_id,
+            )
+            _disp.stop_task_worker(task_id, cursor)
+            _disp._remove_worktree(workspace_path, repo_path)
+            cursor.execute(
+                "UPDATE tasks SET workspace_path = NULL, status = 'done', updated_at = ? WHERE id = ?",
+                (now, task_id),
+            )
+            if had_conflict:
+                cursor.execute(
+                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_resolved', 'Merge conflicts resolved cleanly with main branch', ?)",
+                    (task_id, now),
+                )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'completed_no_diff', 'No commits between branch and main; task marked done', ?)",
+                (task_id, now),
+            )
+        else:
+            _log.warning("Task %s commit/PR command failed: %s", task_id, err_msg)
+        return False
+    except subprocess.TimeoutExpired as e:
+        _log.warning(
+            "Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)",
+            task_id,
+            e.timeout,
+            e.cmd,
+        )
+        return False
+    except Exception as e:
+        _log.warning("Task %s commit/PR failed: %s", task_id, e)
+        return False
+
+
+def _finalize_terminal_done(
+    cursor: sqlite3.Cursor,
+    row: sqlite3.Row,
+    meta: dict[str, Any],
+    workspace_path: str | None,
+    repo_path: Path,
+    now: int,
+) -> None:
+    """Terminal-done cleanup: 'done' is strictly terminal.
+
+    Never commit, push, open PRs, or route the task back to review — only clean
+    up leftovers (stale worker / worktree / open PR & branch) and clear the
+    workspace pointer.
+    """
+    _disp = _d()
+    task_id = str(row["id"])
+    if workspace_path and Path(workspace_path).exists():
+        try:
+            _disp.stop_task_worker(task_id, cursor)
+            _disp._remove_worktree(workspace_path, repo_path)
+        except Exception as cleanup_err:
+            _log.debug(
+                "Terminal-done cleanup failed for task %s: %s", task_id, cleanup_err
+            )
+    if meta.pop("close_pr", None):
+        # Human closed the task with an open PR: archive it (close PR + delete
+        # remote branch) so GitHub matches the board instead of lingering open.
+        try:
+            subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "close",
+                    row["pr_url"] or f"task/{task_id}",
+                    "--comment",
+                    "Task manually closed in Zero Factory; archiving this PR.",
+                ],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except Exception as close_err:
+            _log.debug(
+                "PR archive for manually-done task %s failed: %s", task_id, close_err
+            )
+        try:
+            _disp._delete_remote_branch(task_id, repo_path)
+        except Exception:
+            pass
+        cursor.execute(
+            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'manual_done', 'Task manually closed by human; PR closed and remote branch deleted', ?)",
+            (task_id, now),
+        )
+    cursor.execute(
+        "UPDATE tasks SET workspace_path = NULL, metadata = ?, updated_at = ? WHERE id = ?",
+        (json.dumps(meta), now, task_id),
+    )
 
 
 def _dispatcher_loop():

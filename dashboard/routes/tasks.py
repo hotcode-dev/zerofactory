@@ -45,6 +45,7 @@ try:
         TaskMove,
         TaskUpdate,
         normalize_assignee,
+        normalize_blocked_reason_type,
     )
     from ..session_service import resolve_task_session_progress
 except (ImportError, ValueError):
@@ -73,6 +74,7 @@ except (ImportError, ValueError):
         TaskMove,
         TaskUpdate,
         normalize_assignee,
+        normalize_blocked_reason_type,
     )
     from session_service import resolve_task_session_progress  # type: ignore
 
@@ -557,6 +559,7 @@ def stop_task_session(task_id: str, to_status: str | None = "blocked"):
 
         active_sid = meta.get("session_id")
         meta["blocked_reason"] = "AI session stopped by user"
+        meta["blocked_reason_type"] = "human-gate"
         meta.pop("worker_pid", None)
         meta.pop("session_id", None)
         meta.pop("started_at", None)
@@ -564,6 +567,7 @@ def stop_task_session(task_id: str, to_status: str | None = "blocked"):
         target_status = to_status if to_status in ["blocked", "todo"] else "blocked"
         if target_status == "todo":
             meta.pop("blocked_reason", None)
+            meta.pop("blocked_reason_type", None)
 
         cursor.execute(
             "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
@@ -737,14 +741,8 @@ def move_task(task_id: str, req: TaskMove):
             pass
 
         meta_updated = False
-        is_agent_actor = bool(
-            req.actor
-            and (
-                req.actor.startswith("zf-")
-                or req.actor in ("orchestrator", "builder", "reviewer")
-            )
-        )
-        is_orchestrator_actor = req.actor in ("zf-orchestrator", "orchestrator")
+        is_agent_actor = bool(req.actor and req.actor.startswith("zf-"))
+        is_orchestrator_actor = req.actor == "zf-orchestrator"
 
         # 'done' is strictly terminal. An agent reporting completion (builder/
         # reviewer) means "work finished — package it": the task stays 'running'
@@ -777,9 +775,15 @@ def move_task(task_id: str, req: TaskMove):
             meta.pop("close_pr", None)
             meta_updated = True
 
-        if req.status in ("todo", "running", "done") or (
-            req.status == "blocked" and req.reason == "review-required"
-        ):
+        if req.status == "blocked" and req.reason:
+            # The pair: free text for humans, canonical code for deterministic
+            # routing (agents emit one of BLOCKED_REASON_TYPES verbatim via
+            # `block --reason <code>`; other prose classifies as human-gate).
+            meta["blocked_reason"] = req.reason
+            meta["blocked_reason_type"] = normalize_blocked_reason_type(req.reason)
+            meta_updated = True
+
+        if req.status in ("todo", "running", "done"):
             if "last_worker_failure" in meta:
                 meta.pop("last_worker_failure", None)
                 meta_updated = True
@@ -790,15 +794,13 @@ def move_task(task_id: str, req: TaskMove):
                 if "worker_failure_retries" in meta:
                     meta.pop("worker_failure_retries", None)
                     meta_updated = True
-                if "blocked_reason" in meta:
+                if "blocked_reason" in meta or "blocked_reason_type" in meta:
                     meta.pop("blocked_reason", None)
+                    meta.pop("blocked_reason_type", None)
                     meta_updated = True
                 if "conflict_retries" in meta:
                     meta.pop("conflict_retries", None)
                     meta_updated = True
-            if req.status == "blocked" and req.reason:
-                meta["blocked_reason"] = req.reason
-                meta_updated = True
             if req.status == "todo" or (req.status == "done" and not is_agent_actor):
                 if "worker_pid" in meta or "session_id" in meta or "started_at" in meta:
                     meta.pop("worker_pid", None)
@@ -831,13 +833,10 @@ def move_task(task_id: str, req: TaskMove):
                         )
 
         new_assignee = getattr(req, "assignee", None)
-        if not new_assignee and (
-            req.status == "blocked"
-            and req.reason
-            and (
-                "human review" in req.reason.lower()
-                or "human merge" in req.reason.lower()
-            )
+        if (
+            not new_assignee
+            and req.status == "blocked"
+            and meta.get("blocked_reason_type") == "approved"
         ):
             new_assignee = "human"
 

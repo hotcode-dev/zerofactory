@@ -523,18 +523,17 @@ def test_run_dispatch_cycle_manual_done_archives_pr_and_stays_done(tmp_path: Pat
     assert len(close_cmds_2) == 1, "PR archival must run exactly once"
 
 
-def test_run_dispatch_cycle_blocked_review_handoff_handles_conflicting_pr(
-    tmp_path: Path,
-):
-    """When a task is blocked for review-required handoff but GitHub still reports CONFLICTING,
-    it falls through to commit/push instead of wiping worktree and re-entering conflict loop."""
+def test_run_dispatch_cycle_awaiting_pr_handles_conflicting_pr(tmp_path: Path):
+    """Builder-finished work (running + awaiting_pr) whose GitHub PR still reports
+    CONFLICTING falls through to commit/push instead of wiping the worktree and
+    re-entering the conflict loop."""
     db_path = tmp_path / "test.db"
     _init_test_db(db_path)
 
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-rev-conf', 'Fix conflict', 'desc', 'blocked', 'zf-builder', 'P1', '{\"blocked_reason\": \"review-required\"}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-rev-conf', 'Fix conflict', 'desc', 'running', 'zf-builder', 'P1', '{\"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()

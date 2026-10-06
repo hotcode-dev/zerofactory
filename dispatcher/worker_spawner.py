@@ -140,7 +140,7 @@ def spawn_agent_worker(
             f"   - In your review comment or summary, include a line: `GOTCHA: <rule>` or `CONVENTION: <rule>` (the system will auto-record it).\n"
             f'   - Or run: `hermes zerofactory memory add --board {board_slug or "default"} "<rule>" --category <gotcha|convention>`.\n'
             f"6. When finished:\n"
-            f"   - If approved: run `hermes zerofactory block {task_id} --reason 'Human Review & Merge'` (the task will be assigned to human for review/merge, and the dispatcher will automatically move the task to 'done' once merged on GitHub; DO NOT mark done yourself).\n"
+            f"   - If approved: run `hermes zerofactory block {task_id} --reason 'approved'` (the task will be assigned to human for review/merge, and the dispatcher will automatically move the task to 'done' once merged on GitHub; DO NOT mark done yourself).\n"
             f"   - If changes are requested: run `hermes zerofactory block {task_id} --reason 'changes-requested'` (the dispatcher will route it back to the builder).\n"
             f"7. Provide a clear review summary.\n"
         )
@@ -301,7 +301,7 @@ def spawn_agent_worker(
                             for r in _rows
                             if "[github review" in r["body"].lower()
                             or "[github pr" in r["body"].lower()
-                            or r["author"] in ("zf-reviewer", "reviewer")
+                            or r["author"] == "zf-reviewer"
                             or r["author"] != assignee
                         ]
                         if _rev_rows:
@@ -370,7 +370,7 @@ def spawn_agent_worker(
                     f"4. When finished, mark the task as complete using:\n"
                     f"   hermes zerofactory move {task_id} done\n"
                     f"   (or if you are genuinely blocked on human input or external dependencies, run:\n"
-                    f'   hermes zerofactory move {task_id} blocked --reason "<reason>")\n'
+                    f'   hermes zerofactory move {task_id} blocked --reason "human-gate")\n'
                     f"5. Provide a summary of your changes.\n"
                     f"   - AI ATTRIBUTION: Any GitHub PR comment you post (e.g. `gh pr comment`) MUST begin with `[AI:zf-builder]` so humans can distinguish agent output.\n\n"
                     f"NOTE: Do NOT run git commands (git add/commit/push/checkout). Your worktree is already synced with latest main. The factory dispatcher automatically stages, commits, and opens PRs upon task completion.\n"

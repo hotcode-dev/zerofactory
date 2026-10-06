@@ -87,7 +87,8 @@ flowchart TD
 | `precommit_retries`, `last_precommit_error` | `_handle_precommit_failure` | Precommit gate retry budget (max 3) |
 | `conflict_retries` | conflict handlers | Merge-conflict retry budget (`ZEROFACTORY_MAX_CONFLICT_RETRIES = 3`) |
 | `processed_review_comment_ids`, `last_reviewed_commit`, `commit_review_count`, `review_cap_reached` | step-3 review routing | Review-round bookkeeping, per commit SHA |
-| `permanently_blocked`, `blocked_reason` | reaper / dispatcher | Hard-stop marker + human-readable cause |
+| `permanently_blocked`, `blocked_reason` | reaper / dispatcher | Hard-stop marker + human-readable cause (display only) |
+| `blocked_reason_type` | `move_task` (from `block --reason <code>`), dispatcher | Canonical routing code — `changes-requested` / `approved` / `human-gate`, matched exactly, never prose |
 | `awaiting_interview`, `last_interview_reply` | orchestrator grill flow | Human interview state |
 
 ### 2.3 Titles are state-free
@@ -181,12 +182,12 @@ Polls tasks matching: `pr_url` set and not `done`, OR `blocked` with a builder a
      status `done`.
    - `CONFLICTING` → conflict resolution flow (unless a builder already resolved and is
      handing off — then fall through to packaging).
-   - **Actionable review comments or `CHANGES_REQUESTED`** → record comments (memory
+   - **`changes-requested` verdict (`blocked_reason_type`) or `reviewDecision == CHANGES_REQUESTED`** → record comments (memory
      auto-extraction runs here), bump `commit_review_count` (reset when the head SHA changes),
      remove worktree, route back to builder: `todo` + `assignee=<PR author>` + review-comment
      prompt block. When `commit_review_count > ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**)
      → escalate: `blocked` + `assignee=human` + `review_cap_reached`.
-   - **`APPROVED`** (or approval comments and no actionable feedback) → `blocked` +
+   - **`approved` verdict or `reviewDecision == APPROVED`** → `blocked` +
      `assignee=human` ("Reviewer approved; awaiting human merge").
 3. **Packaging fallback** (no PR yet, or `done`/`blocked` handoff): deterministic
    **precommit gate** (§6) → conflict checks → commit (conventional message) → merge latest
@@ -240,7 +241,7 @@ Common blocks on every prompt: task header (id/title/priority/description/worksp
 | Conflict resolution | `zf-builder` | conflicted file list + resolution rules | `move <id> done` |
 | Precommit self-heal | `zf-builder` | 🚨 precommit failure output + reproduce/fix loop | `move <id> done` |
 | Changes requested | `zf-builder` | 🚨 PR review comments block (pre-digested) | `move <id> blocked --reason "review-required"` |
-| Thematic review | `zf-reviewer` | pre-digested git context (commits, diffstat, truncated diff) | `block <id> --reason "Human Review & Merge"` or `--reason "changes-requested"` |
+| Thematic review | `zf-reviewer` | pre-digested git context (commits, diffstat, truncated diff) | `block <id> --reason "approved"` or `--reason "changes-requested"` |
 | Triage / scan | `zf-orchestrator` | task comments, OpenWiki hints, scanner pre-digest | decomposition via task create / `move` to `todo` |
 
 ```mermaid
@@ -259,7 +260,7 @@ sequenceDiagram
     D->>B: session 3 — 🚨 review comments block (fresh session)
     B-->>D: blocked review-required -> packaging re-sync
     D->>R: session 4 — re-review (round 2, per commit SHA)
-    R-->>D: block --reason "Human Review & Merge"
+    R-->>D: block --reason approved
     D->>H: blocked + assignee=human — awaiting merge
     H->>GitHub: merge PR
     D->>D: gh pr view MERGED -> done (terminal)
@@ -325,15 +326,18 @@ flowchart TD
 ## 8. Thematic Review Loop (agentic review, deterministic routing)
 
 The **reviewer never merges** and never uses `--approve`/`--request-changes` (GitHub blocks
-self-approval); it posts `[AI:zf-reviewer]`-prefixed review comments. The **dispatcher**
-interprets them deterministically:
+self-approval); it posts `[AI:zf-reviewer]`-prefixed review comments and signals its verdict
+with a canonical code (`hermes zerofactory block <id> --reason <code>`). The **dispatcher**
+routes on deterministic signals only — GitHub `reviewDecision` (human reviewers) or the
+task's `blocked_reason_type` code. Comments are forwarded as content only; a reviewer that
+crashes before signaling self-heals via the worker retry budget:
 
 | Signal detected in step 3 | Route |
 |---|---|
-| Actionable comments or `reviewDecision == CHANGES_REQUESTED` | `todo` + builder + 🚨 review-comment block (round counter++) |
-| `APPROVED` (or approval comment, no actionable feedback) | `blocked` + `human` |
+| `blocked_reason_type == changes-requested` or `reviewDecision == CHANGES_REQUESTED` | `todo` + builder + 🚨 review-comment block (round counter++) |
+| `blocked_reason_type == approved` or `reviewDecision == APPROVED` | `blocked` + `human` |
 | `commit_review_count > 2` (per commit SHA; resets on new commits) | escalate `blocked` + `human` + `review_cap_reached` |
-| Neither (neutral chatter) | record comments only; no routing |
+| Neither (comments only) | record comments only; no routing |
 
 Review rounds are **themed** (round 1: correctness/tests/security/Ponytail gatekeeping;
 round 2: verification & polish) and hard-capped — the dispatcher is the enforcement point,

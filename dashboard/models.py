@@ -20,6 +20,7 @@ try:
         UNASSIGNED,
         VALID_ASSIGNEES,
         normalize_assignee,
+        normalize_blocked_reason_type,
     )
 except (ImportError, ValueError):
     from paths import (  # type: ignore
@@ -28,6 +29,7 @@ except (ImportError, ValueError):
         UNASSIGNED,
         VALID_ASSIGNEES,
         normalize_assignee,
+        normalize_blocked_reason_type,
     )
 
 VALID_STATUSES = {"triage", "todo", "running", "blocked", "done"}

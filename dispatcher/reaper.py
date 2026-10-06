@@ -153,7 +153,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
 
                     is_triage_task = (
                         curr_stat == "triage"
-                        or curr_asgn in ("zf-orchestrator", "orchestrator")
+                        or curr_asgn == "zf-orchestrator"
                         or "[Triage]" in curr_title
                     )
                     blocked_reason = str(meta.get("blocked_reason") or "").lower()
