@@ -15,6 +15,13 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
+# Pin the repository's own `tests` package in sys.modules before anything else
+# can shadow the top-level name: the dispatcher import chain inserts foreign
+# roots (e.g. ~/.hermes/hermes-agent) into sys.path, and that repo's own `tests/`
+# package would otherwise win `import tests` and break `from tests.unit...`
+# imports inside test modules (order-dependent ModuleNotFoundError).
+import tests  # noqa: E402
+
 # Ensure hermetic defaults before any tests run
 os.environ.setdefault("ZEROFACTORY_SKIP_GIT", "1")
 os.environ.setdefault("ZEROFACTORY_SKIP_CRON_SYNC", "1")

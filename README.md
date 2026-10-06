@@ -27,6 +27,8 @@ graph TD
     Blocked -->|Human Merges PR| Done[Kanban: Done]:::kanban
 ```
 
+> 📘 **Deep-dive reference**: every flow and its exact logic — deterministic engine and agentic workers — is documented step-by-step with Mermaid diagrams in [`docs/FLOWS.md`](docs/FLOWS.md).
+
 ---
 
 ## Core Principles
