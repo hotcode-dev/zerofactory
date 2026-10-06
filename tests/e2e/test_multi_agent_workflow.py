@@ -436,6 +436,77 @@ class TestMultiAgentLifecycleE2E(unittest.TestCase):
         acts = get_activities(limit=20)["activities"]
         self.assertTrue(any(a["action"] == "unblock" for a in acts))
 
+    def test_05_manually_done_task_is_terminal_and_never_redispatched(self):
+        """A human moving a task to 'done' is terminal: the dispatcher must not
+        package it, open a PR, or route it back to 'todo' afterwards."""
+        t_res = create_task(
+            TaskCreate(
+                board_slug=self.board_slug,
+                title="Manually Closed Task",
+                description="Must stay done once closed by a human",
+                status="todo",
+                assignee="zf-builder",
+                priority="P2",
+            )
+        )
+        task_id = t_res["id"]
+
+        # Dispatch -> running with a real worktree
+        disp_res = dispatcher.run_dispatch_cycle(self.db_path)
+        self.assertTrue(disp_res["ok"])
+        t_info = get_task(task_id)["task"]
+        self.assertEqual(t_info["status"], "running")
+        worktree_path = Path(t_info["workspace_path"])
+        self.assertTrue(worktree_path.exists())
+
+        # Human closes the task manually while the worktree still exists
+        move_task(task_id, TaskMove(status="done", actor="user"))
+        self.assertEqual(get_task(task_id)["task"]["status"], "done")
+
+        # Even with git/gh fully functional, the task must stay done
+        pr_url = "https://github.com/example/repo/pull/555"
+        orig_run = subprocess.run
+
+        def mock_gh_run(cmd, *args, **kwargs):
+            if isinstance(cmd, (list, tuple)) and cmd and cmd[0] == "gh":
+                if "create" in cmd:
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=0, stdout=pr_url, stderr=""
+                    )
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=1, stdout="", stderr="not found"
+                )
+            if (
+                isinstance(cmd, (list, tuple))
+                and len(cmd) >= 2
+                and cmd[0] == "git"
+                and cmd[1] == "push"
+            ):
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout="", stderr=""
+                )
+            return orig_run(cmd, *args, **kwargs)
+
+        with patch("subprocess.run", side_effect=mock_gh_run):
+            disp_res2 = dispatcher.run_dispatch_cycle(self.db_path)
+        self.assertTrue(disp_res2["ok"])
+
+        # Regression: the task must NOT have been dispatched back to todo/reviewer
+        t_info2 = get_task(task_id)["task"]
+        self.assertEqual(t_info2["status"], "done")
+        self.assertNotEqual(t_info2["assignee"], "zf-reviewer")
+        self.assertIsNone(t_info2.get("workspace_path"))
+        self.assertFalse(worktree_path.exists())
+        actions = [a["action"] for a in t_info2["activity"]]
+        self.assertNotIn("pr_opened", actions)
+        self.assertNotIn("changes_requested", actions)
+
+        with sqlite3.connect(str(self.db_path)) as conn:
+            meta_raw = conn.execute(
+                "SELECT metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()[0]
+        self.assertNotIn("awaiting_pr", meta_raw or "")
+
 
 if __name__ == "__main__":
     unittest.main()

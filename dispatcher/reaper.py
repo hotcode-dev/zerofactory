@@ -176,6 +176,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         target_status = "triage"
                     else:
                         target_status = "done"
+                        # Auto-detected builder completion: flag the dispatcher to
+                        # package the worktree (precommit -> commit -> push -> PR ->
+                        # reviewer). Human-closed tasks never carry this flag and are
+                        # therefore terminal once marked done.
+                        meta["awaiting_pr"] = True
 
                     cursor.execute(
                         "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",

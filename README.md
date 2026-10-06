@@ -261,7 +261,7 @@ Zero Factory enforces a strict, deterministic precommit quality gate for every t
 
 1. **`format` (Format & Lint)**:
    - Enforces repository-wide code formatting and deterministic lint fixing (e.g., `ruff check --fix .` and `ruff format .` for Python, `prettier`/`eslint` for JS/TS, `gofmt` for Go, `cargo fmt` for Rust).
-   - **Self-bootstrapping**: If required linter binaries are missing from the environment, the script automatically installs them to the system (e.g., via `uv tool install ruff@latest` or `pip3 install --user ruff`).
+   - **Self-bootstrapping**: If required linter binaries are missing from the environment, the script automatically installs them to the system (e.g., via `uv tool install ruff@latest` or `pip3 install --user ruff`). The test phase likewise auto-installs the pinned test stack (pytest + plugin runtime deps) and never falls back to `unittest` discovery — the suite is pytest-based.
    - Any auto-formatted files are staged automatically by the dispatcher.
 2. **`build` (Static Compilation & Typecheck)**:
    - Validates that all sources compile cleanly with zero syntax or packaging errors (e.g., `python3 -m compileall`, `tsc --noEmit`, `cargo check`, `go build ./...`).
