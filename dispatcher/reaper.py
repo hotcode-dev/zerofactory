@@ -235,7 +235,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                             f"Worker process failed {fail_retries} times (limit {max_worker_retries})"
                         )
                         cursor.execute(
-                            "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                             (json.dumps(meta), now, task_id),
                         )
                         cursor.execute(

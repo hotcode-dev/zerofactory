@@ -326,7 +326,7 @@ def _handle_local_merge_conflict(
 
     if retries > max_conflict_retries:
         cursor.execute(
-            "UPDATE tasks SET assignee = 'zf-builder', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
             (json.dumps(meta), now, task_id),
         )
         cursor.execute(
@@ -525,8 +525,8 @@ def _handle_pr_conflict_from_github(
 
     if retries > max_conflict_retries:
         cursor.execute(
-            "UPDATE tasks SET assignee = ?, status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (author, json.dumps(meta), now, task_id),
+            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(meta), now, task_id),
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
@@ -677,7 +677,7 @@ def _handle_precommit_failure(
 
     if retries > max_retries:
         cursor.execute(
-            "UPDATE tasks SET assignee = 'zf-builder', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
             (json.dumps(meta), now, task_id),
         )
         cursor.execute(

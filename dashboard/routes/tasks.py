@@ -569,8 +569,10 @@ def stop_task_session(task_id: str, to_status: str | None = "blocked"):
             meta.pop("blocked_reason", None)
             meta.pop("blocked_reason_type", None)
 
+        # 'blocked' is the human gate: parked tasks belong to the human queue.
+        assignee_set = ", assignee = 'human'" if target_status == "blocked" else ""
         cursor.execute(
-            "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
+            f"UPDATE tasks SET status = ?{assignee_set}, metadata = ?, updated_at = ? WHERE id = ?",
             (target_status, json.dumps(meta), now, task_id),
         )
 
@@ -833,10 +835,13 @@ def move_task(task_id: str, req: TaskMove):
                         )
 
         new_assignee = getattr(req, "assignee", None)
+        # 'blocked' is the human gate: every parked task belongs to the human
+        # queue (approved merges, escalations, manual gates). The sole exception
+        # is 'changes-requested', which is builder-bound feedback.
         if (
             not new_assignee
             and req.status == "blocked"
-            and meta.get("blocked_reason_type") == "approved"
+            and meta.get("blocked_reason_type") != "changes-requested"
         ):
             new_assignee = "human"
 

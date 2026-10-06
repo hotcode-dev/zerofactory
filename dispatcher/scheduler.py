@@ -1341,7 +1341,7 @@ def _package_and_open_pr(
                 _initial_err,
             )
             cursor.execute(
-                "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
+                "UPDATE tasks SET assignee = 'human', status = 'blocked', updated_at = ? WHERE id = ?",
                 (now, task_id),
             )
             cursor.execute(
@@ -1476,7 +1476,7 @@ def _package_and_open_pr(
                 _leftover_err,
             )
             cursor.execute(
-                "UPDATE tasks SET status = 'blocked', updated_at = ? WHERE id = ?",
+                "UPDATE tasks SET assignee = 'human', status = 'blocked', updated_at = ? WHERE id = ?",
                 (now, task_id),
             )
             cursor.execute(

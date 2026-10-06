@@ -252,6 +252,62 @@ def test_move_done_semantics_human_terminal_vs_agent_awaiting_pr(
     assert _metadata(task_id).get("close_pr") is None
 
 
+def test_blocked_assigns_human_except_changes_requested(
+    api_client: TestClient, default_board: str
+):
+    """'blocked' parks the task on the human queue (assignee=human); the sole
+    exception is 'changes-requested', which is builder-bound feedback."""
+
+    def _assignee(task_id: str) -> str:
+        return api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()[
+            "task"
+        ]["assignee"]
+
+    def _new_task(title: str) -> str:
+        return api_client.post(
+            "/api/plugins/zerofactory/tasks",
+            json={
+                "title": title,
+                "board_slug": default_board,
+                "status": "todo",
+                "assignee": "zf-builder",
+            },
+        ).json()["id"]
+
+    # 1. Reviewer verdict prose (classifies as human-gate) -> human queue
+    t1 = _new_task("Approved Merge Gate")
+    res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{t1}/move",
+        json={
+            "status": "blocked",
+            "actor": "zf-reviewer",
+            "reason": "Human Review & Merge",
+        },
+    )
+    assert res.status_code == 200
+    assert _assignee(t1) == "human"
+
+    # 2. Canonical 'approved' code -> human queue
+    t2 = _new_task("Approved Canonical Code")
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{t2}/move",
+        json={"status": "blocked", "actor": "zf-reviewer", "reason": "approved"},
+    )
+    assert _assignee(t2) == "human"
+
+    # 3. 'changes-requested' is builder-bound feedback -> assignee unchanged
+    t3 = _new_task("Changes Requested Feedback")
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{t3}/move",
+        json={
+            "status": "blocked",
+            "actor": "zf-reviewer",
+            "reason": "changes-requested",
+        },
+    )
+    assert _assignee(t3) == "zf-builder"
+
+
 def test_unknown_status_rejected(api_client: TestClient, default_board: str):
     """Unknown status values are rejected by the move endpoint."""
     task_id = api_client.post(
