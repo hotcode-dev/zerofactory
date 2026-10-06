@@ -273,9 +273,9 @@ def format_conventional_message(title: str, task_id: str = "") -> tuple[str, str
       body: Task: <task_id>\n\n<title>
     """
     raw_title = title
-    # 1. Strip role and priority badges
+    # 1. Strip attribution and priority badges
     cleaned = re.sub(
-        r"\[(?:AI(?::\w+)?|zf-builder|zf-reviewer|zf-orchestrator|PR Opened by .*?|P[0-3]|p[0-3])\]",
+        r"\[(?:AI(?::\w+)?|P[0-3]|p[0-3])\]",
         "",
         title,
     )

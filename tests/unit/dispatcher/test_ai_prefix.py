@@ -1,4 +1,4 @@
-"""Unit tests for the `[AI]` attribution prefix applied to agent-authored GitHub PRs/comments."""
+"""Unit tests for the `[AI:<role>]` attribution prefix applied to agent-authored GitHub PRs/comments."""
 
 import subprocess
 from unittest.mock import patch
@@ -14,7 +14,6 @@ class TestAiPrefix:
 
     def test_idempotent_on_existing_prefix(self):
         assert ai_prefix("[AI:zf-builder] Fix bug") == "[AI:zf-builder] Fix bug"
-        assert ai_prefix("[AI] Fix bug") == "[AI] Fix bug"
         assert ai_prefix("[AI:zf-reviewer] Fix bug") == "[AI:zf-reviewer] Fix bug"
 
     def test_custom_role(self):
@@ -38,7 +37,7 @@ class TestAiPrefix:
 
 
 class TestDispatcherPrCreationUsesAiPrefix:
-    """The dispatcher's `gh pr create` call must prefix title and body with `[AI]`."""
+    """The dispatcher's `gh pr create` call must prefix title and body with `[AI:<role>]`."""
 
     def test_pr_create_command_captures_ai_prefixed_title_and_body(self):
         """Exercise the scheduler PR-open code path via the fake-gh e2e pattern."""

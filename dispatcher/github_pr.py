@@ -318,21 +318,20 @@ def fetch_pr_review_comments(
     return comments
 
 
-AI_PREFIX_RE = re.compile(r"^\[AI(?::[a-zA-Z0-9_-]+)?\]")
+AI_PREFIX_RE = re.compile(r"^\[AI:[a-zA-Z0-9_-]+\]")
 
 
 def ai_prefix(text: str, role: str = "zf-builder") -> str:
-    """Prefix agent-authored GitHub text (PR titles/bodies, review comments) with `[AI:zf-builder]`.
+    """Prefix agent-authored GitHub text (PR titles/bodies, review comments) with `[AI:<role>]`.
 
-    Idempotent: text that already starts with an AI attribution marker (e.g. `[AI:zf-builder]`,
-    `[AI:zf-reviewer]`, or legacy `[AI]`) is returned unchanged so re-writes (e.g. re-opening
-    a PR) never produce a doubled prefix.
+    Idempotent: text that already starts with a canonical `[AI:<role>]`
+    attribution marker is returned unchanged so re-writes (e.g. re-opening a PR)
+    never produce a doubled prefix.
     """
     stripped = (text or "").lstrip()
     if not stripped or AI_PREFIX_RE.match(stripped):
         return text or ""
-    tag = f"[AI:{role}]" if role else "[AI]"
-    return f"{tag} {stripped}"
+    return f"[AI:{role or 'zf-builder'}] {stripped}"
 
 
 def format_task_comment_body(comment: dict[str, Any]) -> str:
@@ -453,10 +452,10 @@ def is_reviewer_approval_comment(comment_body: str, state: str | None = None) ->
         return True
 
     # Check for approval prefix / headline: e.g.
-    # "[AI] [Reviewer Feedback] Round 1: Correctness & Tests — APPROVED for human review"
+    # "[AI:zf-reviewer] [Reviewer Feedback] Round 1: Correctness & Tests — APPROVED for human review"
     # or "Approved for human review." or "Approved."
     clean_prefix = re.sub(
-        r"^(\[ai(?::[a-zA-Z0-9_-]+)?\]|\s|\[reviewer feedback\]|[#*`~✅🎉\-\:—]|\bround\s+\d+:?)*",
+        r"^(\[ai:[a-zA-Z0-9_-]+\]|\s|\[reviewer feedback\]|[#*`~✅🎉\-\:—]|\bround\s+\d+:?)*",
         "",
         lower,
     ).strip()
@@ -511,10 +510,6 @@ def is_actionable_review_comment(
     # Informational or builder-authored notes
     builder_markers = [
         "[ai:zf-builder]",
-        "[ai:builder]",
-        "[ai:zf-task-planner]",
-        "[ai:planner]",
-        "[ai] builder verification",
         "builder verification",
         "resolution summary:",
         "dedup note:",

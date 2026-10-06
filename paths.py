@@ -1,8 +1,7 @@
 """Zero Factory — shared profile-path resolution & assignee normalization.
 
-Single source of truth for the two things the dispatcher (``dispatcher.py``) and
-the dashboard (``dashboard/plugin_api.py``) each used to re-implement and have
-let drift apart:
+Single source of truth shared by the dispatcher (``dispatcher.py``) and the
+dashboard (``dashboard/plugin_api.py``):
 
 * **canonical assignee normalization** — mapping a raw assignee string onto the
   recognized ``zf-*`` specialist profiles (or ``"unassigned"``);
@@ -10,9 +9,9 @@ let drift apart:
   database for a given agent profile so a spawned worker's ``session_id`` can be
   correlated with a real Hermes session.
 
-Both consumers import from this module instead of carrying their own copies, so
-the alias table, the valid-profile set, the normalizer, and the state.db
-resolution strategy can no longer diverge between the two surfaces.
+Both consumers import from this module, so the valid-profile set, the
+normalizer, and the state.db resolution strategy stay identical across both
+surfaces.
 
 Resolution strategy for ``resolve_profile_state_db``
 ---------------------------------------------------
@@ -131,8 +130,7 @@ def resolve_profile_state_db(assignee: str) -> Path | None:
 
     ``"unassigned"`` is treated like any other key: the per-profile candidates
     simply do not exist for it, so it falls through to the global
-    ``~/.hermes/state.db`` (matching the dashboard's historical behavior) and
-    ``None`` when nothing is present.
+    ``~/.hermes/state.db`` and ``None`` when nothing is present.
     """
     norm_asgn = normalize_assignee(assignee)
 

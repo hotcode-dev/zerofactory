@@ -203,7 +203,7 @@ def test_run_dispatch_cycle_skips_pr_conflict_for_queued_or_builder_task(
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-todo', 'Feature [PR Conflict]', '', 'todo', 'zf-builder', 'P0', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/10', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-conf-todo', 'Feature', '', 'todo', 'zf-builder', 'P0', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/10', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -259,7 +259,7 @@ def test_run_dispatch_cycle_routes_blocked_human_pr_conflict_to_builder(tmp_path
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-blocked', 'Feature [Human Review]', '', 'blocked', 'human', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/20', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-conf-blocked', 'Feature', '', 'blocked', 'human', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/20', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -308,7 +308,7 @@ def test_run_dispatch_cycle_routes_blocked_builder_pr_conflict_to_builder(
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-builder-blocked', 'Feature [PR Conflict]', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/30', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-conf-builder-blocked', 'Feature', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/30', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -355,7 +355,7 @@ def test_run_dispatch_cycle_logs_conflict_fixing_activity(tmp_path: Path):
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-fix-conf', 'Fix feature [PR Conflict]', 'desc', 'todo', 'zf-builder', 'P1', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-fix-conf', 'Fix feature', 'desc', 'todo', 'zf-builder', 'P1', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', '', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -397,7 +397,7 @@ def test_run_dispatch_cycle_logs_conflict_resolved_activity(tmp_path: Path):
         # 'running' + awaiting_pr marks builder-finished work in the dispatcher
         # packaging phase (PR sync); 'done' is strictly terminal.
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-res', 'Fix feature [PR Conflict]', 'desc', 'running', 'zf-builder', 'P1', '{\"conflict_retries\": 1, \"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-conf-res', 'Fix feature', 'desc', 'running', 'zf-builder', 'P1', '{\"conflict_retries\": 1, \"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -457,7 +457,7 @@ def test_run_dispatch_cycle_manual_done_archives_pr_and_stays_done(tmp_path: Pat
     with sqlite3.connect(str(db_path)) as conn:
         # 'close_pr' is set by move_task when a human closes a task with an open PR
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-manual-done', 'Ship feature [Human Review]', 'desc', 'done', 'zf-reviewer', 'P1', '{\"close_pr\": true}', '[]', '', NULL, '', 'b1', '', 'https://github.com/foo/bar/pull/77', ?, ?)",
+            "INSERT INTO tasks VALUES ('t-manual-done', 'Ship feature', 'desc', 'done', 'zf-reviewer', 'P1', '{\"close_pr\": true}', '[]', '', NULL, '', 'b1', '', 'https://github.com/foo/bar/pull/77', ?, ?)",
             (now, now),
         )
         conn.commit()

@@ -35,7 +35,7 @@ def _compute_stuck_state(
     Single source of truth for stuck-worker semantics, shared by
     ``reap_active_workers()`` (the only path that kills processes) and
     ``check_stuck_tasks()`` (the reporting/manual-reap detector) so the two
-    gates can no longer drift apart.
+    gates cannot drift apart.
     """
     running_seconds = max(0, now - int(started_at))
 

@@ -6,7 +6,7 @@ Tests:
    - Explicit approval phrases (APPROVED for human review, verdict: approve, etc.)
    - Rejection when changes are requested ("please fix", "changes requested", etc.)
 2. is_actionable_review_comment:
-   - Filters out builder verification notes ([AI] Builder verification...)
+   - Filters out builder verification notes ([AI:zf-builder] Builder verification...)
    - Filters out builder resolution summaries and dedup notes
    - Filters out approval comments
    - Preserves actionable reviewer feedback and change requests
@@ -36,7 +36,7 @@ from dispatcher import (
 class TestReviewerApprovalComment:
     def test_approval_with_no_test_changes_needed(self):
         body = (
-            "[AI] [Reviewer Feedback] Round 1: Correctness & Tests — APPROVED for human review\n\n"
+            "[AI:zf-reviewer] [Reviewer Feedback] Round 1: Correctness & Tests — APPROVED for human review\n\n"
             "- npm test: 224 passed / 0 failed. No test changes needed, exactly as the task predicted.\n"
             "Good fix."
         )
@@ -90,7 +90,7 @@ class TestActionableReviewComment:
     def test_filters_builder_verification_note(self):
         comment = {
             "author": "ntsd",
-            "body": "[AI] Builder verification (Round 2): the alias-only refactor from commit 503fffb verified cleanly.",
+            "body": "[AI:zf-builder] Builder verification (Round 2): the alias-only refactor from commit 503fffb verified cleanly.",
             "state": "COMMENTED",
         }
         assert (
@@ -112,7 +112,7 @@ class TestActionableReviewComment:
     def test_filters_dedup_note(self):
         comment = {
             "author": "zf-orchestrator",
-            "body": "[AI] Dedup note: skipped duplicate task.",
+            "body": "[AI:zf-builder] Dedup note: skipped duplicate task.",
             "state": "COMMENTED",
         }
         assert (
@@ -344,7 +344,7 @@ class TestReviewCapPerCommit:
                 """,
                 (
                     task_id,
-                    "feat: test review cap [PR Opened by zf-builder]",
+                    "feat: test review cap",
                     json.dumps(initial_meta),
                     str(tmp_path / "wt"),
                 ),
@@ -450,7 +450,7 @@ class TestReviewCapPerCommit:
                 """,
                 (
                     task_id,
-                    "feat: test new commit [PR Opened by zf-builder]",
+                    "feat: test new commit",
                     json.dumps(initial_meta),
                     str(tmp_path / "wt2"),
                 ),
@@ -538,7 +538,7 @@ class TestReviewCapPerCommit:
                 """,
                 (
                     task_id,
-                    "feat: test builder note [PR Opened by zf-builder]",
+                    "feat: test builder note",
                     json.dumps(initial_meta),
                     str(tmp_path / "wt3"),
                 ),
@@ -561,7 +561,7 @@ class TestReviewCapPerCommit:
                 "type": "pr_comment",
                 "author": "zf-builder",
                 "state": "COMMENTED",
-                "body": "[AI] Builder verification (Round 2): tests verified cleanly.",
+                "body": "[AI:zf-builder] Builder verification (Round 2): tests verified cleanly.",
             }
         ]
 
@@ -608,7 +608,7 @@ class TestReviewCapPerCommit:
                 "SELECT author, body FROM task_comments WHERE task_id = ?", (task_id,)
             ).fetchone()
             assert comment_row is not None
-            assert "[AI] Builder verification" in comment_row["body"]
+            assert "[AI:zf-builder] Builder verification" in comment_row["body"]
 
             # ID added to processed_review_comment_ids
             meta = json.loads(row["metadata"])

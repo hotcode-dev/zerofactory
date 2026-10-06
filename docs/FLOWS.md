@@ -79,7 +79,7 @@ flowchart TD
 | `awaiting_pr` | reaper (worker exit 0), `move_task` by agents | Builder work finished; the task stays `running` while the dispatcher packages → PR → reviewer |
 | `close_pr` | `move_task` by humans when `pr_url` exists | Human closed task; dispatcher must archive the PR + remote branch |
 | `issue_pr_comment_posted` | dispatcher after issue reply | Source-issue reply already sent (extra dedup guard) |
-| `packaged_by` | dispatcher at PR packaging | Assignee that authored the packaged PR (review reroute target) — replaces the old `[PR Opened by X]` title marker |
+| `packaged_by` | dispatcher at PR packaging | Assignee that authored the packaged PR (review reroute target) |
 | `external_issue` | issue importer | `{source: github\|jira, id, key, repo_or_project, has_ai_request, url}` |
 | `worker_pid`, `session_id`, `started_at` | worker spawner | Active worker bookkeeping |
 | `sessions[]` | worker spawner / reaper | Per-handoff session log (`ongoing` → `finished`/`aborted`/`timed_out`/`failed`) |

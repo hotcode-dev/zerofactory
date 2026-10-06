@@ -33,7 +33,7 @@ from typing import Any
 DEFAULT_MAX_ACTIVE_TASKS = 10
 
 # Global cap on concurrent LLM workers across boards (tasks and scans).
-# Keep the legacy task WIP limit independent from the process capacity limit.
+# Keep the task WIP limit independent from the process capacity limit.
 DEFAULT_MAX_CONCURRENT_LLM_WORKERS = 10
 
 # Fallback cap for concurrent active agent worker subprocesses ('running').
@@ -129,7 +129,7 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
 
     Accepts a ``sqlite3`` connection or cursor. Every key falls back to its
     module default when the row is missing or its value cannot be parsed,
-    preserving the historical clamping semantics (``max(1, ...)`` /
+    preserving the clamping semantics (``max(1, ...)`` /
     ``max(0, ...)``). Unknown keys in the table are ignored.
 
     Returns a dict with exactly the :data:`SETTING_KEYS` in their native
@@ -152,7 +152,7 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
     try:
         rows = conn_or_cursor.execute("SELECT key, value FROM settings").fetchall()
     except Exception:
-        # No settings table (legacy/minimal DB) — return defaults unchanged.
+        # No settings table (minimal DB) — return defaults unchanged.
         return settings
 
     for row in rows:

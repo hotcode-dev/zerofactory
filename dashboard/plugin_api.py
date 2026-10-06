@@ -292,7 +292,6 @@ try:
     from .routes.dispatch import (
         get_dispatch_status,
         get_stuck_tasks,
-        import_legacy,
         reap_all_stuck_tasks,
         reap_single_task,
         trigger_dispatch,
@@ -366,7 +365,6 @@ except (ImportError, ValueError):
     from routes.dispatch import (  # type: ignore
         get_dispatch_status,
         get_stuck_tasks,
-        import_legacy,
         reap_all_stuck_tasks,
         reap_single_task,
         trigger_dispatch,

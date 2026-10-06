@@ -1583,7 +1583,7 @@ def _package_and_open_pr(
             meta.pop(key, None)
 
         # PR author is tracked in metadata; titles carry
-        # no state (no [PR Opened by ...] markers).
+        # no state.
         meta["packaged_by"] = assignee
 
         ext_issue = meta.get("external_issue") or {}
