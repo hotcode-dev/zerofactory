@@ -546,13 +546,9 @@ def sync_board_gh_issues_endpoint(
         board_dict = dict(board)
 
     git_url = board_dict.get("git_url") or ""
-    import re
 
-    repo = None
-    if git_url:
-        m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?$", git_url)
-        if m:
-            repo = f"{m.group(1)}/{m.group(2)}"
+    owner, repo_name, _slug = parse_git_url(git_url)
+    repo = f"{owner}/{repo_name}" if owner and repo_name else None
 
     if not repo:
         resolver = get_repo_resolver()
@@ -637,13 +633,9 @@ def import_board_gh_issue_endpoint(slug: str, req: dict[str, Any]):
         board_dict = dict(board)
 
     git_url = board_dict.get("git_url") or ""
-    import re
 
-    repo = None
-    if git_url:
-        m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?$", git_url)
-        if m:
-            repo = f"{m.group(1)}/{m.group(2)}"
+    owner, repo_name, _slug = parse_git_url(git_url)
+    repo = f"{owner}/{repo_name}" if owner and repo_name else None
 
     try:
         from issues.github import GitHubIssueClient
