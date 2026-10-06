@@ -129,6 +129,8 @@ def test_handle_precommit_failure_retries(initialized_db: Path, tmp_path: Path):
         row = cursor.fetchone()
         assert row["status"] == "blocked"
         meta = json.loads(row["metadata"])
+        assert meta["blocked_reason_type"] == "stuck"
+        meta = json.loads(row["metadata"])
         assert meta["precommit_retries"] == 4
 
         # Verify comment was logged

@@ -234,6 +234,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         meta["blocked_reason"] = (
                             f"Worker process failed {fail_retries} times (limit {max_worker_retries})"
                         )
+                        meta["blocked_reason_type"] = "stuck"
                         cursor.execute(
                             "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                             (json.dumps(meta), now, task_id),
@@ -300,8 +301,9 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta["blocked_reason"] = (
                         f"Worker lost {fail_retries} times (limit {max_worker_retries})"
                     )
+                    meta["blocked_reason_type"] = "stuck"
                     cursor.execute(
-                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                        "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                         (json.dumps(meta), now, task_id),
                     )
                     cursor.execute(
@@ -398,8 +400,9 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 meta["blocked_reason"] = (
                     f"Worker timeout/inactivity {fail_retries} times (limit {max_worker_retries}): {stuck_reason}"
                 )
+                meta["blocked_reason_type"] = "stuck"
                 cursor.execute(
-                    "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                     (json.dumps(meta), now, task_id),
                 )
                 cursor.execute(
@@ -572,12 +575,13 @@ def reap_stuck_tasks(
                         except Exception:
                             _meta = {}
                     _meta["blocked_reason"] = reason
+                    _meta["blocked_reason_type"] = "stuck"
                     _meta = _d()._mark_task_session_ended(
                         _meta, now, "aborted" if task_id else "timed_out"
                     )
                     _meta.pop("worker_pid", None)
                     cursor.execute(
-                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                        "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                         (json.dumps(_meta), now, t_id),
                     )
                     cursor.execute(

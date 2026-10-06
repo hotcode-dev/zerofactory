@@ -325,6 +325,10 @@ def _handle_local_merge_conflict(
     file_msg = f" in: {', '.join(conflict_files)}" if conflict_files else ""
 
     if retries > max_conflict_retries:
+        meta["blocked_reason"] = (
+            f"Merge conflict resolution exceeded {max_conflict_retries} attempts{file_msg}"
+        )
+        meta["blocked_reason_type"] = "stuck"
         cursor.execute(
             "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
             (json.dumps(meta), now, task_id),
@@ -524,6 +528,10 @@ def _handle_pr_conflict_from_github(
         author = "zf-builder"
 
     if retries > max_conflict_retries:
+        meta["blocked_reason"] = (
+            f"GitHub PR conflict resolution exceeded {max_conflict_retries} attempts"
+        )
+        meta["blocked_reason_type"] = "stuck"
         cursor.execute(
             "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
             (json.dumps(meta), now, task_id),
@@ -676,6 +684,10 @@ def _handle_precommit_failure(
         snippet = snippet[-1500:]
 
     if retries > max_retries:
+        meta["blocked_reason"] = (
+            f"Deterministic precommit failed after {max_retries} attempts"
+        )
+        meta["blocked_reason_type"] = "stuck"
         cursor.execute(
             "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
             (json.dumps(meta), now, task_id),

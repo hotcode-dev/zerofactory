@@ -38,4 +38,9 @@ class TestNormalizeBlockedReasonType:
             )
 
     def test_taxonomy_is_stable(self):
-        assert BLOCKED_REASON_TYPES == {"changes-requested", "approved", "human-gate"}
+        assert BLOCKED_REASON_TYPES == {
+            "changes-requested",
+            "approved",
+            "human-gate",
+            "stuck",
+        }

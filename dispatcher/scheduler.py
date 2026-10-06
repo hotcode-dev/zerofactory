@@ -1340,9 +1340,13 @@ def _package_and_open_pr(
                 task_id,
                 _initial_err,
             )
+            meta["blocked_reason"] = (
+                f"Worktree conflict state unverifiable; manual resolution required: {_initial_err}"
+            )
+            meta["blocked_reason_type"] = "stuck"
             cursor.execute(
-                "UPDATE tasks SET assignee = 'human', status = 'blocked', updated_at = ? WHERE id = ?",
-                (now, task_id),
+                "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
             )
             cursor.execute(
                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_unverifiable', ?, ?)",
@@ -1475,9 +1479,13 @@ def _package_and_open_pr(
                 task_id,
                 _leftover_err,
             )
+            meta["blocked_reason"] = (
+                f"Post-merge conflict state unverifiable; manual resolution required: {_leftover_err}"
+            )
+            meta["blocked_reason_type"] = "stuck"
             cursor.execute(
-                "UPDATE tasks SET assignee = 'human', status = 'blocked', updated_at = ? WHERE id = ?",
-                (now, task_id),
+                "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
             )
             cursor.execute(
                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'conflict_unverifiable', ?, ?)",

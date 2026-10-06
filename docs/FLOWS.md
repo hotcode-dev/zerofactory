@@ -88,7 +88,7 @@ flowchart TD
 | `conflict_retries` | conflict handlers | Merge-conflict retry budget (`ZEROFACTORY_MAX_CONFLICT_RETRIES = 3`) |
 | `processed_review_comment_ids`, `last_reviewed_commit`, `commit_review_count`, `review_cap_reached` | step-3 review routing | Review-round bookkeeping, per commit SHA |
 | `permanently_blocked`, `blocked_reason` | reaper / dispatcher | Hard-stop marker + human-readable cause (display only) |
-| `blocked_reason_type` | `move_task` (from `block --reason <code>`), dispatcher | Canonical routing code — `changes-requested` / `approved` / `human-gate`, matched exactly, never prose |
+| `blocked_reason_type` | `move_task` (from `block --reason <code>`), dispatcher | Canonical routing code — `changes-requested` / `approved` / `human-gate` / `stuck` (retry budget exhausted), matched exactly, never prose |
 | `awaiting_interview`, `last_interview_reply` | orchestrator grill flow | Human interview state |
 
 ### 2.3 Titles are state-free

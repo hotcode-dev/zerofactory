@@ -203,7 +203,11 @@ def test_handle_local_merge_conflict_blocks_when_max_retries_exceeded():
         )
         conn.commit()
 
-    row = conn.execute("SELECT status, metadata FROM tasks WHERE id = 't2'").fetchone()
+    row = conn.execute(
+        "SELECT status, assignee, metadata FROM tasks WHERE id = 't2'"
+    ).fetchone()
     assert row["status"] == "blocked"
+    assert row["assignee"] == "human"
     meta = json.loads(row["metadata"])
     assert meta["conflict_retries"] == 4
+    assert meta["blocked_reason_type"] == "stuck"

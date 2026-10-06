@@ -275,9 +275,11 @@ def test_reap_active_workers_parks_exhausted_stuck_task(tmp_path: Path):
     mock_term.assert_called_once_with(mock_proc, 2222)
 
     row = conn.execute(
-        "SELECT status, metadata FROM tasks WHERE id = 't-stuck2'"
+        "SELECT status, assignee, metadata FROM tasks WHERE id = 't-stuck2'"
     ).fetchone()
     assert row["status"] == "blocked"
+    assert row["assignee"] == "human"
     saved_meta = json.loads(row["metadata"])
     assert saved_meta["permanently_blocked"] is True
     assert saved_meta["worker_failure_retries"] == 3
+    assert saved_meta["blocked_reason_type"] == "stuck"

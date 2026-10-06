@@ -80,9 +80,12 @@ def normalize_assignee(assignee: str | None) -> str:
 
 #: Deterministic taxonomy for ``metadata.blocked_reason_type``. Agents emit one
 #: of these codes verbatim via ``hermes zerofactory block <id> --reason <code>``;
+#: (the dispatcher emits ``"stuck"`` when a retry budget is exhausted);
 #: ``blocked_reason`` stays free text for humans. Anything else classifies as
 #: the human gate.
-BLOCKED_REASON_TYPES = frozenset({"changes-requested", "approved", "human-gate"})
+BLOCKED_REASON_TYPES = frozenset(
+    {"changes-requested", "approved", "human-gate", "stuck"}
+)
 BLOCKED_REASON_TYPE_HUMAN_GATE = "human-gate"
 
 
