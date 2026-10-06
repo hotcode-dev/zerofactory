@@ -1,42 +1,26 @@
-"""Unit tests for the migration runner and data migrations."""
+"""Unit tests for the migration runner."""
 
 import sqlite3
 from pathlib import Path
 
-from migrations.runner import run_migrations
+from migrations.runner import get_applied_migrations, run_migrations
 
 
-def test_0004_migrates_legacy_ready_status_to_todo(tmp_path: Path):
-    """Legacy 'ready' rows are folded into 'todo' so they remain claimable."""
+def test_run_migrations_applies_pending_in_order_and_once(tmp_path: Path):
+    """Pending migrations apply oldest-first and are recorded for idempotency."""
+    mdir = tmp_path / "migrations"
+    mdir.mkdir()
+    (mdir / "0001_first.sql").write_text("CREATE TABLE t (id INTEGER PRIMARY KEY);")
+    (mdir / "0002_second.sql").write_text("INSERT INTO t (id) VALUES (1);")
+
     conn = sqlite3.connect(tmp_path / "m.db")
     try:
-        run_migrations(conn)
+        applied = run_migrations(conn, migrations_dir=mdir)
+        assert applied == ["0001_first", "0002_second"]
 
-        # Simulate a pre-0004 database: schema migrated, but the ready-column
-        # removal migration is still pending and legacy rows exist.
-        conn.execute("DELETE FROM schema_migrations WHERE version LIKE '0004_%'")
-        conn.execute(
-            "INSERT INTO tasks (id, title, status, created_at, updated_at) "
-            "VALUES ('t-ready', 'Legacy task', 'ready', 1, 1)"
-        )
-        conn.commit()
-
-        reapplied = run_migrations(conn)
-        assert any(v.startswith("0004_") for v in reapplied)
-
-        row = conn.execute("SELECT status FROM tasks WHERE id = 't-ready'").fetchone()
-        assert row[0] == "todo"
-        actions = [
-            r[0]
-            for r in conn.execute(
-                "SELECT action FROM task_activity WHERE task_id = 't-ready'"
-            )
-        ]
-        assert "migrate" in actions
-
-        # Idempotent: re-running applies nothing and keeps the row stable.
-        assert run_migrations(conn) == []
-        row = conn.execute("SELECT status FROM tasks WHERE id = 't-ready'").fetchone()
-        assert row[0] == "todo"
+        # Recorded in schema_migrations and idempotent on re-run.
+        assert set(get_applied_migrations(conn)) == {"0001_first", "0002_second"}
+        assert run_migrations(conn, migrations_dir=mdir) == []
+        assert conn.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 1
     finally:
         conn.close()

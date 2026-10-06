@@ -140,9 +140,9 @@ referenced (including variant-prefixed) utility class.
 Any agent-authored GitHub text (PR titles/bodies, review comments) **must**
 begin with a **role-tagged** marker `[AI:<role>]` — e.g. `[AI:zf-builder]`,
 `[AI:zf-reviewer]` — enforced by the role-aware `ai_prefix(text, role)` in
-`repo://dispatcher/github_pr.py#L321-L335`. The matcher (`AI_PREFIX_RE`) also
-recognizes the legacy untagged `[AI]` marker and leaves it untouched, so
-re-writes are idempotent and never double-prefix. The reviewer submits verdicts
+`repo://dispatcher/github_pr.py#L321-L335`). Text already carrying a role-tagged
+marker is returned unchanged, so re-writes are idempotent and never double-prefix.
+The reviewer submits verdicts
 as `gh pr review --comment` (not `--approve` / `--request-changes`, which GitHub
 blocks for the PR author's own token) with `[AI:zf-reviewer]`-tagged bodies
 (`repo://dispatcher/worker_spawner.py#L127-L140`).
