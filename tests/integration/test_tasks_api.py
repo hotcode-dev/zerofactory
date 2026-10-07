@@ -349,3 +349,82 @@ def test_patch_cannot_change_status(api_client: TestClient, default_board: str):
         ]
         == "todo"
     )
+
+
+def test_stale_agent_completion_cannot_clobber_parked_state(
+    api_client: TestClient, default_board: str
+):
+    """Regression (zf-hdz-4dc03cee): a zombie builder's `move done` flipped an
+    approved-for-merge task back to running and wiped its blocked_reason.
+
+    'done' is strictly terminal and 'blocked' is a human/reviewer gate — stale
+    worker completions must be ignored for both, except the builder-bound
+    'changes-requested' park where finishing the fix is the desired outcome.
+    """
+    task_id = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={
+            "title": "Stale completion guard",
+            "board_slug": default_board,
+            "status": "todo",
+            "assignee": "zf-builder",
+        },
+    ).json()["id"]
+
+    # Parked states: approved / human-gate / stuck must all reject the zombie.
+    for parked_reason in ("approved", "human-gate", "stuck"):
+        park_res = api_client.post(
+            f"/api/plugins/zerofactory/tasks/{task_id}/move",
+            json={"status": "blocked", "actor": "zf-reviewer", "reason": parked_reason},
+        )
+        assert park_res.status_code == 200
+
+        stale_res = api_client.post(
+            f"/api/plugins/zerofactory/tasks/{task_id}/move",
+            json={"status": "done", "actor": "zf-builder"},
+        )
+        assert stale_res.status_code == 200
+        assert stale_res.json()["ignored"] is True
+        assert stale_res.json()["status"] == "blocked"
+
+        # State unchanged: still blocked, and the block reason survives.
+        check = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()[
+            "task"
+        ]
+        assert check["status"] == "blocked"
+        assert check["metadata"]["blocked_reason_type"] == parked_reason
+
+    # Builder-bound exception: 'changes-requested' accepts the fix's completion.
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={
+            "status": "blocked",
+            "actor": "zf-reviewer",
+            "reason": "changes-requested",
+        },
+    )
+    fix_res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "done", "actor": "zf-builder"},
+    )
+    assert fix_res.status_code == 200
+    assert "ignored" not in fix_res.json()
+    assert fix_res.json()["status"] == "running"
+
+    # Terminal 'done' is also protected: a late completion cannot resurrect it.
+    api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "done", "actor": "user"},
+    )
+    late_res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "done", "actor": "zf-builder"},
+    )
+    assert late_res.status_code == 200
+    assert late_res.json()["ignored"] is True
+    assert (
+        api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()["task"][
+            "status"
+        ]
+        == "done"
+    )

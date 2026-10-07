@@ -725,16 +725,23 @@ def move_task(task_id: str, req: TaskMove):
 
     now = int(time.time())
     try:
-        from ...dispatcher import log_step_end, log_step_start
+        from ...dispatcher import log_step_end, log_step_start, log_step_state
     except (ImportError, ValueError):
         try:
-            from dispatcher import log_step_end, log_step_start  # type: ignore
+            from dispatcher import (  # type: ignore
+                log_step_end,
+                log_step_start,
+                log_step_state,
+            )
         except (ImportError, ValueError):
 
             def log_step_start(*_a, **_kw):
                 return 0.0
 
             def log_step_end(*_a, **_kw):
+                return None
+
+            def log_step_state(*_a, **_kw):
                 return None
 
     with get_db_conn() as conn:
@@ -772,6 +779,55 @@ def move_task(task_id: str, req: TaskMove):
         # close tasks terminally; any open PR/remote branch is archived via
         # 'close_pr' so GitHub matches the board.
         wants_packaging = is_agent_actor and not is_orchestrator_actor
+
+        # A completion report from a stale/zombie worker must never clobber a
+        # parked state: 'done' is strictly terminal and 'blocked' is a
+        # human/reviewer gate. The sole builder-bound exception is
+        # 'changes-requested', where finishing the fix is the desired outcome
+        # (zf-hdz-4dc03cee: a zombie builder's `move done` flipped an
+        # approved-for-merge task back to running and wiped its blocked_reason).
+        if (
+            wants_packaging
+            and req.status == "done"
+            and (
+                prev_status == "done"
+                or (
+                    prev_status == "blocked"
+                    and str(meta.get("blocked_reason_type") or "human-gate")
+                    != "changes-requested"
+                )
+            )
+        ):
+            park_reason = (
+                "task is already done (terminal)"
+                if prev_status == "done"
+                else f"task is blocked for {str(meta.get('blocked_reason_type') or 'human-gate')}"
+            )
+            log_step_state(
+                "move",
+                task_id,
+                "stale_completion_ignored",
+                f"{park_reason}; keeping {prev_status}",
+                logger=_log,
+            )
+            log_step_end("move", move_t0, task_id, "skipped", park_reason, logger=_log)
+            log_activity(
+                conn,
+                task_id,
+                req.actor or "user",
+                "move_rejected",
+                f"Stale completion report ignored: {park_reason}",
+            )
+            conn.commit()
+            return {
+                "ok": True,
+                "id": task_id,
+                "status": prev_status,
+                "prev_status": prev_status,
+                "ignored": True,
+                "reason": f"Completion ignored: {park_reason}",
+            }
+
         new_status = (
             "running" if (req.status == "done" and wants_packaging) else req.status
         )

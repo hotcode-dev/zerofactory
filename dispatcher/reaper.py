@@ -13,6 +13,7 @@ from .config import (
     _d,
     _dispatcher_lock,
     _log,
+    log_step_state,
 )
 
 
@@ -354,22 +355,36 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
         elif row_status == "running" and not has_ongoing_session:
             # Task is marked 'running' but has no active process, PID, or ongoing session
             claim_age = max(0, now - int(row["updated_at"] or now))
-            if claim_age >= 30:
-                cursor.execute(
-                    "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?",
-                    (now, task_id),
-                )
-                cursor.execute(
-                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_recovered', 'Orphaned running task (no active worker process or session) recovered to todo', ?)",
-                    (task_id, now),
-                )
-                _log.warning(
-                    "Recovered orphaned running task %s to todo (no active worker or session, age %ds)",
+            spawning_at = meta.get("spawning_at")
+            spawn_age = max(0, now - int(spawning_at)) if spawning_at else claim_age
+            if spawn_age < _d().get_spawn_grace_seconds():
+                # A spawn is (or may still be) in flight: the claim stamped
+                # `spawning_at`, and worker_pid / session rows are written only
+                # after hermes finishes starting. Recovering inside this window
+                # double-dispatched the builder on zf-hdz-4dc03cee — two
+                # concurrent sessions sharing one worktree.
+                log_step_state(
+                    "reap",
                     task_id,
-                    claim_age,
+                    "spawning",
+                    f"spawn in flight for {spawn_age}s (grace {_d().get_spawn_grace_seconds()}s); not an orphan yet",
                 )
-                reaped += 1
                 continue
+            cursor.execute(
+                "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?",
+                (now, task_id),
+            )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_recovered', 'Orphaned running task (no active worker process or session) recovered to todo', ?)",
+                (task_id, now),
+            )
+            _log.warning(
+                "Recovered orphaned running task %s to todo (no active worker or session, age %ds)",
+                task_id,
+                claim_age,
+            )
+            reaped += 1
+            continue
 
         started_at = (
             meta.get("started_at") or row["updated_at"] or row["created_at"] or now

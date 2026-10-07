@@ -61,6 +61,7 @@ Reading the `metadata` blob is the fastest "why" check:
 | `precommit_retries` / `worker_failure_retries` / `conflict_retries` | which budget is exhausted, and how much is left |
 | `sessions[]` | every LLM handoff: agent, PID, start/end, outcome (`finished`/`aborted`/`timed_out`/`failed`) |
 | `awaiting_pr` / `close_pr` / `packaged_by` | pending system intent (see FLOWS.md §2.2) |
+| `spawning_at` | claim-time spawn-in-flight marker (Unix epoch). The reaper refuses to orphan-recover a `running` task within `ZEROFACTORY_SPAWN_GRACE_SECONDS` (default 180s) of this stamp — the window where `worker_pid`/`sessions[]` are not yet written. |
 
 ---
 
@@ -116,6 +117,7 @@ Rules of thumb:
 | Builder times out in a loop (2× 3600s) | agentic flailing | The worker is trying to fix something not fixable from the worktree — read `last_precommit_error`, fix the cause, then `move` the task to reset retry counters |
 | Task stuck `blocked` with conflicts | git | In the worktree: `git status`, `grep -rn '<<<<<<<' --include='*.py'`, `ls .git/MERGE_HEAD` |
 | Task parked with **no** activity rows for hours | engine (silent gate) | `grep "STEP" agent.log \| grep <task_id>` — the last `skip`/`start` line names the gate or step that dropped it (§2b) |
+| Task bounced out of `blocked`/`done` by an agent report | engine (stale worker) | Look for `move_rejected` in `task_activity` — the guard now ignores zombie `move done` on parked states (only `changes-requested` accepts builder completion). If the row exists, the clobber was rejected as designed. |
 | PR merged/closed on GitHub, board not updated | polling lag (by design) | `gh pr view` vs the task row; the next cycle's `MERGED`/`CLOSED` branch archives it |
 | Nothing dispatches at all | capacity / env | `hermes zerofactory check-stuck`, board `max_concurrent_running`, `ZEROFACTORY_*` env, gateway restart |
 | Badges/UI look wrong | UI derivation | Badges derive from `status`/`assignee`/`metadata` only — if one shows stale state, the bug is in the derivation, never in titles |

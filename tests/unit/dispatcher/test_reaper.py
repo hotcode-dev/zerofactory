@@ -283,3 +283,110 @@ def test_reap_active_workers_parks_exhausted_stuck_task(tmp_path: Path):
     assert saved_meta["permanently_blocked"] is True
     assert saved_meta["worker_failure_retries"] == 3
     assert saved_meta["blocked_reason_type"] == "stuck"
+
+
+def _spawn_grace_conn(task_id: str, meta: dict, now: int) -> sqlite3.Connection:
+    """Minimal running-task harness for orphan-recovery tests."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            status TEXT,
+            assignee TEXT,
+            metadata TEXT,
+            updated_at INTEGER,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            actor TEXT,
+            action TEXT,
+            details TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            author TEXT,
+            body TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO tasks VALUES (?, 'Spawning Task', 'running', 'zf-builder', ?, ?, ?)",
+        (task_id, json.dumps(meta), now, now),
+    )
+    conn.commit()
+    return conn
+
+
+def test_reaper_respects_spawn_grace_window():
+    """A freshly-claimed task whose worker is still spawning is NOT recovered.
+
+    Regression for the zf-hdz-4dc03cee duplicate-worker race: orphan recovery
+    fired mid-spawn (age 33s) and double-dispatched the builder onto one
+    worktree. The claim stamps `spawning_at`; recovery must wait out the grace.
+    """
+    now = 5000
+    meta = {"spawning_at": now - 33}
+    conn = _spawn_grace_conn("t-spawning", meta, now)
+
+    reaped = reap_active_workers(conn.cursor(), now=now)
+    conn.commit()
+
+    assert reaped == 0
+    row = conn.execute("SELECT status FROM tasks WHERE id = 't-spawning'").fetchone()
+    assert row["status"] == "running"
+    activity = conn.execute(
+        "SELECT COUNT(*) FROM task_activity WHERE task_id = 't-spawning' AND action = 'worker_recovered'"
+    ).fetchone()[0]
+    assert activity == 0
+
+
+def test_reaper_recovers_orphan_after_spawn_grace_expires():
+    """Once the grace window passes with no worker/session registered, the task
+    is genuinely orphaned and is recovered to todo."""
+    now = 5000
+    meta = {"spawning_at": now - 400}  # grace default 180s
+    conn = _spawn_grace_conn("t-orphan", meta, now)
+
+    reaped = reap_active_workers(conn.cursor(), now=now)
+    conn.commit()
+
+    assert reaped == 1
+    row = conn.execute("SELECT status FROM tasks WHERE id = 't-orphan'").fetchone()
+    assert row["status"] == "todo"
+    activity = conn.execute(
+        "SELECT COUNT(*) FROM task_activity WHERE task_id = 't-orphan' AND action = 'worker_recovered'"
+    ).fetchone()[0]
+    assert activity == 1
+
+
+def test_reaper_spawn_grace_env_override(monkeypatch):
+    """ZEROFACTORY_SPAWN_GRACE_SECONDS tunes the grace window."""
+    import dispatcher
+
+    monkeypatch.setenv("ZEROFACTORY_SPAWN_GRACE_SECONDS", "600")
+    assert dispatcher.get_spawn_grace_seconds() == 600
+
+    now = 5000
+    meta = {"spawning_at": now - 400}  # within the 600s override
+    conn = _spawn_grace_conn("t-long-grace", meta, now)
+
+    reaped = reap_active_workers(conn.cursor(), now=now)
+    conn.commit()
+
+    assert reaped == 0

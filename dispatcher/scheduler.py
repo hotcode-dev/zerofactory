@@ -293,8 +293,13 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             "triage" if task_orig_status == "triage" else "running"
                         )
                         cursor.execute(
-                            "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND (status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
-                            (target_dispatch_status, now, task_id),
+                            "UPDATE tasks SET status = ?, updated_at = ?, metadata = ? WHERE id = ? AND (status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
+                            (
+                                target_dispatch_status,
+                                now,
+                                json.dumps({**meta, "spawning_at": now}),
+                                task_id,
+                            ),
                         )
                         if cursor.rowcount == 0:
                             continue
@@ -1305,6 +1310,31 @@ def _poll_pr_and_route_review(
                 processed_cmt_ids.add(c["comment_id"])
 
             task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
+
+            already_parked = (
+                row["status"] == "blocked"
+                and assignee == "human"
+                and str(task_meta.get("blocked_reason_type") or "") == "approved"
+            )
+            if already_parked:
+                # Idempotent park gate: the task already sits at the
+                # approved-for-human-merge gate. Re-running the park side effects
+                # every cycle stamped one `approved` activity row per pass (450x
+                # on zf-hdz-4dc03cee) and re-ran worker/worktree teardown every
+                # 30s. Only newly-arrived comments are worth persisting here.
+                if new_pr_comments:
+                    cursor.execute(
+                        "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(task_meta), now, task_id),
+                    )
+                log_step_state(
+                    "pr_poll",
+                    task_id,
+                    "already_parked",
+                    f"approved awaiting human merge; new_comments={len(new_pr_comments)}",
+                )
+                return True
+
             task_meta["blocked_reason"] = "Reviewer approved; awaiting human merge"
             task_meta["blocked_reason_type"] = "approved"
 

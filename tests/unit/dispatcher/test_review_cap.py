@@ -613,3 +613,176 @@ class TestReviewCapPerCommit:
             # ID added to processed_review_comment_ids
             meta = json.loads(row["metadata"])
             assert "cmt_builder_note" in meta["processed_review_comment_ids"]
+
+
+class TestApprovedParkIdempotent:
+    """Regression: a task already parked for human merge must not re-run the
+    park side effects every dispatch cycle (zf-hdz-4dc03cee: 450 duplicate
+    `approved` activity rows from the non-idempotent branch)."""
+
+    def _seed_task(self, db_path: Path, task_id: str, meta: dict, assignee: str):
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.execute(
+                """
+                INSERT INTO tasks (id, title, status, assignee, pr_url, metadata, workspace_path)
+                VALUES (?, ?, 'blocked', ?, 'https://github.com/acme/repo/pull/7', ?, ?)
+                """,
+                (
+                    task_id,
+                    "feat: approved once",
+                    assignee,
+                    json.dumps(meta),
+                    str(db_path / "wt"),
+                ),
+            )
+            conn.commit()
+
+    def _run_cycles(self, db_path: Path, n: int, comments, decision: str = ""):
+        # Lock path must be a plain sibling file — under the sqlite file it
+        # would raise ENOTDIR and the cycle would silently skip.
+        lock_file = db_path.parent / "dispatcher.lock"
+        fake_pr_data = {
+            "state": "OPEN",
+            "reviewDecision": decision,
+            "url": "https://github.com/acme/repo/pull/7",
+            "mergeable": "MERGEABLE",
+            "headRefOid": "sha_park",
+        }
+
+        def fake_subprocess_run(cmd, *args, **kwargs):
+            if "view" in cmd:
+                return MagicMock(returncode=0, stdout=json.dumps(fake_pr_data))
+            return MagicMock(returncode=0, stdout="")
+
+        import dispatcher
+
+        with (
+            patch.object(
+                dispatcher, "get_dispatcher_lock_path", return_value=lock_file
+            ),
+            patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+            patch.object(dispatcher, "resolve_task_repo_path", return_value=db_path),
+            patch(
+                "dispatcher.scheduler.subprocess.run", side_effect=fake_subprocess_run
+            ),
+            patch.object(dispatcher, "fetch_pr_review_comments", return_value=comments),
+            patch.object(dispatcher, "stop_task_worker") as mock_stop,
+            patch.object(dispatcher, "_remove_worktree") as mock_remove,
+            patch.object(dispatcher, "setup_worktree"),
+        ):
+            for _ in range(n):
+                res = run_dispatch_cycle(db_path)
+                assert res["ok"] is True
+        return mock_stop, mock_remove
+
+    def _approved_rows(self, db_path: Path, task_id: str) -> int:
+        with sqlite3.connect(str(db_path)) as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM task_activity WHERE task_id = ? AND action = 'approved'",
+                (task_id,),
+            ).fetchone()[0]
+
+    def test_parked_approved_task_is_not_reparked(self, tmp_path: Path):
+        """Task already at the human-merge gate (blocked/human/approved): cycles
+        must not add `approved` rows nor redo teardown."""
+        db_path = tmp_path / "test.db"
+        _init_test_db(db_path)
+        task_id = "t-already-parked"
+        self._seed_task(
+            db_path,
+            task_id,
+            {
+                "blocked_reason": "Reviewer approved; awaiting human merge",
+                "blocked_reason_type": "approved",
+                "packaged_by": "zf-builder",
+                "processed_review_comment_ids": [],
+            },
+            assignee="human",
+        )
+
+        mock_stop, mock_remove = self._run_cycles(db_path, n=3, comments=[])
+
+        assert self._approved_rows(db_path, task_id) == 0
+        mock_stop.assert_not_called()
+        mock_remove.assert_not_called()
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            assert row["status"] == "blocked"
+            assert row["assignee"] == "human"
+            assert json.loads(row["metadata"])["blocked_reason_type"] == "approved"
+
+    def test_fresh_approval_parks_exactly_once(self, tmp_path: Path):
+        """First approval parks the task; subsequent cycles are no-ops."""
+        db_path = tmp_path / "test.db"
+        _init_test_db(db_path)
+        task_id = "t-fresh-approved"
+        self._seed_task(
+            db_path,
+            task_id,
+            {"packaged_by": "zf-builder", "processed_review_comment_ids": []},
+            assignee="zf-reviewer",
+        )
+
+        mock_stop, mock_remove = self._run_cycles(
+            db_path, n=2, comments=[], decision="APPROVED"
+        )
+
+        assert self._approved_rows(db_path, task_id) == 1
+        assert mock_stop.call_count == 1
+        assert mock_remove.call_count == 1
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            assert row["status"] == "blocked"
+            assert row["assignee"] == "human"
+            assert json.loads(row["metadata"])["blocked_reason_type"] == "approved"
+
+    def test_new_comments_on_parked_task_are_forwarded_not_reparked(
+        self, tmp_path: Path
+    ):
+        """A parked task forwards late review comments but stays parked."""
+        db_path = tmp_path / "test.db"
+        _init_test_db(db_path)
+        task_id = "t-parked-late-comment"
+        self._seed_task(
+            db_path,
+            task_id,
+            {
+                "blocked_reason": "Reviewer approved; awaiting human merge",
+                "blocked_reason_type": "approved",
+                "packaged_by": "zf-builder",
+                "processed_review_comment_ids": ["cmt_old"],
+            },
+            assignee="human",
+        )
+        late_comment = [
+            {
+                "comment_id": "cmt_late",
+                "author": "reviewer1",
+                "body": "One more nit on naming.",
+                "state": "COMMENTED",
+            }
+        ]
+
+        self._run_cycles(db_path, n=2, comments=late_comment)
+
+        assert self._approved_rows(db_path, task_id) == 0
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            bodies = [
+                r["body"]
+                for r in conn.execute(
+                    "SELECT body FROM task_comments WHERE task_id = ?", (task_id,)
+                )
+            ]
+            assert any("One more nit" in b for b in bodies)
+            meta_row = conn.execute(
+                "SELECT metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            meta = json.loads(meta_row["metadata"])
+            assert "cmt_late" in meta["processed_review_comment_ids"]

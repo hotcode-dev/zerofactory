@@ -85,6 +85,12 @@ DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 900  # 15 mins with no log/session update
 # Maximum worker failure/timeout retries before task is permanently blocked.
 DEFAULT_MAX_WORKER_RETRIES = 3
 
+# Grace window (seconds) during which a freshly-claimed task is treated as
+# "spawn in flight" rather than an orphan. Covers hermes worker startup plus
+# session registration; recovering inside this window double-dispatched the
+# builder on task zf-hdz-4dc03cee (two concurrent sessions on one worktree).
+DEFAULT_SPAWN_GRACE_SECONDS = 180
+
 # Interval (in seconds) between background dispatcher polling cycles.
 DISPATCH_INTERVAL_SECONDS = 30
 
@@ -151,6 +157,15 @@ def get_max_worker_retries() -> int:
     return int(
         os.environ.get(
             "ZEROFACTORY_MAX_WORKER_RETRIES", str(DEFAULT_MAX_WORKER_RETRIES)
+        )
+    )
+
+
+def get_spawn_grace_seconds() -> int:
+    """Return how long a claimed task may spend spawning before it counts as orphaned."""
+    return int(
+        os.environ.get(
+            "ZEROFACTORY_SPAWN_GRACE_SECONDS", str(DEFAULT_SPAWN_GRACE_SECONDS)
         )
     )
 
