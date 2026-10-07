@@ -13,9 +13,12 @@ Runs on a scheduled interval without calling an LLM:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 # Add plugin root to sys.path so we can import internal modules
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -94,8 +97,6 @@ def sync_open_github_issues(cooldown_seconds: int = 900) -> list[dict]:
             if now - last_synced < cooldown_seconds:
                 continue
             try:
-                sync_cache[repo] = now
-                cache_updated = True
                 open_issues = client.fetch_investigation_issues(
                     repo=repo, label="zerofactory", state="open"
                 )
@@ -109,15 +110,33 @@ def sync_open_github_issues(cooldown_seconds: int = 900) -> list[dict]:
                     )
                     if not res.get("duplicate"):
                         imported_tasks.append(res)
-            except Exception:
-                pass
+            except Exception as e:
+                # Do NOT stamp the cooldown on failure so the next tick
+                # retries immediately instead of silently skipping the
+                # board for the whole cooldown window.
+                _log.warning("GitHub issue sync failed for %s: %s", repo, e)
+                continue
+            # Stamp only after fetch + import complete without exception.
+            sync_cache[repo] = now
+            cache_updated = True
 
         if cache_updated:
+            tmp_file = cache_file.with_name(cache_file.name + ".tmp")
             try:
                 cache_file.parent.mkdir(parents=True, exist_ok=True)
-                cache_file.write_text(json.dumps(sync_cache), encoding="utf-8")
-            except Exception:
-                pass
+                # Atomic write: write to a sibling temp file then rename
+                # (os.replace semantics), matching the durability
+                # convention in scripts/zf_scanner_gate.py /
+                # scripts/zf_openwiki_gate.py so a crash mid-write can
+                # never leave a corrupt cache file behind.
+                tmp_file.write_text(json.dumps(sync_cache), encoding="utf-8")
+                os.replace(tmp_file, cache_file)
+            except Exception as e:
+                try:
+                    tmp_file.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                _log.warning("Failed to persist GitHub issue sync cache: %s", e)
 
         return imported_tasks
     except Exception:
