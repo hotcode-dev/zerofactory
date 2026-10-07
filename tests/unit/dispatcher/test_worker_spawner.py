@@ -113,6 +113,81 @@ def test_spawn_agent_worker_cmd_and_session_isolation():
             assert env.get("HERMES_PROFILE") == "zf-reviewer"
 
 
+def _spawn_builder_with_comment(body: str, task_id: str) -> str:
+    """Spawn zf-builder against a temp DB holding one task_comments row; return the prompt."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "kanban.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            CREATE TABLE task_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT,
+                author TEXT,
+                body TEXT,
+                created_at INTEGER
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'zf-reviewer', ?, 1)",
+            (task_id, body),
+        )
+        conn.commit()
+        conn.close()
+
+        import dispatcher
+
+        with (
+            patch.object(
+                dispatcher,
+                "check_unresolved_conflicts_safe",
+                return_value=(True, [], ""),
+            ),
+            patch("subprocess.Popen") as mock_popen,
+            patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_path)}),
+        ):
+            os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+            mock_proc = MagicMock()
+            mock_proc.pid = 42424
+            mock_proc.poll.return_value = None
+            mock_popen.return_value = mock_proc
+
+            pid, _sess = spawn_agent_worker(
+                task_id=task_id,
+                title="Fix Task",
+                description="desc",
+                priority="P1",
+                assignee="zf-builder",
+                workspace_path=os.getcwd(),
+                branch_name=f"task/{task_id}",
+            )
+
+        assert pid == 42424
+        return mock_popen.call_args[0][0][-1]
+
+
+def test_spawn_builder_precommit_failure_goal():
+    """A precommit-failure comment routes the builder to 'Fix Precommit Failures'."""
+    prompt = _spawn_builder_with_comment(
+        "[github pr] deterministic precommit failed: test suite failed",
+        "zf-prefail",
+    )
+    assert "Your goal as Builder (Fix Precommit Failures)" in prompt
+    assert "./.zerofactory/precommit.sh" in prompt
+    assert "Your goal as Builder (Fix Review Comments)" not in prompt
+
+
+def test_spawn_builder_review_comments_goal():
+    """A non-precommit review comment routes the builder to 'Fix Review Comments'."""
+    prompt = _spawn_builder_with_comment(
+        "[github pr] add type hints to the public API",
+        "zf-review",
+    )
+    assert "Your goal as Builder (Fix Review Comments)" in prompt
+    assert "Your goal as Builder (Fix Precommit Failures)" not in prompt
+
+
 def test_spawn_agent_worker_orchestrator_grill_with_docs():
     """Verify zf-orchestrator spawns with Grill-with-Docs triage protocol prompt."""
     with (
