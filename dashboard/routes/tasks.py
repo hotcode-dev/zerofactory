@@ -724,6 +724,19 @@ def move_task(task_id: str, req: TaskMove):
         raise HTTPException(status_code=400, detail=f"Invalid status: {req.status}")
 
     now = int(time.time())
+    try:
+        from ...dispatcher import log_step_end, log_step_start
+    except (ImportError, ValueError):
+        try:
+            from dispatcher import log_step_end, log_step_start  # type: ignore
+        except (ImportError, ValueError):
+
+            def log_step_start(*_a, **_kw):
+                return 0.0
+
+            def log_step_end(*_a, **_kw):
+                return None
+
     with get_db_conn() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -735,6 +748,12 @@ def move_task(task_id: str, req: TaskMove):
             raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
         prev_status = curr["status"]
+        move_t0 = log_step_start(
+            "move",
+            task_id,
+            f"{prev_status} -> {req.status} by {req.actor or 'user'}",
+            logger=_log,
+        )
         meta_raw = curr["metadata"] if "metadata" in curr.keys() else "{}"
         meta = {}
         try:
@@ -905,6 +924,14 @@ def move_task(task_id: str, req: TaskMove):
                     )
 
         conn.commit()
+        log_step_end(
+            "move",
+            move_t0,
+            task_id,
+            "ok",
+            f"{prev_status} -> {new_status} assignee={new_assignee or '-'}",
+            logger=_log,
+        )
 
         if (
             req.status in ("todo", "done")

@@ -29,6 +29,8 @@ from .config import (
     _log,
     is_worker_or_child_process,
     load_settings,
+    StepTracker,
+    log_step_state,
     normalize_assignee,
 )
 
@@ -201,12 +203,11 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         )
                         board_active = running_per_board.get(board_key, 0)
                         if board_active >= board_cap:
-                            _log.info(
-                                "Task %s skipped (board %s at running limit %d/%d); will dispatch next cycle",
+                            log_step_state(
+                                "dispatch",
                                 task_id,
-                                board_key or "global",
-                                board_active,
-                                board_cap,
+                                "deferred",
+                                f"board {board_key or 'global'} at running limit {board_active}/{board_cap}; will dispatch next cycle",
                             )
                             continue
 
@@ -404,6 +405,12 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             or status == "triage"
                             or str(title or "").startswith("[Triage]")
                         ) and not row["pr_url"]:
+                            log_step_state(
+                                "package",
+                                task_id,
+                                "skip",
+                                f"owned by {assignee or 'unassigned'} (status={status}, no PR); not a packaging candidate",
+                            )
                             continue
                         workspace_path = row["workspace_path"]
                         tenant = row["tenant"] if "tenant" in row.keys() else None
@@ -465,6 +472,12 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             )
 
                         if not repo_path or not repo_path.exists():
+                            log_step_state(
+                                "package",
+                                task_id,
+                                "skip",
+                                f"repo path unresolvable (board={board_slug or '-'}, tenant={tenant or '-'})",
+                            )
                             continue
 
                         if status == "done":
@@ -520,6 +533,12 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             if meta.get("permanently_blocked") or meta.get(
                                 "last_worker_failure"
                             ):
+                                log_step_state(
+                                    "package",
+                                    task_id,
+                                    "skip",
+                                    f"permanently_blocked={bool(meta.get('permanently_blocked'))} last_failure={str(meta.get('last_worker_failure') or '')[:80]}",
+                                )
                                 continue
 
                             if not workspace_path or not Path(workspace_path).exists():
@@ -537,8 +556,20 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                     if wt and Path(wt).exists():
                                         workspace_path = wt
                                     else:
+                                        log_step_state(
+                                            "package",
+                                            task_id,
+                                            "skip",
+                                            "worktree missing and re-provisioning failed",
+                                        )
                                         continue
                                 else:
+                                    log_step_state(
+                                        "package",
+                                        task_id,
+                                        "skip",
+                                        "worktree missing and no PR to rebuild from",
+                                    )
                                     continue
                             if _package_and_open_pr(
                                 conn,
@@ -553,6 +584,17 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 now,
                             ):
                                 prs_opened += 1
+                        else:
+                            # No packaging candidate and no PR handling above took
+                            # the task: say why, or the row sits in silence (the
+                            # zf-hdz-4dc03cee stall: assignee=human + running +
+                            # awaiting_pr matched every selector but no actor).
+                            log_step_state(
+                                "package",
+                                task_id,
+                                "skip",
+                                f"no candidate (assignee={assignee}, status={row['status']}, pr={bool(row['pr_url'])}, awaiting_pr={bool(meta.get('awaiting_pr'))})",
+                            )
 
                 # 4. Capacity-driven / Idle Improvement Scanner Check
                 _disp.reap_active_scanners()
@@ -641,6 +683,14 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                 conn.commit()
 
+            cycle_summary = (
+                f"{unblocked} unblocked, {promoted} promoted, {dispatched} dispatched, "
+                f"{reaped} reaped, {prs_opened} PRs, {scans_triggered} scans"
+            )
+            # Rate-limited heartbeat: repeats of an identical outcome log at most
+            # once per interval; any change logs immediately.
+            log_step_state("dispatch_cycle", None, "done", cycle_summary)
+
             return {
                 "ok": True,
                 "unblocked": unblocked,
@@ -649,7 +699,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                 "reaped": reaped,
                 "prs_opened": prs_opened,
                 "scans_triggered": scans_triggered,
-                "message": f"Dispatch cycle complete: {unblocked} unblocked, {promoted} promoted, {dispatched} dispatched to running, {reaped} reaped, {prs_opened} PRs opened, {scans_triggered} scans triggered.",
+                "message": f"Dispatch cycle complete: {cycle_summary}.",
             }
         except Exception as e:
             _log.error("Error during dispatch cycle: %s", e)
@@ -881,6 +931,12 @@ def _poll_pr_and_route_review(
                 timeout=10,
             )
         if res.returncode != 0:
+            log_step_state(
+                "pr_poll",
+                task_id,
+                "skip",
+                f"gh pr view failed (rc={res.returncode}); falling through to packaging",
+            )
             return False
         pr_data = json.loads(res.stdout)
         pr_state = pr_data.get("state")
@@ -889,6 +945,9 @@ def _poll_pr_and_route_review(
         current_pr_url = pr_data.get("url") or row["pr_url"] or ""
 
         if pr_state == "MERGED":
+            log_step_state(
+                "pr_poll", task_id, "merged", f"{current_pr_url} merged; completing"
+            )
             _disp.stop_task_worker(task_id, cursor)
             _disp._remove_worktree(workspace_path, repo_path)
             _disp._delete_remote_branch(task_id, repo_path)
@@ -908,6 +967,9 @@ def _poll_pr_and_route_review(
             )
             return True
         elif pr_state == "CLOSED":
+            log_step_state(
+                "pr_poll", task_id, "closed", f"{current_pr_url} closed; archiving"
+            )
             _disp.stop_task_worker(task_id, cursor)
             _disp._remove_worktree(workspace_path, repo_path)
             _disp._delete_remote_branch(task_id, repo_path)
@@ -930,6 +992,12 @@ def _poll_pr_and_route_review(
         if meta.get("permanently_blocked") or (
             row["status"] in ("running", "todo") and not meta.get("awaiting_pr")
         ):
+            log_step_state(
+                "pr_poll",
+                task_id,
+                "skip",
+                f"worker in flight (status={row['status']}, awaiting_pr={bool(meta.get('awaiting_pr'))}, permanently_blocked={bool(meta.get('permanently_blocked'))})",
+            )
             return True
 
         if mergeable == "CONFLICTING" and row["status"] in ("blocked", "done"):
@@ -977,6 +1045,12 @@ def _poll_pr_and_route_review(
         if assignee not in ("zf-reviewer", "human") and (
             row["status"] in ("done", "blocked") or meta.get("awaiting_pr")
         ):
+            log_step_state(
+                "pr_poll",
+                task_id,
+                "skip",
+                f"assignee={assignee} owns task (status={row['status']}, awaiting_pr={bool(meta.get('awaiting_pr'))}); verdict routing deferred",
+            )
             return False
 
         task_meta = {}
@@ -1251,9 +1325,22 @@ def _poll_pr_and_route_review(
                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', 'Reviewer approved PR; task assigned to human awaiting merge', ?)",
                 (task_id, now),
             )
+            log_step_state(
+                "pr_poll",
+                task_id,
+                "approved",
+                f"verdict=APPROVED blocked_type={blocked_type}; parked for human merge",
+            )
             return True
+        log_step_state(
+            "pr_poll",
+            task_id,
+            "no_verdict",
+            f"state={pr_state} decision={decision or '-'} blocked_type={blocked_type} new_comments={len(new_pr_comments)}; no routing action",
+        )
         return False
     except Exception as e:
+        log_step_state("pr_poll", task_id, "error", str(e))
         _log.info("Reviewer PR check skipped for task %s: %s", task_id, e)
         return False
 
@@ -1281,7 +1368,9 @@ def _package_and_open_pr(
     title = row["title"]
     assignee = row["assignee"]
     had_conflict = False
+    steps = StepTracker(task_id)
     try:
+        steps.start("package.precheck", f"worktree={workspace_path}")
         _disp.clean_stale_git_locks(Path(workspace_path))
         git_dir = _disp.get_git_dir(Path(workspace_path))
         is_merging = bool(git_dir and (git_dir / "MERGE_HEAD").exists())
@@ -1308,6 +1397,7 @@ def _package_and_open_pr(
                     task_id,
                     markers,
                 )
+                steps.end("fail", f"unresolved conflict markers: {markers}")
                 _disp._handle_local_merge_conflict(
                     cursor,
                     task_id,
@@ -1340,6 +1430,7 @@ def _package_and_open_pr(
                 task_id,
                 _initial_err,
             )
+            steps.end("fail", f"conflict state unverifiable: {_initial_err}")
             meta["blocked_reason"] = (
                 f"Worktree conflict state unverifiable; manual resolution required: {_initial_err}"
             )
@@ -1364,6 +1455,7 @@ def _package_and_open_pr(
                 task_id,
                 initial_conflicts,
             )
+            steps.end("fail", f"unresolved conflicts: {initial_conflicts}")
             _disp._handle_local_merge_conflict(
                 cursor,
                 task_id,
@@ -1376,6 +1468,7 @@ def _package_and_open_pr(
             return False
 
         # Deterministic Precommit check
+        steps.start("package.precommit")
         precommit_ok, precommit_out, precommit_code = _disp.run_deterministic_precommit(
             Path(workspace_path)
         )
@@ -1386,6 +1479,7 @@ def _package_and_open_pr(
                 precommit_code,
                 precommit_out,
             )
+            steps.end("fail", f"precommit exit={precommit_code}")
             _disp._handle_precommit_failure(
                 cursor, task_id, title, workspace_path, precommit_out, now
             )
@@ -1401,6 +1495,7 @@ def _package_and_open_pr(
             )
             conn.commit()
 
+        steps.start("package.commit")
         subject, commit_body = _disp.format_conventional_message(title, task_id)
         status_res = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -1449,6 +1544,7 @@ def _package_and_open_pr(
             except Exception:
                 pass
 
+        steps.start("package.merge", f"target={target_branch or 'default'}")
         merged_ok, conflict_files, merge_err = _disp.pull_and_merge_main(
             Path(workspace_path), repo_path, default_branch=target_branch or None
         )
@@ -1459,6 +1555,7 @@ def _package_and_open_pr(
                 conflict_files,
                 merge_err,
             )
+            steps.end("fail", merge_err)
             _disp._handle_local_merge_conflict(
                 cursor,
                 task_id,
@@ -1479,6 +1576,9 @@ def _package_and_open_pr(
                 task_id,
                 _leftover_err,
             )
+            steps.end(
+                "fail", f"post-merge conflict state unverifiable: {_leftover_err}"
+            )
             meta["blocked_reason"] = (
                 f"Post-merge conflict state unverifiable; manual resolution required: {_leftover_err}"
             )
@@ -1498,6 +1598,7 @@ def _package_and_open_pr(
             conn.commit()
             return False
         if leftover_conflicts:
+            steps.end("fail", f"leftover conflict markers: {leftover_conflicts}")
             _disp._handle_local_merge_conflict(
                 cursor,
                 task_id,
@@ -1509,6 +1610,7 @@ def _package_and_open_pr(
             )
             return False
 
+        steps.start("package.push")
         subprocess.run(
             ["git", "push", "-u", "origin", f"task/{task_id}"],
             check=True,
@@ -1518,6 +1620,7 @@ def _package_and_open_pr(
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
 
+        steps.start("package.pr")
         pr_url = row["pr_url"] or ""
         if not pr_url:
             gh_view = subprocess.run(
@@ -1564,6 +1667,7 @@ def _package_and_open_pr(
                 )
                 pr_url = pr_res.stdout.strip()
 
+        steps.start("package.route_reviewer")
         _disp.stop_task_worker(task_id, cursor)
         _disp._remove_worktree(workspace_path, repo_path)
 
@@ -1642,10 +1746,12 @@ def _package_and_open_pr(
                 now,
             ),
         )
+        steps.end("ok", f"routed to reviewer: {pr_url}")
         return True
     except subprocess.CalledProcessError as e:
         err_msg = (e.stderr or "").strip() or str(e)
         if "No commits between" in err_msg:
+            steps.end("skip", "no commits between branch and main")
             _log.info(
                 "Task %s has no commits between main and branch; completing task without PR.",
                 task_id,
@@ -1666,9 +1772,11 @@ def _package_and_open_pr(
                 (task_id, now),
             )
         else:
+            steps.end("fail", f"git command failed: {err_msg[:200]}")
             _log.warning("Task %s commit/PR command failed: %s", task_id, err_msg)
         return False
     except subprocess.TimeoutExpired as e:
+        steps.end("error", f"timeout after {e.timeout}s: {e.cmd}")
         _log.warning(
             "Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)",
             task_id,
@@ -1677,6 +1785,7 @@ def _package_and_open_pr(
         )
         return False
     except Exception as e:
+        steps.end("error", f"{type(e).__name__}: {e}")
         _log.warning("Task %s commit/PR failed: %s", task_id, e)
         return False
 
@@ -1697,6 +1806,8 @@ def _finalize_terminal_done(
     """
     _disp = _d()
     task_id = str(row["id"])
+    steps = StepTracker(task_id)
+    steps.start("done.cleanup", f"pr={row['pr_url'] or '-'}")
     if workspace_path and Path(workspace_path).exists():
         try:
             _disp.stop_task_worker(task_id, cursor)
@@ -1739,6 +1850,7 @@ def _finalize_terminal_done(
         "UPDATE tasks SET workspace_path = NULL, metadata = ?, updated_at = ? WHERE id = ?",
         (json.dumps(meta), now, task_id),
     )
+    steps.end("ok")
 
 
 def _dispatcher_loop():

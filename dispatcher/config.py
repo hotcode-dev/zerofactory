@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 try:
@@ -179,3 +180,121 @@ def get_db_path() -> Path:
     if env_path:
         return Path(env_path)
     return Path.home() / ".hermes" / "zerofactory.db"
+
+
+# --- Step logging: grep-able start/end markers for every pipeline step -------
+# Every dispatcher step (spawn, precheck, precommit, commit, merge, push, PR,
+# verdict routing, ...) logs a `STEP <name> start` / `STEP <name> end` pair so
+# agent.log reconstructs exactly which step a task entered, finished, or stalled
+# in — the gap that made task zf-hdz-4dc03cee's 3.5h silent stall undiagnosable.
+# `log_step_state` records recurring gate decisions (e.g. "why the poller left
+# the task alone this cycle") without flooding the log every 30s cycle.
+
+_STEP_STATE_LOG_INTERVAL = 900  # seconds between repeat logs of the same state
+_STEP_STATE_CACHE_MAX = 4096
+_step_state_last: dict[str, tuple[str, float]] = {}
+
+
+def log_step_start(
+    step: str,
+    task_id: str | None = None,
+    detail: str = "",
+    logger: logging.Logger | None = None,
+) -> float:
+    """Log a pipeline step start; returns the start timestamp for log_step_end."""
+    t0 = time.monotonic()
+    (logger or _log).info(
+        "STEP %s start | task=%s | %s", step, task_id or "-", detail or "-"
+    )
+    return t0
+
+
+def log_step_end(
+    step: str,
+    started_at: float,
+    task_id: str | None = None,
+    outcome: str = "ok",
+    detail: str = "",
+    logger: logging.Logger | None = None,
+) -> None:
+    """Log a pipeline step end with its outcome and duration (always paired)."""
+    (logger or _log).info(
+        "STEP %s end | task=%s | %s | %.1fs | %s",
+        step,
+        task_id or "-",
+        outcome,
+        time.monotonic() - started_at,
+        detail or "-",
+    )
+
+
+class StepTracker:
+    """Sequential pipeline steps with guaranteed paired start/end log lines.
+
+    ``start()`` implicitly ends the previous step, so a multi-exit pipeline only
+    needs one ``start()`` per phase plus ``end()`` where the pipeline actually
+    stops (including the error exits). A step that never ends in the log means
+    the process died mid-step — exactly the forensic trail needed to find where
+    a task stalled::
+
+        steps = StepTracker(task_id).start("package.precommit")
+        ...
+        steps.start("package.commit")      # ends package.precommit (ok)
+        ...
+        steps.end("fail", "merge conflict")  # pipeline stops here
+    """
+
+    __slots__ = ("task_id", "logger", "name", "t0")
+
+    def __init__(
+        self, task_id: str | None = None, logger: logging.Logger | None = None
+    ) -> None:
+        self.task_id = task_id
+        self.logger = logger
+        self.name = ""
+        self.t0 = 0.0
+
+    def start(self, step: str, detail: str = "") -> "StepTracker":
+        """End the in-flight step (if any) and start ``step``."""
+        self.end()
+        self.name = step
+        self.t0 = log_step_start(step, self.task_id, detail, logger=self.logger)
+        return self
+
+    def end(self, outcome: str = "ok", detail: str = "") -> None:
+        """End the in-flight step; no-op when no step is active."""
+        if not self.name:
+            return
+        log_step_end(
+            self.name, self.t0, self.task_id, outcome, detail, logger=self.logger
+        )
+        self.name = ""
+
+
+def log_step_state(
+    step: str,
+    task_id: str | None,
+    state: str,
+    detail: str = "",
+    logger: logging.Logger | None = None,
+) -> None:
+    """Log a recurring gate decision, rate-limited per (step, task, state).
+
+    The dispatch loop re-evaluates the same gates every cycle; this logs the
+    first time a state is seen and then at most once per
+    ``_STEP_STATE_LOG_INTERVAL`` while it persists, so a stuck task leaves a
+    breadcrumb trail without flooding agent.log. Any state/detail *change*
+    logs immediately.
+    """
+    key = f"{step}:{task_id or '-'}"
+    signature = f"{state}|{detail}"
+    now = time.monotonic()
+    last_signature, last_at = _step_state_last.get(key, ("", 0.0))
+    if signature == last_signature and (now - last_at) < _STEP_STATE_LOG_INTERVAL:
+        return
+    if len(_step_state_last) >= _STEP_STATE_CACHE_MAX:
+        _step_state_last.clear()
+    _step_state_last[key] = (signature, now)
+    (logger or _log).info(
+        "STEP %s | task=%s | %s | %s", step, task_id or "-", state, detail or "-"
+    )

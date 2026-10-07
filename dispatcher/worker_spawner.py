@@ -16,6 +16,7 @@ from .config import (
     _active_workers,
     _d,
     _log,
+    StepTracker,
     get_db_path,
     load_settings,
     normalize_assignee,
@@ -77,7 +78,10 @@ def spawn_agent_worker(
     metadata: str | None = None,
 ) -> tuple[int | None, str | None]:
     """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
+    steps = StepTracker(task_id)
+    steps.start("worker.spawn", f"agent={assignee}")
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN"):
+        steps.end("skip", "ZEROFACTORY_SKIP_WORKER_SPAWN enabled")
         return None, None
 
     assignee = normalize_assignee(assignee)
@@ -485,7 +489,9 @@ def spawn_agent_worker(
                     break
                 time.sleep(0.5)
 
+        steps.end("ok", f"pid={proc.pid} session={session_id or 'auto'}")
         return proc.pid, session_id
     except Exception as e:
+        steps.end("error", f"{type(e).__name__}: {e}")
         _log.error("Failed to spawn %s worker for task %s: %s", assignee, task_id, e)
         return None, None

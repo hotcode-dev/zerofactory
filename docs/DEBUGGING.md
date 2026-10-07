@@ -64,6 +64,48 @@ Reading the `metadata` blob is the fastest "why" check:
 
 ---
 
+## 2b. Layer 0.5 — the STEP timeline (`~/.hermes/logs/agent.log`)
+
+The SQLite trail records *decisions*; the log records *steps*. Every dispatcher
+pipeline step emits a paired, grep-able marker so the log reconstructs where a
+task spent its time:
+
+```bash
+grep "STEP" ~/.hermes/logs/agent.log | grep 'task=<task_id>'
+```
+
+| Marker | Meaning |
+|---|---|
+| `STEP <name> start \| task=<id> \| <detail>` | step entered |
+| `STEP <name> end \| task=<id> \| <outcome> \| <duration>s \| <detail>` | step finished (`ok` / `fail` / `error` / `skip`) |
+| `STEP <name> \| task=<id> \| <state> \| <detail>` | recurring gate decision (rate-limited) |
+
+Step names map to the packaging pipeline and friends: `worktree.setup`,
+`worker.spawn`, `package.precheck`, `package.precommit`, `package.commit`,
+`package.merge`, `package.push`, `package.pr`, `package.route_reviewer`,
+`done.cleanup`, `move`, `pr_poll`, `package`, `dispatch`, `dispatch_cycle`.
+
+Rules of thumb:
+
+- **A `start` with no matching `end`** = the process died mid-step (crash, OOM,
+  external kill). The last `start` names the step to inspect.
+- **`end` with `fail`/`error`** = the step ran and rejected the work; the
+  `detail` column carries the reason (exit code, conflict files, timeout).
+- **`STEP <name> \| ... \| skip \| ...`** lines are *recurring gate* decisions
+  (the 30s poll loop re-evaluates the same gates every cycle). They are
+  rate-limited: the first occurrence logs, repeats are suppressed for 15
+  minutes, and any state/detail *change* logs immediately. A task parked in a
+  bad state therefore leaves exactly one breadcrumb — e.g. the `package` step's
+  `skip | no candidate (assignee=human, status=running, pr=True, awaiting_pr=True)`
+  is the smoking gun from the zf-hdz-4dc03cee stall, where every selector
+  matched but no actor owned the task.
+
+> ⚠️ **Timestamps**: `agent.log` timestamps are *local time*; `task_activity`
+> `created_at` values are Unix epoch (UTC). Convert before correlating:
+> `sqlite3 ... "SELECT datetime(created_at,'unixepoch'), ..."` prints UTC.
+
+---
+
 ## 3. Symptom → layer routing
 
 | Symptom | Layer | First move |
@@ -73,6 +115,7 @@ Reading the `metadata` blob is the fastest "why" check:
 | `ImportError`/collection errors in the full suite that pass when a test runs alone | environment | Check `tests/conftest.py`'s `import tests` pin against `~/.hermes/hermes-agent` `tests/` shadowing (§5) |
 | Builder times out in a loop (2× 3600s) | agentic flailing | The worker is trying to fix something not fixable from the worktree — read `last_precommit_error`, fix the cause, then `move` the task to reset retry counters |
 | Task stuck `blocked` with conflicts | git | In the worktree: `git status`, `grep -rn '<<<<<<<' --include='*.py'`, `ls .git/MERGE_HEAD` |
+| Task parked with **no** activity rows for hours | engine (silent gate) | `grep "STEP" agent.log \| grep <task_id>` — the last `skip`/`start` line names the gate or step that dropped it (§2b) |
 | PR merged/closed on GitHub, board not updated | polling lag (by design) | `gh pr view` vs the task row; the next cycle's `MERGED`/`CLOSED` branch archives it |
 | Nothing dispatches at all | capacity / env | `hermes zerofactory check-stuck`, board `max_concurrent_running`, `ZEROFACTORY_*` env, gateway restart |
 | Badges/UI look wrong | UI derivation | Badges derive from `status`/`assignee`/`metadata` only — if one shows stale state, the bug is in the derivation, never in titles |

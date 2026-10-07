@@ -200,6 +200,23 @@ and is deliberately skipped rather than treated as an orphan
 (`repo://dispatcher/reaper.py#L344-L348`). The exhausted-retry path instead
 stamps `blocked_reason_type = "stuck"` on the parked task.
 
+## Step logging
+
+Every pipeline step emits paired, grep-able markers in
+`~/.hermes/logs/agent.log` — `STEP <name> start | task=<id> | …` and
+`STEP <name> end | task=<id> | <outcome> | <duration>s | …` — via
+`StepTracker` / `log_step_start` / `log_step_end`
+(`repo://dispatcher/config.py`). Steps covered: `worktree.setup`,
+`worker.spawn`, `package.precheck` → `package.precommit` → `package.commit` →
+`package.merge` → `package.push` → `package.pr` → `package.route_reviewer`,
+`done.cleanup`, `move`, and the `pr_poll` verdict check. Recurring gate
+decisions use `log_step_state`, which rate-limits repeats (first occurrence
+plus every state change, then at most once per 15 minutes) so the 30s poll
+loop leaves breadcrumbs — e.g. `skip | no candidate (assignee=human, …)` —
+instead of flooding the log. A `start` without a matching `end` pinpoints the
+step that died; the full grep playbook lives in
+`repo://docs/DEBUGGING.md` §2b.
+
 ## Relationships
 
 Upstream: claims work off the durable Kanban SQLite substrate described in

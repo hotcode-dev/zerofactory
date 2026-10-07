@@ -12,6 +12,7 @@ from .config import (
     _REMOTE_BRANCH_DELETE_TIMEOUT,
     _WORKTREE_REMOVE_TIMEOUT,
     VALID_PROFILES,
+    StepTracker,
     _d,
     _log,
     normalize_assignee,
@@ -124,10 +125,14 @@ def setup_worktree(
     if os.environ.get("ZEROFACTORY_SKIP_GIT"):
         return None
 
+    steps = StepTracker(task_id)
+    steps.start("worktree.setup", f"assignee={assignee}")
+
     # Resolve repo path
     if not repo_path:
         repo_path = _d().resolve_task_repo_path(cursor, board_slug, tenant)
     if not repo_path or not repo_path.exists():
+        steps.end("fail", f"repo path unresolvable: {repo_path}")
         return None
     reponame = repo_path.name
 
@@ -277,8 +282,10 @@ def setup_worktree(
             "UPDATE tasks SET workspace_kind = 'dir', workspace_path = ?, branch_name = ? WHERE id = ?",
             (str(worktree_dir), branch_name, task_id),
         )
+        steps.end("ok", f"{worktree_dir} branch={branch_name}")
         return str(worktree_dir)
     except Exception as e:
+        steps.end("error", f"{type(e).__name__}: {e}")
         _log.warning(
             "Worktree setup skipped or failed for task %s (%s): %s",
             task_id,
