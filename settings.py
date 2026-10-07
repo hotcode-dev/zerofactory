@@ -12,14 +12,24 @@ Both consumers call :func:`load_settings` instead of re-implementing the
 key-lookup + clamp + fallback pattern, so the defaults and the clamping
 semantics can no longer drift between the two modules.
 
+Idle-scan settings (NOT in the ``settings`` table)
+--------------------------------------------------
+The idle-scan knobs (``scan_on_idle``, ``idle_scan_cooldown_minutes``,
+``idle_scan_active_threshold``, ``idle_scan_max_todo``) are **not** part of
+the global ``settings`` table and are **not** returned by
+:func:`load_settings`. They live in the per-board scanner cron job config
+(see ``cron/definitions.py``) and are read by the dispatcher via
+``get_scanner_cron_config()``. The ``DEFAULT_*`` constants in this module
+serve only as shared *defaults* for that fallback path.
+
 Unit boundary
 -------------
-``idle_scan_cooldown_minutes`` is stored in the database in **minutes** and
-is returned by :func:`load_settings` in **minutes** (the API/DB unit). The
-dispatcher is the only consumer that needs seconds and converts at a single,
-explicit site (``cooldown_seconds = settings["idle_scan_cooldown_minutes"] * 60``).
-:const:`DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS` exposes the seconds view of the
-default so the dispatcher's fallback path reads naturally.
+``idle_scan_cooldown_minutes`` is stored in **minutes** (the DB/API unit).
+The dispatcher is the only consumer that needs seconds and converts at a
+single, explicit site (``cooldown_seconds = cooldown_minutes * 60`` in
+``dispatcher/scheduler.py``). :const:`DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS`
+exposes the seconds view of the default so that fallback path reads
+naturally.
 """
 
 from __future__ import annotations
@@ -133,8 +143,10 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
     ``max(0, ...)``). Unknown keys in the table are ignored.
 
     Returns a dict with exactly the :data:`SETTING_KEYS` in their native
-    types. ``idle_scan_cooldown_minutes`` is returned in MINUTES (the DB unit);
-    see the module docstring for the unit boundary.
+    types. The idle-scan settings (``scan_on_idle``,
+    ``idle_scan_cooldown_minutes``, ``idle_scan_active_threshold``,
+    ``idle_scan_max_todo``) are **not** included — they live in the
+    per-board scanner cron job config, see the module docstring.
     """
     settings: dict[str, Any] = {
         "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
