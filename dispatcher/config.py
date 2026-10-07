@@ -23,30 +23,17 @@ try:
         load_settings,
     )
 except (ImportError, ValueError):
-    try:
-        from .settings import (  # type: ignore
-            DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
-            DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-            DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
-            DEFAULT_IDLE_SCAN_MAX_TODO,
-            DEFAULT_MAX_ACTIVE_TASKS,
-            DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
-            DEFAULT_MAX_CONCURRENT_WORKERS,
-            DEFAULT_SCAN_ON_IDLE,
-            load_settings,
-        )
-    except (ImportError, ValueError):
-        from settings import (  # type: ignore
-            DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
-            DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-            DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
-            DEFAULT_IDLE_SCAN_MAX_TODO,
-            DEFAULT_MAX_ACTIVE_TASKS,
-            DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
-            DEFAULT_MAX_CONCURRENT_WORKERS,
-            DEFAULT_SCAN_ON_IDLE,
-            load_settings,
-        )
+    from settings import (  # type: ignore
+        DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
+        DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+        DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
+        DEFAULT_IDLE_SCAN_MAX_TODO,
+        DEFAULT_MAX_ACTIVE_TASKS,
+        DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
+        DEFAULT_MAX_CONCURRENT_WORKERS,
+        DEFAULT_SCAN_ON_IDLE,
+        load_settings,
+    )
 
 try:
     from ..paths import (  # type: ignore
@@ -57,22 +44,13 @@ try:
         resolve_profile_state_db,
     )
 except (ImportError, ValueError):
-    try:
-        from .paths import (  # type: ignore
-            HUMAN,
-            PROFILE_MAP,
-            UNASSIGNED,
-            normalize_assignee,
-            resolve_profile_state_db,
-        )
-    except (ImportError, ValueError):
-        from paths import (  # type: ignore
-            HUMAN,
-            PROFILE_MAP,
-            UNASSIGNED,
-            normalize_assignee,
-            resolve_profile_state_db,
-        )
+    from paths import (  # type: ignore
+        HUMAN,
+        PROFILE_MAP,
+        UNASSIGNED,
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
 
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
 

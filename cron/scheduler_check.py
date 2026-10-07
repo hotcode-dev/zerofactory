@@ -58,8 +58,8 @@ def is_cron_scheduler_enabled(conn_or_cursor: Any = None) -> bool:
     # 2. Zero Factory global settings table check
     try:
         try:
-            from .settings import load_settings
-        except ImportError:
+            from ..settings import load_settings
+        except (ImportError, ValueError):
             from settings import load_settings  # type: ignore
 
         if conn_or_cursor is not None:

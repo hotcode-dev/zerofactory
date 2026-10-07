@@ -63,9 +63,9 @@ def trigger_builtin_job(job_id: str) -> dict[str, Any]:
     if not job_def.get("no_agent", False):
         try:
             try:
-                from .dispatcher import _global_llm_occupancy, reap_active_scanners
-                from .settings import load_settings
-            except ImportError:
+                from ..dispatcher import _global_llm_occupancy, reap_active_scanners
+                from ..settings import load_settings
+            except (ImportError, ValueError):
                 from dispatcher import _global_llm_occupancy, reap_active_scanners
                 from settings import load_settings
 
@@ -217,9 +217,9 @@ def tick_builtin_cron() -> int:
         return 0
 
     try:
-        from .dispatcher import _global_llm_occupancy, reap_active_scanners
-        from .settings import load_settings
-    except ImportError:
+        from ..dispatcher import _global_llm_occupancy, reap_active_scanners
+        from ..settings import load_settings
+    except (ImportError, ValueError):
         from dispatcher import _global_llm_occupancy, reap_active_scanners
         from settings import load_settings
     try:
