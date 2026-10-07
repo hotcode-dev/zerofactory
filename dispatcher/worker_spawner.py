@@ -285,6 +285,7 @@ def spawn_agent_worker(
         else:
             # Check if there are review comments for this task in task_comments
             review_comments_prompt = ""
+            is_precommit_fail = False
             try:
                 _db = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
                 if _db.exists():
@@ -333,11 +334,7 @@ def spawn_agent_worker(
             except Exception as e:
                 _log.debug("Could not inspect task_comments for worker prompt: %s", e)
 
-            if review_comments_prompt and any(
-                "deterministic precommit failed" in r["body"].lower()
-                for r in _rev_rows
-                if "_rev_rows" in locals()
-            ):
+            if review_comments_prompt and is_precommit_fail:
                 goal_instructions = (
                     f"Your goal as Builder (Fix Precommit Failures):\n"
                     f"1. Inspect the precommit failure output above.\n"
