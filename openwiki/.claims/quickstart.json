@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bd529d876325117a5c13867a084b7024b4d9ad651654dc987ce10ab30f379f37",
+  "pageVersion": "sha256:b0e1f5dee511cfd8f06e4b32320a43b3dce66f3d13f02b790546a94cf5a3e582",
   "claims": [
     {
       "id": "claim_390ae1a0b32941e4b5bf337f7061ffa7",
@@ -18,11 +18,11 @@
     },
     {
       "id": "claim_55cba743db45461c90c48d4dcd76975a",
-      "statement": "Every task's output is gated by .zerofactory/precommit.sh before a commit or PR: three phases in order (format: `ruff check --fix .` + `ruff format .`; build: `python3 -m compileall -q .`; test: `python3 -m pytest tests/ -q`), exiting non-zero on first failure, and the dispatcher re-spawns zf-builder with the exact error output (up to 3 precommit retries) before work may become a PR.",
+      "statement": "Every task's output is gated by .zerofactory/precommit.sh before a commit or PR: three phases in order (format: `ruff check --fix .` + `ruff format .` with pinned ruff auto-installed when missing; build: `python3 -m compileall -q .`; test: `python3 -m pytest tests/ -q` with a pinned pytest + plugin-runtime-deps stack auto-installed and no unittest fallback), exiting non-zero on first failure, and the dispatcher re-spawns zf-builder with the exact error output (up to 3 precommit retries) before work may become a PR.",
       "evidence": [
         {
           "resource": "repo://.zerofactory/precommit.sh",
-          "version": "repo-file-v1:sha256:226de700a54e54364a8ba3c72357d249105fb9996b03fb53696c211a087488c3"
+          "version": "repo-file-v1:sha256:e844f95da72caec4da11694758235ad312c7ca140885158096de23d25265c7ed"
         }
       ]
     },
@@ -31,22 +31,22 @@
       "statement": "The test suite is hermetic: tests/conftest.py sets ZEROFACTORY_SKIP_GIT, ZEROFACTORY_SKIP_CRON_SYNC, ZEROFACTORY_DISABLE_DISPATCHER, and ZEROFACTORY_SKIP_WORKER_SPAWN before any test runs so the suite executes without a live factory.",
       "evidence": [
         {
-          "resource": "repo://tests/conftest.py#L18-L22",
-          "version": "repo-lines-v1:sha256:28d6c1885a24cb7fb9ff8f86d4cd94eca4426b0776e064cfb5276f6c5fe7de2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZiN2RiZGM0ODU4NTAxZmNmNmY2NWI3MmUzZThlYWJmOTVlY2NmZjI4MTJiOGRhYzk1MzA5ZjJiY2I1ODFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGZlNTA2ODM2MjQxMWVjYWY4ZjUzOWRmOWVhNDg5MDI3MTM3OTc1MTZjNTFmOTg2MzJiYmNiZWZmYzViNDA3YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiYzk3YWVjOWM5YTM5NmI0ZDcxMjExYzIzOGJkNDQ4MmMxNDRmYzc4ZDg2YTI0MzIwMjgzZjJhMmJmNjkzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODFjMTQyNmJlYTdmYWJhMDVhMTJjMWUxYzg2MGRhNjdjNjE3MzhmZmNjY2NhNGY2NzZlNGI5MjZkZWE2NmUwMiJ9"
+          "resource": "repo://tests/conftest.py#L24-L27",
+          "version": "repo-lines-v1:sha256:64bf886aa8811caadf95873dd4bbd1c30aa78d619504ca7689281ae30e3bf8ff:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODI1MTZlMWMxZWI1OGNmYWM3Mjg2OWRlOWI2Njk1MzAzNGE5MDMzNjkyMDNlODI3ODIyNzM5OWI0ZDU0NmFmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjg5ODgxYWIxOWE0N2I4YzZmNmJjYTI5NWI5MjQyZDI4MjI4MDFkNGFjZmRjZjc0YjBhMGM2ZWZiNmMwNmM3ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzBlODU4MjY1YzVhYTAwZTdjNzgzNDdkNjgxNDhmY2MxMzVmMzMzMjA1OGVhNGI2ZjdkYWVmMjczYWE2OWJhYiJ9"
         }
       ]
     },
     {
       "id": "claim_e020c865291e476ca3be6d06cd5dd2ba",
-      "statement": "As of this commit the full pytest suite is green at 256 passed, 1 skipped (verified by running `python3 -m pytest tests/ -q` / `.zerofactory/precommit.sh`), organized in three tiers: tests/unit, tests/integration (FastAPI REST), and tests/e2e (multi-agent workflow + resilience).",
+      "statement": "As of this commit the full pytest suite is green at 278 passed, 1 skipped (verified by running `python3 -m pytest tests/ -q` / `.zerofactory/precommit.sh`), organized in three tiers: tests/unit, tests/integration (FastAPI REST), and tests/e2e (multi-agent workflow + resilience).",
       "evidence": [
         {
           "resource": "repo://.zerofactory/precommit.sh",
-          "version": "repo-file-v1:sha256:226de700a54e54364a8ba3c72357d249105fb9996b03fb53696c211a087488c3"
+          "version": "repo-file-v1:sha256:e844f95da72caec4da11694758235ad312c7ca140885158096de23d25265c7ed"
         },
         {
-          "resource": "repo://tests/conftest.py#L1-L49",
-          "version": "repo-lines-v1:sha256:d60fb1b5bbc110ed641d1734b79dffb04fba37b3644e2c297dbf52329b144fa6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1ZjFhMTRjMWUyNmFlMzlkYTg0YTljMjA1ZTU3YWEwYWYzODg5NjZkNGEyZDY5NTZjMGUwOTFmZWVlODEwMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3MzlhMjc2NDU4ZGE3ODkzYmEzYmQ1MjU3MTI0M2JkZTA3Y2ZkYzVlMTc3NzFkNjI0MWZhNGIyYjkyZTZmYTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxYzE0MjZiZWE3ZmFiYTA1YTEyYzFlMWM4NjBkYTY3YzYxNzM4ZmZjY2NjYTRmNjc2ZTRiOTI2ZGVhNjZlMDIifQ"
+          "resource": "repo://tests/conftest.py",
+          "version": "repo-file-v1:sha256:27a38393275612b2cbbfaff7ffb15dc1479204e507cd940585d00ad5e7bd3c1a"
         }
       ]
     },
@@ -73,10 +73,24 @@
           "version": "repo-lines-v1:sha256:f5a209846a408ae18f79329399964892bdff5c974764579df8bdee9894883452:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3ZTU4OTBiYjY4ODM3MDIyNzFhZTAwZTUzMGJlZjA1Y2Y0ODQ2ZDZkZTllNDcxZjRiNjNkODZjZDM2MGNjZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzOTNiNGE2MDNhMzBmYjAyMTdhOGE5MTRiMDNhMjZmNGQ2NDJjNTdmYmViOTU3ZGYyNmYyM2Q2NDBlNjhkOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2ZDc4MWFjODA1ODQ1ZTdmNTQyOGM3NTM3OWEyNTQ4NmZjZWVjYWNiZTU2YmIwYjhiYWNkNTEzOGQzOWI4ZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhYjFlZGE2NjA5YTQ4MjQ4MTEzMTA3Mzc0YTY1YzI1MWZmNzE1Yzc0ZjEyMDQwZDUwNjAxNzhmOTQ1ZTRkOWYifQ"
         }
       ]
+    },
+    {
+      "id": "claim_72736700047b41b8a2a2259f2fd9a1f0",
+      "statement": "The `update` CLI command's --status option routes through the move_task code path (the same rule PATCH /tasks/{id} enforces server-side by refusing status changes with a 400) so lifecycle side effects — worker stop, flag cleanup, dispatch trigger — always apply when a task transitions status via update.",
+      "evidence": [
+        {
+          "resource": "repo://__init__.py",
+          "version": "repo-file-v1:sha256:e7ae2233aeb01258c42fa59ecdcd6ba1373fad706205e63471c110f53c353754"
+        },
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L633-L665",
+          "version": "repo-lines-v1:sha256:5f913c043289871ddf5050e7abda99ea6e6b0dc56a6a65655d7ceb513ddddbcd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2Y2I4ZTExNjA0NTBjMzY0YzMyYTczYjMzMmJkODRkMTkyNmU3M2ExODAyZmIyNWFlNGNhYTU2OWJiZGQ0YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmZWU3MGI1OTc5ZWY2ZDE5OGE2MDkxNjFiODNkYjIxY2Y0MzYzYzVmMDc2ZmMzNWNmNzJlNGIzMDJjYWI3ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2OWZlMWJmYWZmOTA5OTU2YWJlM2FlZDgyMzkwOTI5ZDc4M2E5OTIyOTdjNDA1ZjdjZTE1MTc2Yzc0NWI1Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzMmViNzJiZmY0NGRlZDhlZjA3NmUyZmRiMmY4OTdhZmEwOWUzZDM3NzVkMjMzYzM1NDJlNmEzODQ1ZDQ3ZjAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-05T10:11:27.384Z"
+    "at": "2026-10-06T19:22:52.001Z"
   }
 }

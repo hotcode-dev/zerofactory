@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:df282c3c0eed4fa74839a755fbb2e3946cd41cec7817cedff23b5e9a513196d7",
+  "pageVersion": "sha256:6b898794ce360bb6e012eb5003feb4f7d13355c10d91e36964c8e7d8109e6f9f",
   "claims": [
     {
       "id": "claim_f5049d3391c7479baf38776d89ce8a5a",
@@ -70,11 +70,11 @@
     },
     {
       "id": "claim_e244654233ea4553a219a0f9a7e4a1a0",
-      "statement": "The deterministic precommit gate runs `ruff check --fix .` then `ruff format .` (format phase) and `python3 -m compileall -q .` (build phase) and `python3 -m pytest tests/ -q` (test phase), and the dispatcher re-runs the gate and re-spawns the builder on any failure.",
+      "statement": "The deterministic precommit gate runs `ruff check --fix .` then `ruff format .` (format phase, auto-installing pinned ruff==0.16.9 when missing), `python3 -m compileall -q .` (build phase), and `python3 -m pytest tests/ -q` (test phase, auto-installing a pinned pytest + plugin-runtime-deps stack and never falling back to unittest discovery), and the dispatcher re-runs the gate and re-spawns the builder on any failure.",
       "evidence": [
         {
           "resource": "repo://.zerofactory/precommit.sh",
-          "version": "repo-file-v1:sha256:226de700a54e54364a8ba3c72357d249105fb9996b03fb53696c211a087488c3"
+          "version": "repo-file-v1:sha256:e844f95da72caec4da11694758235ad312c7ca140885158096de23d25265c7ed"
         }
       ]
     },
@@ -114,21 +114,31 @@
     },
     {
       "id": "claim_a4b0e064b0b24b6cb9d38a663929af1c",
-      "statement": "Any agent-authored GitHub text (PR titles/bodies, review comments) must begin with a role-tagged [AI:<role>] marker such as [AI:zf-builder] or [AI:zf-reviewer] (enforced by the role-aware ai_prefix, idempotent for legacy [AI] markers via AI_PREFIX_RE) so humans can distinguish agent output from human output.",
+      "statement": "Any agent-authored GitHub text (PR titles/bodies, review comments) must begin with a role-tagged [AI:<role>] marker such as [AI:zf-builder] or [AI:zf-reviewer] (enforced by the role-aware ai_prefix, whose AI_PREFIX_RE matches only role-tagged markers so it never emits a bare [AI] and is idempotent for already-tagged text) so humans can distinguish agent output from human output.",
       "evidence": [
         {
           "resource": "repo://dispatcher/github_pr.py#L321-L335",
-          "version": "repo-lines-v1:sha256:b79bb45e452aba9c783942fe51bdb980c9a36dd56d1fb486ce2894bd8fc71b11:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwZDA4M2YzYWY3MTMxMDUwZTFlNWJjOGE3NmZhYTliYjhmZjBhOTFmZDg4ZTU3NTVlNWUzNjMxNzc3OTAzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwY2VjZDBmNmI3NzNmMTFhMjlmYWJiMmM0NDBkYzk2YzVkNjBlZGFmOTgyZmQ0MjVkZjQxMWU2MTIzODU5NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZDZkMjU2YmNmYWE1NWJiNTRiY2M3ZjMzMWEyN2YzNWI4N2ZhMmU5NzU2YTY5ZTk2NWNlZWJjNGY2MTdkOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MmI4MThlZDJjZGY1YjY4NTAzNWVjYTgxODdhMGQ0YWI0OWY3MjhjZTI1NzgyYmVlYTUyOGNiNDA5ZTFiNTEifQ"
+          "version": "repo-lines-v1:sha256:39d717a26183e83da4b175dd76fd6db7ca885434cfd4b212d0399b8d5ce99d45:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MDRkYTUzOGNlNDA4OGI0MTg3NGI1MDFjMjE3Yjg1YjRiNDkxMjBlMjQyOWZkOTA2ZTkxOTFkNjUwNmI2OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZDZkMjU2YmNmYWE1NWJiNTRiY2M3ZjMzMWEyN2YzNWI4N2ZhMmU5NzU2YTY5ZTk2NWNlZWJjNGY2MTdkOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzODdkYTk1NDY3YzJkNjZjYzQ5MzdkNDcxMzA0OGQ5YzEzOGNlNGVjM2MwYzc5OTg1MTk2MGEzYTdkZGIwNjIifQ"
         },
         {
-          "resource": "repo://dispatcher/worker_spawner.py#L127-L140",
-          "version": "repo-lines-v1:sha256:92c3d98934054e9f5d7945cf6bb17dbe86541209a968a3d8f8cd1b7705a28647:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOWUzOTViZTI2M2VmMjUzNzk5NmM2NDJhZTBhYTNlYjZlNjBkNWM0ZGVlOGQ1YzRjYjYzNjUyMjc5Y2JmYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMzFhZjFiZmNiNTU1MTBkMGM3NWVkMzU4MDQ4YTM2NDA3NGJmMDQ5NjgwOGY2MjY1MzE4MjM5Mzg0MGRlNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwNDEwYzE2YTE1NWE0YzYyYjhhMjI1ZjU2NGY4NmZhYzYwY2Q3MmM3MDUwOTM0ODE3NTJkM2FjYmEzYTZmZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyOGJiZmZjZWZmZDk4ODc2Y2Q0ZjFjMGE0MDZhMmJhYTY0NmJkNGU1YjkzN2Y3YmRjZGM3YzU5MTRjYjNmMjkifQ"
+          "resource": "repo://dispatcher/worker_spawner.py#L129-L141",
+          "version": "repo-lines-v1:sha256:dc5441c6e389f8748ff62004372eebd05cde323410a8ffafa6f027eccdd933af:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOWUzOTViZTI2M2VmMjUzNzk5NmM2NDJhZTBhYTNlYjZlNjBkNWM0ZGVlOGQ1YzRjYjYzNjUyMjc5Y2JmYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmODU0NDgyMTIwYzE4ZjJlOGQ2ZjFiOWNmYzdmOGY0YmZiZTYyNjNmMzc1NWUzMTYyMjA3YWZmMTJjNWI5M2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwNDEwYzE2YTE1NWE0YzYyYjhhMjI1ZjU2NGY4NmZhYzYwY2Q3MmM3MDUwOTM0ODE3NTJkM2FjYmEzYTZmZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjOGU4YjZhZjNiNjYxZTZmNGJhZGE3N2FkMzgyZmQyYjgyNzYxNTc0MjlhMzc2YjVhMzJiZDZmN2RiMDA4YWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1d11f60a824846c68b2d645647594b33",
+      "statement": "tests/conftest.py pins the repository's own `tests` package with `import tests  # noqa: E402` before any test module runs: the dispatcher import chain inserts foreign roots (e.g. ~/.hermes/hermes-agent) into sys.path, and without the pin that repo's own tests/ package would win `import tests` and break `from tests.unit...` imports (an order-dependent ModuleNotFoundError).",
+      "evidence": [
+        {
+          "resource": "repo://tests/conftest.py#L18-L22",
+          "version": "repo-lines-v1:sha256:10ae732aba6f5e3a85dfa9d682487c53efe37a3e03639cf07fd09fc310ffad33:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjg2MjkyN2IzODZjYzg1NWU0ODZhMjNmZWViMzBkYzk2NjQ5NzUxZjE3ZTc2MjkwN2JkNTZkYzRhYWZkMTFhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM0OTdkNGVhMDBhNDNlYTg4YThkMWZjY2U0OWIzZDc5NjBmZDY2Zjc5YmFhYzYwOTExMWFkNjU1M2EyODkxZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiYzk3YWVjOWM5YTM5NmI0ZDcxMjExYzIzOGJkNDQ4MmMxNDRmYzc4ZDg2YTI0MzIwMjgzZjJhMmJmNjkzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzFhNWE2MTljYTFkYWQyYjg5ZDdiZjEwMThhMTAxNDFlMzJjNzFmOTAzODkzZDE3M2NiNWZjNDZhOTVmZmE5YSJ9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-05T10:11:27.384Z"
+    "at": "2026-10-06T19:22:52.001Z"
   }
 }

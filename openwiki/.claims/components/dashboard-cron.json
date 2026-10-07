@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7802189d65932fff99aa76828ce41a85946769357e4ce6113db7fd1e8c07b3ef",
+  "pageVersion": "sha256:f68c7d7ff087652a67753f0ee96b6915c486100d9197c9d3738dac59feb5e299",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -123,8 +123,8 @@
       "statement": "cron/definitions.py defines a third per-board job family zero-factory-openwiki-update-<slug>, a no_agent: True job on a daily interval (ZEROFACTORY_OPENWIKI_INTERVAL_MINUTES, default 1440) whose script is zf_openwiki_gate.py and whose category is 'openwiki'.",
       "evidence": [
         {
-          "resource": "repo://cron/definitions.py#L381-L418",
-          "version": "repo-lines-v1:sha256:81f41db3bd63c6cbc1a10e04bbb6db5054a13733447544846464f822369de7e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzN2JhY2U0MGJmYmNhZDE0YzNhMTY4NDBiYjYzM2RmMDcwNDRjMzNjM2IzNjVjNzU0NWZlNmZlOGQ5MzlmMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0YWFhYzBiNTAxMDY0ZGY4M2YxYWFlOWIxODVmNzYwMjVkNmI1YzkzNjg5OTg5MzNmMzdjN2ViNzc3MDUwMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3ZDllYzEzOWFiNzJlN2VjN2IyNmM5ZDA2ZTRjMjgyMzU1ZGRkN2VlZmU2OWUzODEwMWRhZDk1N2QwZTlkZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzYzE0ZWI2Njc5ZGQ2MmJlZjhhNmJlMzNkYTcwMmVmNzNkYmIzMGIyM2RiMjExZmY4YjJjNWVlODJkMzYyOGEifQ"
+          "resource": "repo://cron/definitions.py#L380-L423",
+          "version": "repo-lines-v1:sha256:f531771aa2fdf76713d832964beed7c3c5272832a7bef3064b898305d842234e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzN2JhY2U0MGJmYmNhZDE0YzNhMTY4NDBiYjYzM2RmMDcwNDRjMzNjM2IzNjVjNzU0NWZlNmZlOGQ5MzlmMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMTU5OWJhNDJjMzRiNDkyMzg1OWVhOWZjZDFhZWY3Zjc3Y2U2YmMzZGYzZWRiMTFkZTZmNWNkZjRhMzQ0NWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3ZDllYzEzOWFiNzJlN2VjN2IyNmM5ZDA2ZTRjMjgyMzU1ZGRkN2VlZmU2OWUzODEwMWRhZDk1N2QwZTlkZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjZTVjZTc2ODM1ZWNlNDdlYjIyZWU1ZWJhZmQ3NzMyNDBjNWFlOTJjZjNmZTMxZDBiY2JhZjMzMzYwMTkxZDkifQ"
         }
       ]
     },
@@ -198,15 +198,15 @@
     },
     {
       "id": "claim_5f7b589c9aba416c9b4fff4d63e3c8de",
-      "statement": "scripts/zf_openwiki_gate.py deterministically decides whether OpenWiki docs need a sync: it skips when openwiki/ is missing, the working tree is dirty, or (unless forced) an openwiki-titled task is already active in triage/todo/ready/running/blocked (has_active_openwiki_task); when HEAD has advanced past the last openwiki-touching commit it creates at most one P2 todo task for zf-builder via create_openwiki_task — through the dashboard create-task endpoint with a SQLite fallback — and never wakes an LLM.",
+      "statement": "scripts/zf_openwiki_gate.py deterministically decides whether OpenWiki docs need a sync: it skips when openwiki/ is missing, the working tree is dirty, or (unless forced) an openwiki-titled task is already active in triage/todo/running/blocked (has_active_openwiki_task); when HEAD has advanced past the last openwiki-touching commit it creates at most one P2 todo task for zf-builder via create_openwiki_task — through the dashboard create-task endpoint with a SQLite fallback — and never wakes an LLM.",
       "evidence": [
         {
-          "resource": "repo://scripts/zf_openwiki_gate.py#L186-L213",
-          "version": "repo-lines-v1:sha256:6b5713b95c8e2b37d913cc1fccbd5ba8eb02f904a4c8198b8a6c21426b5d2212:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiYTc1NzE2MTYxMGUwNDZkMjY1MTc4NjJiM2Y4MmZkOTA3MGMzNzZmYWFiMmVmMjU1MzIwYmZjYWYyODJlN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzZDdjM2Y0YjJhMGIxYzk4OWJmMDUyNzQ3NjhhNjk2NTYxMTE3Nzk3ZmZiM2YxOTBlYzljOTM2MTAzOTkyNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2MzM3NWY4NmZiYjM1ODZiYjJjMGQ4NDJkZWRmYzliZjcwM2RlMjgzYjljMGMxNWM0Njg2YjBlNjU4NWU2MDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhZDc5NDc2MzBmNzU5ZTY5YjUzMTRjMGI0MWZkOThiMDczMTdkZjNkN2JjNGFkNzc5ZTc3Nzc5Zjk2MzBmY2EifQ"
+          "resource": "repo://scripts/zf_openwiki_gate.py#L192-L216",
+          "version": "repo-lines-v1:sha256:2a9a57aaf78014a22e258a9335809bcbb1d7b2a0d30be8a7be86e2e1af9a01eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiYTc1NzE2MTYxMGUwNDZkMjY1MTc4NjJiM2Y4MmZkOTA3MGMzNzZmYWFiMmVmMjU1MzIwYmZjYWYyODJlN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMDM0ODFjNTdkMGYwZGMwZjc2Y2QyY2M4YjM2MDRjNGU4Mjk2ZGE0MTIyYWRkMTllODE3NDVkYzdlMzMxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2MzM3NWY4NmZiYjM1ODZiYjJjMGQ4NDJkZWRmYzliZjcwM2RlMjgzYjljMGMxNWM0Njg2YjBlNjU4NWU2MDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkMmZjNDJlNjE3YzRlZjAyYTFkYmZiMTU3YzI0NzQ0ZTljNmEwNTgxNjEzYzA3MmRjNDNmODgxMDRmYzA2YmYifQ"
         },
         {
-          "resource": "repo://scripts/zf_openwiki_gate.py#L50-L112",
-          "version": "repo-lines-v1:sha256:ec7fdc4e520b1a3bf0249f70c98c2548211475460987dcaba1ad18ceb4b1465e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2FjNjI2MjQ1MTJiYzhjNWQ2ZjZmZGU4NDBmZmI4MjJhMzQ1YTBmZjQ1ZDEzYzBhYjRhYmQ1NDcyZTIzZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2NmNkY2IzZWI2YzY3NDc0MGU0YzQ3NDhkMzIwNjIxMWU5Yjg1ZjYzNDhkM2YwNjg1OGJhYzNkYTY2NmI2OGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyMmQ0N2MwMzBjMWQ4YThiYTNiZDU0MmU2N2UyMGYwODhmOTcxY2JmYmI5YmExNzExYzgwNDkxNmQxOGQwZGQifQ"
+          "resource": "repo://scripts/zf_openwiki_gate.py#L51-L118",
+          "version": "repo-lines-v1:sha256:8b602f9671496001f46820a1941072d6a0d8e3bd49aea7551b0c5ad01f2e92be:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2FjNjI2MjQ1MTJiYzhjNWQ2ZjZmZGU4NDBmZmI4MjJhMzQ1YTBmZjQ1ZDEzYzBhYjRhYmQ1NDcyZTIzZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2NmNkY2IzZWI2YzY3NDc0MGU0YzQ3NDhkMzIwNjIxMWU5Yjg1ZjYzNDhkM2YwNjg1OGJhYzNkYTY2NmI2OGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyMmQ0N2MwMzBjMWQ4YThiYTNiZDU0MmU2N2UyMGYwODhmOTcxY2JmYmI5YmExNzExYzgwNDkxNmQxOGQwZGQifQ"
         }
       ]
     },
@@ -215,8 +215,8 @@
       "statement": "The boards router exposes external-tracker integration endpoints: GET/POST /boards/{slug}/sync-gh-issues and POST /boards/{slug}/import-gh-issue for GitHub issue synchronization and import, GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues for the GitHub issues setup flow (files or deduplicates a P0 zf-builder setup task rather than writing templates directly), and POST /boards/{slug}/setup-jira / POST /boards/{slug}/test-jira for the Jira Cloud link.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/boards.py#L500-L727",
-          "version": "repo-lines-v1:sha256:e0b4ef0a1b200db965be9621e62bda0e408466bf04cdff4a09c6b7561421692e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTk2OGE4ZjgzMDE4ZjY2NDM5YWExODVhYmZiZjAwNjM0OTNiNTJhZjJjMGYyNzNiNmM0YTYxNTlmMGNjYzIzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dashboard/routes/boards.py#L500-L719",
+          "version": "repo-lines-v1:sha256:2d8a08b6525df8f398d6e02330c7f04fa17868f8a8541b41f65a954d4554c88a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTk2OGE4ZjgzMDE4ZjY2NDM5YWExODVhYmZiZjAwNjM0OTNiNTJhZjJjMGYyNzNiNmM0YTYxNTlmMGNjYzIzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -250,15 +250,15 @@
     },
     {
       "id": "claim_0f2cb25375114cd08ac1c75084527b40",
-      "statement": "The tasks router supports PATCH /tasks/{task_id} to update task fields in one call (mirroring the new `hermes zerofactory update` CLI command), and guards query parameters (board, status, assignee, priority, search) with isinstance string checks so non-string task fields never break grill/conflict status handling.",
+      "statement": "The tasks router's PATCH /tasks/{task_id} updates task fields in one call but refuses status changes (400) — status is a lifecycle transition owned by a single code path, POST /tasks/{task_id}/move — and guards query parameters (board, status, assignee, priority, search) with isinstance string checks so non-string task fields never break grill/conflict status handling.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/tasks.py#L101-L120",
-          "version": "repo-lines-v1:sha256:bf6dea5c4f1fd150d77af989e34fbca24178a6631b4b90c7764fec506f2d8597:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NGU3ZTJiNTA5ZTc0NGNmZDYyYTY1NGJiMjFhNTNkZDFjMjQ1NjM2ODFiNjViMTc5ZTc1ZmZlNDgyMzIxZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlYWQyNDIwODA2MjZkODcxNGFlZmJiZDAzODA2NmM0MTUwYzc3MzI2YmRjMWEyZGE1NmFiNTI0ODgyMmU0YTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3YWRlMThlZmI4NDhhNzg1M2VkZmI4NGFmMmY0YmVlNjUwYWM3NzAwNDMxNjhhZTdiOGQ2YTRmMDgzNzVhODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyYWE0NGQ5Y2NkMDYyY2Y4NTMyM2JlNWI5OWUyZGQxOTNmZGNmYmY2MWMwYTY3YzAyOGJlYWEyMmFkMWJmOTkifQ"
+          "resource": "repo://__init__.py#L1084-L1105",
+          "version": "repo-lines-v1:sha256:cc5ac6b7ef7f47fb328270136278485e99a4678cbe52f3adfddc85ad8bb73bae:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZTI4YWQ4NDVjYWY0ZDZkYjU4Y2RlZTYyYWM1YTI4ODcxYTA5NTA2YmUxNmEzZGQ4NzYwYjFmOGEzMTM3YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5NjRlYzhhMzIxNDhlZmFlYmVjYzdiYmE4OWM5M2UyZTljZGQxZDBkYmQ2ODRlOWU4MDg1NjUwOTI4ZDRmZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVmNzZlZDY0NzIyNzM1Y2U2YTYwODhiMjA0MDIwOGFlYjFiYmM1MmJmZTNmNWFiMjA1N2E1MzdhMGIwNzM0Y2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YmUxMGIxNjg0MDIzMDA2MWFmMzlmYzFjNmI3MzFhNTQzZmYzYzM2YmI2M2FhMDQ0ZmQ1ZjBmZDVlYzYyZTgifQ"
         },
         {
-          "resource": "repo://dashboard/routes/tasks.py#L626-L630",
-          "version": "repo-lines-v1:sha256:23f36bec100579bf83e9ac37b71c9269070c57fd69e55bfd8ff3307a01a21de7:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjcyOGE1YjM3MzU3OWQ0MjBkMGJkZjNmNjg4MTM4YTU0NjhlYmI4NTZlZTVhZjliOTFiMGYxZDEzZTdiNzY2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjRlODUwMDgxNDEzZTE4ZTUzOGE2YmNjZGNhNjJlMTMyZTM0MWM2YTRhMDU5NjRkMTkxYmNlNTM1MGFjMDIzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGY4Y2Y2ZTYyMGMwODZkMDMxMjJjMjE1OGQxNjY4NmQyYjNjMGRkYTdiNjVkN2QyNzhiNWQ1YWU4YTYwMzEyYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDU5ZjE0ODUwOWNiOGVhOGRjZDcwOTUwNzk3MDQ5MDQ5NWFjZDE1YjUyY2RlNzkzOGIxMzQ3NjQ1ODUxODdkNCJ9"
+          "resource": "repo://dashboard/routes/tasks.py#L630-L665",
+          "version": "repo-lines-v1:sha256:f714981337a98147b8f4a4eb03ccedb2d0aca847790cc284d4fbdeba74c03c0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3MjhhNWIzNzM1NzlkNDIwZDBiZGYzZjY4ODEzOGE1NDY4ZWJiODU2ZWU1YWY5YjkxYjBmMWQxM2U3Yjc2NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkYjE5OWYyYWE0MjlhZmJiZTZhYzliYTk5YzQ3NjAyNDc2MmQyMGM2NTRkN2E5NTBkY2NmNWJkYTQ0ZmNiYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmOGNmNmU2MjBjMDg2ZDAzMTIyYzIxNThkMTY2ODZkMmIzYzBkZGE3YjY1ZDdkMjc4YjVkNWFlOGE2MDMxMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkZGIxN2EzMjBlMjc1MDNiZjhlNmNhNzgxNjhiMWJjMDIwNDQ0NzJiZmNlMDcwMWVjOWIwMDMxYjkwMGY4OTEifQ"
         }
       ]
     },
@@ -283,10 +283,24 @@
           "version": "repo-file-v1:sha256:b29ecc9fc9903f921cbaaa23f4db29311b3f8d1c287b695f6aeaa74749ed7f0e"
         }
       ]
+    },
+    {
+      "id": "claim_0bd0bdb794a449f5a7853e54ecd02f04",
+      "statement": "move_task is the single code path that owns status changes: it classifies blocked_reason_type via normalize_blocked_reason_type and manages the awaiting_pr / close_pr packaging flags (an agent actor reporting done keeps the task running with awaiting_pr=true; a terminal/human close sets close_pr to archive the open PR).",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L720-L918",
+          "version": "repo-lines-v1:sha256:ae5380f046d004c48fcb12d216841be8672d77e876019baaf5f683ff6207858b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTk5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0ODNjMWU0ODgzZTlkNWFkOTI4NzhiZjExOWQ5YmRkZTIxZTU1MzQ0Nzc5YzBjMDU0NDdhNmUzYTljZDE1MTdkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhNjUwMjYyYjdlMmRkNDQ1ZGFlMzBjMjA4NzlmOGU2MWZiY2MyNDg4MGRjZjUxMDU0YTA4NmFiZmViYjRmMmQ2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmYzFmZDBjNzdlODBkMjc0MzA4Yjc0YWJkYzlkMjQ4YmIyYmMwMTQ3ODRjODRlZTk0OTVkZTQ3NWI2NTg5YjZkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNWJiNzMxZTY2NjZiNTZhZmJiNWY2ZjEyZjZiNTIyNGVmOWQwZWE5NzM2NjNjNDU5ZDY2OTk3YTY2M2E1MjhiIn0"
+        },
+        {
+          "resource": "repo://paths.py#L81-L97",
+          "version": "repo-lines-v1:sha256:fa23d6b586b250fba5185cdaa122f5c2817a673b48e27168cc2997afaf452583:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzMWU5ZDMyMTc3ZDUxNzZjOTk1YWVlZmM3NDhkZTkyODVhNDE4ZDY3OWZiYzZjNmJlYzYzZTM4OGE0NWFlNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYmEwYTAyYjg1NjcwYTU4ZWMzMmNlMTVmMjkzOWM5Zjc0OWM0MjE2MWYyMDBhODYyNGUxOTY3MjJmYzRhNWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1ZDE3OWRkYzY5Y2E5NDJiMjYyNmJiNjU5N2ZkZDI2MDY2MzEyZDVmNTBmOTA5MmE1YmY2NzhiY2Q0MDVjNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwNmUzYWE5MTVhODdjNTUxYjZiYzZmNDQwMzE0Mjk3NmRhODgzZjQ0NWUxYmZjYzg3YzM5MzMzZTI3NmYzYjkifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-05T10:11:27.384Z"
+    "at": "2026-10-06T19:22:52.001Z"
   }
 }

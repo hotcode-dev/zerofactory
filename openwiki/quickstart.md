@@ -8,16 +8,18 @@ sources:
     resource: repo://__init__.py
   - id: openwiki-source-9ab161c6e9774cf771b19ced
     resource: repo://.zerofactory/precommit.sh
+  - id: openwiki-source-c705147b9966f3d6f300034a
+    resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-81127d20a2ccc07b7626fc4e
     resource: repo://plugin.yaml
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-10-05T10:11:27.384Z" }
+generated: { by: "hermes", at: "2026-10-06T19:22:52.001Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-05T10:11:27.384Z
+    at: 2026-10-06T19:22:52.001Z
 ---
 
 # Quickstart
@@ -98,7 +100,8 @@ output (up to 3 precommit retries) before the work may become a PR.
 ## Run the tests
 
 pytest is the framework (defined by `tests/conftest.py`), and the suite is
-hermetic — `conftest.py` sets `ZEROFACTORY_SKIP_GIT`, `ZEROFACTORY_SKIP_CRON_SYNC`,
+hermetic — `conftest.py` pins the repository's own `tests` package
+(`import tests`) and sets `ZEROFACTORY_SKIP_GIT`, `ZEROFACTORY_SKIP_CRON_SYNC`,
 `ZEROFACTORY_DISABLE_DISPATCHER`, and `ZEROFACTORY_SKIP_WORKER_SPAWN` so tests
 run without a live factory. Three tiers: `tests/unit/`, `tests/integration/`
 (FastAPI REST), `tests/e2e/` (multi-agent workflow + resilience).
@@ -108,7 +111,7 @@ pytest tests/                 # full suite
 pytest tests/unit/            # or a single tier: integration/ / e2e/
 ```
 
-**As of this commit the full suite is green: `256 passed, 1 skipped`.** Re-run
+**As of this commit the full suite is green: `278 passed, 1 skipped`.** Re-run
 it before publishing any claim about the count.
 
 ## Core CLI surface
@@ -153,8 +156,11 @@ or `owner/repo#42`) into a board as a Kanban task — stable task id, `issue:`
 dedup key, label-inferred priority/category — so re-imports report
 "Duplicate Skipped" instead of double-filing; `--sync` bulk-imports all open
 issues flagged with the AI-request label, and `import-jira-issue` does the same
-for Jira Cloud. `update` edits task fields in one call, and `move` accepts
-`--assignee` to reassign ownership while transitioning columns
+for Jira Cloud. `update` edits task fields in one call; its `--status` option
+routes through the `move_task` code path (the same rule `PATCH /tasks/{id}`
+enforces server-side) so lifecycle side effects — worker stop, flag cleanup,
+dispatch trigger — always apply. `move` accepts `--assignee` to reassign
+ownership while transitioning columns
 ([External Issue Import](/openwiki/components/issues-importer.md)).
 
 OpenWiki architecture docs stay in sync automatically: the per-board
@@ -167,7 +173,13 @@ nothing changed or an OpenWiki task is already active). See
 ## Task lifecycle
 
 `triage → todo → running (zf-builder) → running (zf-reviewer) → blocked (human
-merge) → done`. Approved PRs park in `blocked` awaiting a human merge on
-GitHub; the dispatcher moves them to `done` and prunes the worktree once merged.
-Details in [Architecture](/openwiki/architecture.md#session-per-handoff-model)
+merge) → done`. The `ready` status is retired; `done` is **strictly terminal**.
+When an agent actor reports completion the task deliberately stays `running`
+with `awaiting_pr` set — the **packaging phase** — during which the dispatcher
+runs the deterministic pipeline (precommit → commit → push → PR → route to
+reviewer) via `_package_and_open_pr`. Approved PRs park in `blocked` awaiting a
+human merge on GitHub; the dispatcher moves them to `done` through
+`_finalize_terminal_done` (which only cleans up — closing the open PR when
+`close_pr` is set — and never re-opens review) and prunes the worktree. Details
+in [Architecture](/openwiki/architecture.md#session-per-handoff-model)
 and [Dispatch Engine](/openwiki/components/dispatcher.md).

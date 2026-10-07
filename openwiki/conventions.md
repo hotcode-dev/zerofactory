@@ -26,10 +26,10 @@ sources:
     resource: repo://tests/conftest.py
   - id: openwiki-source-b4194cdb1aee8e18787b21d6
     resource: repo://tests/unit/dashboard/test_dashboard_css.py
-generated: { by: "hermes", at: "2026-10-03T01:15:19.967Z" }
+generated: { by: "hermes", at: "2026-10-06T19:22:52.001Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-05T10:11:27.384Z
+    at: 2026-10-06T19:22:52.001Z
 ---
 
 # Conventions
@@ -62,7 +62,13 @@ Modules that may be loaded directly (scripts, `cron/definitions.py`,
 internal modules, e.g. `repo://cron/definitions.py#L14-L16`. Ruff ignores
 `E402` specifically so this required ordering is legal
 (`repo://ruff.toml#L14`). The test suite does the same in
-`repo://tests/conftest.py#L13-L16`.
+`repo://tests/conftest.py#L13-L16`, and **pins** the repository's own `tests`
+package with `import tests  # noqa: E402` before anything else runs: the
+dispatcher import chain inserts foreign roots (e.g.
+`~/.hermes/hermes-agent`) into `sys.path`, and that repo's own `tests/`
+package would otherwise win `import tests` and break `from tests.unit...`
+imports inside test modules (an order-dependent `ModuleNotFoundError`)
+(`repo://tests/conftest.py#L18-L22`).
 
 ## Namespaced logging
 
@@ -91,7 +97,10 @@ non-zero on a missing tool) rather than silently skipping.
   and unused test variables: `__init__.py`/`plugin_api.py`/`models.py`/
   `dispatcher/config.py` allow `F401`/`F403`, and `tests/**` allows `F401`/`F841`.
 - The precommit gate runs **`ruff check --fix .`** then **`ruff format .`**
-  (`repo://.zerofactory/precommit.sh`). Do not introduce a `# noqa` or a style
+  (`repo://.zerofactory/precommit.sh`), auto-installing pinned tooling when
+  missing (`ruff==0.16.9` via `uv tool install` / `pip install --user`; a pinned
+  pytest + plugin-runtime-deps stack for the test phase, never falling back to
+  `unittest` discovery). Do not introduce a `# noqa` or a style
   that the auto-fix would rewrite — the dispatcher re-runs the gate and re-spawns
   the builder on any diff, so keep output ruff-clean on the first pass.
 
@@ -101,9 +110,9 @@ non-zero on a missing tool) rather than silently skipping.
 the **hermetic environment defaults** that make every test safe to run without a
 real factory: it sets `ZEROFACTORY_SKIP_GIT`, `ZEROFACTORY_SKIP_CRON_SYNC`,
 `ZEROFACTORY_DISABLE_DISPATCHER`, and `ZEROFACTORY_SKIP_WORKER_SPAWN`
-(`repo://tests/conftest.py#L18-L22`) and provides `test_db_path` /
+(`repo://tests/conftest.py#L24-L27`) and provides `test_db_path` /
 `initialized_db`, `git_repo`, `api_client`, and `default_board` fixtures
-(`repo://tests/conftest.py#L36-L106`).
+(`repo://tests/conftest.py#L44-L111`).
 
 Test tiers (mirrored on disk):
 
@@ -140,12 +149,13 @@ referenced (including variant-prefixed) utility class.
 Any agent-authored GitHub text (PR titles/bodies, review comments) **must**
 begin with a **role-tagged** marker `[AI:<role>]` — e.g. `[AI:zf-builder]`,
 `[AI:zf-reviewer]` — enforced by the role-aware `ai_prefix(text, role)` in
-`repo://dispatcher/github_pr.py#L321-L335`). Text already carrying a role-tagged
-marker is returned unchanged, so re-writes are idempotent and never double-prefix.
-The reviewer submits verdicts
+`repo://dispatcher/github_pr.py#L321-L335`). `AI_PREFIX_RE` matches only
+role-tagged markers, so `ai_prefix` **never emits a bare `[AI]`** and text
+already carrying a role-tagged marker is returned unchanged, making re-writes
+idempotent and never double-prefix. The reviewer submits verdicts
 as `gh pr review --comment` (not `--approve` / `--request-changes`, which GitHub
 blocks for the PR author's own token) with `[AI:zf-reviewer]`-tagged bodies
-(`repo://dispatcher/worker_spawner.py#L127-L140`).
+(`repo://dispatcher/worker_spawner.py#L129-L141`).
 
 ## What NOT to add
 
