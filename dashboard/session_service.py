@@ -479,11 +479,18 @@ def resolve_task_session_progress(
     log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
     if log_path.exists():
         try:
-            with open(log_path, "r", encoding="utf-8", errors="replace") as lf:
-                lines = lf.readlines()
-                log_tail = "".join(lines[-30:])
+            # Bounded tail: read only the last TAIL_BYTES instead of the
+            # whole (append-only, unbounded) worker log.
+            tail_bytes = 64 * 1024
+            with open(log_path, "rb") as lf:
+                if log_path.stat().st_size > tail_bytes:
+                    lf.seek(0, os.SEEK_END)
+                    lf.seek(max(0, lf.tell() - tail_bytes))
+                chunk = lf.read()
+            lines = chunk.decode("utf-8", errors="replace").splitlines()
+            log_tail = "\n".join(lines[-30:])
         except Exception:
-            pass
+            _log.debug("Failed to tail worker log %s", log_path, exc_info=True)
 
     sessions = resolve_task_all_sessions(task, backfill=backfill)
 
