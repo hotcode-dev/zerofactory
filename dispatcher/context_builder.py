@@ -311,6 +311,10 @@ def digest_board_architecture_context(
                     s_branch = s.get("target_branch") or "main"
                     lines.append(f"  * `{s['repo_alias']}` (branch: `{s_branch}`) -> path: `../{s['repo_alias']}/`")
 
+            if len(repos) > 1:
+                lines.append(f"- OpenWiki Workspace: `{board_slug}` (Unified cross-service documentation)")
+                lines.append("  * Repositories on this board are linked in this workspace. Use `openwiki_search` to query contracts and schemas across all sibling repositories.")
+
             if arch_notes:
                 lines.append("\nInter-Service Architecture & Dependency Notes:")
                 lines.append(arch_notes)

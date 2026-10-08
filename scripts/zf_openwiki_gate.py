@@ -49,10 +49,11 @@ DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
 
 
 def create_openwiki_task(
-    board_slug: str, diff_log: str, repo_dir: Path
+    board_slug: str, diff_log: str, repo_dir: Path, repo_alias: str | None = None
 ) -> dict[str, Any] | None:
     """Deterministically create a documentation sync task on the Kanban board for zf-builder."""
-    task_desc = f"""Sync OpenWiki architecture documentation (`openwiki/`) with recent merged commits on the default branch.
+    target_str = f" for repository `{repo_alias}`" if repo_alias else ""
+    task_desc = f"""Sync OpenWiki architecture documentation (`openwiki/`){target_str} with recent merged commits on the default branch.
 
 ## Key Recent Commits:
 {diff_log.strip() if diff_log.strip() else "(Check git log since last OpenWiki commit)"}
@@ -69,13 +70,19 @@ def create_openwiki_task(
    `git add openwiki/ AGENTS.md`
    `git commit -m "docs(openwiki): sync architecture documentation with recent changes"`
 """
+    task_title = (
+        f"docs(openwiki): sync architecture documentation for {repo_alias}"
+        if repo_alias
+        else "docs(openwiki): sync architecture documentation with recent changes"
+    )
     try:
         from dashboard.plugin_api import TaskCreate, create_task
 
         task = create_task(
             TaskCreate(
                 board_slug=board_slug,
-                title="docs(openwiki): sync architecture documentation with recent changes",
+                repo_alias=repo_alias,
+                title=task_title,
                 category="documentation",
                 priority="P2",
                 status="todo",
@@ -97,20 +104,40 @@ def create_openwiki_task(
             now_ts = int(time.time())
             try:
                 with sqlite3.connect(str(db_path), timeout=5.0) as conn:
-                    conn.execute(
-                        """
-                        INSERT INTO tasks (id, board_slug, title, description, status, assignee, priority, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, 'todo', 'zf-builder', 'P2', ?, ?)
-                        """,
-                        (
-                            task_id,
-                            board_slug,
-                            "docs(openwiki): sync architecture documentation with recent changes",
-                            task_desc,
-                            now_ts,
-                            now_ts,
-                        ),
-                    )
+                    cursor = conn.cursor()
+                    cursor.execute("PRAGMA table_info(tasks)")
+                    cols = {row[1] for row in cursor.fetchall()}
+                    if "repo_alias" in cols and repo_alias:
+                        conn.execute(
+                            """
+                            INSERT INTO tasks (id, board_slug, repo_alias, title, description, status, assignee, priority, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, 'todo', 'zf-builder', 'P2', ?, ?)
+                            """,
+                            (
+                                task_id,
+                                board_slug,
+                                repo_alias,
+                                task_title,
+                                task_desc,
+                                now_ts,
+                                now_ts,
+                            ),
+                        )
+                    else:
+                        conn.execute(
+                            """
+                            INSERT INTO tasks (id, board_slug, title, description, status, assignee, priority, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, 'todo', 'zf-builder', 'P2', ?, ?)
+                            """,
+                            (
+                                task_id,
+                                board_slug,
+                                task_title,
+                                task_desc,
+                                now_ts,
+                                now_ts,
+                            ),
+                        )
                     conn.commit()
                     return {"id": task_id}
             except Exception:
@@ -191,7 +218,61 @@ def resolve_board_slug(repo_dir: Path) -> str:
     return repo_dir.name
 
 
-def has_active_openwiki_task(board_slug: str) -> tuple[bool, str]:
+def resolve_repo_path(
+    board_slug: str, repo_alias: str, git_url: str = "", current_dir: Path | None = None
+) -> Path | None:
+    """Resolve the local checkout directory for a board repository."""
+    # 0. Check current working directory if matching alias or remote
+    if current_dir and (current_dir / ".git").exists():
+        if current_dir.name == repo_alias:
+            return current_dir
+        if git_url:
+            remote = _run_cmd(
+                ["git", "config", "--get", "remote.origin.url"], cwd=current_dir
+            )
+            if remote and (git_url in remote or remote in git_url):
+                return current_dir
+
+    # 1. Local path if git_url is an existing directory
+    if git_url:
+        try:
+            local_p = Path(git_url)
+            if local_p.is_dir() and (local_p / ".git").exists():
+                return local_p.resolve()
+        except Exception:
+            pass
+
+    # 2. Check standard ~/git directories
+    home = Path.home()
+    candidates: list[Path] = [
+        home / "git" / repo_alias,
+        home / "git" / board_slug / repo_alias,
+    ]
+
+    if git_url:
+        cleaned_url = re.sub(r"\.git$", "", git_url.strip().rstrip("/"))
+        parts = cleaned_url.replace(":", "/").split("/")
+        if len(parts) >= 1:
+            repo_name = parts[-1]
+            candidates.append(home / "git" / repo_name)
+        if len(parts) >= 2:
+            owner = parts[-2]
+            candidates.append(home / "git" / owner / repo_name)
+            candidates.append(home / "git" / f"{owner}-{repo_name}")
+
+    for cand in candidates:
+        if cand.is_dir() and (cand / ".git").exists():
+            return cand.resolve()
+
+    if current_dir and (current_dir / ".git").exists():
+        return current_dir
+
+    return None
+
+
+def has_active_openwiki_task(
+    board_slug: str, repo_alias: str | None = None
+) -> tuple[bool, str]:
     """Check if an OpenWiki setup or update task is already active on the board."""
     db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
     if not db_path.exists():
@@ -200,74 +281,75 @@ def has_active_openwiki_task(board_slug: str) -> tuple[bool, str]:
         with sqlite3.connect(str(db_path), timeout=5.0) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute(
-                """
+            query = """
                 SELECT id, title, status FROM tasks
                 WHERE board_slug = ?
                   AND status IN ('todo', 'running', 'blocked', 'triage')
                   AND LOWER(title) LIKE '%openwiki%'
-                ORDER BY created_at DESC LIMIT 1
-                """,
-                (board_slug,),
-            )
+            """
+            params: list[Any] = [board_slug]
+            if repo_alias:
+                query += " AND (repo_alias = ? OR repo_alias IS NULL)"
+                params.append(repo_alias)
+            query += " ORDER BY created_at DESC LIMIT 1"
+            cursor.execute(query, params)
             row = cursor.fetchone()
             if row:
+                target_str = f" for '{repo_alias}'" if repo_alias else ""
                 return (
                     True,
-                    f"Board '{board_slug}' already has an active OpenWiki task '{row['id']}' ({row['title']}) in status '{row['status']}'; skipping.",
+                    f"Board '{board_slug}' already has an active OpenWiki task{target_str} '{row['id']}' ({row['title']}) in status '{row['status']}'; skipping.",
                 )
     except Exception:
         pass
     return False, ""
 
 
-def check_openwiki_gate(
-    repo_dir: Path, board_slug: str | None = None, auto_create_task: bool = True
+def evaluate_single_repo_openwiki(
+    repo_dir: Path,
+    slug: str,
+    repo_alias: str | None = None,
+    force_update: bool = False,
+    auto_create_task: bool = True,
 ) -> tuple[bool, str]:
-    """Evaluate whether OpenWiki update is needed and deterministically create task.
+    """Evaluate a single repository directory for OpenWiki documentation updates."""
+    alias_label = f" ({repo_alias})" if repo_alias else ""
 
-    Returns:
-        (wake_agent, reason_message)
-    """
-    slug = board_slug or resolve_board_slug(repo_dir)
-
-    # 1. Force check
-    force_update = "--force" in sys.argv or os.environ.get(
-        "ZEROFACTORY_FORCE_OPENWIKI_UPDATE", ""
-    ).lower() in ("1", "true", "yes")
-
-    # 2. Check if git repo
+    # 1. Check if git repo
     git_dir = repo_dir / ".git"
     if not git_dir.exists():
         return False, f"Not a git repository at {repo_dir}; skipping."
 
-    # 3. Check if openwiki/ directory exists
+    # 2. Check if openwiki/ directory exists
     openwiki_dir = repo_dir / "openwiki"
     if not openwiki_dir.is_dir():
         return (
             False,
-            f"OpenWiki not initialized for board '{slug}' (no openwiki/ directory found); skipping.",
+            f"OpenWiki not initialized for board '{slug}'{alias_label} (no openwiki/ directory found); skipping.",
         )
 
-    # 4. Check if an active OpenWiki task already exists on the board (triage/todo/running/blocked)
+    # 3. Check if active OpenWiki task already exists
     if not force_update:
-        has_active, active_reason = has_active_openwiki_task(slug)
+        has_active, active_reason = has_active_openwiki_task(slug, repo_alias=repo_alias)
         if has_active:
             return False, active_reason
 
     if force_update:
         if auto_create_task:
             task = create_openwiki_task(
-                slug, "Force OpenWiki documentation sync requested", repo_dir
+                slug,
+                f"Force OpenWiki documentation sync requested{alias_label}",
+                repo_dir,
+                repo_alias=repo_alias,
             )
             if task and task.get("id"):
                 return (
                     False,
-                    f"Force update requested; created task '{task['id']}' in 'todo' for zf-builder.",
+                    f"Force update requested; created task '{task['id']}' in 'todo' for zf-builder{alias_label}.",
                 )
-        return True, f"Force update requested for board '{slug}'."
+        return True, f"Force update requested for board '{slug}'{alias_label}."
 
-    # 5. Check git working tree cleanliness
+    # 4. Check git working tree cleanliness
     status_porcelain = _run_cmd(["git", "status", "--porcelain"], cwd=repo_dir)
     if status_porcelain:
         return (
@@ -280,10 +362,7 @@ def check_openwiki_gate(
     if not head_sha:
         return False, f"Unable to resolve git HEAD at {repo_dir}; skipping."
 
-    # 6. Resolve the last docs sync point. The conventional sync commit subject
-    #    ("docs(openwiki): sync ...") is authoritative: a code commit that also
-    #    edits openwiki/ — or merely mentions the phrase in its body — must not
-    #    reset the marker. Fall back to state, then to the newest openwiki commit.
+    # 6. Resolve the last docs sync point
     sync_commit = ""
     marker_log = _run_cmd(
         ["git", "log", "-n", "200", "--format=%H%x09%s"],
@@ -301,28 +380,33 @@ def check_openwiki_gate(
 
     state = load_state()
     board_state = state.get(slug, {})
-    last_scanned_sha = board_state.get("last_scanned_sha")
+    repo_state = board_state.get("repos", {}).get(repo_alias, {}) if repo_alias else {}
+    last_scanned_sha = (
+        repo_state.get("last_scanned_sha")
+        or state.get(f"{slug}:{repo_alias}", {}).get("last_scanned_sha")
+        or board_state.get("last_scanned_sha")
+    )
     base_commit = sync_commit or last_scanned_sha or last_openwiki_commit
 
     if not base_commit:
         if auto_create_task:
             task = create_openwiki_task(
-                slug, "Initial OpenWiki documentation sync", repo_dir
+                slug, "Initial OpenWiki documentation sync", repo_dir, repo_alias=repo_alias
             )
             if task and task.get("id"):
                 return (
                     False,
-                    f"No previous openwiki commit history found; created task '{task['id']}' in 'todo' for zf-builder.",
+                    f"No previous openwiki commit history found; created task '{task['id']}' in 'todo' for zf-builder{alias_label}.",
                 )
         return (
             True,
-            "No previous openwiki commit history found; documentation sync required.",
+            f"No previous openwiki commit history found; documentation sync required{alias_label}.",
         )
 
     if head_sha == base_commit:
         return (
             False,
-            f"No new commits on branch (HEAD={head_sha[:8]}); OpenWiki is up to date.",
+            f"No new commits on branch (HEAD={head_sha[:8]}); OpenWiki is up to date{alias_label}.",
         )
 
     diff_log = _run_cmd(
@@ -340,26 +424,94 @@ def check_openwiki_gate(
     if not diff_log:
         return (
             False,
-            f"No code changes since last OpenWiki commit ({base_commit[:8]}); OpenWiki is up to date.",
+            f"No code changes since last OpenWiki commit ({base_commit[:8]}); OpenWiki is up to date{alias_label}.",
         )
 
     commit_count = len(diff_log.splitlines())
     if auto_create_task:
-        task = create_openwiki_task(slug, diff_log, repo_dir)
+        task = create_openwiki_task(slug, diff_log, repo_dir, repo_alias=repo_alias)
         if task and task.get("id"):
             return (
                 False,
-                f"Detected {commit_count} branch update(s) since {base_commit[:8]}; created task '{task['id']}' in 'todo' for zf-builder.",
+                f"Detected {commit_count} branch update(s) since {base_commit[:8]}; created task '{task['id']}' in 'todo' for zf-builder{alias_label}.",
             )
         else:
             return (
                 False,
-                f"Detected {commit_count} branch update(s) since {base_commit[:8]}; failed to create task on board.",
+                f"Detected {commit_count} branch update(s) since {base_commit[:8]}; failed to create task on board{alias_label}.",
             )
 
     return (
         True,
-        f"Detected {commit_count} branch update(s) since {base_commit[:8]}; documentation sync required.",
+        f"Detected {commit_count} branch update(s) since {base_commit[:8]}; documentation sync required{alias_label}.",
+    )
+
+
+def check_openwiki_gate(
+    repo_dir: Path, board_slug: str | None = None, auto_create_task: bool = True
+) -> tuple[bool, str]:
+    """Evaluate whether OpenWiki update is needed across repositories on the board.
+
+    Returns:
+        (wake_agent, reason_message)
+    """
+    slug = board_slug or resolve_board_slug(repo_dir)
+
+    force_update = "--force" in sys.argv or os.environ.get(
+        "ZEROFACTORY_FORCE_OPENWIKI_UPDATE", ""
+    ).lower() in ("1", "true", "yes")
+
+    # Sync workspace registry so all repos on the board are linked in OpenWiki
+    try:
+        from dashboard.openwiki_service import sync_board_openwiki_workspace
+
+        sync_board_openwiki_workspace(slug)
+    except Exception:
+        pass
+
+    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    board_repos: list[dict[str, Any]] = []
+    if db_path.exists():
+        try:
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT repo_alias, git_url FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
+                    (slug,),
+                )
+                board_repos = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
+    if len(board_repos) > 1:
+        # Evaluate all linked repositories on this board
+        reasons = []
+        any_wake = False
+        tasks_created = 0
+
+        for r in board_repos:
+            alias = r["repo_alias"]
+            r_path = resolve_repo_path(slug, alias, r.get("git_url", ""), repo_dir)
+            if not r_path or not (r_path / "openwiki").is_dir():
+                continue
+
+            wake, reason = evaluate_single_repo_openwiki(
+                r_path, slug, repo_alias=alias, force_update=force_update, auto_create_task=auto_create_task
+            )
+            reasons.append(f"[{alias}] {reason}")
+            if wake:
+                any_wake = True
+            if "created task" in reason:
+                tasks_created += 1
+
+        summary = "\n".join(reasons) if reasons else f"No initialized openwiki/ repositories found on board '{slug}'."
+        return any_wake, summary
+
+    # Single-repo or test fallback
+    first_alias = board_repos[0]["repo_alias"] if board_repos else None
+    return evaluate_single_repo_openwiki(
+        repo_dir, slug, repo_alias=first_alias, force_update=force_update, auto_create_task=auto_create_task
     )
 
 

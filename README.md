@@ -287,9 +287,14 @@ Zero Factory is architected to drastically minimize LLM token consumption (up to
   - When the queue is healthy, emits `{"wakeAgent": false}` to silently exit without invoking any LLM.
   - When bottlenecks occur, outputs a human-readable alert delivered to the operator.
 - **`zero-factory-improvement-scanner-{board_slug}`** (on idle when active workers < 2, **0 Tokens when Busy / Cooldown**):
-  - Executed by **`zf-orchestrator`** inside the repository workdir with wake-gate change detection via `scripts/zf_scanner_gate.py` with independent sessions (`continuity: false`).
-  - Guards token consumption: when the board is busy (`running >= 2` or `todo >= 2`) or during the 15-minute cooldown, suppresses execution with `{"wakeAgent": false}` (0 LLM tokens).
-  - When the board has spare capacity, wakes `zf-orchestrator` with pre-digested git context, diffstat, and open board tasks to analyze the project for tech debt, refactoring, or missing tests and file at most 1 actionable `Todo` task assigned to `zf-builder`.
+  - Exactly **1 cron job per board**, executed by **`zf-orchestrator`** with wake-gate change detection via `scripts/zf_scanner_gate.py` (`continuity: false`).
+  - Evaluates all peer repositories on the board in a single pass. If all repositories are unchanged, or if the board is busy (`running >= 2` or `todo >= 2`) or in cooldown, suppresses execution with `{"wakeAgent": false}` (0 LLM tokens).
+  - When updates exist (or on capacity-driven idle round-robin), wakes `zf-orchestrator` targeting the selected repository with pre-digested git context, diffstat, code markers, and instructions to file at most 1 actionable `Todo` task (`--board <slug> --repo <alias>`).
+- **`zero-factory-openwiki-update-{board_slug}`** (daily, **0 Tokens - No-Agent Mode**):
+  - Exactly **1 cron job per board** via `scripts/zf_openwiki_gate.py`.
+  - Synchronizes OpenWiki workspace links (`~/.openwiki/wiki-workspaces.json`) across all sibling repositories on the board and evaluates commit drift against `openwiki/` documentation across all board repositories in a single pass.
+  - If documentation is current or update tasks are already active, suppresses with `{"wakeAgent": false}` (0 LLM tokens).
+  - When non-doc code changes accumulate on any linked repository, automatically files a deterministic `todo` documentation refresh task on the board for `zf-builder`.
 
 ---
 
@@ -376,6 +381,12 @@ Rather than running an external standalone CLI that requires duplicate LLM API k
   - `openwiki_finish`: Finalizes the run, stamps `.last-update.json`, and links `AGENTS.md`.
   - `openwiki_search` / `openwiki_read`: Fast, model-free architectural retrieval for agents mid-task.
 - **Skill Bundling**: The official OpenWiki skill is provided at `skills/openwiki/SKILL.md` and automatically synced into `~/.hermes/skills/` on `hermes zerofactory setup`.
+
+### OpenWiki Workspaces (`~/.openwiki/wiki-workspaces.json`) & Multi-Repo Linking
+
+For multi-repository boards, Zero Factory automatically links sibling repositories into an OpenWiki Workspace (`id={board_slug}`):
+- **Cross-Service Querying**: When `zf-builder` works on a feature in one repository, it can invoke `openwiki_search` to query data models, API schemas, and architecture specifications documented across all sibling repositories on that board without needing multiple open sessions.
+- **Automated Synchronization**: Every board creation, update, and gate check automatically synchronizes `~/.openwiki/wiki-workspaces.json` (`version: 1`), registering member wikis and setting the active workspace context so agents always have seamless cross-service visibility.
 
 ---
 

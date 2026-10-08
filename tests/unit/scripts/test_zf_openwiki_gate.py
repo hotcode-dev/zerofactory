@@ -282,3 +282,72 @@ class TestOpenWikiGate(unittest.TestCase):
                 self.assertIn("Detected 1 branch update(s)", reason)
                 self.assertIn("created task", reason)
                 self.assertIn("for zf-builder", reason)
+
+    def test_multi_repo_openwiki_gate_evaluates_all_repos(self):
+        repo_api = self.tmp / "api"
+        repo_worker = self.tmp / "worker"
+        (repo_api / ".git").mkdir(parents=True)
+        (repo_api / "openwiki").mkdir(parents=True)
+        (repo_worker / ".git").mkdir(parents=True)
+        (repo_worker / "openwiki").mkdir(parents=True)
+
+        db_file = self.tmp / "zerofactory.db"
+        with sqlite3.connect(str(db_file)) as conn:
+            conn.execute(
+                "CREATE TABLE boards (slug TEXT PRIMARY KEY)"
+            )
+            conn.execute(
+                "CREATE TABLE board_repositories (id INTEGER PRIMARY KEY AUTOINCREMENT, board_slug TEXT, repo_alias TEXT, git_url TEXT, target_branch TEXT)"
+            )
+            conn.execute(
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, repo_alias TEXT, title TEXT, description TEXT, status TEXT, assignee TEXT, priority TEXT, created_at REAL, updated_at REAL)"
+            )
+            conn.execute("INSERT INTO boards (slug) VALUES ('multi-board')")
+            conn.execute(
+                "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('multi-board', 'api', ?, 'main')",
+                (str(repo_api),),
+            )
+            conn.execute(
+                "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('multi-board', 'worker', ?, 'main')",
+                (str(repo_worker),),
+            )
+            conn.commit()
+
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "multi-board": {
+                        "last_scanned_sha": "api_old",
+                        "repos": {
+                            "api": {"last_scanned_sha": "api_old"},
+                            "worker": {"last_scanned_sha": "worker_head"},
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with patch.dict(os.environ, {"ZEROFACTORY_DB": str(db_file)}):
+            with patch.object(self.gate, "_run_cmd") as mock_cmd:
+
+                def _fake_run(cmd, cwd=None):
+                    if "status" in cmd:
+                        return ""
+                    if "rev-parse" in cmd:
+                        return "api_new" if cwd == repo_api else "worker_head"
+                    if "log" in cmd and ":(exclude)openwiki" in cmd:
+                        if cwd == repo_api:
+                            return "api_new feat: added api endpoint"
+                        return ""
+                    return ""
+
+                mock_cmd.side_effect = _fake_run
+                wake, reason = self.gate.check_openwiki_gate(
+                    repo_api, board_slug="multi-board"
+                )
+                self.assertFalse(wake)
+                self.assertIn("[api] Detected 1 branch update(s)", reason)
+                self.assertIn("created task", reason)
+                self.assertIn("[worker] No new commits on branch", reason)
+                self.assertIn("OpenWiki is up to date (worker)", reason)

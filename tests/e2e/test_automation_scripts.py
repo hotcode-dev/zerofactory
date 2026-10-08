@@ -255,7 +255,8 @@ class TestAutomationScriptsE2E(unittest.TestCase):
             check=True,
         )
 
-        create_board(BoardCreate(git_url=str(wiki_repo)))
+        board = create_board(BoardCreate(git_url=str(wiki_repo)))
+        board_slug = board["slug"]
 
         # 1. Missing openwiki/ dir: suppresses with wakeAgent: false
         rc1, out1 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
@@ -318,7 +319,11 @@ class TestAutomationScriptsE2E(unittest.TestCase):
             check=True,
         )
 
-        slug = wiki_repo.name
+        slug = board_slug
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute("UPDATE tasks SET status = 'done' WHERE board_slug = ?", (slug,))
+            conn.commit()
+
         t = create_task(
             TaskCreate(
                 board_slug=slug,
@@ -353,9 +358,9 @@ class TestAutomationScriptsE2E(unittest.TestCase):
         self.assertIn("already has an active OpenWiki task", out8)
         self.assertIn('"wakeagent": false', out8.lower())
 
-        # Move to 'done': now unblocked, automatically creates the new task on board for zf-builder!
+        # Move all tasks for board to 'done': now unblocked, automatically creates the new task on board for zf-builder!
         with sqlite3.connect(str(self.db_path)) as conn:
-            conn.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (task_id,))
+            conn.execute("UPDATE tasks SET status = 'done' WHERE board_slug = ?", (slug,))
             conn.commit()
         rc9, out9 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
         self.assertEqual(rc9, 0)

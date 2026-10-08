@@ -167,8 +167,8 @@ def _locked_state_rmw(mutate: Any) -> bool:
     return True
 
 
-def mark_task_created(board_slug: str) -> bool:
-    """Atomically flag that a task was created for ``board_slug``.
+def mark_task_created(board_slug: str, repo_alias: str | None = None) -> bool:
+    """Atomically flag that a task was created for ``board_slug`` (and optional ``repo_alias``).
 
     Called by the dashboard after task creation. The entire read-modify-write
     happens under an exclusive ``fcntl.flock``, so concurrent writers (this
@@ -183,6 +183,11 @@ def mark_task_created(board_slug: str) -> bool:
         if isinstance(board_state, dict):
             board_state["task_created"] = True
             board_state["scan_attempts"] = 0
+            if repo_alias:
+                repos_state = board_state.setdefault("repos", {})
+                r_state = repos_state.setdefault(repo_alias, {})
+                r_state["task_created"] = True
+                r_state["scan_attempts"] = 0
 
     try:
         return _locked_state_rmw(_mutate)
@@ -383,7 +388,9 @@ def get_existing_task_titles(board_slug: str) -> list[str]:
         return []
 
 
-def has_task_on_or_after_commit(board_slug: str, commit_time: int) -> bool:
+def has_task_on_or_after_commit(
+    board_slug: str, commit_time: int, repo_alias: str | None = None
+) -> bool:
     """Check if any task was created for this board on or after the commit timestamp."""
     if commit_time <= 0:
         return False
@@ -393,13 +400,105 @@ def has_task_on_or_after_commit(board_slug: str, commit_time: int) -> bool:
     try:
         with sqlite3.connect(str(db_path), timeout=5.0) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT 1 FROM tasks WHERE board_slug = ? AND created_at >= ? LIMIT 1",
-                (board_slug, commit_time),
-            )
+            if repo_alias:
+                cursor.execute(
+                    "SELECT 1 FROM tasks WHERE board_slug = ? AND (repo_alias = ? OR repo_alias IS NULL) AND created_at >= ? LIMIT 1",
+                    (board_slug, repo_alias, commit_time),
+                )
+            else:
+                cursor.execute(
+                    "SELECT 1 FROM tasks WHERE board_slug = ? AND created_at >= ? LIMIT 1",
+                    (board_slug, commit_time),
+                )
             return cursor.fetchone() is not None
     except Exception:
         return False
+
+
+def get_board_repositories(board_slug: str) -> list[dict[str, Any]]:
+    """Fetch all repositories associated with a board."""
+    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    if not db_path.exists():
+        return []
+    try:
+        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, board_slug, repo_alias, git_url, target_branch FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
+                (board_slug,),
+            )
+            return [dict(r) for r in cursor.fetchall()]
+    except Exception:
+        return []
+
+
+def resolve_repo_path(
+    board_slug: str, repo_alias: str, git_url: str = "", current_dir: Path | None = None
+) -> Path | None:
+    """Resolve the local checkout directory for a board repository."""
+    # 0. Check current working directory if matching alias or remote
+    if current_dir and (current_dir / ".git").exists():
+        if current_dir.name == repo_alias:
+            return current_dir
+        if git_url:
+            remote = _run_cmd(
+                ["git", "config", "--get", "remote.origin.url"], cwd=current_dir
+            )
+            if remote and (git_url in remote or remote in git_url):
+                return current_dir
+
+    # 1. Local path if git_url is an existing directory
+    if git_url:
+        try:
+            local_p = Path(git_url)
+            if local_p.is_dir() and (local_p / ".git").exists():
+                return local_p.resolve()
+        except Exception:
+            pass
+
+    # 2. Check standard ~/git directories
+    home = Path.home()
+    candidates: list[Path] = [
+        home / "git" / repo_alias,
+        home / "git" / board_slug / repo_alias,
+    ]
+
+    owner, repo_name = "", ""
+    if git_url:
+        cleaned_url = re.sub(r"\.git$", "", git_url.strip().rstrip("/"))
+        parts = cleaned_url.replace(":", "/").split("/")
+        if len(parts) >= 1:
+            repo_name = parts[-1]
+            candidates.append(home / "git" / repo_name)
+        if len(parts) >= 2:
+            owner = parts[-2]
+            candidates.append(home / "git" / owner / repo_name)
+            candidates.append(home / "git" / f"{owner}-{repo_name}")
+
+    git_root = home / "git"
+    if git_root.is_dir():
+        try:
+            for child in git_root.iterdir():
+                if child.is_dir():
+                    sub = child / repo_alias
+                    if sub not in candidates:
+                        candidates.append(sub)
+                    if repo_name:
+                        sub_repo = child / repo_name
+                        if sub_repo not in candidates:
+                            candidates.append(sub_repo)
+        except Exception:
+            pass
+
+    for cand in candidates:
+        if cand.is_dir() and (cand / ".git").exists():
+            return cand.resolve()
+
+    if current_dir and (current_dir / ".git").exists():
+        return current_dir
+
+    return None
 
 
 def resolve_board_slug(repo_dir: Path) -> str:
@@ -418,11 +517,13 @@ def resolve_board_slug(repo_dir: Path) -> str:
         try:
             with sqlite3.connect(str(db_path), timeout=5.0) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT slug, git_url FROM boards")
+                cursor.execute(
+                    "SELECT b.slug, br.git_url FROM boards b LEFT JOIN board_repositories br ON b.slug = br.board_slug"
+                )
                 rows = cursor.fetchall()
                 # 1. Match by slug == repo name or slug ends with repo name
                 for slug, _ in rows:
-                    if repo_dir.name.lower() in (
+                    if slug and repo_dir.name.lower() in (
                         slug.lower(),
                         slug.split("-")[-1].lower(),
                     ):
@@ -450,7 +551,7 @@ def resolve_board_slug(repo_dir: Path) -> str:
                             ):
                                 return slug
                 # Fallback to first board if available
-                if rows:
+                if rows and rows[0][0]:
                     return rows[0][0]
         except Exception:
             pass
@@ -462,15 +563,124 @@ def run_scanner_gate() -> int:
     repo_dir = Path.cwd()
     board_slug = resolve_board_slug(repo_dir)
 
-    # Auto-sync/pull default branch from remote before evaluating commit SHA
-    _auto_sync_repo(repo_dir)
+    # Sync OpenWiki workspace registry so sibling repositories are unified
+    try:
+        from dashboard.openwiki_service import sync_board_openwiki_workspace
 
-    # Check if this is a git repo
-    head_sha = _run_cmd(["git", "rev-parse", "HEAD"], cwd=repo_dir)
-    status_porcelain = _run_cmd(["git", "status", "--porcelain", "-uno"], cwd=repo_dir)
+        sync_board_openwiki_workspace(board_slug)
+    except Exception:
+        pass
 
-    if not head_sha:
-        # Not a git repo or git failed — allow normal run
+    db_repos = get_board_repositories(board_slug)
+    repo_entries: list[dict[str, Any]] = []
+
+    if db_repos:
+        for r in db_repos:
+            alias = r["repo_alias"]
+            r_url = r.get("git_url", "")
+            r_path = resolve_repo_path(board_slug, alias, r_url, repo_dir)
+            if r_path and (r_path / ".git").exists():
+                repo_entries.append(
+                    {
+                        "repo_alias": alias,
+                        "path": r_path,
+                        "git_url": r_url,
+                    }
+                )
+
+    if not repo_entries:
+        # Fallback to current directory as the single repo
+        alias = repo_dir.name if repo_dir.name else "default"
+        repo_entries = [{"repo_alias": alias, "path": repo_dir, "git_url": ""}]
+
+    now_ts = int(time.time())
+    retry_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RETRY_COOLDOWN", "1800"))
+    max_attempts = int(os.environ.get("ZEROFACTORY_SCAN_MAX_ATTEMPTS", "3"))
+    reset_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RESET_COOLDOWN", "7200"))
+
+    state = load_state()
+    board_state = state.get(board_slug, {})
+    repos_state = board_state.get("repos", {})
+
+    inspected_repos: list[dict[str, Any]] = []
+    for r in repo_entries:
+        r_path = r["path"]
+        alias = r["repo_alias"]
+        _auto_sync_repo(r_path)
+
+        head_sha = _run_cmd(["git", "rev-parse", "HEAD"], cwd=r_path)
+        status_porcelain = _run_cmd(
+            ["git", "status", "--porcelain", "-uno"], cwd=r_path
+        )
+
+        if not head_sha:
+            continue
+
+        r_state = repos_state.get(alias, {})
+        last_sha = (
+            r_state["last_scanned_sha"]
+            if "last_scanned_sha" in r_state
+            else (
+                board_state.get("last_scanned_sha")
+                if len(repo_entries) == 1
+                else None
+            )
+        )
+        last_status = (
+            r_state["last_status"]
+            if "last_status" in r_state
+            else (
+                board_state.get("last_status")
+                if len(repo_entries) == 1
+                else None
+            )
+        )
+
+        is_same_commit = head_sha == last_sha
+        is_same_status = status_porcelain == last_status
+        has_changes = not (is_same_commit and is_same_status)
+        is_baseline = last_sha is None
+
+        commit_time_str = _run_cmd(
+            ["git", "log", "-1", "--format=%ct", head_sha], cwd=r_path
+        )
+        commit_time = int(commit_time_str) if commit_time_str.isdigit() else 0
+
+        inspected_repos.append(
+            {
+                "repo_alias": alias,
+                "path": r_path,
+                "git_url": r["git_url"],
+                "head_sha": head_sha,
+                "status_porcelain": status_porcelain,
+                "r_state": r_state,
+                "last_sha": last_sha,
+                "last_status": last_status,
+                "is_same_commit": is_same_commit,
+                "is_same_status": is_same_status,
+                "has_changes": has_changes,
+                "is_baseline": is_baseline,
+                "commit_time": commit_time,
+                "last_scan_at": int(
+                    r_state.get(
+                        "last_scan_at",
+                        board_state.get("last_scan_at", 0)
+                        if len(repo_entries) == 1
+                        else 0,
+                    )
+                ),
+                "scan_attempts": int(
+                    r_state.get(
+                        "scan_attempts",
+                        board_state.get("scan_attempts", 1)
+                        if len(repo_entries) == 1
+                        else 1,
+                    )
+                ),
+            }
+        )
+
+    if not inspected_repos:
         print(
             f"Warning: Not a valid git repository at {repo_dir}. Running standard inspection."
         )
@@ -494,117 +704,119 @@ def run_scanner_gate() -> int:
         "ZEROFACTORY_IDLE_SCAN", ""
     ).lower() in ("1", "true", "yes")
 
-    state = load_state()
-    board_state = state.get(board_slug, {})
-    last_sha = board_state.get("last_scanned_sha")
-    last_status = board_state.get("last_status")
+    target_repo = None
+    trigger_reason = ""
 
-    is_same_commit = head_sha == last_sha
-    is_same_status = status_porcelain == last_status
+    # Decision tree:
+    # 1. Force scan
+    if force_scan:
+        target_repo = inspected_repos[0]
+        trigger_reason = f"FORCE_SCAN_TRIGGERED: Force scan requested for board '{board_slug}' (targeting '{target_repo['repo_alias']}')."
 
-    now_ts = int(time.time())
-    retry_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RETRY_COOLDOWN", "1800"))
-    max_attempts = int(os.environ.get("ZEROFACTORY_SCAN_MAX_ATTEMPTS", "3"))
-    reset_cooldown = int(os.environ.get("ZEROFACTORY_SCAN_RESET_COOLDOWN", "7200"))
-
-    # Check for unchanged steady state
-    if is_same_commit and is_same_status and not force_scan:
-        if last_sha is not None:
-            # Check for capacity-driven idle scanning
-            scan_on_idle = capacity.get("scan_on_idle", False)
-            running_count = capacity.get("running", 0)
-            todo_count = capacity.get("todo", 0)
-            max_concurrent = capacity.get("max_concurrent_running", 1)
-            max_todo = capacity.get("idle_scan_max_todo", 2)
-            idle_cooldown = capacity.get("idle_scan_cooldown_minutes", 15) * 60
-
-            if is_idle_scan:
-                print(
-                    f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Dispatcher authorized idle scan for board '{board_slug}' (active running={running_count} < {max_concurrent})."
-                )
-            elif scan_on_idle:
-                # Capacity-driven idle scanning is enabled on cron job
-                if running_count >= max_concurrent or todo_count >= max_todo:
-                    print(
-                        f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged; "
-                        f"pipeline busy on board '{board_slug}' (running={running_count}/{max_concurrent}, todo={todo_count}/{max_todo})."
-                    )
-                    print(json.dumps({"wakeAgent": False}))
-                    return 0
-
-                last_scan_at = int(board_state.get("last_scan_at", 0))
-                if (now_ts - last_scan_at) < idle_cooldown:
-                    print(
-                        f"SCAN_COOLDOWN_ACTIVE: Board '{board_slug}' is idle (running={running_count} < {max_concurrent}), "
-                        f"but cooldown active ({now_ts - last_scan_at}s < {idle_cooldown}s); waiting."
-                    )
-                    print(json.dumps({"wakeAgent": False}))
-                    return 0
-
-                print(
-                    f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Board '{board_slug}' is idle "
-                    f"(running={running_count} < {max_concurrent}, todo={todo_count} < {max_todo}); "
-                    f"cooldown elapsed ({now_ts - last_scan_at}s >= {idle_cooldown}s). Initiating idle improvement scan."
-                )
+    # 2. Baseline or newly changed repositories
+    if not target_repo:
+        changed = [r for r in inspected_repos if r["has_changes"] or r["is_baseline"]]
+        if changed:
+            baseline = [r for r in changed if r["is_baseline"]]
+            if baseline:
+                target_repo = baseline[0]
+                trigger_reason = f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' repository '{target_repo['repo_alias']}' has never been scanned. Initiating baseline codebase inspection."
             else:
-                # Idle scanning disabled — fall back to strict commit-change suppression
-                # 1. If active in-flight tasks exist in the pipeline, definitely suppress (pipeline busy)
-                if active_in_flight > 0:
-                    print(
-                        f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; active pipeline tasks ({active_in_flight}) on board '{board_slug}'."
-                    )
-                    print(json.dumps({"wakeAgent": False}))
-                    return 0
+                target_repo = max(changed, key=lambda r: r["commit_time"])
+                trigger_reason = f"CHANGES_DETECTED: Repository '{target_repo['repo_alias']}' has updates ({target_repo['head_sha'][:8]})."
 
-                # 2. If no active tasks exist, check if a task was ever created for this commit
-                commit_time_str = _run_cmd(
-                    ["git", "log", "-1", "--format=%ct", head_sha], cwd=repo_dir
-                )
-                commit_time = int(commit_time_str) if commit_time_str.isdigit() else 0
-                has_tasks = board_state.get(
-                    "task_created"
-                ) or has_task_on_or_after_commit(board_slug, commit_time)
+    # 3. Steady state (all repos unchanged)
+    if not target_repo:
+        scan_on_idle = capacity.get("scan_on_idle", False)
+        running_count = capacity.get("running", 0)
+        todo_count = capacity.get("todo", 0)
+        max_concurrent = capacity.get("max_concurrent_running", 1)
+        max_todo = capacity.get("idle_scan_max_todo", 2)
+        idle_cooldown = capacity.get("idle_scan_cooldown_minutes", 15) * 60
 
-                if has_tasks:
-                    # Successfully produced tasks for this commit (which are now completed/closed)
-                    print(
-                        f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged since last scan; board '{board_slug}' already scanned."
-                    )
-                    print(json.dumps({"wakeAgent": False}))
-                    return 0
-
-                # 3. No tasks were produced on this commit (potential premature suppression due to failed scan).
-                # Enforce retry cooldown and max attempts before giving up.
-                last_scan_at = int(board_state.get("last_scan_at", 0))
-                attempts = int(board_state.get("scan_attempts", 1))
-
-                if (now_ts - last_scan_at) < retry_cooldown:
-                    print(
-                        f"SCAN_COOLDOWN_ACTIVE: Scan on commit {head_sha[:8]} recently attempted ({now_ts - last_scan_at}s ago < {retry_cooldown}s); waiting for cooldown."
-                    )
-                    print(json.dumps({"wakeAgent": False}))
-                    return 0
-
-                if attempts >= max_attempts:
-                    if (now_ts - last_scan_at) >= reset_cooldown:
-                        # Outage recovery: after reset_cooldown (default 2h), reset attempts and retry
-                        attempts = 0
-                        board_state["scan_attempts"] = 0
-                    else:
-                        print(
-                            f"NO_CHANGES_DETECTED: Repository at {head_sha[:8]} unchanged after {attempts} scan attempts without tasks; suppressing."
-                        )
-                        print(json.dumps({"wakeAgent": False}))
-                        return 0
-
-                # Allow retry! Fall through to wake the agent
+        if is_idle_scan:
+            target_repo = min(inspected_repos, key=lambda r: r["last_scan_at"])
+            trigger_reason = f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Dispatcher authorized idle scan for board '{board_slug}' (active running={running_count} < {max_concurrent}, targeting '{target_repo['repo_alias']}')."
+        elif scan_on_idle:
+            if running_count >= max_concurrent or todo_count >= max_todo:
                 print(
-                    f"RETRY_SCAN_TRIGGERED: Previous scan on {head_sha[:8]} produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan."
+                    f"NO_CHANGES_DETECTED: Repositories unchanged; pipeline busy on board '{board_slug}' (running={running_count}/{max_concurrent}, todo={todo_count}/{max_todo})."
                 )
-        else:
-            print(
-                f"BASELINE_SCAN_TRIGGERED: Board '{board_slug}' has never been scanned. Initiating baseline codebase inspection."
+                print(json.dumps({"wakeAgent": False}))
+                return 0
+
+            last_board_scan_at = int(board_state.get("last_scan_at", 0))
+            if (now_ts - last_board_scan_at) < idle_cooldown:
+                print(
+                    f"SCAN_COOLDOWN_ACTIVE: Board '{board_slug}' is idle (running={running_count} < {max_concurrent}), "
+                    f"but cooldown active ({now_ts - last_board_scan_at}s < {idle_cooldown}s); waiting."
+                )
+                print(json.dumps({"wakeAgent": False}))
+                return 0
+
+            target_repo = min(inspected_repos, key=lambda r: r["last_scan_at"])
+            trigger_reason = (
+                f"CAPACITY_DRIVEN_SCAN_TRIGGERED: Board '{board_slug}' is idle "
+                f"(running={running_count} < {max_concurrent}, todo={todo_count} < {max_todo}); "
+                f"cooldown elapsed ({now_ts - last_board_scan_at}s >= {idle_cooldown}s). Initiating idle improvement scan on '{target_repo['repo_alias']}'."
             )
+        else:
+            if active_in_flight > 0:
+                print(
+                    f"NO_CHANGES_DETECTED: Repositories unchanged since last scan; active pipeline tasks ({active_in_flight}) on board '{board_slug}'."
+                )
+                print(json.dumps({"wakeAgent": False}))
+                return 0
+
+            all_had_tasks = True
+            retry_candidates = []
+            for r in inspected_repos:
+                has_tasks = (
+                    bool(r["r_state"].get("task_created"))
+                    or bool(board_state.get("task_created"))
+                    or has_task_on_or_after_commit(
+                        board_slug, r["commit_time"], repo_alias=r["repo_alias"]
+                    )
+                )
+                if not has_tasks:
+                    all_had_tasks = False
+                    retry_candidates.append(r)
+
+            if all_had_tasks:
+                print(
+                    f"NO_CHANGES_DETECTED: Repositories on board '{board_slug}' unchanged since last scan; board already scanned."
+                )
+                print(json.dumps({"wakeAgent": False}))
+                return 0
+
+            r_candidate = retry_candidates[0]
+            last_scan_at = r_candidate["last_scan_at"]
+            attempts = r_candidate["scan_attempts"]
+
+            if (now_ts - last_scan_at) < retry_cooldown:
+                print(
+                    f"SCAN_COOLDOWN_ACTIVE: Scan on '{r_candidate['repo_alias']}' ({r_candidate['head_sha'][:8]}) recently attempted ({now_ts - last_scan_at}s ago < {retry_cooldown}s); waiting for cooldown."
+                )
+                print(json.dumps({"wakeAgent": False}))
+                return 0
+
+            if attempts >= max_attempts:
+                if (now_ts - last_scan_at) >= reset_cooldown:
+                    attempts = 0
+                    r_candidate["r_state"]["scan_attempts"] = 0
+                else:
+                    print(
+                        f"NO_CHANGES_DETECTED: Repository '{r_candidate['repo_alias']}' at {r_candidate['head_sha'][:8]} unchanged after {attempts} scan attempts without tasks; suppressing."
+                    )
+                    print(json.dumps({"wakeAgent": False}))
+                    return 0
+
+            target_repo = r_candidate
+            trigger_reason = f"RETRY_SCAN_TRIGGERED: Previous scan on '{target_repo['repo_alias']}' ({target_repo['head_sha'][:8]}) produced no tasks and board has 0 active tasks (attempt {attempts + 1}/{max_attempts}). Initiating re-scan."
+
+    if not target_repo:
+        print(json.dumps({"wakeAgent": False}))
+        return 0
 
     # Pre-flight LLM probe: verify inference endpoint is reachable before committing state and waking agent
     if not is_llm_reachable():
@@ -614,16 +826,29 @@ def run_scanner_gate() -> int:
         print(json.dumps({"wakeAgent": False}))
         return 0
 
-    # Changes detected or baseline/retry scan required! Update state
-    new_attempts = (
-        (int(board_state.get("scan_attempts", 0)) + 1) if is_same_commit else 1
-    )
-    board_state["last_scanned_sha"] = head_sha
-    board_state["last_status"] = status_porcelain
+    t_alias = target_repo["repo_alias"]
+    t_path = target_repo["path"]
+    t_head = target_repo["head_sha"]
+    t_status = target_repo["status_porcelain"]
+    t_is_same = target_repo["is_same_commit"]
+
+    new_attempts = (int(target_repo["r_state"].get("scan_attempts", 0)) + 1) if t_is_same else 1
+    target_r_state = repos_state.setdefault(t_alias, {})
+    target_r_state["last_scanned_sha"] = t_head
+    target_r_state["last_status"] = t_status
+    target_r_state["last_scan_at"] = now_ts
+    target_r_state["scan_attempts"] = new_attempts
+    if not t_is_same:
+        target_r_state.pop("task_created", None)
+
+    board_state["repos"] = repos_state
+    board_state["last_scanned_sha"] = t_head
+    board_state["last_status"] = t_status
     board_state["last_scan_at"] = now_ts
     board_state["scan_attempts"] = new_attempts
-    if not is_same_commit:
+    if not t_is_same:
         board_state.pop("task_created", None)
+
     state[board_slug] = board_state
     save_state(state)
 
@@ -636,14 +861,14 @@ def run_scanner_gate() -> int:
         ":!*.min.*",
         ":!*.map",
     ]
-    log_summary = _run_cmd(["git", "log", "-n", "5", "--oneline"], cwd=repo_dir)
+    log_summary = _run_cmd(["git", "log", "-n", "5", "--oneline"], cwd=t_path)
     diffstat = _run_cmd(
         ["git", "diff", "--stat", "HEAD~1..HEAD", "--", *excluded_diff_pathspecs],
-        cwd=repo_dir,
+        cwd=t_path,
     )
     raw_diff = _run_cmd(
         ["git", "diff", "-U2", "HEAD~1..HEAD", "--", *excluded_diff_pathspecs],
-        cwd=repo_dir,
+        cwd=t_path,
     )
 
     # Cap diff to prevent prompt overflow
@@ -653,16 +878,15 @@ def run_scanner_gate() -> int:
         truncated_diff += "\n... [diff truncated for token efficiency]"
 
     # Check for uncommitted files
-    is_worktree_clean = len(status_porcelain.strip()) == 0
+    is_worktree_clean = len(t_status.strip()) == 0
     uncommitted_summary = ""
     if not is_worktree_clean:
         uncommitted_summary = (
-            f"### Uncommitted Changes:\n```\n{status_porcelain[:1000]}\n```\n"
+            f"### Uncommitted Changes:\n```\n{t_status[:1000]}\n```\n"
         )
 
-    # Search for new TODO / FIXME in tracked files (word-boundary anchored so
-    # identifiers like DEFAULT_IDLE_SCAN_MAX_TODO never match)
-    todo_matches = scan_code_markers(repo_dir)
+    # Search for new TODO / FIXME in tracked files
+    todo_matches = scan_code_markers(t_path)
     todo_sample = "\n".join(todo_matches.splitlines()[:15]) if todo_matches else "None"
 
     tasks_block = (
@@ -671,8 +895,10 @@ def run_scanner_gate() -> int:
         else "(No active tasks)"
     )
 
+    if trigger_reason:
+        print(f"[{trigger_reason}]")
     print("### 🔍 Pre-Screen Intelligence Package (Zero-Token Ingested)")
-    print(f"**Repository:** `{repo_dir.name}` (Commit: `{head_sha[:8]}`)")
+    print(f"**Board:** `{board_slug}` | **Target Repository:** `{t_alias}` (`{t_path.name}`) (Commit: `{t_head[:8]}`)")
     print()
     print("#### Recent Commits:")
     print(f"```\n{log_summary}\n```")
@@ -697,7 +923,7 @@ def run_scanner_gate() -> int:
 
     if not existing_tasks:
         candidate_files = _run_cmd(
-            ["git", "ls-files", "*.py", "*.ts", "*.js", "*.mjs"], cwd=repo_dir
+            ["git", "ls-files", "*.py", "*.ts", "*.js", "*.mjs"], cwd=t_path
         )
         files_sample = (
             "\n".join([f"- `{f}`" for f in candidate_files.splitlines()[:20]])
@@ -709,12 +935,12 @@ def run_scanner_gate() -> int:
         print()
         print("---")
         print(
-            f'Instructions for Agent: Baseline scan for board \'{board_slug}\' (0 active tasks). Inspect candidate source files above for genuine bugs, missing tests, or error-handling debt. Create exactly 1 task using `hermes zerofactory create "<issue title>" --description "<details>" --board "{board_slug}" --files "<files>" --category "<category>" --priority P0 --status todo --assignee zf-builder`.'
+            f'Instructions for Agent: Baseline scan for board \'{board_slug}\' repository \'{t_alias}\' (0 active tasks). Inspect candidate source files above for genuine bugs, missing tests, or error-handling debt. Create exactly 1 task using `hermes zerofactory create "<issue title>" --description "<details>" --board "{board_slug}" --repo "{t_alias}" --files "<files>" --category "<category>" --priority P0 --status todo --assignee zf-builder`.'
         )
     else:
         print("---")
         print(
-            f"Instructions for Agent: Review the codebase for board '{board_slug}' for genuine code quality improvements, refactoring, performance, architecture, or test debt. If warranted, create AT MOST 1 task in Kanban and finish. Do NOT duplicate open tasks."
+            f'Instructions for Agent: Review the codebase for board \'{board_slug}\' repository \'{t_alias}\' for genuine code quality improvements, refactoring, performance, architecture, or test debt. If warranted, create AT MOST 1 task targeting this repository using `hermes zerofactory create "<issue title>" --description "<details>" --board "{board_slug}" --repo "{t_alias}" --files "<files>" --category "<category>" --priority P0 --status todo --assignee zf-builder` and finish. Do NOT duplicate open tasks.'
         )
     print()
 

@@ -239,6 +239,9 @@ def register(ctx: Any):
         p_list = subparsers.add_parser("list", help="List kanban tasks")
         p_list.add_argument("--board", default=None, help="Filter by board slug")
         p_list.add_argument(
+            "--repo", default=None, help="Filter by repository alias on the board"
+        )
+        p_list.add_argument(
             "--status",
             default=None,
             help="Filter by status (triage, todo, running, blocked, done)",
@@ -267,6 +270,11 @@ def register(ctx: Any):
             "--board",
             default=None,
             help="Board slug (defaults to first available board)",
+        )
+        p_create.add_argument(
+            "--repo",
+            default=None,
+            help="Target repository alias on the board (e.g. backend, frontend)",
         )
         p_create.add_argument("--parent", default=None, help="Parent task ID")
         p_create.add_argument(
@@ -733,6 +741,7 @@ def register(ctx: Any):
         elif action == "list" or not action:
             res = _list_tasks(
                 board=getattr(args, "board", None),
+                repo=getattr(args, "repo", None),
                 status=getattr(args, "status", None),
                 assignee=getattr(args, "assignee", None),
             )
@@ -775,6 +784,7 @@ def register(ctx: Any):
                 priority=args.priority,
                 assignee=args.assignee,
                 board_slug=args.board,
+                repo_alias=getattr(args, "repo", None),
                 parent_id=args.parent,
                 files=files_list,
                 category=getattr(args, "category", "bug-fix"),

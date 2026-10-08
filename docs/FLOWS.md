@@ -442,11 +442,11 @@ flowchart TD
 | Job | Cadence | Mode | Suppression conditions | Action when awake |
 |---|---|---|---|---|
 | `zero-factory-task-queue-check` | 120m | **no-agent** (0 tokens) | healthy queue → `wakeAgent: false` | auto-sync GitHub issues, reap stuck workers, run dispatch cycle, emit stats/alert |
-| `zero-factory-improvement-scanner-{slug}` | on-idle / 60m | agent (`zf-orchestrator`, `continuity: false`) | unchanged git state, `running >= 2`, `todo >= 2`, 15m cooldown | file **≤ 1** `Todo` improvement task (categories: bug-fix, refactoring, performance, documentation, testing, security, config) |
-| `zero-factory-openwiki-update-{slug}` | daily | **no-agent** (0 tokens) | docs fresh / task already queued | gate files 1 OpenWiki refresh task |
+| `zero-factory-improvement-scanner-{slug}` | on-idle / 60m | agent (`zf-orchestrator`, `continuity: false`) | all board repositories unchanged, `running >= 2`, `todo >= 2`, 15m cooldown | exactly **1 job per board** evaluates all peer repositories in `board_repositories`, selects most recently updated (or round-robin on idle), files **≤ 1** `Todo` task with `--board <slug> --repo <alias>` |
+| `zero-factory-openwiki-update-{slug}` | daily | **no-agent** (0 tokens) | docs fresh across all repos / task already queued | exactly **1 job per board** synchronizes OpenWiki workspace (`~/.openwiki/wiki-workspaces.json`), evaluates all repositories on board, files targeted OpenWiki refresh task |
 
 Global LLM capacity (`max_concurrent_llm_workers`) counts scanners and cron LLM jobs together
-with running tasks — busy boards suppress scans automatically.
+with running tasks — busy boards suppress scans automatically. Sibling repositories on a multi-repo board are registered as members of an OpenWiki workspace (`id={board_slug}`), enabling cross-service contract querying via `openwiki_search`.
 
 ---
 

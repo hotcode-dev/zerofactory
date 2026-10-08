@@ -335,6 +335,15 @@ def create_board(req: BoardCreate):
                     "Failed to auto-clone repo %s for board %s: %s", r["repo_alias"], slug, e
                 )
 
+    try:
+        try:
+            from ..openwiki_service import sync_board_openwiki_workspace
+        except (ImportError, ValueError):
+            from openwiki_service import sync_board_openwiki_workspace  # type: ignore
+        sync_board_openwiki_workspace(slug)
+    except Exception as e:
+        _log.debug("Failed to sync OpenWiki workspace for board %s: %s", slug, e)
+
     if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         ensure_cron, *_ = _get_cron_helpers()
         if ensure_cron:
@@ -582,6 +591,15 @@ def update_board(slug: str, req: BoardUpdate):
             board_data["git_url"] = ""
             board_data["target_branch"] = "main"
             board_data["additional_reviewer_usernames"] = []
+
+    try:
+        try:
+            from ..openwiki_service import sync_board_openwiki_workspace
+        except (ImportError, ValueError):
+            from openwiki_service import sync_board_openwiki_workspace  # type: ignore
+        sync_board_openwiki_workspace(slug)
+    except Exception as e:
+        _log.debug("Failed to sync OpenWiki workspace for board %s: %s", slug, e)
 
     if not os.environ.get("ZEROFACTORY_SKIP_CRON_SYNC"):
         ensure_cron, *_ = _get_cron_helpers()

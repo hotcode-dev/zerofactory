@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -398,6 +399,273 @@ class TestScanCodeMarkers(unittest.TestCase):
             self._restore_env(saved)
             if repo is not None:
                 shutil.rmtree(repo, ignore_errors=True)
+
+
+class TestZfScannerGateMultiRepo(unittest.TestCase):
+    """Test scanner gate evaluation for boards with multiple repositories in 1 cron job."""
+
+    def setUp(self):
+        self.mod = _load_gate()
+        self.td = tempfile.TemporaryDirectory()
+        self.tmp = Path(self.td.name)
+        self.db_path = self.tmp / "zerofactory.db"
+        self.state_file = self.tmp / "scanner_state.json"
+
+        # Initialize mock DB with multi-repo board
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute(
+                "CREATE TABLE boards (slug TEXT PRIMARY KEY, max_concurrent_running INTEGER)"
+            )
+            conn.execute(
+                "CREATE TABLE board_repositories (id INTEGER PRIMARY KEY AUTOINCREMENT, board_slug TEXT, repo_alias TEXT, git_url TEXT, target_branch TEXT)"
+            )
+            conn.execute(
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, repo_alias TEXT, title TEXT, description TEXT, status TEXT, assignee TEXT, priority TEXT, created_at REAL, updated_at REAL)"
+            )
+            conn.execute(
+                "INSERT INTO boards (slug, max_concurrent_running) VALUES ('ecommerce', 1)"
+            )
+            conn.execute(
+                "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('ecommerce', 'backend', '/path/to/backend', 'main')"
+            )
+            conn.execute(
+                "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('ecommerce', 'frontend', '/path/to/frontend', 'main')"
+            )
+            conn.commit()
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def test_get_board_repositories(self):
+        with patch.dict(os.environ, {"ZEROFACTORY_DB": str(self.db_path)}):
+            repos = self.mod.get_board_repositories("ecommerce")
+            self.assertEqual(len(repos), 2)
+            self.assertEqual(repos[0]["repo_alias"], "backend")
+            self.assertEqual(repos[1]["repo_alias"], "frontend")
+
+    def test_multi_repo_unchanged_suppresses(self):
+        import time
+
+        now_ts = int(time.time())
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "ecommerce": {
+                        "last_scanned_sha": "sha_backend_1",
+                        "last_scan_at": now_ts,
+                        "repos": {
+                            "backend": {
+                                "last_scanned_sha": "sha_backend_1",
+                                "last_status": "",
+                                "last_scan_at": now_ts,
+                            },
+                            "frontend": {
+                                "last_scanned_sha": "sha_frontend_1",
+                                "last_status": "",
+                                "last_scan_at": now_ts,
+                            },
+                        },
+                        "task_created": True,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        repo_be = self.tmp / "backend"
+        repo_fe = self.tmp / "frontend"
+        (repo_be / ".git").mkdir(parents=True)
+        (repo_fe / ".git").mkdir(parents=True)
+
+        with patch.dict(
+            os.environ,
+            {
+                "ZEROFACTORY_DB": str(self.db_path),
+                "ZEROFACTORY_SCANNER_STATE": str(self.state_file),
+                "ZEROFACTORY_SKIP_LLM_PROBE": "1",
+            },
+        ):
+            with patch.object(self.mod, "_run_cmd") as mock_cmd, patch.object(
+                self.mod, "resolve_repo_path"
+            ) as mock_resolve:
+
+                def _fake_resolve(board_slug, alias, git_url, curr_dir):
+                    return repo_be if alias == "backend" else repo_fe
+
+                mock_resolve.side_effect = _fake_resolve
+
+                def _fake_cmd(cmd, cwd=None):
+                    if "rev-parse" in cmd:
+                        return "sha_backend_1" if cwd == repo_be else "sha_frontend_1"
+                    if "status" in cmd:
+                        return ""
+                    if "log" in cmd:
+                        return "100"
+                    return ""
+
+                mock_cmd.side_effect = _fake_cmd
+                with patch("sys.argv", ["zf_scanner_gate.py", "ecommerce"]):
+                    with patch("builtins.print") as mock_print:
+                        rc = self.mod.run_scanner_gate()
+                        self.assertEqual(rc, 0)
+                        mock_print.assert_any_call(json.dumps({"wakeAgent": False}))
+
+    def test_multi_repo_changed_repo_selected(self):
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "ecommerce": {
+                        "repos": {
+                            "backend": {
+                                "last_scanned_sha": "sha_backend_1",
+                                "last_status": "",
+                            },
+                            "frontend": {
+                                "last_scanned_sha": "sha_frontend_1",
+                                "last_status": "",
+                            },
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        repo_be = self.tmp / "backend"
+        repo_fe = self.tmp / "frontend"
+        (repo_be / ".git").mkdir(parents=True)
+        (repo_fe / ".git").mkdir(parents=True)
+
+        with patch.dict(
+            os.environ,
+            {
+                "ZEROFACTORY_DB": str(self.db_path),
+                "ZEROFACTORY_SCANNER_STATE": str(self.state_file),
+                "ZEROFACTORY_SKIP_LLM_PROBE": "1",
+            },
+        ):
+            with patch.object(self.mod, "_run_cmd") as mock_cmd, patch.object(
+                self.mod, "resolve_repo_path"
+            ) as mock_resolve, patch.object(
+                self.mod, "scan_code_markers", return_value=""
+            ):
+
+                def _fake_resolve(board_slug, alias, git_url, curr_dir):
+                    return repo_be if alias == "backend" else repo_fe
+
+                mock_resolve.side_effect = _fake_resolve
+
+                def _fake_cmd(cmd, cwd=None):
+                    if "rev-parse" in cmd:
+                        return "sha_backend_1" if cwd == repo_be else "sha_frontend_2"
+                    if "status" in cmd:
+                        return ""
+                    if "log" in cmd and "--format=%ct" in cmd:
+                        return "200" if cwd == repo_fe else "100"
+                    if "log" in cmd:
+                        return "sha_frontend_2 feat: new ui component"
+                    if "diff" in cmd:
+                        return "src/App.tsx | 10 +"
+                    return ""
+
+                mock_cmd.side_effect = _fake_cmd
+                with patch("sys.argv", ["zf_scanner_gate.py", "ecommerce"]):
+                    printed = []
+                    with patch(
+                        "builtins.print",
+                        side_effect=lambda *a: printed.append(
+                            " ".join(str(x) for x in a)
+                        ),
+                    ):
+                        rc = self.mod.run_scanner_gate()
+                        self.assertEqual(rc, 0)
+                        self.assertIn(json.dumps({"wakeAgent": True}), printed)
+                        combined = "\n".join(printed)
+                        self.assertIn("Target Repository:** `frontend`", combined)
+                        self.assertIn(
+                            '--board "ecommerce" --repo "frontend"', combined
+                        )
+
+    def test_multi_repo_idle_round_robin(self):
+        # Both repos unchanged, but idle scan requested.
+        # backend scanned at t=200, frontend scanned at t=100 -> frontend should be picked (least recently scanned)
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "ecommerce": {
+                        "last_scanned_sha": "sha_backend_1",
+                        "last_scan_at": 200,
+                        "repos": {
+                            "backend": {
+                                "last_scanned_sha": "sha_backend_1",
+                                "last_status": "",
+                                "last_scan_at": 200,
+                            },
+                            "frontend": {
+                                "last_scanned_sha": "sha_frontend_1",
+                                "last_status": "",
+                                "last_scan_at": 100,
+                            },
+                        },
+                        "task_created": True,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        repo_be = self.tmp / "backend"
+        repo_fe = self.tmp / "frontend"
+        (repo_be / ".git").mkdir(parents=True)
+        (repo_fe / ".git").mkdir(parents=True)
+
+        with patch.dict(
+            os.environ,
+            {
+                "ZEROFACTORY_DB": str(self.db_path),
+                "ZEROFACTORY_SCANNER_STATE": str(self.state_file),
+                "ZEROFACTORY_SKIP_LLM_PROBE": "1",
+            },
+        ):
+            with patch.object(self.mod, "_run_cmd") as mock_cmd, patch.object(
+                self.mod, "resolve_repo_path"
+            ) as mock_resolve, patch.object(
+                self.mod, "scan_code_markers", return_value=""
+            ):
+
+                def _fake_resolve(board_slug, alias, git_url, curr_dir):
+                    return repo_be if alias == "backend" else repo_fe
+
+                mock_resolve.side_effect = _fake_resolve
+
+                def _fake_cmd(cmd, cwd=None):
+                    if "rev-parse" in cmd:
+                        return "sha_backend_1" if cwd == repo_be else "sha_frontend_1"
+                    if "status" in cmd:
+                        return ""
+                    if "log" in cmd and "--format=%ct" in cmd:
+                        return "100"
+                    if "log" in cmd:
+                        return "recent commit"
+                    return ""
+
+                mock_cmd.side_effect = _fake_cmd
+                with patch("sys.argv", ["zf_scanner_gate.py", "--idle", "ecommerce"]):
+                    printed = []
+                    with patch(
+                        "builtins.print",
+                        side_effect=lambda *a: printed.append(
+                            " ".join(str(x) for x in a)
+                        ),
+                    ):
+                        rc = self.mod.run_scanner_gate()
+                        self.assertEqual(rc, 0)
+                        self.assertIn(json.dumps({"wakeAgent": True}), printed)
+                        combined = "\n".join(printed)
+                        self.assertIn("Target Repository:** `frontend`", combined)
+                        self.assertIn(
+                            '--board "ecommerce" --repo "frontend"', combined
+                        )
 
 
 if __name__ == "__main__":

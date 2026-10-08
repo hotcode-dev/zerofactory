@@ -59,7 +59,9 @@ def _load_scanner_gate_module():
 _scanner_gate_mod = _load_scanner_gate_module()
 
 
-def _mark_scanner_task_created(board_slug: str) -> bool:
+def _mark_scanner_task_created(
+    board_slug: str, repo_alias: str | None = None
+) -> bool:
     """Atomically flag that a task was created for ``board_slug`` in the shared
     scanner state file (flock-guarded read-modify-write + atomic os.replace).
 
@@ -71,7 +73,7 @@ def _mark_scanner_task_created(board_slug: str) -> bool:
     if _scanner_gate_mod is not None and hasattr(
         _scanner_gate_mod, "mark_task_created"
     ):
-        return bool(_scanner_gate_mod.mark_task_created(board_slug))
+        return bool(_scanner_gate_mod.mark_task_created(board_slug, repo_alias=repo_alias))
 
     state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
     state_file = (
@@ -97,6 +99,11 @@ def _mark_scanner_task_created(board_slug: str) -> bool:
                 if isinstance(board_state, dict):
                     board_state["task_created"] = True
                     board_state["scan_attempts"] = 0
+                    if repo_alias:
+                        repos_state = board_state.setdefault("repos", {})
+                        r_state = repos_state.setdefault(repo_alias, {})
+                        r_state["task_created"] = True
+                        r_state["scan_attempts"] = 0
                 data[board_slug] = board_state
                 payload = json.dumps(data, indent=2)
                 temp_fd, temp_path = tempfile.mkstemp(

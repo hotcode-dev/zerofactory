@@ -132,3 +132,204 @@ def create_openwiki_setup_task(
         created_label="OpenWiki",
         actor=actor,
     )
+    # Automatically sync the board's OpenWiki workspace registry so sibling repos are linked
+    try:
+        sync_board_openwiki_workspace(board_slug)
+    except Exception:
+        pass
+    return res
+
+
+WIKI_WORKSPACES_FILE = "wiki-workspaces.json"
+
+
+def get_openwiki_home_dir() -> Path:
+    """Resolve the base directory for OpenWiki user configuration and registries (~/.openwiki)."""
+    env_dir = os.environ.get("OPENWIKI_CONFIG_DIR")
+    if env_dir and env_dir.strip():
+        p = env_dir.strip()
+        if p.startswith("~"):
+            return Path(os.path.expanduser(p))
+        return Path(p).resolve()
+    return Path.home() / ".openwiki"
+
+
+def sync_board_openwiki_workspace(
+    board_slug: str, db_path: str | Path | None = None
+) -> dict[str, Any]:
+    """Sync repositories linked to board_slug into a named OpenWiki workspace (~/.openwiki/wiki-workspaces.json).
+
+    This enables OpenWiki's workspace linking feature so openwiki_search and openwiki_read
+    can query architecture and contracts across all sibling repositories on the board.
+    """
+    if not board_slug:
+        return {"status": "skipped", "reason": "No board slug provided"}
+
+    import json
+    import os
+    import re
+    import sqlite3
+    import tempfile
+    from .db import DEFAULT_DB_PATH, get_db_path
+
+    eff_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
+    if not eff_db.exists():
+        return {"status": "skipped", "reason": "Database not found"}
+
+    resolver = get_repo_resolver()
+    linked_repos: list[dict[str, Any]] = []
+
+    try:
+        with sqlite3.connect(str(eff_db), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT repo_alias, git_url, target_branch FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
+                (board_slug,),
+            )
+            rows = cursor.fetchall()
+            for r in rows:
+                alias = r["repo_alias"]
+                url = r["git_url"]
+                repo_path = None
+                if resolver:
+                    try:
+                        resolved = resolver({"git_url": url, "slug": alias})
+                        if resolved and resolved.is_dir() and (resolved / ".git").exists():
+                            repo_path = resolved.resolve()
+                    except Exception:
+                        pass
+                if not repo_path:
+                    for cand in (
+                        Path.home() / "git" / alias,
+                        Path.home() / "git" / board_slug / alias,
+                    ):
+                        if cand.is_dir() and (cand / ".git").exists():
+                            repo_path = cand.resolve()
+                            break
+                if repo_path:
+                    linked_repos.append(
+                        {
+                            "alias": alias,
+                            "path": repo_path,
+                            "url": url,
+                        }
+                    )
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+    if not linked_repos:
+        return {"status": "skipped", "reason": "No local repositories resolved"}
+
+    openwiki_dir = get_openwiki_home_dir()
+    openwiki_dir.mkdir(parents=True, exist_ok=True)
+    registry_file = openwiki_dir / WIKI_WORKSPACES_FILE
+
+    registry: dict[str, Any] = {
+        "version": 1,
+        "wikis": [],
+        "workspaces": [],
+        "active": [],
+    }
+
+    if registry_file.exists():
+        try:
+            loaded = json.loads(registry_file.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict) and loaded.get("version") == 1:
+                registry = loaded
+        except Exception:
+            pass
+
+    existing_wikis: list[dict[str, Any]] = registry.setdefault("wikis", [])
+    existing_workspaces: list[dict[str, Any]] = registry.setdefault("workspaces", [])
+    existing_active: list[dict[str, Any]] = registry.setdefault("active", [])
+
+    def _slugify(val: str, prefix: str = "item") -> str:
+        s = re.sub(r"[^a-z0-9-]", "-", val.lower().strip()).strip("-")
+        s = re.sub(r"-+", "-", s)
+        return s[:63] if s else prefix
+
+    # 1. Register or update wikis
+    root_to_wiki_id: dict[str, str] = {}
+    used_wiki_ids: set[str] = {w.get("id") for w in existing_wikis if w.get("id")}
+
+    for w in existing_wikis:
+        if w.get("root"):
+            root_to_wiki_id[str(Path(w["root"]).resolve())] = w["id"]
+
+    for lr in linked_repos:
+        r_str = str(lr["path"])
+        if r_str in root_to_wiki_id:
+            continue
+        base_id = _slugify(lr["alias"], "wiki")
+        wiki_id = base_id
+        counter = 1
+        while wiki_id in used_wiki_ids:
+            wiki_id = f"{base_id}-{counter}"
+            counter += 1
+        used_wiki_ids.add(wiki_id)
+        existing_wikis.append(
+            {
+                "id": wiki_id,
+                "name": lr["alias"],
+                "root": r_str,
+            }
+        )
+        root_to_wiki_id[r_str] = wiki_id
+
+    member_wiki_ids = [
+        root_to_wiki_id[str(lr["path"])]
+        for lr in linked_repos
+        if str(lr["path"]) in root_to_wiki_id
+    ]
+
+    # 2. Update or create workspace for board_slug
+    ws_id = _slugify(board_slug, "workspace")
+    target_ws = None
+    for ws in existing_workspaces:
+        if ws.get("id") == ws_id or ws.get("name") == board_slug:
+            target_ws = ws
+            break
+
+    if target_ws:
+        merged_ids = list(dict.fromkeys(target_ws.get("wikis", []) + member_wiki_ids))
+        target_ws["wikis"] = merged_ids
+        target_ws["name"] = board_slug
+    else:
+        existing_workspaces.append(
+            {
+                "id": ws_id,
+                "name": board_slug,
+                "wikis": member_wiki_ids,
+            }
+        )
+
+    # 3. Update active selections
+    for wid in member_wiki_ids:
+        found = False
+        for act in existing_active:
+            if act.get("wiki") == wid:
+                act["workspace"] = ws_id
+                found = True
+                break
+        if not found:
+            existing_active.append({"wiki": wid, "workspace": ws_id})
+
+    # 4. Atomic write
+    try:
+        temp_fd, temp_path = tempfile.mkstemp(
+            dir=str(openwiki_dir), prefix="workspaces_", suffix=".tmp"
+        )
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+            json.dump(registry, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, str(registry_file))
+        return {
+            "status": "synced",
+            "workspace_id": ws_id,
+            "board_slug": board_slug,
+            "member_wikis": member_wiki_ids,
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to persist registry: {e}"}

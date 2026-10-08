@@ -102,6 +102,7 @@ def _trigger_async_dispatch(log_context: str) -> None:
 @router.get("/tasks")
 def list_tasks(
     board: str | None = Query(None, description="Board slug filter"),
+    repo: str | None = Query(None, description="Repository alias filter"),
     status: str | None = Query(None, description="Status column filter"),
     assignee: str | None = Query(None, description="Assignee filter"),
     priority: str | None = Query(None, description="Priority filter"),
@@ -113,6 +114,8 @@ def list_tasks(
     # Normalize if invoked directly in python with default Query descriptors
     if not isinstance(board, str):
         board = None
+    if not isinstance(repo, str):
+        repo = None
     if not isinstance(status, str):
         status = None
     if not isinstance(assignee, str):
@@ -128,6 +131,9 @@ def list_tasks(
     if board and board != "all":
         query += " AND board_slug = ?"
         params.append(board)
+    if repo:
+        query += " AND repo_alias = ?"
+        params.append(repo)
     if status:
         query += " AND status = ?"
         params.append(status)
@@ -413,7 +419,7 @@ def create_task(req: TaskCreate):
         conn.commit()
 
         if board_slug:
-            _mark_scanner_task_created(board_slug)
+            _mark_scanner_task_created(board_slug, repo_alias=req.repo_alias)
 
     return {"ok": True, "id": task_id}
 
