@@ -46,7 +46,7 @@ Follow these steps on every task:
 
 ## Pre-Handoff Self-Check Checklist
 
-Before calling `hermes zerofactory move <task_id> blocked --reason "review-required"`:
+Before calling `hermes zerofactory move <task_id> done`:
 - [ ] Did I add any code or parameters that aren't strictly required by the task? *(If yes, delete them)*
 - [ ] Did I add a new dependency? *(If yes, can stdlib or an existing package do it?)*
 - [ ] Is there an existing helper in the codebase I should have reused instead?

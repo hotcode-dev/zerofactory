@@ -1099,7 +1099,13 @@ def register(ctx: Any):
                 status=args.status, actor=actor, reason=reason, assignee=assignee
             )
             res = _move_task(args.task_id, req)
-            if res.get("status") == "blocked" and reason:
+            if res.get("ignored"):
+                print(
+                    f"Warning: Move for task {args.task_id} was ignored: {res.get('reason')}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            elif res.get("status") == "blocked" and reason:
                 print(f"Moved task {args.task_id} to {args.status} (reason: {reason})")
             else:
                 print(f"Moved task {args.task_id} to {args.status}")

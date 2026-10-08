@@ -260,7 +260,7 @@ and **multi-repository context** (target repository alias, base branch, and sibl
 | Initial implementation | `zf-builder` | goal instructions (implement, test, verify) | `hermes zerofactory move <id> done` |
 | Conflict resolution | `zf-builder` | conflicted file list + resolution rules | `move <id> done` |
 | Precommit self-heal | `zf-builder` | 🚨 precommit failure output + reproduce/fix loop | `move <id> done` |
-| Changes requested | `zf-builder` | 🚨 PR review comments block (pre-digested) | `move <id> blocked --reason "review-required"` |
+| Changes requested | `zf-builder` | 🚨 PR review comments block (pre-digested) | `move <id> done` |
 | Thematic review | `zf-reviewer` | pre-digested git context (commits, diffstat, truncated diff) | `block <id> --reason "approved"` or `--reason "changes-requested"` |
 | Triage / scan | `zf-orchestrator` | task comments, OpenWiki hints, scanner pre-digest | decomposition via task create / `move` to `todo` |
 
@@ -278,7 +278,7 @@ sequenceDiagram
     D->>R: session 2 — review with pre-digested diff
     R-->>D: block --reason changes-requested
     D->>B: session 3 — 🚨 review comments block (fresh session)
-    B-->>D: blocked review-required -> packaging re-sync
+    B-->>D: move done -> packaging re-sync
     D->>R: session 4 — re-review (round 2, per commit SHA)
     R-->>D: block --reason approved
     D->>H: blocked + assignee=human — awaiting merge

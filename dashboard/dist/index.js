@@ -397,9 +397,11 @@ var ZeroFactoryDashboard = (function(exports) {
 					const titleStr = typeof t.title === "string" ? t.title : "";
 					const isGrillInterview = metaStr.includes("Grill-with-Docs") || metaStr.includes("Awaiting Human Input") || metaStr.includes("awaiting_interview") || descStr.includes("Grill-with-Docs") || titleStr.toLowerCase().includes("grill");
 					const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview);
-					const isHumanReview = t.status === "blocked" && t.assignee === "human";
+					const hasPr = Boolean(t.pr_url && String(t.pr_url).trim().length > 0);
+					const isHumanReview = t.status === "blocked" && t.assignee === "human" && hasPr;
+					const isHumanBlockedNoPr = t.status === "blocked" && t.assignee === "human" && !hasPr;
 					const isBlocked = t.status === "blocked";
-					if (!isBlocked && !isHumanTriage && !isHumanReview) return null;
+					if (!isBlocked && !isHumanTriage && !isHumanReview && !isHumanBlockedNoPr) return null;
 					let badgeClass = "";
 					let dotClass = "";
 					let labelText = "";
@@ -415,6 +417,10 @@ var ZeroFactoryDashboard = (function(exports) {
 						badgeClass = "bg-teal-500/15 border-teal-500/30 text-teal-300";
 						dotClass = "bg-teal-400 zfk-pulse-active";
 						labelText = "🟢 Waiting for Human to Merge";
+					} else if (isHumanBlockedNoPr) {
+						badgeClass = "bg-amber-500/15 border-amber-500/30 text-amber-300";
+						dotClass = "bg-amber-400 zfk-pulse-active";
+						labelText = "🛑 Waiting for Human Action";
 					} else if (t.blocking_parent_count > 0) {
 						badgeClass = "bg-slate-800 border-slate-700 text-slate-300";
 						dotClass = "bg-slate-400";
