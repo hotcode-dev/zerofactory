@@ -579,11 +579,21 @@ def register(ctx: Any):
         p_bcreate.add_argument(
             "git_url", help="Remote Git URL (e.g. https://github.com/owner/repo.git)"
         )
+        p_bcreate.add_argument(
+            "--slug",
+            default=None,
+            help="Custom board slug (defaults to slug inferred from git URL)",
+        )
         p_bcreate.add_argument("--description", default="", help="Board description")
         p_bcreate.add_argument(
             "--target-branch",
             default="",
             help="Target/base branch to branch off and merge PRs into (e.g. main)",
+        )
+        p_bcreate.add_argument(
+            "--architecture",
+            default="",
+            help="Cross-service architecture notes and contracts",
         )
         p_bcreate.add_argument(
             "--setup-precommit",
@@ -597,7 +607,7 @@ def register(ctx: Any):
         )
         p_bupdate = board_subs.add_parser(
             "update",
-            help="Update board configuration (description, target-branch, jira-url)",
+            help="Update board configuration (description, target-branch, jira-url, architecture)",
         )
         p_bupdate.add_argument("slug", help="Board slug to update")
         p_bupdate.add_argument(
@@ -608,6 +618,9 @@ def register(ctx: Any):
         )
         p_bupdate.add_argument(
             "--jira-url", default=None, help="Jira Cloud instance URL"
+        )
+        p_bupdate.add_argument(
+            "--architecture", default=None, help="Inter-service architecture and contracts"
         )
 
         p_bdelete = board_subs.add_parser(
@@ -1249,8 +1262,10 @@ def register(ctx: Any):
                 print()
             elif b_act == "create":
                 req = BoardCreate(
+                    slug=getattr(args, "slug", None),
                     git_url=args.git_url,
                     description=args.description,
+                    architecture=getattr(args, "architecture", "") or "",
                     target_branch=getattr(args, "target_branch", "") or "",
                     auto_setup_precommit=getattr(args, "setup_precommit", False),
                     jira_url=getattr(args, "jira_url", "") or "",
@@ -1271,6 +1286,8 @@ def register(ctx: Any):
                     up_kwargs["target_branch"] = args.target_branch
                 if getattr(args, "jira_url", None) is not None:
                     up_kwargs["jira_url"] = args.jira_url
+                if getattr(args, "architecture", None) is not None:
+                    up_kwargs["architecture"] = args.architecture
                 res = _update_board(args.slug, _BoardUpdate(**up_kwargs))
                 print(f"✓ Updated board '{args.slug}'.")
             elif b_act == "delete":

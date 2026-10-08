@@ -1,22 +1,34 @@
 -- 0001_initial_schema.sql
--- Zero Factory core schema initialization
+-- Zero Factory unified core schema initialization
 
 CREATE TABLE IF NOT EXISTS boards (
     slug TEXT PRIMARY KEY,
     description TEXT DEFAULT '',
-    git_url TEXT DEFAULT '',
-    target_branch TEXT NOT NULL DEFAULT '',
+    architecture TEXT NOT NULL DEFAULT '',
     max_concurrent_running INTEGER NOT NULL DEFAULT 1,
     auto_record_memory INTEGER NOT NULL DEFAULT 1,
-    additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]',
     jira_url TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS board_repositories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_slug TEXT NOT NULL,
+    repo_alias TEXT NOT NULL,
+    git_url TEXT NOT NULL,
+    target_branch TEXT NOT NULL DEFAULT 'main',
+    additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(board_slug, repo_alias),
+    FOREIGN KEY (board_slug) REFERENCES boards(slug) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     board_slug TEXT NOT NULL DEFAULT '',
+    repo_alias TEXT NOT NULL DEFAULT '',
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     status TEXT NOT NULL DEFAULT 'triage',
@@ -38,6 +50,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS task_links (
     parent_id TEXT NOT NULL,
     child_id TEXT NOT NULL,
+    link_type TEXT NOT NULL DEFAULT 'blocks',
     created_at INTEGER NOT NULL,
     PRIMARY KEY (parent_id, child_id),
     FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE CASCADE,
@@ -84,8 +97,10 @@ CREATE TABLE IF NOT EXISTS board_memories (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_slug, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_board_repo ON tasks(board_slug, repo_alias);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_board_repos ON board_repositories(board_slug);
 CREATE INDEX IF NOT EXISTS idx_links_parent ON task_links(parent_id);
 CREATE INDEX IF NOT EXISTS idx_links_child ON task_links(child_id);
 CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id, created_at);

@@ -221,3 +221,50 @@ def test_spawn_agent_worker_orchestrator_grill_with_docs():
         assert "### 🎯 Grill-with-Docs: Decision Required" in prompt
         assert "Option A:" in prompt
         assert kwargs.get("env", {}).get("HERMES_PROFILE") == "zf-orchestrator"
+
+
+def test_spawn_agent_worker_with_repo_alias_and_architecture():
+    """Verify repo_alias, architecture context, and dependency context are injected into prompt."""
+    import dispatcher
+
+    with (
+        patch("subprocess.Popen") as mock_popen,
+        patch.object(
+            dispatcher,
+            "digest_board_architecture_context",
+            return_value="🌐 SYSTEM ARCHITECTURE & MULTI-REPO TOPOLOGY:\n- Active Target Repository: `api-gw`",
+        ),
+        patch.object(
+            dispatcher,
+            "digest_parent_and_peer_tasks_context",
+            return_value="🔗 TASK DEPENDENCIES & RELATED FEATURES:\n- Upstream Completed Dependencies:\n  * #t-1 [common-lib]: Done",
+        ),
+        patch.dict(os.environ, {}, clear=False),
+    ):
+        os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+        mock_proc = MagicMock()
+        mock_proc.pid = 54321
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        pid, sess = spawn_agent_worker(
+            task_id="t-99",
+            title="Implement Gateway Route",
+            assignee="zf-builder",
+            priority="P1",
+            description="Add new route",
+            workspace_path="/tmp",
+            branch_name="task/t-99",
+            board_slug="my-board",
+            repo_alias="api-gw",
+        )
+
+        assert pid == 54321
+        assert mock_popen.called
+        args, _ = mock_popen.call_args
+        prompt = args[0][-1]
+
+        assert "Repository: api-gw" in prompt
+        assert "SYSTEM ARCHITECTURE & MULTI-REPO TOPOLOGY" in prompt
+        assert "TASK DEPENDENCIES & RELATED FEATURES" in prompt
+

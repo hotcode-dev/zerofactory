@@ -72,29 +72,49 @@ def test_task_lifecycle_crud(api_client: TestClient, default_board: str):
 
 
 def test_task_dependencies(api_client: TestClient, default_board: str):
-    """Verify linking and unlinking task dependencies."""
+    """Verify linking and unlinking task dependencies with repo_alias and link_type."""
     t1_id = api_client.post(
         "/api/plugins/zerofactory/tasks",
-        json={"title": "Parent Task", "board_slug": default_board},
+        json={"title": "Parent Task", "board_slug": default_board, "repo_alias": "common-lib"},
     ).json()["id"]
     t2_id = api_client.post(
         "/api/plugins/zerofactory/tasks",
-        json={"title": "Child Task", "board_slug": default_board},
+        json={"title": "Child Task", "board_slug": default_board, "repo_alias": "order-service"},
     ).json()["id"]
 
-    # Link t1 as parent of t2
+    # Verify repo_alias was set
+    t1_data = api_client.get(f"/api/plugins/zerofactory/tasks/{t1_id}").json()["task"]
+    assert t1_data["repo_alias"] == "common-lib"
+
+    # Link t1 as blocking parent of t2
     link_res = api_client.post(
         f"/api/plugins/zerofactory/tasks/{t2_id}/dependencies",
         json={"parent_id": t1_id, "link_type": "blocks"},
     )
     assert link_res.status_code == 200
     assert link_res.json()["ok"] is True
+    assert link_res.json()["link_type"] == "blocks"
 
-    # Check child task shows parent dependency
+    # Check child task shows parent dependency with link_type and repo_alias
     child_details = api_client.get(f"/api/plugins/zerofactory/tasks/{t2_id}").json()[
         "task"
     ]
-    assert any(parent["id"] == t1_id for parent in child_details.get("parents", []))
+    matching_parent = next((p for p in child_details.get("parents", []) if p["id"] == t1_id), None)
+    assert matching_parent is not None
+    assert matching_parent["link_type"] == "blocks"
+    assert matching_parent["repo_alias"] == "common-lib"
+
+    # Test peer link relates_to
+    t3_id = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={"title": "Peer Task", "board_slug": default_board, "repo_alias": "api-gateway"},
+    ).json()["id"]
+    peer_link_res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{t3_id}/dependencies",
+        json={"parent_id": t2_id, "link_type": "relates_to"},
+    )
+    assert peer_link_res.status_code == 200
+    assert peer_link_res.json()["link_type"] == "relates_to"
 
     # Delete link
     del_res = api_client.delete(

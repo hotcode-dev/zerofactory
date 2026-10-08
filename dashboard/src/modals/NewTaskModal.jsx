@@ -17,6 +17,12 @@ export function NewTaskModal(props) {
 
   const onSubmitHandler = handleCreateTaskSubmit || handleCreateTask;
 
+  const chosenBoardSlug = newTaskForm.board_slug || (selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : "");
+  const activeBoardObj = (boards || []).find((b) => b.slug === chosenBoardSlug);
+  const boardRepos = (activeBoardObj && activeBoardObj.repositories) || [];
+  const defaultRepo = boardRepos[0];
+  const currentRepoAlias = newTaskForm.repo_alias || (defaultRepo ? defaultRepo.repo_alias : "");
+
   return React.createElement(
     Modal,
     {
@@ -55,14 +61,46 @@ export function NewTaskModal(props) {
               "select",
               {
                 className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                value: newTaskForm.board_slug || (selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : ""),
-                onChange: (e) => setNewTaskForm({
-                  ...newTaskForm,
-                  board_slug: e.target.value
-                })
+                value: chosenBoardSlug,
+                onChange: (e) => {
+                  const bSlug = e.target.value;
+                  const bObj = (boards || []).find((x) => x.slug === bSlug);
+                  const bRepos = (bObj && bObj.repositories) || [];
+                  const dRepo = bRepos[0];
+                  setNewTaskForm({
+                    ...newTaskForm,
+                    board_slug: bSlug,
+                    repo_alias: dRepo ? dRepo.repo_alias : ""
+                  });
+                }
               },
               boards.map((b) => React.createElement("option", { key: b.slug, value: b.slug }, b.slug))
             )
+          ),
+          boardRepos.length > 0 &&
+          React.createElement(
+            "div",
+            { className: "space-y-1.5" },
+            React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Repository (Multi-Repo Architecture) *"),
+            React.createElement(
+              "select",
+              {
+                className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer font-mono",
+                value: currentRepoAlias,
+                onChange: (e) => setNewTaskForm({
+                  ...newTaskForm,
+                  repo_alias: e.target.value
+                })
+              },
+              boardRepos.map((r) =>
+                React.createElement(
+                  "option",
+                  { key: r.repo_alias, value: r.repo_alias },
+                  r.repo_alias + " (" + (r.target_branch || "main") + ")"
+                )
+              )
+            ),
+            React.createElement("p", { className: "text-[10px] text-slate-500 m-0 font-sans" }, "Repository checked out as writable worktree (task/<id> branch). Sibling repos are checked out side-by-side.")
           ),
           React.createElement(
             "div",

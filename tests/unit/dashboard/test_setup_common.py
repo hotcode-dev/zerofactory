@@ -35,11 +35,17 @@ def _insert_board(db_path: Path, slug: str, git_url: str = "") -> None:
     now = 1_000_000_000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO boards (slug, description, git_url, target_branch, "
+            "INSERT INTO boards (slug, description, "
             "max_concurrent_running, auto_record_memory, "
-            "additional_reviewer_usernames, jira_url, created_at, updated_at) "
-            "VALUES (?, '', ?, '', 1, 1, '[]', '', ?, ?)",
-            (slug, git_url, now, now),
+            "jira_url, created_at, updated_at) "
+            "VALUES (?, '', 1, 1, '', ?, ?)",
+            (slug, now, now),
+        )
+        conn.execute(
+            "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch, "
+            "additional_reviewer_usernames, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'main', '[]', ?, ?)",
+            (slug, slug, git_url or "", now, now),
         )
         conn.commit()
 

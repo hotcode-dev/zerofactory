@@ -73,7 +73,7 @@ class TestPluginAPIE2E(unittest.TestCase):
         res_list = self.client.get("/api/plugins/zerofactory/boards")
         self.assertEqual(res_list.status_code, 200)
         created_b = next(b for b in res_list.json()["boards"] if b["slug"] == slug)
-        self.assertEqual(created_b["target_branch"], "")
+        self.assertEqual(created_b["target_branch"], "main")
 
         # Patch max_concurrent_running and target_branch
         res_patch = self.client.patch(

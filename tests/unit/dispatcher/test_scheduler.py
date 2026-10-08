@@ -653,3 +653,72 @@ def test_run_dispatch_cycle_per_board_idle_scanning(tmp_path: Path):
         assert "idle-board-enabled" in spawned_slugs
         assert "idle-board-disabled" not in spawned_slugs
         assert res["scans_triggered"] == 1
+
+
+def test_run_dispatch_cycle_relates_to_does_not_block_task(tmp_path: Path):
+    """A soft peer link (relates_to) does not block a task, while 'blocks' link does."""
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+
+    now = 1000
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO boards (slug, name, max_concurrent_running) VALUES ('b1', 'Board 1', 10)"
+        )
+        # Parent 1: done
+        conn.execute(
+            "INSERT INTO tasks VALUES ('p-done', 'Parent Done', '', 'done', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            (now, now),
+        )
+        # Parent 2: running (unfinished)
+        conn.execute(
+            "INSERT INTO tasks VALUES ('p-running', 'Parent Running', '', 'running', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            (now, now),
+        )
+        # Child 1: blocked on p-running (link_type = 'blocks') -> must STAY blocked
+        conn.execute(
+            "INSERT INTO tasks VALUES ('c-blocked', 'Child Blocked', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            (now, now),
+        )
+        conn.execute(
+            "INSERT INTO task_links (parent_id, child_id, link_type, created_at) VALUES ('p-running', 'c-blocked', 'blocks', ?)",
+            (now,),
+        )
+        # Child 2: blocked on p-done (link_type = 'blocks') and relates to p-running (relates_to) -> must UNBLOCK
+        conn.execute(
+            "INSERT INTO tasks VALUES ('c-relates', 'Child Relates', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            (now, now),
+        )
+        conn.execute(
+            "INSERT INTO task_links (parent_id, child_id, link_type, created_at) VALUES ('p-done', 'c-relates', 'blocks', ?)",
+            (now,),
+        )
+        conn.execute(
+            "INSERT INTO task_links (parent_id, child_id, link_type, created_at) VALUES ('p-running', 'c-relates', 'relates_to', ?)",
+            (now,),
+        )
+        conn.commit()
+
+    lock_file = tmp_path / "dispatcher.lock"
+    import dispatcher
+
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(
+            os.environ,
+            {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": "1"},
+        ),
+    ):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+        # c-relates is unblocked because p-done is done and p-running is only 'relates_to'
+        assert res.get("unblocked", 0) >= 1
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        c_blocked = conn.execute("SELECT status FROM tasks WHERE id = 'c-blocked'").fetchone()
+        assert c_blocked["status"] == "blocked"
+
+        c_relates = conn.execute("SELECT status FROM tasks WHERE id = 'c-relates'").fetchone()
+        assert c_relates["status"] in ("todo", "running")
+

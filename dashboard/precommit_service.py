@@ -33,11 +33,12 @@ SETUP_TASK_DEDUP_KEY = "setup:precommit"
 
 
 def build_precommit_setup_task_prompt(
-    board_slug: str, repo_path: Path | None = None
+    board_slug: str, repo_path: Path | None = None, repo_alias: str | None = None
 ) -> str:
     """Generate structured instructions for zf-builder to inspect repo and generate .zerofactory/precommit.sh."""
     path_hint = f" (`{repo_path}`)" if repo_path else ""
-    return f"""Set up the standard Zero Factory precommit script for this repository{path_hint} on board `{board_slug}`.
+    target_desc = f"repository `{repo_alias}`" if repo_alias else "this repository"
+    return f"""Set up the standard Zero Factory precommit script for {target_desc}{path_hint} on board `{board_slug}`.
 
 ## Target
 File: `{PRECOMMIT_RELATIVE_PATH}`
@@ -126,10 +127,13 @@ Automate and standardize code formatting, building/typechecking, and test execut
 """
 
 
-def check_board_precommit_status(board_slug: str) -> dict[str, Any]:
-    """Check if .zerofactory/precommit.sh exists for a board and check active setup task status."""
+def check_board_precommit_status(
+    board_slug: str, repo_alias: str | None = None
+) -> dict[str, Any]:
+    """Check if .zerofactory/precommit.sh exists for a repository and check active setup task status."""
     return check_board_setup_status(
         board_slug,
+        repo_alias=repo_alias,
         has_key="has_precommit",
         path_key="precommit_path",
         preview_key="script_preview",
@@ -140,10 +144,13 @@ def check_board_precommit_status(board_slug: str) -> dict[str, Any]:
     )
 
 
-def create_precommit_setup_task(board_slug: str, actor: str = "user") -> dict[str, Any]:
-    """Create or return an existing setup task to generate .zerofactory/precommit.sh."""
+def create_precommit_setup_task(
+    board_slug: str, repo_alias: str | None = None, actor: str = "user"
+) -> dict[str, Any]:
+    """Create or return an existing setup task to generate .zerofactory/precommit.sh for a repository."""
     return create_setup_task(
         board_slug,
+        repo_alias=repo_alias,
         status_checker=check_board_precommit_status,
         title=SETUP_TASK_TITLE,
         prompt_builder=build_precommit_setup_task_prompt,

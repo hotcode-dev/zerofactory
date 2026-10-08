@@ -76,6 +76,7 @@ def spawn_agent_worker(
     branch_name: str | None,
     board_slug: str | None = None,
     metadata: str | None = None,
+    repo_alias: str | None = None,
 ) -> tuple[int | None, str | None]:
     """Spawn an isolated hermes worker subprocess for the assigned specialist agent."""
     steps = StepTracker(task_id)
@@ -97,8 +98,32 @@ def spawn_agent_worker(
         if (workspace_path and Path(workspace_path).exists())
         else os.getcwd()
     )
+
+    if repo_alias is None:
+        try:
+            _db = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
+            if _db.exists():
+                with sqlite3.connect(str(_db), timeout=2.0) as _c:
+                    _c.row_factory = sqlite3.Row
+                    _r = _c.execute(
+                        "SELECT repo_alias FROM tasks WHERE id = ?", (task_id,)
+                    ).fetchone()
+                    if _r and _r["repo_alias"]:
+                        repo_alias = str(_r["repo_alias"]).strip()
+        except Exception:
+            pass
+
+    repo_header = f"Repository: {repo_alias}\n" if repo_alias else ""
     memories_digest = _d().digest_board_memories_context(board_slug)
     memories_block = f"{memories_digest}\n\n" if memories_digest else ""
+
+    arch_digest = _d().digest_board_architecture_context(
+        board_slug, current_repo_alias=repo_alias
+    )
+    arch_block = f"{arch_digest}\n\n" if arch_digest else ""
+
+    deps_digest = _d().digest_parent_and_peer_tasks_context(task_id)
+    deps_block = f"{deps_digest}\n\n" if deps_digest else ""
 
     if assignee == "zf-reviewer":
         target_branch = ""
@@ -110,7 +135,8 @@ def spawn_agent_worker(
                     from dashboard.plugin_api import get_db_conn
                 with get_db_conn() as conn:
                     row = conn.execute(
-                        "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
+                        "SELECT target_branch FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+                        (board_slug,),
                     ).fetchone()
                     if row and row[0]:
                         target_branch = str(row[0]).strip()
@@ -124,11 +150,15 @@ def spawn_agent_worker(
             f"Task ID: {task_id}\n"
             f"Title: {title}\n"
             f"Priority: {priority}\n"
-            f"Assigned Role: {assignee}\n\n"
+            f"Assigned Role: {assignee}\n"
+            f"{repo_header}"
+            f"\n"
             f"Description:\n{description or 'No description provided.'}\n\n"
             f"Workspace: {workdir}\n"
             f"Git Branch: {branch_name or 'main'}\n\n"
             f"{memories_block}"
+            f"{arch_block}"
+            f"{deps_block}"
             f"{pre_digested_block}"
             f"Your goal as Reviewer:\n"
             f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
@@ -187,11 +217,15 @@ def spawn_agent_worker(
             f"Task ID: {task_id}\n"
             f"Title: {title}\n"
             f"Priority: {priority}\n"
-            f"Assigned Role: {assignee}\n\n"
+            f"Assigned Role: {assignee}\n"
+            f"{repo_header}"
+            f"\n"
             f"Description / Initial Goal:\n{description or 'No description provided.'}\n\n"
             f"Workspace: {workdir}\n"
             f"Git Branch: {branch_name or 'main'}\n\n"
             f"{memories_block}"
+            f"{arch_block}"
+            f"{deps_block}"
             f"{openwiki_info}"
             f"{task_comments_context}"
             f"Your goal as Orchestrator (Grill-with-Docs Triage Protocol):\n"
@@ -268,11 +302,15 @@ def spawn_agent_worker(
                 f"Task ID: {task_id}\n"
                 f"Title: {title}\n"
                 f"Priority: {priority}\n"
-                f"Assigned Role: {assignee}\n\n"
+                f"Assigned Role: {assignee}\n"
+                f"{repo_header}"
+                f"\n"
                 f"Description:\n{description or 'No description provided.'}\n\n"
                 f"Workspace: {workdir}\n"
                 f"Git Branch: {branch_name or 'main'}\n\n"
                 f"{memories_block}"
+                f"{arch_block}"
+                f"{deps_block}"
                 f"🚨 CRITICAL: MERGE CONFLICT DETECTED WITH MAIN BRANCH\n"
                 f"The latest changes from the main branch conflict with this task branch.\n"
                 f"Conflicted files:\n{file_list_str}\n\n"
@@ -381,11 +419,15 @@ def spawn_agent_worker(
                 f"Task ID: {task_id}\n"
                 f"Title: {title}\n"
                 f"Priority: {priority}\n"
-                f"Assigned Role: {assignee}\n\n"
+                f"Assigned Role: {assignee}\n"
+                f"{repo_header}"
+                f"\n"
                 f"Description:\n{description or 'No description provided.'}\n\n"
                 f"Workspace: {workdir}\n"
                 f"Git Branch: {branch_name or 'main'}\n\n"
                 f"{memories_block}"
+                f"{arch_block}"
+                f"{deps_block}"
                 f"{review_comments_prompt}"
                 f"{goal_instructions}"
             )

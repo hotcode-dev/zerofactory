@@ -171,7 +171,9 @@ def resolve_board_slug(repo_dir: Path) -> str:
         try:
             with sqlite3.connect(str(db_path), timeout=5.0) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT slug, git_url FROM boards")
+                cursor.execute(
+                    "SELECT b.slug, br.git_url FROM boards b LEFT JOIN board_repositories br ON b.slug = br.board_slug"
+                )
                 for row in cursor.fetchall():
                     slug, git_url = row[0], row[1] or ""
                     if slug and (

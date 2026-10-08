@@ -121,13 +121,20 @@ export function ZeroFactoryKanbanApp() {
       priority: "P2",
       assignee: "unassigned",
       tenant: "",
-      pr_url: ""
+      pr_url: "",
+      board_slug: "",
+      repo_alias: ""
     });
 
     const [newBoardForm, setNewBoardForm] = useState({
+      slug: "",
       git_url: "",
       description: "",
-      target_branch: "",
+      target_branch: "main",
+      repositories: [
+        { repo_alias: "", git_url: "", target_branch: "main", additional_reviewer_usernames: "" }
+      ],
+      architecture: "",
       max_concurrent_running: 1,
       auto_record_memory: true,
       additional_reviewer_usernames: "",
@@ -139,7 +146,9 @@ export function ZeroFactoryKanbanApp() {
       slug: "",
       git_url: "",
       description: "",
-      target_branch: "",
+      target_branch: "main",
+      architecture: "",
+      repositories: [],
       max_concurrent_running: 1,
       auto_record_memory: true,
       additional_reviewer_usernames: "",
@@ -147,14 +156,17 @@ export function ZeroFactoryKanbanApp() {
     });
 
     const [precommitStatus, setPrecommitStatus] = useState(null);
+    const [precommitStatuses, setPrecommitStatuses] = useState({});
     const [isLoadingPrecommit, setIsLoadingPrecommit] = useState(false);
     const [isSettingUpPrecommit, setIsSettingUpPrecommit] = useState(false);
 
     const [openwikiStatus, setOpenwikiStatus] = useState(null);
+    const [openwikiStatuses, setOpenwikiStatuses] = useState({});
     const [isLoadingOpenwiki, setIsLoadingOpenwiki] = useState(false);
     const [isSettingUpOpenwiki, setIsSettingUpOpenwiki] = useState(false);
 
     const [ghIssuesStatus, setGhIssuesStatus] = useState(null);
+    const [ghIssuesStatuses, setGhIssuesStatuses] = useState({});
     const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
     const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
     const [isSyncingIssues, setIsSyncingIssues] = useState(false);
@@ -339,7 +351,7 @@ export function ZeroFactoryKanbanApp() {
     }, [fetchJSON]);
 
     // Precommit status loader
-    const loadPrecommitStatus = useCallback(async (boardSlug) => {
+    const loadPrecommitStatus = useCallback(async (boardSlug, repoAlias) => {
       const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
       if (!bSlug || bSlug === "all") {
         setPrecommitStatus(null);
@@ -347,30 +359,40 @@ export function ZeroFactoryKanbanApp() {
       }
       setIsLoadingPrecommit(true);
       try {
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/precommit-status");
+        const url = repoAlias
+          ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/precommit-status"
+          : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/precommit-status";
+        const res = await fetchJSON(url);
         if (res && res.ok) {
-          setPrecommitStatus(res);
-        } else {
+          if (!repoAlias) setPrecommitStatus(res);
+          const alias = repoAlias || res.repo_alias;
+          if (alias) {
+            setPrecommitStatuses((prev) => ({ ...prev, [alias]: res }));
+          }
+        } else if (!repoAlias) {
           setPrecommitStatus(null);
         }
       } catch (err) {
-        setPrecommitStatus(null);
+        if (!repoAlias) setPrecommitStatus(null);
       } finally {
         setIsLoadingPrecommit(false);
       }
     }, [fetchJSON]);
 
-    const handleTriggerPrecommitSetup = async (boardSlug) => {
+    const handleTriggerPrecommitSetup = async (boardSlug, repoAlias) => {
       const bSlug = boardSlug || selectedBoard;
       if (!bSlug || bSlug === "all") return;
       setIsSettingUpPrecommit(true);
       try {
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-precommit", {
+        const url = repoAlias
+          ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/setup-precommit"
+          : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-precommit";
+        const res = await fetchJSON(url, {
           method: "POST"
         });
         if (res && res.ok) {
           showToast(res.message || "Created setup task for .zerofactory/precommit.sh!", "success");
-          await Promise.all([loadPrecommitStatus(bSlug), loadTasksAndStats(bSlug)]);
+          await Promise.all([loadPrecommitStatus(bSlug, repoAlias), loadTasksAndStats(bSlug)]);
         } else {
           showToast((res && (res.detail || res.error || res.message)) || "Failed to trigger precommit setup", "error");
         }
@@ -382,7 +404,7 @@ export function ZeroFactoryKanbanApp() {
     };
 
     // OpenWiki status loader
-    const loadOpenwikiStatus = useCallback(async (boardSlug) => {
+    const loadOpenwikiStatus = useCallback(async (boardSlug, repoAlias) => {
       const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
       if (!bSlug || bSlug === "all") {
         setOpenwikiStatus(null);
@@ -390,30 +412,40 @@ export function ZeroFactoryKanbanApp() {
       }
       setIsLoadingOpenwiki(true);
       try {
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/openwiki-status");
+        const url = repoAlias
+          ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/openwiki-status"
+          : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/openwiki-status";
+        const res = await fetchJSON(url);
         if (res && res.ok) {
-          setOpenwikiStatus(res);
-        } else {
+          if (!repoAlias) setOpenwikiStatus(res);
+          const alias = repoAlias || res.repo_alias;
+          if (alias) {
+            setOpenwikiStatuses((prev) => ({ ...prev, [alias]: res }));
+          }
+        } else if (!repoAlias) {
           setOpenwikiStatus(null);
         }
       } catch (err) {
-        setOpenwikiStatus(null);
+        if (!repoAlias) setOpenwikiStatus(null);
       } finally {
         setIsLoadingOpenwiki(false);
       }
     }, [fetchJSON]);
 
-    const handleTriggerOpenwikiSetup = async (boardSlug) => {
+    const handleTriggerOpenwikiSetup = async (boardSlug, repoAlias) => {
       const bSlug = boardSlug || selectedBoard;
       if (!bSlug || bSlug === "all") return;
       setIsSettingUpOpenwiki(true);
       try {
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-openwiki", {
+        const url = repoAlias
+          ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/setup-openwiki"
+          : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-openwiki";
+        const res = await fetchJSON(url, {
           method: "POST"
         });
         if (res && res.ok) {
           showToast(res.message || "Created setup task for OpenWiki!", "success");
-          await Promise.all([loadOpenwikiStatus(bSlug), loadTasksAndStats(bSlug)]);
+          await Promise.all([loadOpenwikiStatus(bSlug, repoAlias), loadTasksAndStats(bSlug)]);
         } else {
           showToast((res && (res.detail || res.error || res.message)) || "Failed to trigger OpenWiki setup", "error");
         }
@@ -425,7 +457,7 @@ export function ZeroFactoryKanbanApp() {
     };
 
     // GitHub Issues status loader
-    const loadGhIssuesStatus = useCallback(async (boardSlug) => {
+    const loadGhIssuesStatus = useCallback(async (boardSlug, repoAlias) => {
       const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
       if (!bSlug || bSlug === "all") {
         setGhIssuesStatus(null);
@@ -433,30 +465,40 @@ export function ZeroFactoryKanbanApp() {
       }
       setIsLoadingGhIssues(true);
       try {
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/gh-issues-status");
+        const url = repoAlias
+          ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/gh-issues-status"
+          : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/gh-issues-status";
+        const res = await fetchJSON(url);
         if (res && res.ok) {
-          setGhIssuesStatus(res);
-        } else {
+          if (!repoAlias) setGhIssuesStatus(res);
+          const alias = repoAlias || res.repo_alias;
+          if (alias) {
+            setGhIssuesStatuses((prev) => ({ ...prev, [alias]: res }));
+          }
+        } else if (!repoAlias) {
           setGhIssuesStatus(null);
         }
       } catch (err) {
-        setGhIssuesStatus(null);
+        if (!repoAlias) setGhIssuesStatus(null);
       } finally {
         setIsLoadingGhIssues(false);
       }
     }, [fetchJSON]);
 
-    const handleTriggerGhIssuesSetup = async (boardSlug) => {
+    const handleTriggerGhIssuesSetup = async (boardSlug, repoAlias) => {
       const bSlug = boardSlug || selectedBoard;
       if (!bSlug || bSlug === "all") return;
       setIsSettingUpGhIssues(true);
       try {
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-gh-issues", {
+        const url = repoAlias
+          ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/setup-gh-issues"
+          : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-gh-issues";
+        const res = await fetchJSON(url, {
           method: "POST"
         });
         if (res && res.ok) {
           showToast(res.message || "Created setup task for GitHub Issue templates & labels!", "success");
-          await Promise.all([loadGhIssuesStatus(bSlug), loadTasksAndStats(bSlug)]);
+          await Promise.all([loadGhIssuesStatus(bSlug, repoAlias), loadTasksAndStats(bSlug)]);
         } else {
           showToast((res && (res.detail || res.error || res.message)) || "Failed to trigger GitHub issues setup", "error");
         }
@@ -1317,8 +1359,13 @@ export function ZeroFactoryKanbanApp() {
           : (selectedBoard && selectedBoard !== "all"
             ? selectedBoard
             : (boards[0] ? boards[0].slug : ""));
+        const chosenBoardObj = (boards || []).find((b) => b.slug === chosenBoard);
+        const defaultRepo = chosenRepos[0];
+        const targetRepoAlias = (newTaskForm.repo_alias || (defaultRepo ? defaultRepo.repo_alias : "")).trim() || undefined;
+
         const payload = {
           ...newTaskForm,
+          repo_alias: targetRepoAlias,
           pr_url: newTaskForm.pr_url && newTaskForm.pr_url.trim() ? newTaskForm.pr_url.trim() : null,
           board_slug: chosenBoard
         };
@@ -1337,7 +1384,8 @@ export function ZeroFactoryKanbanApp() {
           assignee: "unassigned",
           tenant: "",
           pr_url: "",
-          board_slug: ""
+          board_slug: "",
+          repo_alias: ""
         });
         loadTasksAndStats();
       } catch (err) {
@@ -1376,22 +1424,29 @@ export function ZeroFactoryKanbanApp() {
     // Create Board
     const handleCreateBoardSubmit = async (e) => {
       e.preventDefault();
-      const gitUrl = (newBoardForm.git_url || "").trim();
-      if (!gitUrl) {
-        showToast("Please enter a Remote Git URL", "warning");
+      const validRepos = (newBoardForm.repositories || []).filter((r) => r.git_url && r.git_url.trim());
+      const firstUrl = validRepos[0]?.git_url || (newBoardForm.git_url || "").trim();
+      if (!firstUrl && validRepos.length === 0) {
+        showToast("Please enter at least one Remote Git URL", "warning");
         return;
       }
 
-      const autoSlug = computeGitSlug(gitUrl);
-      if (!autoSlug) {
-        const msg = "Could not derive a board slug from the URL. Please enter a valid Git URL.";
+      const explicitSlug = (newBoardForm.slug || "").trim().toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      const fallbackSlug = computeGitSlug(firstUrl) || (validRepos[0]?.repo_alias || "").trim();
+      const targetSlug = explicitSlug || fallbackSlug;
+
+      if (!targetSlug) {
+        const msg = "Please enter a valid Board Slug or Git URL.";
         setCreateBoardError(msg);
         showToast(msg, "warning");
         return;
       }
 
-      if (boards.some((b) => b.slug === autoSlug)) {
-        const msg = "Board '" + autoSlug + "' already exists. Please enter a different repository URL.";
+      if (boards.some((b) => b.slug === targetSlug)) {
+        const msg = "Board '" + targetSlug + "' already exists. Please choose a different board slug.";
         setCreateBoardError(msg);
         showToast(msg, "warning");
         return;
@@ -1401,24 +1456,52 @@ export function ZeroFactoryKanbanApp() {
       setIsSubmittingBoard(true);
 
       try {
+        const formattedRepos = validRepos.map((r) => ({
+          repo_alias: (r.repo_alias || computeGitSlug(r.git_url) || "main").trim(),
+          git_url: r.git_url.trim(),
+          target_branch: (r.target_branch || "main").trim(),
+          additional_reviewer_usernames: typeof r.additional_reviewer_usernames === "string"
+            ? r.additional_reviewer_usernames.split(",").map((name) => name.trim()).filter(Boolean)
+            : (r.additional_reviewer_usernames || [])
+        }));
+
         const res = await fetchJSON(API_BASE + "/boards", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            git_url: gitUrl,
+            slug: targetSlug,
             description: (newBoardForm.description || "").trim(),
-            target_branch: (newBoardForm.target_branch || "").trim(),
+            architecture: (newBoardForm.architecture || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
-            additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
             jira_url: (newBoardForm.jira_url || "").trim(),
-            auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false)
+            auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false),
+            repositories: formattedRepos.length > 0 ? formattedRepos : [{
+              repo_alias: targetSlug,
+              git_url: firstUrl,
+              target_branch: (newBoardForm.target_branch || "main").trim(),
+              additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
+            }]
           })
         });
-        const createdSlug = (res && res.slug) ? res.slug : autoSlug;
+        const createdSlug = (res && res.slug) ? res.slug : targetSlug;
         showToast("Board '" + createdSlug + "' created!", "success");
         setShowNewBoardModal(false);
-        setNewBoardForm({ git_url: "", description: "", target_branch: "", max_concurrent_running: 1, auto_record_memory: true, additional_reviewer_usernames: "", jira_url: "", auto_setup_precommit: true });
+        setNewBoardForm({
+          slug: "",
+          git_url: "",
+          description: "",
+          target_branch: "main",
+          repositories: [
+            { repo_alias: "", git_url: "", target_branch: "main", additional_reviewer_usernames: "" }
+          ],
+          architecture: "",
+          max_concurrent_running: 1,
+          auto_record_memory: true,
+          additional_reviewer_usernames: "",
+          jira_url: "",
+          auto_setup_precommit: true
+        });
         setCreateBoardError("");
         await loadBoards();
         setSelectedBoard(createdSlug);
@@ -1468,11 +1551,18 @@ export function ZeroFactoryKanbanApp() {
           slug: curr.slug || "",
           description: curr.description || "",
           git_url: curr.git_url || "",
-          target_branch: curr.target_branch || "",
+          target_branch: curr.target_branch || "main",
+          architecture: curr.architecture || "",
+          repositories: curr.repositories || [],
           max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1,
           auto_record_memory: curr.auto_record_memory !== false,
           additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : "",
           jira_url: curr.jira_url || ""
+        });
+        (curr.repositories || []).forEach((r) => {
+          loadPrecommitStatus(curr.slug, r.repo_alias);
+          loadOpenwikiStatus(curr.slug, r.repo_alias);
+          loadGhIssuesStatus(curr.slug, r.repo_alias);
         });
         loadPrecommitStatus(curr.slug);
         loadOpenwikiStatus(curr.slug);
@@ -1487,17 +1577,25 @@ export function ZeroFactoryKanbanApp() {
       if (!editBoardForm.slug) return;
 
       try {
+        const formattedRepos = (editBoardForm.repositories || []).map((r) => ({
+          repo_alias: (r.repo_alias || "").trim(),
+          git_url: (r.git_url || "").trim(),
+          target_branch: (r.target_branch || "main").trim(),
+          additional_reviewer_usernames: typeof r.additional_reviewer_usernames === "string"
+            ? r.additional_reviewer_usernames.split(",").map((name) => name.trim()).filter(Boolean)
+            : (r.additional_reviewer_usernames || [])
+        }));
+
         await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(editBoardForm.slug), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             description: (editBoardForm.description || "").trim(),
-            git_url: (editBoardForm.git_url || "").trim(),
-            target_branch: (editBoardForm.target_branch || "").trim(),
+            architecture: (editBoardForm.architecture || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
-            additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
-            jira_url: (editBoardForm.jira_url || "").trim()
+            jira_url: (editBoardForm.jira_url || "").trim(),
+            repositories: formattedRepos
           })
         });
         showToast("Board '" + editBoardForm.slug + "' updated!", "success");
@@ -1505,6 +1603,43 @@ export function ZeroFactoryKanbanApp() {
         await loadBoards();
       } catch (err) {
         showToast("Failed to update board: " + err.message, "error");
+      }
+    };
+
+    // Board Repository Management Handlers
+    const handleAddBoardRepo = async (slug, repoData) => {
+      try {
+        await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(slug) + "/repositories", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(repoData)
+        });
+        showToast("Repository '" + repoData.repo_alias + "' added to board", "success");
+        await loadBoards();
+        const updatedBoards = await fetchJSON(API_BASE + "/boards");
+        if (updatedBoards && updatedBoards.boards) {
+          const b = updatedBoards.boards.find((x) => x.slug === slug);
+          if (b) setEditBoardForm((prev) => ({ ...prev, repositories: b.repositories || [] }));
+        }
+      } catch (err) {
+        showToast("Failed to add repository: " + err.message, "error");
+      }
+    };
+
+    const handleDeleteBoardRepo = async (slug, repoAlias) => {
+      try {
+        await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(slug) + "/repositories/" + encodeURIComponent(repoAlias), {
+          method: "DELETE"
+        });
+        showToast("Repository '" + repoAlias + "' removed from board", "info");
+        await loadBoards();
+        const updatedBoards = await fetchJSON(API_BASE + "/boards");
+        if (updatedBoards && updatedBoards.boards) {
+          const b = updatedBoards.boards.find((x) => x.slug === slug);
+          if (b) setEditBoardForm((prev) => ({ ...prev, repositories: b.repositories || [] }));
+        }
+      } catch (err) {
+        showToast("Failed to remove repository: " + err.message, "error");
       }
     };
 
@@ -1793,6 +1928,7 @@ export function ZeroFactoryKanbanApp() {
         selectedTask,
         setSelectedTask,
         boards,
+        tasks,
         handleDeleteTask,
         handleStopTaskSession,
         stoppingSessionId,
@@ -1847,19 +1983,24 @@ export function ZeroFactoryKanbanApp() {
         handleTestClone,
         cloneTestResult,
         setCloneTestResult,
+        precommitStatuses,
         precommitStatus,
         isSettingUpPrecommit,
         handleTriggerPrecommitSetup,
+        openwikiStatuses,
         openwikiStatus,
         isSettingUpOpenwiki,
         handleTriggerOpenwikiSetup,
+        ghIssuesStatuses,
         ghIssuesStatus,
         isSettingUpGhIssues,
         handleTriggerGhIssuesSetup,
         isSettingUpJira,
         handleTriggerJiraSetup,
         isTestingJira,
-        handleTriggerJiraTest
+        handleTriggerJiraTest,
+        handleAddBoardRepo,
+        handleDeleteBoardRepo
       }),
       React.createElement(SettingsModal, {
         showSettingsModal,

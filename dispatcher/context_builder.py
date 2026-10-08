@@ -265,6 +265,131 @@ def digest_board_memories_context(
         return ""
 
 
+def digest_board_architecture_context(
+    board_slug: str | None,
+    current_repo_alias: str | None = None,
+    db_path: str | None = None,
+) -> str:
+    """Extract system architecture notes and multi-repo topology for agent worker prompt."""
+    if not board_slug:
+        return ""
+
+    target_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
+    if not target_db.exists():
+        return ""
+
+    try:
+        with sqlite3.connect(str(target_db), timeout=2.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+
+            # 1. Fetch board architecture notes
+            cur.execute("SELECT architecture FROM boards WHERE slug = ?", (board_slug,))
+            b_row = cur.fetchone()
+            arch_notes = (b_row["architecture"] or "").strip() if b_row else ""
+
+            # 2. Fetch linked repositories on this board
+            cur.execute(
+                """SELECT repo_alias, git_url, target_branch
+                   FROM board_repositories WHERE board_slug = ?
+                   ORDER BY id ASC""",
+                (board_slug,),
+            )
+            repos = [dict(r) for r in cur.fetchall()]
+
+            if not arch_notes and len(repos) <= 1:
+                return ""
+
+            lines = ["🌐 SYSTEM ARCHITECTURE & MULTI-REPO TOPOLOGY:"]
+            if current_repo_alias:
+                lines.append(f"- Active Target Repository: `{current_repo_alias}` (workspace at `./`)")
+
+            siblings = [r for r in repos if r["repo_alias"] != current_repo_alias]
+            if siblings:
+                lines.append("- Sibling Repositories Available (side-by-side for read-only inspection):")
+                for s in siblings:
+                    s_branch = s.get("target_branch") or "main"
+                    lines.append(f"  * `{s['repo_alias']}` (branch: `{s_branch}`) -> path: `../{s['repo_alias']}/`")
+
+            if arch_notes:
+                lines.append("\nInter-Service Architecture & Dependency Notes:")
+                lines.append(arch_notes)
+
+            return "\n".join(lines)
+    except Exception as e:
+        _log.debug("Could not digest board architecture for %s: %s", board_slug, e)
+        return ""
+
+
+def digest_parent_and_peer_tasks_context(
+    task_id: str,
+    db_path: str | None = None,
+) -> str:
+    """Extract completed parent dependencies and related peer tasks for worker prompt."""
+    if not task_id:
+        return ""
+
+    target_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
+    if not target_db.exists():
+        return ""
+
+    try:
+        with sqlite3.connect(str(target_db), timeout=2.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+
+            # 1. Completed Parent Dependencies (blocks)
+            cur.execute(
+                """
+                SELECT t.id, t.title, t.status, t.repo_alias, t.pr_url, t.metadata
+                FROM task_links tl
+                JOIN tasks t ON t.id = tl.parent_id
+                WHERE tl.child_id = ? AND (tl.link_type = 'blocks' OR tl.link_type IS NULL)
+                ORDER BY t.created_at ASC
+                """,
+                (task_id,),
+            )
+            parents = [dict(r) for r in cur.fetchall()]
+
+            # 2. Related Peer Tasks (relates_to)
+            cur.execute(
+                """
+                SELECT t.id, t.title, t.status, t.repo_alias
+                FROM task_links tl
+                JOIN tasks t ON (
+                    (tl.child_id = ? AND t.id = tl.parent_id)
+                    OR
+                    (tl.parent_id = ? AND t.id = tl.child_id)
+                )
+                WHERE tl.link_type = 'relates_to'
+                ORDER BY t.created_at ASC
+                """,
+                (task_id, task_id),
+            )
+            peers = [dict(r) for r in cur.fetchall()]
+
+            if not parents and not peers:
+                return ""
+
+            lines = ["🔗 TASK DEPENDENCIES & RELATED FEATURES:"]
+            if parents:
+                lines.append("- Upstream Completed Dependencies:")
+                for p in parents:
+                    p_repo = f" [{p['repo_alias']}]" if p.get("repo_alias") else ""
+                    p_pr = f" (PR: {p['pr_url']})" if p.get("pr_url") else ""
+                    lines.append(f"  * #{p['id']}{p_repo}: {p['title']} [status: {p['status']}]{p_pr}")
+            if peers:
+                lines.append("- Related Peer Tasks in this Feature:")
+                for peer in peers:
+                    peer_repo = f" [{peer['repo_alias']}]" if peer.get("repo_alias") else ""
+                    lines.append(f"  * #{peer['id']}{peer_repo}: {peer['title']} (status: {peer['status']})")
+
+            return "\n".join(lines)
+    except Exception as e:
+        _log.debug("Could not digest dependencies for task %s: %s", task_id, e)
+        return ""
+
+
 def format_conventional_message(title: str, task_id: str = "") -> tuple[str, str]:
     """Format task title into Conventional Commits subject and body.
 

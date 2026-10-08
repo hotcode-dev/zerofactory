@@ -94,8 +94,28 @@ def run_daily_stats() -> int:
             running_tasks = [dict(r) for r in cursor.fetchall()]
 
             # Boards overview
-            cursor.execute("SELECT slug, git_url FROM boards")
-            boards = [dict(r) for r in cursor.fetchall()]
+            try:
+                cursor.execute(
+                    """
+                    SELECT b.slug, COALESCE(GROUP_CONCAT(br.git_url, ', '), '') AS git_url
+                    FROM boards b
+                    LEFT JOIN board_repositories br ON b.slug = br.board_slug
+                    GROUP BY b.slug
+                    ORDER BY b.created_at ASC
+                    """
+                )
+                boards = [dict(r) for r in cursor.fetchall()]
+            except Exception:
+                try:
+                    cursor.execute(
+                        "SELECT slug, git_url FROM boards ORDER BY created_at ASC"
+                    )
+                    boards = [dict(r) for r in cursor.fetchall()]
+                except Exception:
+                    cursor.execute(
+                        "SELECT slug FROM boards ORDER BY created_at ASC"
+                    )
+                    boards = [{"slug": r["slug"], "git_url": ""} for r in cursor.fetchall()]
 
     except Exception as e:
         print(f"Failed to query database metrics: {e}")

@@ -356,7 +356,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					draggable: true,
 					onDragStart: (e) => handleDragStart(e, t),
 					onClick: () => loadTaskDetails(t.id)
-				}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "font-mono text-[0.6875rem] font-semibold text-slate-400 tracking-wider" }, t.id), React.createElement("div", { className: "flex items-center gap-1.5 flex-wrap" }, React.createElement("span", { className: "text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border " + prioClass }, t.priority || "P2"), React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass }, t.assignee || "unassigned"))), React.createElement("h4", { className: "text-xs font-semibold text-slate-200 leading-snug line-clamp-2 m-0 group-hover:text-white" }, t.title), React.createElement("div", { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" }, selectedBoard === "all" && t.board_slug && React.createElement("span", { className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[0.625rem] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📋 " + t.board_slug), t.tenant && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant), t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name), t.pr_url && React.createElement("a", {
+				}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "font-mono text-[0.6875rem] font-semibold text-slate-400 tracking-wider" }, t.id), React.createElement("div", { className: "flex items-center gap-1.5 flex-wrap" }, React.createElement("span", { className: "text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border " + prioClass }, t.priority || "P2"), React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass }, t.assignee || "unassigned"))), React.createElement("h4", { className: "text-xs font-semibold text-slate-200 leading-snug line-clamp-2 m-0 group-hover:text-white" }, t.title), React.createElement("div", { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" }, selectedBoard === "all" && t.board_slug && React.createElement("span", { className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[0.625rem] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📋 " + t.board_slug), t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 text-teal-300 font-mono text-[0.625rem] bg-teal-950/60 border border-teal-800/60 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📦 " + t.repo_alias), t.tenant && !t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant), t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name), t.pr_url && React.createElement("a", {
 					href: t.pr_url,
 					target: "_blank",
 					rel: "noopener noreferrer",
@@ -2027,7 +2027,39 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/TaskDetailModal.jsx
 	function TaskDetailModal(props) {
-		const { selectedTask, setSelectedTask, boards = [], handleUpdateTask, handleDeleteTask, handleRunAgent, handleStopTaskSession, stoppingSessionId, activeRunningTaskId, newCommentText, setNewCommentText, handleAddComment, handleAddCommentSubmit = handleAddComment, loadTasksAndStats, loadTaskDetails, showToast = () => {}, selectedSessionIdx = null, setSelectedSessionIdx = () => {}, refreshSessionProgress = () => {}, handleAdvanceTask = () => {} } = props;
+		const { selectedTask, setSelectedTask, boards = [], handleUpdateTask, handleDeleteTask, handleRunAgent, handleStopTaskSession, stoppingSessionId, activeRunningTaskId, newCommentText, setNewCommentText, handleAddComment, handleAddCommentSubmit = handleAddComment, loadTasksAndStats, loadTaskDetails, showToast = () => {}, selectedSessionIdx = null, setSelectedSessionIdx = () => {}, refreshSessionProgress = () => {}, handleAdvanceTask = () => {}, tasks = [] } = props;
+		const [depTaskId, setDepTaskId] = React.useState("");
+		const [depLinkType, setDepLinkType] = React.useState("blocks");
+		const handleLinkDependency = async () => {
+			if (!depTaskId || !selectedTask) return;
+			try {
+				await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/dependencies", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						parent_id: depTaskId,
+						link_type: depLinkType
+					})
+				});
+				showToast("Linked dependency #" + depTaskId + " (" + depLinkType + ")", "success");
+				setDepTaskId("");
+				loadTaskDetails(selectedTask.id);
+				loadTasksAndStats();
+			} catch (err) {
+				showToast("Failed to link dependency: " + err.message, "error");
+			}
+		};
+		const handleRemoveDependency = async (parentId) => {
+			if (!selectedTask) return;
+			try {
+				await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/dependencies/" + parentId, { method: "DELETE" });
+				showToast("Removed dependency link #" + parentId, "info");
+				loadTaskDetails(selectedTask.id);
+				loadTasksAndStats();
+			} catch (err) {
+				showToast("Failed to unlink: " + err.message, "error");
+			}
+		};
 		if (!selectedTask) return null;
 		return React.createElement(Modal, {
 			isOpen: Boolean(selectedTask),
@@ -2131,12 +2163,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		].map((p) => React.createElement("option", {
 			key: p,
 			value: p
-		}, p)))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Project / Tenant"), React.createElement("input", {
-			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none opacity-80 cursor-default",
-			value: selectedTask.tenant || "",
-			placeholder: "e.g. ~/git/hotcode-dev/zerofactory",
-			readOnly: true
-		}))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL"), selectedTask.pr_url && React.createElement("a", {
+		}, p)))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Repository & Board"), React.createElement("div", { className: "flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono min-h-[34px]" }, selectedTask.repo_alias ? React.createElement("span", { className: "px-2 py-0.5 rounded font-semibold bg-teal-950/80 text-teal-300 border border-teal-800/60" }, "📦 " + selectedTask.repo_alias) : React.createElement("span", { className: "text-slate-400" }, "Default Repo"), selectedTask.board_slug && React.createElement("span", { className: "text-slate-500 text-[11px]" }, "(" + selectedTask.board_slug + ")")))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL"), selectedTask.pr_url && React.createElement("a", {
 			href: selectedTask.pr_url,
 			target: "_blank",
 			rel: "noopener noreferrer",
@@ -2239,10 +2266,34 @@ var ZeroFactoryDashboard = (function(exports) {
 				key: st.id,
 				className: "bg-slate-900/60 border border-slate-800/70 rounded-md p-2 text-xs space-y-1"
 			}, React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("span", { className: "text-[0.625rem] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 border border-slate-700/60" }, st.tool_name ? "tool: " + st.tool_name : st.role), React.createElement("span", { className: "text-[0.6875rem] text-slate-500" }, timeAgo(st.timestamp))), React.createElement("div", { className: "text-[0.6875rem] text-slate-400 font-mono break-all line-clamp-2" }, st.snippet))))), prog && prog.log_tail && isOngoing && React.createElement("details", { className: "mt-3 text-xs" }, React.createElement("summary", { className: "cursor-pointer text-slate-400 hover:text-slate-200 font-medium select-none outline-none py-1" }, "📄 Show Worker Process Log Output"), React.createElement("pre", { className: "mt-2 p-3 bg-black/60 border border-slate-800 rounded-lg text-[0.6875rem] font-mono text-emerald-400/90 whitespace-pre-wrap max-h-56 overflow-y-auto zfk-scrollbar" }, prog.log_tail)));
-		})(), selectedTask.parents && selectedTask.parents.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Parent Dependencies (Must complete first)"), React.createElement("div", { className: "flex flex-col gap-1.5" }, selectedTask.parents.map((p) => React.createElement("div", {
+		})(), React.createElement("div", { className: "p-3.5 rounded-lg bg-slate-950/70 border border-slate-800/90 space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🔗 Task Dependencies & Sequential Relations"), React.createElement("span", { className: "text-[10px] text-slate-500" }, "Parent blockers vs Peer related features")), selectedTask.parents && selectedTask.parents.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("span", { className: "text-[11px] font-semibold text-slate-400" }, "Upstream Dependencies:"), React.createElement("div", { className: "flex flex-col gap-1.5" }, selectedTask.parents.map((p) => React.createElement("div", {
 			key: p.id,
-			className: "flex items-center justify-between p-2 rounded-md bg-slate-800/40 border border-slate-800 text-xs text-slate-300"
-		}, React.createElement("span", null, p.id + ": " + p.title), React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400" }, p.status))))), React.createElement("div", { className: "space-y-2" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Discussion & Activity (" + (selectedTask.comments && selectedTask.comments.length || 0) + ")"), React.createElement("div", { className: "space-y-2 max-h-52 overflow-y-auto zfk-scrollbar pr-1" }, !selectedTask.comments || selectedTask.comments.length === 0 ? React.createElement("div", { className: "text-xs text-slate-500 italic py-2" }, "No comments yet.") : selectedTask.comments.map((c) => React.createElement("div", {
+			className: "flex items-center justify-between p-2 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-300 gap-2"
+		}, React.createElement("div", { className: "flex items-center gap-2 min-w-0 flex-wrap" }, p.link_type === "relates_to" ? React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-950/80 text-sky-300 border border-sky-800/60" }, "🔵 Relates to") : React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-800/60" }, "🔴 Blocks"), p.repo_alias && React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-teal-300 border border-slate-700/60" }, "📦 " + p.repo_alias), React.createElement("span", { className: "font-mono font-semibold text-indigo-300" }, "#" + p.id), React.createElement("span", { className: "truncate max-w-[240px]" }, p.title)), React.createElement("div", { className: "flex items-center gap-1.5 shrink-0" }, React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400" }, p.status), React.createElement("button", {
+			type: "button",
+			className: "text-rose-400 hover:text-rose-300 px-1 text-xs font-semibold cursor-pointer",
+			onClick: () => handleRemoveDependency(p.id),
+			title: "Remove dependency"
+		}, "✕")))))), selectedTask.children && selectedTask.children.length > 0 && React.createElement("div", { className: "space-y-1.5 pt-1" }, React.createElement("span", { className: "text-[11px] font-semibold text-slate-400" }, "Downstream Blocked / Related Tasks:"), React.createElement("div", { className: "flex flex-col gap-1.5" }, selectedTask.children.map((c) => React.createElement("div", {
+			key: c.id,
+			className: "flex items-center justify-between p-2 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-300 gap-2"
+		}, React.createElement("div", { className: "flex items-center gap-2 min-w-0 flex-wrap" }, c.link_type === "relates_to" ? React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-950/80 text-sky-300 border border-sky-800/60" }, "🔵 Relates to") : React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60" }, "⏳ Blocked by this"), c.repo_alias && React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-teal-300 border border-slate-700/60" }, "📦 " + c.repo_alias), React.createElement("span", { className: "font-mono font-semibold text-indigo-300" }, "#" + c.id), React.createElement("span", { className: "truncate max-w-[240px]" }, c.title)), React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400" }, c.status))))), React.createElement("div", { className: "flex items-center gap-2 pt-2 border-t border-slate-800/80 flex-wrap sm:flex-nowrap" }, React.createElement("select", {
+			className: "flex-1 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer min-w-[180px]",
+			value: depTaskId,
+			onChange: (e) => setDepTaskId(e.target.value)
+		}, React.createElement("option", { value: "" }, "-- Link to another task --"), (tasks || []).filter((t) => t.id !== selectedTask.id && (!selectedTask.parents || !selectedTask.parents.some((p) => p.id === t.id))).map((t) => React.createElement("option", {
+			key: t.id,
+			value: t.id
+		}, "#" + t.id + " " + (t.repo_alias ? "[" + t.repo_alias + "] " : "") + t.title + " (" + t.status + ")"))), React.createElement("select", {
+			className: "bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer shrink-0",
+			value: depLinkType,
+			onChange: (e) => setDepLinkType(e.target.value)
+		}, React.createElement("option", { value: "blocks" }, "🔴 Blocks (Hard Blocker)"), React.createElement("option", { value: "relates_to" }, "🔵 Relates to (Soft Peer)")), React.createElement("button", {
+			type: "button",
+			disabled: !depTaskId,
+			className: "px-3 py-1.5 rounded text-xs font-medium text-indigo-300 bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0",
+			onClick: handleLinkDependency
+		}, "+ Link"))), React.createElement("div", { className: "space-y-2" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Discussion & Activity (" + (selectedTask.comments && selectedTask.comments.length || 0) + ")"), React.createElement("div", { className: "space-y-2 max-h-52 overflow-y-auto zfk-scrollbar pr-1" }, !selectedTask.comments || selectedTask.comments.length === 0 ? React.createElement("div", { className: "text-xs text-slate-500 italic py-2" }, "No comments yet.") : selectedTask.comments.map((c) => React.createElement("div", {
 			key: c.id,
 			className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3 space-y-1.5"
 		}, React.createElement("div", { className: "flex items-center justify-between text-xs" }, React.createElement("span", { className: "font-semibold text-indigo-400" }, "@" + c.author), React.createElement("span", { className: "text-[0.6875rem] text-slate-500" }, timeAgo(c.created_at))), React.createElement("div", { className: "text-xs text-slate-300 whitespace-pre-wrap leading-relaxed" }, c.body)))), React.createElement("form", {
@@ -2263,6 +2314,11 @@ var ZeroFactoryDashboard = (function(exports) {
 	function NewTaskModal(props) {
 		const { showNewTaskModal, setShowNewTaskModal, newTaskForm, setNewTaskForm, handleCreateTaskSubmit, handleCreateTask, isSubmittingTask, boards, selectedBoard } = props;
 		const onSubmitHandler = handleCreateTaskSubmit || handleCreateTask;
+		const chosenBoardSlug = newTaskForm.board_slug || (selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : "");
+		const activeBoardObj = (boards || []).find((b) => b.slug === chosenBoardSlug);
+		const boardRepos = activeBoardObj && activeBoardObj.repositories || [];
+		const defaultRepo = boardRepos[0];
+		const currentRepoAlias = newTaskForm.repo_alias || (defaultRepo ? defaultRepo.repo_alias : "");
 		return React.createElement(Modal, {
 			isOpen: showNewTaskModal,
 			onClose: () => setShowNewTaskModal(false),
@@ -2282,15 +2338,31 @@ var ZeroFactoryDashboard = (function(exports) {
 			})
 		})), boards && boards.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Board *"), React.createElement("select", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-			value: newTaskForm.board_slug || (selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : ""),
-			onChange: (e) => setNewTaskForm({
-				...newTaskForm,
-				board_slug: e.target.value
-			})
+			value: chosenBoardSlug,
+			onChange: (e) => {
+				const bSlug = e.target.value;
+				const bObj = (boards || []).find((x) => x.slug === bSlug);
+				const dRepo = (bObj && bObj.repositories || [])[0];
+				setNewTaskForm({
+					...newTaskForm,
+					board_slug: bSlug,
+					repo_alias: dRepo ? dRepo.repo_alias : ""
+				});
+			}
 		}, boards.map((b) => React.createElement("option", {
 			key: b.slug,
 			value: b.slug
-		}, b.slug)))), React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"), React.createElement("select", {
+		}, b.slug)))), boardRepos.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Repository (Multi-Repo Architecture) *"), React.createElement("select", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer font-mono",
+			value: currentRepoAlias,
+			onChange: (e) => setNewTaskForm({
+				...newTaskForm,
+				repo_alias: e.target.value
+			})
+		}, boardRepos.map((r) => React.createElement("option", {
+			key: r.repo_alias,
+			value: r.repo_alias
+		}, r.repo_alias + " (" + (r.target_branch || "main") + ")"))), React.createElement("p", { className: "text-[10px] text-slate-500 m-0 font-sans" }, "Repository checked out as writable worktree (task/<id> branch). Sibling repos are checked out side-by-side.")), React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"), React.createElement("select", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
 			value: newTaskForm.assignee,
 			onChange: (e) => setNewTaskForm({
@@ -2353,6 +2425,67 @@ var ZeroFactoryDashboard = (function(exports) {
 	function NewBoardModal(props) {
 		const { showNewBoardModal, setShowNewBoardModal, newBoardForm, setNewBoardForm, handleCreateBoard, handleCreateBoardSubmit = handleCreateBoard, isSubmittingBoard, boards = [], setActiveView = () => {}, createBoardError = "", setCreateBoardError = () => {}, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {} } = props;
 		if (!showNewBoardModal) return null;
+		const repos = newBoardForm.repositories && newBoardForm.repositories.length > 0 ? newBoardForm.repositories : [{
+			repo_alias: computeGitSlug(newBoardForm.git_url || "") || "main",
+			git_url: newBoardForm.git_url || "",
+			target_branch: newBoardForm.target_branch || "main",
+			additional_reviewer_usernames: newBoardForm.additional_reviewer_usernames || ""
+		}];
+		const updateRepo = (index, field, value) => {
+			const updated = [...repos];
+			const current = {
+				...updated[index],
+				[field]: value
+			};
+			if (field === "git_url" && (!current.repo_alias || current.repo_alias === "main")) {
+				const slug = computeGitSlug(value);
+				if (slug) current.repo_alias = slug;
+			}
+			updated[index] = current;
+			const updates = {
+				...newBoardForm,
+				repositories: updated
+			};
+			if (field === "git_url" && !newBoardForm.slug) {
+				const autoSlug = computeGitSlug(value);
+				if (autoSlug) updates.slug = autoSlug;
+			}
+			if (index === 0) {
+				if (field === "git_url") updates.git_url = value;
+				if (field === "target_branch") updates.target_branch = value;
+				if (field === "additional_reviewer_usernames") updates.additional_reviewer_usernames = value;
+			}
+			setNewBoardForm(updates);
+		};
+		const addRepo = () => {
+			const updated = [...repos, {
+				repo_alias: "",
+				git_url: "",
+				target_branch: "main",
+				additional_reviewer_usernames: ""
+			}];
+			setNewBoardForm({
+				...newBoardForm,
+				repositories: updated
+			});
+		};
+		const removeRepo = (index) => {
+			if (repos.length <= 1) return;
+			const updated = repos.filter((_, idx) => idx !== index);
+			const updates = {
+				...newBoardForm,
+				repositories: updated
+			};
+			if (index === 0 && updated.length > 0) {
+				updates.git_url = updated[0].git_url;
+				updates.target_branch = updated[0].target_branch;
+				updates.additional_reviewer_usernames = updated[0].additional_reviewer_usernames;
+			}
+			setNewBoardForm(updates);
+		};
+		const suggestedSlug = computeGitSlug(repos[0]?.git_url || newBoardForm.git_url || "") || repos[0]?.repo_alias || "";
+		const currentSlug = (newBoardForm.slug || "").trim();
+		const effectiveSlug = currentSlug || suggestedSlug;
 		return React.createElement(Modal, {
 			isOpen: showNewBoardModal,
 			onClose: boards.length > 0 ? () => setShowNewBoardModal(false) : void 0,
@@ -2362,40 +2495,79 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, React.createElement("form", {
 			onSubmit: handleCreateBoardSubmit,
 			className: "flex flex-col flex-1 overflow-hidden m-0"
-		}, React.createElement("div", { className: "p-4 sm:p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, boards.length === 0 && React.createElement("div", { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" }, React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"), React.createElement("div", null, React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"), React.createElement("p", { className: "text-indigo-200/90" }, "Please register a project board for your codebase to begin creating tickets, assigning autonomous agents, and orchestrating Git worktrees. You can also explore the ", React.createElement("button", {
+		}, React.createElement("div", { className: "p-4 sm:p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1" }, boards.length === 0 && React.createElement("div", { className: "p-3 rounded-lg bg-indigo-950/60 border border-indigo-500/30 text-xs text-indigo-200 leading-relaxed flex items-start gap-2.5" }, React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "ℹ️"), React.createElement("div", null, React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Initial Board Setup"), React.createElement("p", { className: "text-indigo-200/90" }, "Register a project workspace with one or more repositories to start orchestrating tickets, assigning autonomous agents, and managing side-by-side Git worktrees. You can also review the ", React.createElement("button", {
 			type: "button",
 			className: "underline text-indigo-300 hover:text-white font-medium cursor-pointer",
 			onClick: () => {
 				setShowNewBoardModal(false);
 				setActiveView("instructions");
 			}
-		}, "Zero Factory Instructions"), "."))), createBoardError && React.createElement("div", { className: "p-3 rounded-lg bg-rose-950/90 border border-rose-500/60 text-xs text-rose-200 leading-relaxed flex items-start gap-2.5 shadow-sm" }, React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "⚠️"), React.createElement("div", null, React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Could Not Create Board"), React.createElement("p", { className: "text-rose-200/90 m-0" }, createBoardError))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Remote Git URL *"), React.createElement("button", {
+		}, "Zero Factory Instructions"), "."))), createBoardError && React.createElement("div", { className: "p-3 rounded-lg bg-rose-950/90 border border-rose-500/60 text-xs text-rose-200 leading-relaxed flex items-start gap-2.5 shadow-sm" }, React.createElement("span", { className: "text-base leading-none shrink-0 mt-0.5" }, "⚠️"), React.createElement("div", null, React.createElement("p", { className: "font-semibold mb-0.5 text-white" }, "Could Not Create Board"), React.createElement("p", { className: "text-rose-200/90 m-0" }, createBoardError))), React.createElement("div", { className: "space-y-1.5 p-3 rounded-lg bg-slate-900/60 border border-slate-800" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-bold text-slate-200 tracking-wide uppercase" }, "🏷️ Board Slug", React.createElement("span", { className: "text-rose-400 ml-1" }, "*")), suggestedSlug && currentSlug !== suggestedSlug && React.createElement("button", {
 			type: "button",
-			disabled: isTestingClone || !newBoardForm.git_url,
-			onClick: () => handleTestClone(newBoardForm.git_url, computeGitSlug(newBoardForm.git_url)),
-			className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
-		}, isTestingClone ? "Testing Clone..." : "🧪 Test Clone Git")), React.createElement("input", {
+			onClick: () => setNewBoardForm({
+				...newBoardForm,
+				slug: suggestedSlug
+			}),
+			className: "text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+		}, "Use suggested: " + suggestedSlug)), React.createElement("input", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
+			placeholder: suggestedSlug || "e.g. checkout-platform, order-service",
+			value: newBoardForm.slug || "",
+			onChange: (e) => setNewBoardForm({
+				...newBoardForm,
+				slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "-")
+			})
+		}), React.createElement("div", { className: "flex items-center justify-between gap-2 text-[10px] text-slate-400" }, React.createElement("span", null, "Unique board identifier for CLI, URLs, and multi-repo task orchestration."), effectiveSlug && React.createElement("span", { className: "font-mono text-slate-500 shrink-0" }, "Slug: ", React.createElement("span", { className: "text-indigo-300 font-semibold" }, effectiveSlug))), effectiveSlug && boards.some((b) => b.slug === effectiveSlug) && React.createElement("div", { className: "p-2 rounded bg-amber-950/60 border border-amber-500/40 text-[11px] text-amber-300 flex items-center gap-1.5" }, React.createElement("span", null, "⚠️"), "A board with slug '", React.createElement("span", { className: "font-mono font-bold text-amber-200" }, effectiveSlug), "' already exists.")), React.createElement("div", { className: "space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-bold text-slate-200 tracking-wide uppercase" }, "📦 Project Repositories (" + repos.length + ")"), React.createElement("button", {
+			type: "button",
+			onClick: addRepo,
+			className: "text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer flex items-center gap-1"
+		}, "+ Add Another Repo")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0" }, "All repositories are equal peers with remote URLs, branches, reviewers, and precommit verification. Sibling repositories check out side-by-side in workspaces."), React.createElement("div", { className: "space-y-3 pt-1" }, repos.map((repo, idx) => React.createElement("div", {
+			key: idx,
+			className: "p-3.5 rounded-lg bg-slate-900/80 border border-slate-800 space-y-3 relative group"
+		}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("span", { className: "font-semibold text-xs text-indigo-300 font-mono bg-slate-800 px-2 py-0.5 rounded" }, repo.repo_alias || "Repo #" + (idx + 1))), repos.length > 1 && React.createElement("button", {
+			type: "button",
+			onClick: () => removeRepo(idx),
+			className: "text-rose-400 hover:text-rose-300 text-xs font-medium px-2 py-0.5 rounded hover:bg-rose-950/40 transition-colors cursor-pointer"
+		}, "✕ Remove")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-[11px] font-semibold text-slate-300" }, "Remote Git URL *"), React.createElement("button", {
+			type: "button",
+			disabled: isTestingClone || !repo.git_url,
+			onClick: () => handleTestClone(repo.git_url, repo.repo_alias || computeGitSlug(repo.git_url)),
+			className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
+		}, isTestingClone ? "Testing..." : "🧪 Test Clone")), React.createElement("input", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono outline-none focus:border-indigo-500",
 			required: true,
-			autoFocus: true,
-			placeholder: "https://github.com/hotcode-dev/zerofactory.git or git@github.com:hotcode-dev/zerofactory.git",
-			value: newBoardForm.git_url || "",
+			placeholder: "git@github.com:org/repo.git or https://github.com/org/repo.git",
+			value: repo.git_url || "",
 			onChange: (e) => {
 				setCreateBoardError("");
 				setCloneTestResult(null);
-				setNewBoardForm({
-					...newBoardForm,
-					git_url: e.target.value
-				});
+				updateRepo(idx, "git_url", e.target.value);
 			}
-		}), cloneTestResult && React.createElement("div", { className: `text-[11px] px-2.5 py-1.5 rounded border flex items-start gap-1.5 ${cloneTestResult.ok ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300" : "bg-rose-950/40 border-rose-800/60 text-rose-300"}` }, React.createElement("span", { className: "shrink-0 font-bold" }, cloneTestResult.ok ? "✓" : "✕"), React.createElement("span", { className: "break-all" }, cloneTestResult.message)), (() => {
-			const autoSlug = computeGitSlug(newBoardForm.git_url || "");
-			if (autoSlug) {
-				const exists = boards.some((b) => b.slug === autoSlug);
-				return React.createElement("div", { className: "space-y-1 pt-1" }, React.createElement("div", { className: "flex items-center gap-2 text-[11px] text-slate-400 font-mono" }, React.createElement("span", { className: "text-slate-500" }, "Board Slug:"), React.createElement("span", { className: "px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 font-medium" }, autoSlug)), exists && React.createElement("div", { className: "text-[11px] text-amber-400 flex items-center gap-1.5 font-sans" }, React.createElement("span", null, "⚠️"), "A board with slug '", React.createElement("span", { className: "font-mono font-bold text-amber-300" }, autoSlug), "' already exists."));
-			}
-			return null;
-		})()), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description (Optional)"), React.createElement("input", {
+		})), React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-3 gap-2.5" }, React.createElement("div", { className: "space-y-1" }, React.createElement("label", { className: "block text-[10px] font-semibold text-slate-400" }, "Repo Alias *"), React.createElement("input", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 font-mono placeholder-slate-500 outline-none focus:border-indigo-500",
+			required: true,
+			placeholder: "e.g. core-api",
+			value: repo.repo_alias || "",
+			onChange: (e) => updateRepo(idx, "repo_alias", e.target.value)
+		})), React.createElement("div", { className: "space-y-1" }, React.createElement("label", { className: "block text-[10px] font-semibold text-slate-400" }, "Target Branch"), React.createElement("input", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 font-mono placeholder-slate-500 outline-none focus:border-indigo-500",
+			placeholder: "main",
+			value: repo.target_branch || "main",
+			onChange: (e) => updateRepo(idx, "target_branch", e.target.value)
+		})), React.createElement("div", { className: "space-y-1" }, React.createElement("label", { className: "block text-[10px] font-semibold text-slate-400" }, "Reviewers (Optional)"), React.createElement("input", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500",
+			placeholder: "alice, bob",
+			value: typeof repo.additional_reviewer_usernames === "string" ? repo.additional_reviewer_usernames : (repo.additional_reviewer_usernames || []).join(", "),
+			onChange: (e) => updateRepo(idx, "additional_reviewer_usernames", e.target.value)
+		})))))), cloneTestResult && React.createElement("div", { className: `text-[11px] px-2.5 py-1.5 rounded border flex items-start gap-1.5 ${cloneTestResult.ok ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300" : "bg-rose-950/40 border-rose-800/60 text-rose-300"}` }, React.createElement("span", { className: "shrink-0 font-bold" }, cloneTestResult.ok ? "✓" : "✕"), React.createElement("span", { className: "break-all" }, cloneTestResult.message))), React.createElement("div", { className: "space-y-1.5 pt-2 border-t border-slate-800/80" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "🌐 System Architecture Notes (Optional)"), React.createElement("textarea", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono min-h-[90px] resize-y leading-relaxed",
+			placeholder: "# System Architecture & Contracts\n- common-lib: Shared protobuf & business models\n- api-gateway: Reverse proxy routing to order-service\n- order-service: Core transaction handling",
+			value: newBoardForm.architecture || "",
+			onChange: (e) => setNewBoardForm({
+				...newBoardForm,
+				architecture: e.target.value
+			})
+		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "High-level service contracts and boundaries injected into agent prompts.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description (Optional)"), React.createElement("input", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
 			placeholder: "Short description of this board's scope (optional)",
 			value: newBoardForm.description || "",
@@ -2403,23 +2575,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newBoardForm,
 				description: e.target.value
 			})
-		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Branch / PR Base (Optional)"), React.createElement("input", {
-			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
-			placeholder: "main (default if empty)",
-			value: newBoardForm.target_branch || "",
-			onChange: (e) => setNewBoardForm({
-				...newBoardForm,
-				target_branch: e.target.value
-			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "The branch agent will branch off from and create PRs to merge to.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers (Optional)"), React.createElement("input", {
-			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-			placeholder: "alice, bob (GitHub usernames)",
-			value: newBoardForm.additional_reviewer_usernames || "",
-			onChange: (e) => setNewBoardForm({
-				...newBoardForm,
-				additional_reviewer_usernames: e.target.value
-			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Comma-separated usernames trusted to submit automation-relevant PR feedback.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"), React.createElement("input", {
+		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"), React.createElement("input", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
 			placeholder: "https://your-domain.atlassian.net or project link",
 			value: newBoardForm.jira_url || "",
@@ -2438,7 +2594,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newBoardForm,
 				max_concurrent_running: e.target.value
 			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once. Other boards keep their own limits.")), React.createElement("div", { className: "pt-1 flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🧠 Auto-Record Memory"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Capture gotchas & conventions automatically from reviewer feedback.")), React.createElement("input", {
+		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once.")), React.createElement("div", { className: "pt-1 flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🧠 Auto-Record Memory"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Capture gotchas & conventions automatically from reviewer feedback.")), React.createElement("input", {
 			type: "checkbox",
 			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
 			checked: Boolean(newBoardForm.auto_record_memory !== false),
@@ -2467,60 +2623,163 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/EditBoardModal.jsx
 	function EditBoardModal(props) {
-		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, selectedBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {}, ghIssuesStatus = null, isSettingUpGhIssues = false, handleTriggerGhIssuesSetup = () => {}, isSettingUpJira = false, handleTriggerJiraSetup = () => {}, isTestingJira = false, handleTriggerJiraTest = () => {} } = props;
+		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatuses = {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatuses = {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {}, ghIssuesStatuses = {}, ghIssuesStatus = null, isSettingUpGhIssues = false, handleTriggerGhIssuesSetup = () => {}, isSettingUpJira = false, handleTriggerJiraSetup = () => {}, isTestingJira = false, handleTriggerJiraTest = () => {}, handleAddBoardRepo = () => {}, handleDeleteBoardRepo = () => {} } = props;
+		const [newRepoAlias, setNewRepoAlias] = React.useState("");
+		const [newRepoUrl, setNewRepoUrl] = React.useState("");
+		const [newRepoBranch, setNewRepoBranch] = React.useState("main");
+		const [newRepoReviewers, setNewRepoReviewers] = React.useState("");
+		if (!showEditBoardModal) return null;
+		const repos = editBoardForm.repositories || [];
+		const updateRepoField = (idx, field, value) => {
+			const updated = [...repos];
+			updated[idx] = {
+				...updated[idx],
+				[field]: value
+			};
+			const updates = {
+				...editBoardForm,
+				repositories: updated
+			};
+			if (idx === 0) {
+				if (field === "git_url") updates.git_url = value;
+				if (field === "target_branch") updates.target_branch = value;
+				if (field === "additional_reviewer_usernames") updates.additional_reviewer_usernames = value;
+			}
+			setEditBoardForm(updates);
+		};
+		const getRepoPrecommit = (alias) => {
+			if (precommitStatuses && precommitStatuses[alias]) return precommitStatuses[alias];
+			return precommitStatus;
+		};
+		const getRepoOpenwiki = (alias) => {
+			if (openwikiStatuses && openwikiStatuses[alias]) return openwikiStatuses[alias];
+			return openwikiStatus;
+		};
+		const getRepoGhIssues = (alias) => {
+			if (ghIssuesStatuses && ghIssuesStatuses[alias]) return ghIssuesStatuses[alias];
+			return ghIssuesStatus;
+		};
 		return React.createElement(Modal, {
 			isOpen: showEditBoardModal,
 			onClose: () => setShowEditBoardModal(false),
-			title: "Edit Board: " + editBoardForm.slug,
+			title: "Edit Project Board: " + editBoardForm.slug,
 			bodyClassName: "p-0 flex flex-col flex-1 overflow-hidden"
 		}, React.createElement("form", {
 			onSubmit: handleUpdateBoardSubmit,
 			className: "flex flex-col flex-1 overflow-hidden m-0"
-		}, React.createElement("div", { className: "p-4 sm:p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Slug (URL identifier)"), React.createElement("input", {
-			className: "w-full bg-slate-950/60 border border-slate-800/60 rounded-lg px-3 py-2 text-xs text-slate-400 cursor-not-allowed opacity-60 outline-none",
+		}, React.createElement("div", { className: "p-4 sm:p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Board Slug (Identifier)"), React.createElement("input", {
+			className: "w-full bg-slate-950/60 border border-slate-800/60 rounded-lg px-3 py-2 text-xs text-slate-400 cursor-not-allowed opacity-60 outline-none font-mono",
 			disabled: true,
 			value: editBoardForm.slug
-		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Remote Git URL"), React.createElement("button", {
-			type: "button",
-			disabled: isTestingClone || !editBoardForm.git_url,
-			onClick: () => handleTestClone(editBoardForm.git_url, editBoardForm.slug),
-			className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
-		}, isTestingClone ? "Testing Clone..." : "🧪 Test Clone Git")), React.createElement("input", {
-			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-			placeholder: "https://github.com/org/repo.git or git@github.com:org/repo.git",
-			value: editBoardForm.git_url,
+		})), React.createElement("div", { className: "space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-bold text-slate-200 tracking-wide uppercase" }, "📦 Linked Repositories (" + repos.length + ")"), React.createElement("span", { className: "text-[11px] text-slate-500" }, "Equal first-class configuration & automations")), React.createElement("div", { className: "space-y-3.5" }, repos.map((r, idx) => {
+			const pStatus = getRepoPrecommit(r.repo_alias);
+			const wStatus = getRepoOpenwiki(r.repo_alias);
+			const gStatus = getRepoGhIssues(r.repo_alias);
+			const reviewersDisplay = Array.isArray(r.additional_reviewer_usernames) ? r.additional_reviewer_usernames.join(", ") : r.additional_reviewer_usernames || "";
+			return React.createElement("div", {
+				key: r.repo_alias || idx,
+				className: "p-4 rounded-lg bg-slate-900/90 border border-slate-800 space-y-3.5"
+			}, React.createElement("div", { className: "flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5" }, React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("span", { className: "font-mono font-bold text-sm text-indigo-300 bg-slate-800 px-2 py-0.5 rounded" }, r.repo_alias), React.createElement("span", { className: "text-[11px] text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded font-mono" }, "branch: " + (r.target_branch || "main"))), repos.length > 1 && React.createElement("button", {
+				type: "button",
+				className: "px-2 py-0.5 rounded text-xs font-medium text-rose-300 bg-rose-950/60 hover:bg-rose-900/60 border border-rose-800/60 transition-colors cursor-pointer",
+				onClick: () => {
+					if (window.confirm("Remove repository '" + r.repo_alias + "' from this board?")) handleDeleteBoardRepo(editBoardForm.slug, r.repo_alias);
+				},
+				title: "Remove repository from board"
+			}, "✕ Remove Repo")), React.createElement("div", { className: "space-y-1" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-[11px] font-semibold text-slate-300" }, "Remote Git URL"), React.createElement("button", {
+				type: "button",
+				disabled: isTestingClone || !r.git_url,
+				onClick: () => handleTestClone(r.git_url, r.repo_alias),
+				className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
+			}, isTestingClone ? "Testing..." : "🧪 Test Clone")), React.createElement("input", {
+				className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono outline-none focus:border-indigo-500",
+				value: r.git_url || "",
+				onChange: (e) => updateRepoField(idx, "git_url", e.target.value)
+			})), React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3" }, React.createElement("div", { className: "space-y-1" }, React.createElement("label", { className: "block text-[11px] font-semibold text-slate-400" }, "Target Branch / PR Base"), React.createElement("input", {
+				className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 font-mono placeholder-slate-500 outline-none focus:border-indigo-500",
+				value: r.target_branch || "main",
+				onChange: (e) => updateRepoField(idx, "target_branch", e.target.value)
+			})), React.createElement("div", { className: "space-y-1" }, React.createElement("label", { className: "block text-[11px] font-semibold text-slate-400" }, "Additional Trusted Reviewers"), React.createElement("input", {
+				className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500",
+				placeholder: "alice, bob (GitHub usernames)",
+				value: reviewersDisplay,
+				onChange: (e) => updateRepoField(idx, "additional_reviewer_usernames", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))
+			}))), React.createElement("div", { className: "p-3 rounded-lg bg-slate-950/70 border border-slate-800/80 space-y-2.5" }, React.createElement("span", { className: "block text-[10px] font-bold text-slate-400 uppercase tracking-wider" }, "🛠️ Repository Automations & Verification"), React.createElement("div", { className: "flex items-center justify-between gap-2 text-xs" }, React.createElement("div", { className: "min-w-0 flex items-center gap-2" }, React.createElement("span", { className: "font-medium text-slate-300 text-xs shrink-0" }, "⚡ Precommit:"), React.createElement("span", { className: "px-2 py-0.5 rounded text-[10px] font-semibold " + (pStatus && pStatus.has_precommit ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : pStatus && pStatus.pending_task_id ? "bg-sky-950/80 text-sky-300 border border-sky-800/60" : "bg-amber-950/80 text-amber-300 border border-amber-800/60") }, pStatus && pStatus.has_precommit ? "Configured ✓" : pStatus && pStatus.pending_task_id ? "Setup in Progress ⏳" : "Not Configured ⚠️")), React.createElement("button", {
+				type: "button",
+				disabled: isSettingUpPrecommit,
+				onClick: () => handleTriggerPrecommitSetup(editBoardForm.slug, r.repo_alias),
+				className: "px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+			}, isSettingUpPrecommit ? "Initiating..." : pStatus && pStatus.has_precommit ? "🔄 Regenerate" : "⚡ Setup Precommit")), React.createElement("div", { className: "flex items-center justify-between gap-2 text-xs" }, React.createElement("div", { className: "min-w-0 flex items-center gap-2" }, React.createElement("span", { className: "font-medium text-slate-300 text-xs shrink-0" }, "📖 OpenWiki:"), React.createElement("span", { className: "px-2 py-0.5 rounded text-[10px] font-semibold " + (wStatus && wStatus.has_openwiki ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : wStatus && wStatus.pending_task_id ? "bg-sky-950/80 text-sky-300 border border-sky-800/60" : "bg-amber-950/80 text-amber-300 border border-amber-800/60") }, wStatus && wStatus.has_openwiki ? "Generated ✓" : wStatus && wStatus.pending_task_id ? "Setup in Progress ⏳" : "Not Generated ⚠️")), React.createElement("button", {
+				type: "button",
+				disabled: isSettingUpOpenwiki,
+				onClick: () => handleTriggerOpenwikiSetup(editBoardForm.slug, r.repo_alias),
+				className: "px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+			}, isSettingUpOpenwiki ? "Initiating..." : wStatus && wStatus.has_openwiki ? "🔄 Regenerate" : "📖 Setup OpenWiki")), React.createElement("div", { className: "flex items-center justify-between gap-2 text-xs" }, React.createElement("div", { className: "min-w-0 flex items-center gap-2" }, React.createElement("span", { className: "font-medium text-slate-300 text-xs shrink-0" }, "🏷️ Issue Templates:"), React.createElement("span", { className: "px-2 py-0.5 rounded text-[10px] font-semibold " + (gStatus && gStatus.has_gh_issues ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : gStatus && gStatus.pending_task_id ? "bg-purple-950/80 text-purple-300 border border-purple-800/60" : "bg-amber-950/80 text-amber-300 border border-amber-800/60") }, gStatus && gStatus.has_gh_issues ? "Configured ✓" : gStatus && gStatus.pending_task_id ? "Setup in Progress ⏳" : "Not Configured ⚠️")), React.createElement("button", {
+				type: "button",
+				disabled: isSettingUpGhIssues,
+				onClick: () => handleTriggerGhIssuesSetup(editBoardForm.slug, r.repo_alias),
+				className: "px-2.5 py-1 rounded text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+			}, isSettingUpGhIssues ? "Initiating..." : gStatus && gStatus.has_gh_issues ? "🔄 Regenerate" : "🏷️ Setup Issues"))));
+		})), React.createElement("div", { className: "p-3.5 rounded-lg bg-slate-950/70 border border-slate-800/90 space-y-3" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "+ Add Repository to Board"), React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-4 gap-2" }, React.createElement("input", {
+			className: "bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono outline-none focus:border-indigo-500",
+			placeholder: "Alias (e.g. auth-svc)",
+			value: newRepoAlias,
+			onChange: (e) => setNewRepoAlias(e.target.value)
+		}), React.createElement("input", {
+			className: "bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono outline-none focus:border-indigo-500 sm:col-span-2",
+			placeholder: "Git URL (remote or local path)",
+			value: newRepoUrl,
 			onChange: (e) => {
-				setCloneTestResult(null);
-				setEditBoardForm({
-					...editBoardForm,
-					git_url: e.target.value
-				});
+				setNewRepoUrl(e.target.value);
+				if (!newRepoAlias && e.target.value) {
+					const slug = computeGitSlug(e.target.value);
+					if (slug) setNewRepoAlias(slug);
+				}
 			}
-		}), cloneTestResult && React.createElement("div", { className: `text-[11px] px-2.5 py-1.5 rounded border flex items-start gap-1.5 ${cloneTestResult.ok ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300" : "bg-rose-950/40 border-rose-800/60 text-rose-300"}` }, React.createElement("span", { className: "shrink-0 font-bold" }, cloneTestResult.ok ? "✓" : "✕"), React.createElement("span", { className: "break-all" }, cloneTestResult.message))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description"), React.createElement("input", {
+		}), React.createElement("input", {
+			className: "bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono outline-none focus:border-indigo-500",
+			placeholder: "Branch (main)",
+			value: newRepoBranch,
+			onChange: (e) => setNewRepoBranch(e.target.value)
+		})), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("input", {
+			className: "bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 flex-1",
+			placeholder: "Additional Reviewers (e.g. alice, bob; optional)",
+			value: newRepoReviewers,
+			onChange: (e) => setNewRepoReviewers(e.target.value)
+		}), React.createElement("button", {
+			type: "button",
+			disabled: !newRepoUrl || !newRepoAlias,
+			className: "px-3 py-1.5 rounded-md text-xs font-medium text-indigo-300 bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0",
+			onClick: async () => {
+				if (!newRepoUrl || !newRepoAlias) return;
+				await handleAddBoardRepo(editBoardForm.slug, {
+					repo_alias: newRepoAlias.trim(),
+					git_url: newRepoUrl.trim(),
+					target_branch: newRepoBranch.trim() || "main",
+					additional_reviewer_usernames: newRepoReviewers.split(",").map((x) => x.trim()).filter(Boolean)
+				});
+				setNewRepoAlias("");
+				setNewRepoUrl("");
+				setNewRepoBranch("main");
+				setNewRepoReviewers("");
+			}
+		}, "+ Add Repository")))), React.createElement("div", { className: "space-y-1.5 pt-2 border-t border-slate-800/80" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "🌐 System Architecture Notes (architecture)"), React.createElement("textarea", {
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono min-h-[90px] resize-y leading-relaxed",
+			placeholder: "# System Architecture & Contracts\n- common-lib: Shared protobuf & business models\n- api-gateway: Reverse proxy routing to order-service\n- order-service: Core transaction handling",
+			value: editBoardForm.architecture || "",
+			onChange: (e) => setEditBoardForm({
+				...editBoardForm,
+				architecture: e.target.value
+			})
+		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "High-level architecture contracts and service topology injected into agent prompts.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description"), React.createElement("input", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
 			placeholder: "Short description of this board's scope",
-			value: editBoardForm.description,
+			value: editBoardForm.description || "",
 			onChange: (e) => setEditBoardForm({
 				...editBoardForm,
 				description: e.target.value
 			})
-		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Branch / PR Base (Optional)"), React.createElement("input", {
-			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
-			placeholder: "main (default if empty)",
-			value: editBoardForm.target_branch || "",
-			onChange: (e) => setEditBoardForm({
-				...editBoardForm,
-				target_branch: e.target.value
-			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "The branch agent will branch off from and create PRs to merge to.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Additional Trusted Reviewers"), React.createElement("input", {
-			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
-			placeholder: "alice, bob (GitHub usernames; optional)",
-			value: editBoardForm.additional_reviewer_usernames || "",
-			onChange: (e) => setEditBoardForm({
-				...editBoardForm,
-				additional_reviewer_usernames: e.target.value
-			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Only repository owners, members, collaborators, and these usernames can route PR feedback.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"), editBoardForm.jira_url && React.createElement("a", {
+		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"), editBoardForm.jira_url && React.createElement("a", {
 			href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
 			target: "_blank",
 			rel: "noreferrer",
@@ -2544,7 +2803,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...editBoardForm,
 				max_concurrent_running: e.target.value
 			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once. Other boards keep their own limits.")), React.createElement("div", { className: "pt-1 flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🧠 Auto-Record Memory"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Capture gotchas & conventions automatically from reviewer feedback.")), React.createElement("input", {
+		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Caps how many of this board's tasks the dispatcher can run at once.")), React.createElement("div", { className: "pt-1 flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🧠 Auto-Record Memory"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Capture gotchas & conventions automatically from reviewer feedback.")), React.createElement("input", {
 			type: "checkbox",
 			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
 			checked: Boolean(editBoardForm.auto_record_memory !== false),
@@ -2552,54 +2811,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...editBoardForm,
 				auto_record_memory: e.target.checked
 			})
-		})), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "⚡ Repository Precommit"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Deterministic test, build, and format check script (.zerofactory/precommit.sh).")), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " + (precommitStatus && precommitStatus.has_precommit ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : precommitStatus && precommitStatus.pending_task_id ? "bg-sky-950/80 text-sky-300 border border-sky-800/60" : "bg-amber-950/80 text-amber-300 border border-amber-800/60") }, precommitStatus && precommitStatus.has_precommit ? "Configured ✓" : precommitStatus && precommitStatus.pending_task_id ? "Setup in Progress ⏳" : "Not Configured ⚠️")), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-[11px] text-slate-400 font-mono truncate" }, precommitStatus && precommitStatus.precommit_path ? precommitStatus.precommit_path : ".zerofactory/precommit.sh"), React.createElement("button", {
-			type: "button",
-			disabled: isSettingUpPrecommit,
-			onClick: () => handleTriggerPrecommitSetup(editBoardForm.slug),
-			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-		}, isSettingUpPrecommit ? "Initiating..." : precommitStatus && precommitStatus.has_precommit ? "🔄 Regenerate Precommit" : "⚡ Setup Repo Precommit")), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "📖 OpenWiki Agent Docs"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Machine-readable repository architecture wiki for coding agents (openwiki/).")), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " + (openwikiStatus && openwikiStatus.has_openwiki ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : openwikiStatus && openwikiStatus.pending_task_id ? "bg-sky-950/80 text-sky-300 border border-sky-800/60" : "bg-amber-950/80 text-amber-300 border border-amber-800/60") }, openwikiStatus && openwikiStatus.has_openwiki ? "Generated ✓" : openwikiStatus && openwikiStatus.pending_task_id ? "Setup in Progress ⏳" : "Not Generated ⚠️")), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-[11px] text-slate-400 font-mono truncate" }, openwikiStatus && openwikiStatus.openwiki_path ? openwikiStatus.openwiki_path : "openwiki/"), React.createElement("button", {
-			type: "button",
-			disabled: isSettingUpOpenwiki,
-			onClick: () => handleTriggerOpenwikiSetup(editBoardForm.slug),
-			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-		}, isSettingUpOpenwiki ? "Initiating..." : openwikiStatus && openwikiStatus.has_openwiki ? "🔄 Regenerate OpenWiki" : "📖 Setup OpenWiki"))), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🏷️ GitHub Issue Templates & Labels"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Bug/Feature templates with 'zerofactory' AI triage labels (.github/ISSUE_TEMPLATE/).")), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " + (ghIssuesStatus && ghIssuesStatus.has_gh_issues ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : ghIssuesStatus && ghIssuesStatus.pending_task_id ? "bg-purple-950/80 text-purple-300 border border-purple-800/60" : "bg-amber-950/80 text-amber-300 border border-amber-800/60") }, ghIssuesStatus && ghIssuesStatus.has_gh_issues ? "Configured ✓" : ghIssuesStatus && ghIssuesStatus.pending_task_id ? "Setup in Progress ⏳" : "Not Configured ⚠️")), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-[11px] text-slate-400 font-mono truncate" }, ghIssuesStatus && ghIssuesStatus.gh_issues_path ? ghIssuesStatus.gh_issues_path : ".github/ISSUE_TEMPLATE/"), React.createElement("button", {
-			type: "button",
-			disabled: isSettingUpGhIssues,
-			onClick: () => handleTriggerGhIssuesSetup(editBoardForm.slug),
-			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-		}, isSettingUpGhIssues ? "Initiating..." : ghIssuesStatus && ghIssuesStatus.has_gh_issues ? "🔄 Regenerate Templates" : "🏷️ Setup GitHub Issues"))), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 flex flex-col gap-2" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🔷 Jira Cloud Integration"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link Atlassian Jira Cloud instance/project for deterministic issue import into triage.")), React.createElement("span", { className: "px-2 py-0.5 rounded-full text-[10px] font-semibold " + (editBoardForm.jira_url && editBoardForm.jira_url.trim() ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" : "bg-slate-800 text-slate-400 border border-slate-700/60") }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? "Linked ✓" : "Optional ⚪")), React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-[11px] text-slate-400 font-mono truncate" }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? editBoardForm.jira_url.trim() : "No Jira link configured (optional)"), React.createElement("div", { className: "flex items-center gap-1.5 shrink-0" }, editBoardForm.jira_url && editBoardForm.jira_url.trim() ? [
-			React.createElement("button", {
-				key: "test-btn",
-				type: "button",
-				disabled: isTestingJira,
-				onClick: () => handleTriggerJiraTest(editBoardForm.slug),
-				className: "px-2 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
-			}, isTestingJira ? "Testing..." : "🧪 Test"),
-			React.createElement("button", {
-				key: "edit-btn",
-				type: "button",
-				onClick: () => {
-					const url = window.prompt("Enter Jira Cloud URL (e.g. https://domain.atlassian.net):", editBoardForm.jira_url || "");
-					if (url !== null) handleTriggerJiraSetup(editBoardForm.slug, url.trim());
-				},
-				className: "px-2 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
-			}, "✏️ Edit"),
-			React.createElement("a", {
-				key: "open-link",
-				href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
-				target: "_blank",
-				rel: "noreferrer",
-				className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1"
-			}, "🔗 Open Jira")
-		] : React.createElement("button", {
-			type: "button",
-			disabled: isSettingUpJira,
-			onClick: () => {
-				const url = window.prompt("Enter Jira Cloud URL (e.g. https://your-domain.atlassian.net):", "");
-				if (url && url.trim()) handleTriggerJiraSetup(editBoardForm.slug, url.trim());
-			},
-			className: "px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-		}, isSettingUpJira ? "Connecting..." : "🔷 Setup Jira Link")))))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
+		}))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
 			type: "button",
 			className: "mr-auto px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
 			onClick: handleDeleteBoard,
@@ -3245,12 +3457,22 @@ var ZeroFactoryDashboard = (function(exports) {
 			priority: "P2",
 			assignee: "unassigned",
 			tenant: "",
-			pr_url: ""
+			pr_url: "",
+			board_slug: "",
+			repo_alias: ""
 		});
 		const [newBoardForm, setNewBoardForm] = useState({
+			slug: "",
 			git_url: "",
 			description: "",
-			target_branch: "",
+			target_branch: "main",
+			repositories: [{
+				repo_alias: "",
+				git_url: "",
+				target_branch: "main",
+				additional_reviewer_usernames: ""
+			}],
+			architecture: "",
 			max_concurrent_running: 1,
 			auto_record_memory: true,
 			additional_reviewer_usernames: "",
@@ -3261,19 +3483,24 @@ var ZeroFactoryDashboard = (function(exports) {
 			slug: "",
 			git_url: "",
 			description: "",
-			target_branch: "",
+			target_branch: "main",
+			architecture: "",
+			repositories: [],
 			max_concurrent_running: 1,
 			auto_record_memory: true,
 			additional_reviewer_usernames: "",
 			jira_url: ""
 		});
 		const [precommitStatus, setPrecommitStatus] = useState(null);
+		const [precommitStatuses, setPrecommitStatuses] = useState({});
 		const [isLoadingPrecommit, setIsLoadingPrecommit] = useState(false);
 		const [isSettingUpPrecommit, setIsSettingUpPrecommit] = useState(false);
 		const [openwikiStatus, setOpenwikiStatus] = useState(null);
+		const [openwikiStatuses, setOpenwikiStatuses] = useState({});
 		const [isLoadingOpenwiki, setIsLoadingOpenwiki] = useState(false);
 		const [isSettingUpOpenwiki, setIsSettingUpOpenwiki] = useState(false);
 		const [ghIssuesStatus, setGhIssuesStatus] = useState(null);
+		const [ghIssuesStatuses, setGhIssuesStatuses] = useState({});
 		const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
 		const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
 		const [isSyncingIssues, setIsSyncingIssues] = useState(false);
@@ -3461,7 +3688,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				console.error("Failed to fetch boards:", err);
 			}
 		}, [fetchJSON]);
-		const loadPrecommitStatus = useCallback(async (boardSlug) => {
+		const loadPrecommitStatus = useCallback(async (boardSlug, repoAlias) => {
 			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
 			if (!bSlug || bSlug === "all") {
 				setPrecommitStatus(null);
@@ -3469,24 +3696,30 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 			setIsLoadingPrecommit(true);
 			try {
-				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/precommit-status");
-				if (res && res.ok) setPrecommitStatus(res);
-				else setPrecommitStatus(null);
+				const res = await fetchJSON(repoAlias ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/precommit-status" : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/precommit-status");
+				if (res && res.ok) {
+					if (!repoAlias) setPrecommitStatus(res);
+					const alias = repoAlias || res.repo_alias;
+					if (alias) setPrecommitStatuses((prev) => ({
+						...prev,
+						[alias]: res
+					}));
+				} else if (!repoAlias) setPrecommitStatus(null);
 			} catch (err) {
-				setPrecommitStatus(null);
+				if (!repoAlias) setPrecommitStatus(null);
 			} finally {
 				setIsLoadingPrecommit(false);
 			}
 		}, [fetchJSON]);
-		const handleTriggerPrecommitSetup = async (boardSlug) => {
+		const handleTriggerPrecommitSetup = async (boardSlug, repoAlias) => {
 			const bSlug = boardSlug || selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpPrecommit(true);
 			try {
-				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-precommit", { method: "POST" });
+				const res = await fetchJSON(repoAlias ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/setup-precommit" : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-precommit", { method: "POST" });
 				if (res && res.ok) {
 					showToast(res.message || "Created setup task for .zerofactory/precommit.sh!", "success");
-					await Promise.all([loadPrecommitStatus(bSlug), loadTasksAndStats(bSlug)]);
+					await Promise.all([loadPrecommitStatus(bSlug, repoAlias), loadTasksAndStats(bSlug)]);
 				} else showToast(res && (res.detail || res.error || res.message) || "Failed to trigger precommit setup", "error");
 			} catch (err) {
 				showToast("Error initiating setup: " + (err.message || String(err)), "error");
@@ -3494,7 +3727,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				setIsSettingUpPrecommit(false);
 			}
 		};
-		const loadOpenwikiStatus = useCallback(async (boardSlug) => {
+		const loadOpenwikiStatus = useCallback(async (boardSlug, repoAlias) => {
 			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
 			if (!bSlug || bSlug === "all") {
 				setOpenwikiStatus(null);
@@ -3502,24 +3735,30 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 			setIsLoadingOpenwiki(true);
 			try {
-				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/openwiki-status");
-				if (res && res.ok) setOpenwikiStatus(res);
-				else setOpenwikiStatus(null);
+				const res = await fetchJSON(repoAlias ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/openwiki-status" : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/openwiki-status");
+				if (res && res.ok) {
+					if (!repoAlias) setOpenwikiStatus(res);
+					const alias = repoAlias || res.repo_alias;
+					if (alias) setOpenwikiStatuses((prev) => ({
+						...prev,
+						[alias]: res
+					}));
+				} else if (!repoAlias) setOpenwikiStatus(null);
 			} catch (err) {
-				setOpenwikiStatus(null);
+				if (!repoAlias) setOpenwikiStatus(null);
 			} finally {
 				setIsLoadingOpenwiki(false);
 			}
 		}, [fetchJSON]);
-		const handleTriggerOpenwikiSetup = async (boardSlug) => {
+		const handleTriggerOpenwikiSetup = async (boardSlug, repoAlias) => {
 			const bSlug = boardSlug || selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpOpenwiki(true);
 			try {
-				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-openwiki", { method: "POST" });
+				const res = await fetchJSON(repoAlias ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/setup-openwiki" : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-openwiki", { method: "POST" });
 				if (res && res.ok) {
 					showToast(res.message || "Created setup task for OpenWiki!", "success");
-					await Promise.all([loadOpenwikiStatus(bSlug), loadTasksAndStats(bSlug)]);
+					await Promise.all([loadOpenwikiStatus(bSlug, repoAlias), loadTasksAndStats(bSlug)]);
 				} else showToast(res && (res.detail || res.error || res.message) || "Failed to trigger OpenWiki setup", "error");
 			} catch (err) {
 				showToast("Error initiating setup: " + (err.message || String(err)), "error");
@@ -3527,7 +3766,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				setIsSettingUpOpenwiki(false);
 			}
 		};
-		const loadGhIssuesStatus = useCallback(async (boardSlug) => {
+		const loadGhIssuesStatus = useCallback(async (boardSlug, repoAlias) => {
 			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
 			if (!bSlug || bSlug === "all") {
 				setGhIssuesStatus(null);
@@ -3535,24 +3774,30 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 			setIsLoadingGhIssues(true);
 			try {
-				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/gh-issues-status");
-				if (res && res.ok) setGhIssuesStatus(res);
-				else setGhIssuesStatus(null);
+				const res = await fetchJSON(repoAlias ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/gh-issues-status" : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/gh-issues-status");
+				if (res && res.ok) {
+					if (!repoAlias) setGhIssuesStatus(res);
+					const alias = repoAlias || res.repo_alias;
+					if (alias) setGhIssuesStatuses((prev) => ({
+						...prev,
+						[alias]: res
+					}));
+				} else if (!repoAlias) setGhIssuesStatus(null);
 			} catch (err) {
-				setGhIssuesStatus(null);
+				if (!repoAlias) setGhIssuesStatus(null);
 			} finally {
 				setIsLoadingGhIssues(false);
 			}
 		}, [fetchJSON]);
-		const handleTriggerGhIssuesSetup = async (boardSlug) => {
+		const handleTriggerGhIssuesSetup = async (boardSlug, repoAlias) => {
 			const bSlug = boardSlug || selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpGhIssues(true);
 			try {
-				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-gh-issues", { method: "POST" });
+				const res = await fetchJSON(repoAlias ? API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/repositories/" + encodeURIComponent(repoAlias) + "/setup-gh-issues" : API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-gh-issues", { method: "POST" });
 				if (res && res.ok) {
 					showToast(res.message || "Created setup task for GitHub Issue templates & labels!", "success");
-					await Promise.all([loadGhIssuesStatus(bSlug), loadTasksAndStats(bSlug)]);
+					await Promise.all([loadGhIssuesStatus(bSlug, repoAlias), loadTasksAndStats(bSlug)]);
 				} else showToast(res && (res.detail || res.error || res.message) || "Failed to trigger GitHub issues setup", "error");
 			} catch (err) {
 				showToast("Error initiating setup: " + (err.message || String(err)), "error");
@@ -4385,8 +4630,12 @@ var ZeroFactoryDashboard = (function(exports) {
 			try {
 				setIsSubmittingTask(true);
 				const chosenBoard = newTaskForm.board_slug && newTaskForm.board_slug !== "all" ? newTaskForm.board_slug : selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : "";
+				(boards || []).find((b) => b.slug === chosenBoard);
+				const defaultRepo = chosenRepos[0];
+				const targetRepoAlias = (newTaskForm.repo_alias || (defaultRepo ? defaultRepo.repo_alias : "")).trim() || void 0;
 				const payload = {
 					...newTaskForm,
+					repo_alias: targetRepoAlias,
 					pr_url: newTaskForm.pr_url && newTaskForm.pr_url.trim() ? newTaskForm.pr_url.trim() : null,
 					board_slug: chosenBoard
 				};
@@ -4405,7 +4654,8 @@ var ZeroFactoryDashboard = (function(exports) {
 					assignee: "unassigned",
 					tenant: "",
 					pr_url: "",
-					board_slug: ""
+					board_slug: "",
+					repo_alias: ""
 				});
 				loadTasksAndStats();
 			} catch (err) {
@@ -4435,20 +4685,23 @@ var ZeroFactoryDashboard = (function(exports) {
 		};
 		const handleCreateBoardSubmit = async (e) => {
 			e.preventDefault();
-			const gitUrl = (newBoardForm.git_url || "").trim();
-			if (!gitUrl) {
-				showToast("Please enter a Remote Git URL", "warning");
+			const validRepos = (newBoardForm.repositories || []).filter((r) => r.git_url && r.git_url.trim());
+			const firstUrl = validRepos[0]?.git_url || (newBoardForm.git_url || "").trim();
+			if (!firstUrl && validRepos.length === 0) {
+				showToast("Please enter at least one Remote Git URL", "warning");
 				return;
 			}
-			const autoSlug = computeGitSlug(gitUrl);
-			if (!autoSlug) {
-				const msg = "Could not derive a board slug from the URL. Please enter a valid Git URL.";
+			const explicitSlug = (newBoardForm.slug || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+			const fallbackSlug = computeGitSlug(firstUrl) || (validRepos[0]?.repo_alias || "").trim();
+			const targetSlug = explicitSlug || fallbackSlug;
+			if (!targetSlug) {
+				const msg = "Please enter a valid Board Slug or Git URL.";
 				setCreateBoardError(msg);
 				showToast(msg, "warning");
 				return;
 			}
-			if (boards.some((b) => b.slug === autoSlug)) {
-				const msg = "Board '" + autoSlug + "' already exists. Please enter a different repository URL.";
+			if (boards.some((b) => b.slug === targetSlug)) {
+				const msg = "Board '" + targetSlug + "' already exists. Please choose a different board slug.";
 				setCreateBoardError(msg);
 				showToast(msg, "warning");
 				return;
@@ -4456,27 +4709,46 @@ var ZeroFactoryDashboard = (function(exports) {
 			setCreateBoardError("");
 			setIsSubmittingBoard(true);
 			try {
+				const formattedRepos = validRepos.map((r) => ({
+					repo_alias: (r.repo_alias || computeGitSlug(r.git_url) || "main").trim(),
+					git_url: r.git_url.trim(),
+					target_branch: (r.target_branch || "main").trim(),
+					additional_reviewer_usernames: typeof r.additional_reviewer_usernames === "string" ? r.additional_reviewer_usernames.split(",").map((name) => name.trim()).filter(Boolean) : r.additional_reviewer_usernames || []
+				}));
 				const res = await fetchJSON(API_BASE + "/boards", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						git_url: gitUrl,
+						slug: targetSlug,
 						description: (newBoardForm.description || "").trim(),
-						target_branch: (newBoardForm.target_branch || "").trim(),
+						architecture: (newBoardForm.architecture || "").trim(),
 						max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
 						auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
-						additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
 						jira_url: (newBoardForm.jira_url || "").trim(),
-						auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false)
+						auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false),
+						repositories: formattedRepos.length > 0 ? formattedRepos : [{
+							repo_alias: targetSlug,
+							git_url: firstUrl,
+							target_branch: (newBoardForm.target_branch || "main").trim(),
+							additional_reviewer_usernames: (newBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean)
+						}]
 					})
 				});
-				const createdSlug = res && res.slug ? res.slug : autoSlug;
+				const createdSlug = res && res.slug ? res.slug : targetSlug;
 				showToast("Board '" + createdSlug + "' created!", "success");
 				setShowNewBoardModal(false);
 				setNewBoardForm({
+					slug: "",
 					git_url: "",
 					description: "",
-					target_branch: "",
+					target_branch: "main",
+					repositories: [{
+						repo_alias: "",
+						git_url: "",
+						target_branch: "main",
+						additional_reviewer_usernames: ""
+					}],
+					architecture: "",
 					max_concurrent_running: 1,
 					auto_record_memory: true,
 					additional_reviewer_usernames: "",
@@ -4540,11 +4812,18 @@ var ZeroFactoryDashboard = (function(exports) {
 					slug: curr.slug || "",
 					description: curr.description || "",
 					git_url: curr.git_url || "",
-					target_branch: curr.target_branch || "",
+					target_branch: curr.target_branch || "main",
+					architecture: curr.architecture || "",
+					repositories: curr.repositories || [],
 					max_concurrent_running: typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1 ? curr.max_concurrent_running : 1,
 					auto_record_memory: curr.auto_record_memory !== false,
 					additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : "",
 					jira_url: curr.jira_url || ""
+				});
+				(curr.repositories || []).forEach((r) => {
+					loadPrecommitStatus(curr.slug, r.repo_alias);
+					loadOpenwikiStatus(curr.slug, r.repo_alias);
+					loadGhIssuesStatus(curr.slug, r.repo_alias);
 				});
 				loadPrecommitStatus(curr.slug);
 				loadOpenwikiStatus(curr.slug);
@@ -4556,17 +4835,22 @@ var ZeroFactoryDashboard = (function(exports) {
 			e.preventDefault();
 			if (!editBoardForm.slug) return;
 			try {
+				const formattedRepos = (editBoardForm.repositories || []).map((r) => ({
+					repo_alias: (r.repo_alias || "").trim(),
+					git_url: (r.git_url || "").trim(),
+					target_branch: (r.target_branch || "main").trim(),
+					additional_reviewer_usernames: typeof r.additional_reviewer_usernames === "string" ? r.additional_reviewer_usernames.split(",").map((name) => name.trim()).filter(Boolean) : r.additional_reviewer_usernames || []
+				}));
 				await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(editBoardForm.slug), {
 					method: "PATCH",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
 						description: (editBoardForm.description || "").trim(),
-						git_url: (editBoardForm.git_url || "").trim(),
-						target_branch: (editBoardForm.target_branch || "").trim(),
+						architecture: (editBoardForm.architecture || "").trim(),
 						max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
 						auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
-						additional_reviewer_usernames: (editBoardForm.additional_reviewer_usernames || "").split(",").map((name) => name.trim()).filter(Boolean),
-						jira_url: (editBoardForm.jira_url || "").trim()
+						jira_url: (editBoardForm.jira_url || "").trim(),
+						repositories: formattedRepos
 					})
 				});
 				showToast("Board '" + editBoardForm.slug + "' updated!", "success");
@@ -4574,6 +4858,44 @@ var ZeroFactoryDashboard = (function(exports) {
 				await loadBoards();
 			} catch (err) {
 				showToast("Failed to update board: " + err.message, "error");
+			}
+		};
+		const handleAddBoardRepo = async (slug, repoData) => {
+			try {
+				await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(slug) + "/repositories", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(repoData)
+				});
+				showToast("Repository '" + repoData.repo_alias + "' added to board", "success");
+				await loadBoards();
+				const updatedBoards = await fetchJSON(API_BASE + "/boards");
+				if (updatedBoards && updatedBoards.boards) {
+					const b = updatedBoards.boards.find((x) => x.slug === slug);
+					if (b) setEditBoardForm((prev) => ({
+						...prev,
+						repositories: b.repositories || []
+					}));
+				}
+			} catch (err) {
+				showToast("Failed to add repository: " + err.message, "error");
+			}
+		};
+		const handleDeleteBoardRepo = async (slug, repoAlias) => {
+			try {
+				await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(slug) + "/repositories/" + encodeURIComponent(repoAlias), { method: "DELETE" });
+				showToast("Repository '" + repoAlias + "' removed from board", "info");
+				await loadBoards();
+				const updatedBoards = await fetchJSON(API_BASE + "/boards");
+				if (updatedBoards && updatedBoards.boards) {
+					const b = updatedBoards.boards.find((x) => x.slug === slug);
+					if (b) setEditBoardForm((prev) => ({
+						...prev,
+						repositories: b.repositories || []
+					}));
+				}
+			} catch (err) {
+				showToast("Failed to remove repository: " + err.message, "error");
 			}
 		};
 		const handleDeleteBoard = async () => {
@@ -4812,6 +5134,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			selectedTask,
 			setSelectedTask,
 			boards,
+			tasks,
 			handleDeleteTask,
 			handleStopTaskSession,
 			stoppingSessionId,
@@ -4863,19 +5186,24 @@ var ZeroFactoryDashboard = (function(exports) {
 			handleTestClone,
 			cloneTestResult,
 			setCloneTestResult,
+			precommitStatuses,
 			precommitStatus,
 			isSettingUpPrecommit,
 			handleTriggerPrecommitSetup,
+			openwikiStatuses,
 			openwikiStatus,
 			isSettingUpOpenwiki,
 			handleTriggerOpenwikiSetup,
+			ghIssuesStatuses,
 			ghIssuesStatus,
 			isSettingUpGhIssues,
 			handleTriggerGhIssuesSetup,
 			isSettingUpJira,
 			handleTriggerJiraSetup,
 			isTestingJira,
-			handleTriggerJiraTest
+			handleTriggerJiraTest,
+			handleAddBoardRepo,
+			handleDeleteBoardRepo
 		}), React.createElement(SettingsModal, {
 			showSettingsModal,
 			setShowSettingsModal,

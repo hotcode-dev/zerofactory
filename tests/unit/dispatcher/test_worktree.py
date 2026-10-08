@@ -12,6 +12,7 @@ from dispatcher.worktree import (
     _handle_local_merge_conflict,
     _remove_worktree,
     resolve_task_repo_path,
+    setup_worktree,
 )
 
 
@@ -211,3 +212,138 @@ def test_handle_local_merge_conflict_blocks_when_max_retries_exceeded():
     meta = json.loads(row["metadata"])
     assert meta["conflict_retries"] == 4
     assert meta["blocked_reason_type"] == "stuck"
+
+
+def test_resolve_task_repo_path_multi_repo(tmp_path: Path):
+    """Board repositories table resolves specific repo aliases correctly."""
+    repo_primary = tmp_path / "primary"
+    repo_primary.mkdir()
+    (repo_primary / ".git").mkdir()
+
+    repo_secondary = tmp_path / "secondary"
+    repo_secondary.mkdir()
+    (repo_secondary / ".git").mkdir()
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    _init_tasks_db(conn)
+    conn.execute(
+        """
+        CREATE TABLE board_repositories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            board_slug TEXT,
+            repo_alias TEXT,
+            git_url TEXT,
+            target_branch TEXT,
+            additional_reviewer_usernames TEXT DEFAULT '[]'
+        )
+        """
+    )
+    conn.execute("INSERT INTO boards (slug, git_url) VALUES ('b-multi', ?)", (str(repo_primary),))
+    conn.execute(
+        "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('b-multi', 'primary', ?, 'main')",
+        (str(repo_primary),),
+    )
+    conn.execute(
+        "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('b-multi', 'secondary', ?, 'main')",
+        (str(repo_secondary),),
+    )
+    conn.commit()
+
+    cur = conn.cursor()
+    # Resolve explicit secondary
+    res_sec = resolve_task_repo_path(cur, "b-multi", None, repo_alias="secondary")
+    assert res_sec == repo_secondary.resolve()
+
+    # Resolve default primary
+    res_prim = resolve_task_repo_path(cur, "b-multi", None)
+    assert res_prim == repo_primary.resolve()
+
+
+def test_setup_worktree_multi_repo_side_by_side(tmp_path: Path):
+    """setup_worktree provisions primary writable worktree and sibling read-only detached worktree side-by-side."""
+    primary_repo = tmp_path / "prim_repo"
+    primary_repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=str(primary_repo), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "ZeroFactory"], cwd=str(primary_repo), check=True)
+    subprocess.run(["git", "config", "user.email", "zf@example.com"], cwd=str(primary_repo), check=True)
+    (primary_repo / "main.txt").write_text("prim init\n")
+    subprocess.run(["git", "add", "."], cwd=str(primary_repo), check=True)
+    subprocess.run(["git", "commit", "-m", "init prim"], cwd=str(primary_repo), check=True, capture_output=True)
+
+    sibling_repo = tmp_path / "sib_repo"
+    sibling_repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=str(sibling_repo), check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "ZeroFactory"], cwd=str(sibling_repo), check=True)
+    subprocess.run(["git", "config", "user.email", "zf@example.com"], cwd=str(sibling_repo), check=True)
+    (sibling_repo / "lib.txt").write_text("sib init\n")
+    subprocess.run(["git", "add", "."], cwd=str(sibling_repo), check=True)
+    subprocess.run(["git", "commit", "-m", "init sib"], cwd=str(sibling_repo), check=True, capture_output=True)
+
+    db_path = tmp_path / "tasks.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    _init_tasks_db(conn)
+    conn.execute(
+        """
+        CREATE TABLE board_repositories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            board_slug TEXT,
+            repo_alias TEXT,
+            git_url TEXT,
+            target_branch TEXT,
+            additional_reviewer_usernames TEXT DEFAULT '[]'
+        )
+        """
+    )
+    conn.execute("INSERT INTO boards (slug, git_url, target_branch) VALUES ('test-board', ?, 'main')", (str(primary_repo),))
+    conn.execute(
+        "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('test-board', 'prim', ?, 'main')",
+        (str(primary_repo),),
+    )
+    conn.execute(
+        "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('test-board', 'sib', ?, 'main')",
+        (str(sibling_repo),),
+    )
+    conn.execute(
+        "INSERT INTO tasks (id, title, status, assignee, updated_at) VALUES ('t-101', 'Multi Repo Task', 'todo', 'zf-builder', 1000)"
+    )
+    conn.commit()
+
+    cur = conn.cursor()
+    # Intercept home directory to isolate worktrees under tmp_path / "home"
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    with (
+        patch("dispatcher.worktree.Path.home", return_value=fake_home),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+    ):
+        ws_path = setup_worktree(
+            cur,
+            task_id="t-101",
+            title="Multi Repo Task",
+            assignee="zf-builder",
+            tenant=None,
+            db_path=db_path,
+            board_slug="test-board",
+            repo_alias="prim",
+        )
+        conn.commit()
+
+        assert ws_path is not None
+        prim_dir = Path(ws_path)
+        assert prim_dir.exists()
+        assert prim_dir.name == "prim"
+        task_root = prim_dir.parent
+        assert task_root.name == "t-101"
+
+        # Check sibling side-by-side worktree
+        sib_dir = task_root / "sib"
+        assert sib_dir.exists()
+        assert (sib_dir / "lib.txt").exists()
+
+        # Teardown removes primary and sibling worktrees
+        _remove_worktree(ws_path, primary_repo)
+        assert not prim_dir.exists()
+        assert not sib_dir.exists()
+

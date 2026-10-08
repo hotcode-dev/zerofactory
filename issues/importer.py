@@ -52,17 +52,22 @@ def resolve_board_for_issue(
 
         # 2. Try matching repo_or_project to git_url, jira_url, or slug in boards
         if repo_or_project:
-            cursor.execute("SELECT * FROM boards ORDER BY created_at ASC")
+            cursor.execute(
+                "SELECT b.slug, b.jira_url, br.git_url, br.repo_alias FROM boards b LEFT JOIN board_repositories br ON b.slug = br.board_slug ORDER BY b.created_at ASC"
+            )
             for row in cursor.fetchall():
                 row_dict = dict(row)
                 slug = str(row_dict.get("slug") or "")
                 git_url = str(row_dict.get("git_url") or "")
+                repo_alias = str(row_dict.get("repo_alias") or "")
                 jira_url = str(row_dict.get("jira_url") or "")
                 if jira_url and repo_or_project.lower() in jira_url.lower():
                     return slug
+                if repo_alias and repo_or_project.lower() in repo_alias.lower():
+                    return slug
                 # Normalize git_url (strip .git, protocol)
                 cleaned_git = re.sub(r"\.git$", "", git_url).strip().rstrip("/")
-                if repo_or_project.lower() in cleaned_git.lower():
+                if cleaned_git and repo_or_project.lower() in cleaned_git.lower():
                     return slug
                 # Check slug match
                 norm_repo_slug = (
@@ -83,7 +88,7 @@ def resolve_board_for_issue(
                 cwd_url = cwd_remote.stdout.strip()
                 cleaned_cwd = re.sub(r"\.git$", "", cwd_url).strip().rstrip("/")
                 cursor.execute(
-                    "SELECT slug, git_url FROM boards ORDER BY created_at ASC"
+                    "SELECT b.slug, br.git_url FROM boards b LEFT JOIN board_repositories br ON b.slug = br.board_slug ORDER BY b.created_at ASC"
                 )
                 for row in cursor.fetchall():
                     slug = str(row["slug"])

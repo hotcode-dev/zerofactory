@@ -38,9 +38,10 @@ graph TD
 |---|---|
 | **24/7 Autonomous Factory** | Continuous agile iterations with rolling handoffs and parallel execution. |
 | **Anti-Overengineering & Simplicity** | Built-in Ponytail philosophy ("Ladder of Laziness"): favors standard libraries, minimal surgical diffs, dead code elimination, and zero speculative bloat across all roles. |
+| **Multi-Repository Project Workspaces** | Project boards link one or more equal Git repositories side-by-side with explicit board slugs, cross-service architecture prompts, and per-repository precommit/OpenWiki tooling. |
 | **Plugin-First Architecture** | Self-contained Hermes plugin with zero external Node.js or `hermes-profile-manager` dependencies. |
 | **Isolated Profiles** | Profiles are cleanly namespaced (`zf-orchestrator`, `zf-builder`, `zf-reviewer`) in `~/.hermes/profiles/` and never clash with personal user profiles. |
-| **Isolated Git Worktrees** | Every task runs in its own dedicated Git worktree (`~/git/<repo>-worktrees/<task_id>`). Agents never touch `main` directly. |
+| **Isolated Git Worktrees** | Every task runs in its own dedicated Git worktree (`~/git/<repo_alias>-worktrees/<task_id>`). Sibling repositories on the board check out side-by-side. Agents never touch `main` directly. |
 | **Thematic Continuous Review** | Layered code review capping at 2 focused rounds (Correctness & Tests → Verification & Polish) before handing off to human merge. |
 | **Deterministic Precommit Gate** | Standardized format ➔ build ➔ test pipeline (`.zerofactory/precommit.sh`) ensuring zero broken builds or lint errors before PRs. |
 | **OpenWiki Context Optimization** | Machine-readable architecture wiki (`openwiki/`) that slashes agent context bloat and exploratory tool calls by 30–40%. |
@@ -105,10 +106,11 @@ hermes zerofactory comment <task_id> "Note..."    # Post a comment to a ticket
 
 # Board operations
 hermes zerofactory board list                                          # List all project boards
-hermes zerofactory board create <git_url> [--target-branch <branch>]   # Add a new codebase board with optional target/base branch
+hermes zerofactory board create <git_url> [--slug <slug>] [--target-branch <branch>] [--architecture <arch>]   # Add a new board with optional custom slug & branch
+hermes zerofactory board update <slug> [--target-branch <branch>] [--architecture <arch>]                       # Update board settings
 hermes zerofactory board delete <slug>                                 # Delete a board and clear its scanner job
-hermes zerofactory setup-repo --board <slug>                           # File P0 setup task to generate .zerofactory/precommit.sh
-hermes zerofactory setup-openwiki --board <slug>                       # File P0 setup task to generate openwiki/ agent documentation
+hermes zerofactory setup-repo --board <slug> [--repo <alias>]          # File P0 setup task to generate .zerofactory/precommit.sh
+hermes zerofactory setup-openwiki --board <slug> [--repo <alias>]      # File P0 setup task to generate openwiki/ agent documentation
 
 # Dispatcher & Background Crons
 hermes zerofactory dispatch                       # Trigger an immediate dispatch cycle
@@ -190,6 +192,45 @@ Zero Factory implements a **Session-per-Handoff (Stateless Workers, Stateful Sub
 ### Stateless Workers, Stateful Substrate
 
 Zero Factory intentionally externalizes durable state into **Git worktrees**, **GitHub PR review comments**, and **Kanban SQLite storage** instead of accumulating conversation memory. This guarantees deterministic handoffs, avoids token exhaustion, and eliminates "Lost in the Middle" attention degradation across iterative multi-round code reviews.
+
+---
+
+## Project Workspaces & Multi-Repository Architecture
+
+Zero Factory models development around **Project Boards** that link one or more Git repositories side-by-side as equal first-class peers:
+
+```text
+Project Board: checkout-platform
+├── Board Settings:
+│   ├── Slug: checkout-platform (Custom user identifier)
+│   ├── Architecture Notes: Cross-service contracts & interface boundaries
+│   └── Max Concurrent Tasks: 2
+└── Equal Linked Repositories:
+    ├── backend (https://github.com/org/checkout-backend.git, target: main)
+    │   ├── .zerofactory/precommit.sh (independent format/build/test)
+    │   └── openwiki/ (independent architectural documentation)
+    ├── frontend (https://github.com/org/checkout-web.git, target: main)
+    │   ├── .zerofactory/precommit.sh
+    │   └── openwiki/
+    └── common-proto (https://github.com/org/common-proto.git, target: main)
+        └── .zerofactory/precommit.sh
+```
+
+### Key Multi-Repository Capabilities
+1. **Explicit Board Slugs**: Boards are identified by an explicit user-defined slug (`slug`), completely decoupled from any single repository's name.
+2. **Equal Peer Repositories**: Every repository attached to a board has complete configuration parity:
+   - Remote Git URL with live test-clone validation.
+   - Independent target base branch (default `main`).
+   - Dedicated trusted reviewers whose PR feedback routes to builder rework loops.
+   - Independent `.zerofactory/precommit.sh` gate verification.
+   - Independent `openwiki/` machine-readable documentation.
+   - Independent GitHub Issue Templates & labels.
+3. **Cross-Service Architecture & Contracts**:
+   - The board's `architecture` field captures high-level interface definitions, inter-service contracts, and dependency graphs.
+   - Automatically injected into all agent prompts (`## System Architecture & Inter-Service Contracts`) so workers understand boundaries before modifying code.
+4. **Side-by-Side Worktree Isolation**:
+   - Tasks target a specific repository (`repo_alias`).
+   - The dispatcher provisions the task worktree at `~/git/<repo_alias>-worktrees/<task_id>` while ensuring sibling repositories on the board are checked out side-by-side for cross-service inspection.
 
 ---
 
@@ -275,12 +316,12 @@ Zero Factory enforces a strict, deterministic precommit quality gate for every t
 If `.zerofactory/precommit.sh` encounters syntax errors or failing unit tests, the dispatcher does **not** abandon the task or open a broken PR. Instead, it captures the exact terminal stdout/stderr failure output and re-spawns `zf-builder` in an automated self-healing feedback loop (up to 3 retries) to fix regressions before proceeding to code review.
 
 ### Setting Up Precommit for a Board
-- **Web Dashboard**: When viewing a board that lacks `.zerofactory/precommit.sh`, a high-visibility amber warning banner appears above the Kanban board with a 1-click **⚡ Setup Repo for Zero Factory** button. It can also be initiated from the Board Settings modal (`⚡ Setup Precommit Verification`).
+- **Web Dashboard**: When viewing a board where repositories lack `.zerofactory/precommit.sh`, warning banners and per-repo cards in the Edit Board modal provide a 1-click **⚡ Setup Repo for Zero Factory** action for each repository.
 - **CLI**:
   ```bash
-  hermes zerofactory setup-repo --board <slug>
+  hermes zerofactory setup-repo --board <slug> [--repo <alias>]
   ```
-  This creates a `P0` ticket assigned to `zf-builder` to inspect the project layout, auto-detect language tooling, and generate an executable `.zerofactory/precommit.sh`.
+  This creates a `P0` ticket assigned to `zf-builder` targeting the specified repository (or the default repository if `--repo` is omitted) to inspect the project layout, auto-detect language tooling, and generate an executable `.zerofactory/precommit.sh`.
 
 ---
 
@@ -304,14 +345,12 @@ To keep multi-agent software development token-efficient and prevent context deg
 - **Multi-Agent Alignment**: Ensures `zf-builder`, `zf-reviewer`, and `zf-orchestrator` share a uniform understanding of the codebase structure, naming conventions, and cross-module boundaries.
 
 ### Setting Up OpenWiki for a Board
-- **Web Dashboard**: For any board without `openwiki/`, a glassmorphic sky-blue recommendation banner appears above the Kanban grid:
-  `📖 Recommended: OpenWiki Architecture Docs Not Generated [Context Optimization]`
-  Clicking **📖 Setup OpenWiki** (or triggering via Board Settings modal) dispatches an automated setup task.
+- **Web Dashboard**: For any repository on a board without `openwiki/`, recommendation banners and per-repo cards in the Edit Board modal offer 1-click **📖 Setup OpenWiki** triggers for each repository.
 - **CLI**:
   ```bash
-  hermes zerofactory setup-openwiki --board <slug>
+  hermes zerofactory setup-openwiki --board <slug> [--repo <alias>]
   ```
-  This dispatches a `P0` setup ticket directing `zf-builder` to run the OpenWiki MCP lifecycle, generate the architectural taxonomy, create module specs, and link them directly into `AGENTS.md`.
+  This dispatches a `P0` setup ticket targeting the repository directing `zf-builder` to run the OpenWiki MCP lifecycle, generate the architectural taxonomy, create module specs, and link them directly into `AGENTS.md`.
 
 ### Native MCP Architecture (Zero API Keys or ENV Setup)
 

@@ -27,8 +27,43 @@ export function TaskDetailModal(props) {
     selectedSessionIdx = null,
     setSelectedSessionIdx = () => {},
     refreshSessionProgress = () => {},
-    handleAdvanceTask = () => {}
+    handleAdvanceTask = () => {},
+    tasks = []
   } = props;
+
+  const [depTaskId, setDepTaskId] = React.useState("");
+  const [depLinkType, setDepLinkType] = React.useState("blocks");
+
+  const handleLinkDependency = async () => {
+    if (!depTaskId || !selectedTask) return;
+    try {
+      await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/dependencies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parent_id: depTaskId, link_type: depLinkType })
+      });
+      showToast("Linked dependency #" + depTaskId + " (" + depLinkType + ")", "success");
+      setDepTaskId("");
+      loadTaskDetails(selectedTask.id);
+      loadTasksAndStats();
+    } catch (err) {
+      showToast("Failed to link dependency: " + err.message, "error");
+    }
+  };
+
+  const handleRemoveDependency = async (parentId) => {
+    if (!selectedTask) return;
+    try {
+      await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/dependencies/" + parentId, {
+        method: "DELETE"
+      });
+      showToast("Removed dependency link #" + parentId, "info");
+      loadTaskDetails(selectedTask.id);
+      loadTasksAndStats();
+    } catch (err) {
+      showToast("Failed to unlink: " + err.message, "error");
+    }
+  };
 
   if (!selectedTask) return null;
 
@@ -181,13 +216,16 @@ export function TaskDetailModal(props) {
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Project / Tenant"),
-                    React.createElement("input", {
-                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none opacity-80 cursor-default",
-                      value: selectedTask.tenant || "",
-                      placeholder: "e.g. ~/git/hotcode-dev/zerofactory",
-                      readOnly: true
-                    })
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Repository & Board"),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono min-h-[34px]" },
+                      selectedTask.repo_alias ?
+                        React.createElement("span", { className: "px-2 py-0.5 rounded font-semibold bg-teal-950/80 text-teal-300 border border-teal-800/60" }, "📦 " + selectedTask.repo_alias) :
+                        React.createElement("span", { className: "text-slate-400" }, "Default Repo"),
+                      selectedTask.board_slug &&
+                        React.createElement("span", { className: "text-slate-500 text-[11px]" }, "(" + selectedTask.board_slug + ")")
+                    )
                   )
                 ),
 
@@ -578,26 +616,136 @@ export function TaskDetailModal(props) {
                   );
                 })(),
 
-                // Dependencies List
-                selectedTask.parents &&
-                selectedTask.parents.length > 0 &&
+                // Dependencies & Relationships Section
                 React.createElement(
                   "div",
-                  { className: "space-y-1.5" },
-                  React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Parent Dependencies (Must complete first)"),
+                  { className: "p-3.5 rounded-lg bg-slate-950/70 border border-slate-800/90 space-y-3" },
                   React.createElement(
                     "div",
-                    { className: "flex flex-col gap-1.5" },
-                    selectedTask.parents.map((p) =>
-                      React.createElement(
-                        "div",
-                        {
-                          key: p.id,
-                          className: "flex items-center justify-between p-2 rounded-md bg-slate-800/40 border border-slate-800 text-xs text-slate-300"
-                        },
-                        React.createElement("span", null, p.id + ": " + p.title),
-                        React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400" }, p.status)
+                    { className: "flex items-center justify-between" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "🔗 Task Dependencies & Sequential Relations"),
+                    React.createElement("span", { className: "text-[10px] text-slate-500" }, "Parent blockers vs Peer related features")
+                  ),
+
+                  // Parent Links (Upstream)
+                  selectedTask.parents && selectedTask.parents.length > 0 &&
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("span", { className: "text-[11px] font-semibold text-slate-400" }, "Upstream Dependencies:"),
+                    React.createElement(
+                      "div",
+                      { className: "flex flex-col gap-1.5" },
+                      selectedTask.parents.map((p) =>
+                        React.createElement(
+                          "div",
+                          {
+                            key: p.id,
+                            className: "flex items-center justify-between p-2 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-300 gap-2"
+                          },
+                          React.createElement(
+                            "div",
+                            { className: "flex items-center gap-2 min-w-0 flex-wrap" },
+                            p.link_type === "relates_to" ?
+                              React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-950/80 text-sky-300 border border-sky-800/60" }, "🔵 Relates to") :
+                              React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-800/60" }, "🔴 Blocks"),
+                            p.repo_alias && React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-teal-300 border border-slate-700/60" }, "📦 " + p.repo_alias),
+                            React.createElement("span", { className: "font-mono font-semibold text-indigo-300" }, "#" + p.id),
+                            React.createElement("span", { className: "truncate max-w-[240px]" }, p.title)
+                          ),
+                          React.createElement(
+                            "div",
+                            { className: "flex items-center gap-1.5 shrink-0" },
+                            React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400" }, p.status),
+                            React.createElement(
+                              "button",
+                              {
+                                type: "button",
+                                className: "text-rose-400 hover:text-rose-300 px-1 text-xs font-semibold cursor-pointer",
+                                onClick: () => handleRemoveDependency(p.id),
+                                title: "Remove dependency"
+                              },
+                              "✕"
+                            )
+                          )
+                        )
                       )
+                    )
+                  ),
+
+                  // Child Links (Downstream)
+                  selectedTask.children && selectedTask.children.length > 0 &&
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5 pt-1" },
+                    React.createElement("span", { className: "text-[11px] font-semibold text-slate-400" }, "Downstream Blocked / Related Tasks:"),
+                    React.createElement(
+                      "div",
+                      { className: "flex flex-col gap-1.5" },
+                      selectedTask.children.map((c) =>
+                        React.createElement(
+                          "div",
+                          {
+                            key: c.id,
+                            className: "flex items-center justify-between p-2 rounded-md bg-slate-900 border border-slate-800 text-xs text-slate-300 gap-2"
+                          },
+                          React.createElement(
+                            "div",
+                            { className: "flex items-center gap-2 min-w-0 flex-wrap" },
+                            c.link_type === "relates_to" ?
+                              React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-950/80 text-sky-300 border border-sky-800/60" }, "🔵 Relates to") :
+                              React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60" }, "⏳ Blocked by this"),
+                            c.repo_alias && React.createElement("span", { className: "px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-teal-300 border border-slate-700/60" }, "📦 " + c.repo_alias),
+                            React.createElement("span", { className: "font-mono font-semibold text-indigo-300" }, "#" + c.id),
+                            React.createElement("span", { className: "truncate max-w-[240px]" }, c.title)
+                          ),
+                          React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-400" }, c.status)
+                        )
+                      )
+                    )
+                  ),
+
+                  // Add Link Form
+                  React.createElement(
+                    "div",
+                    { className: "flex items-center gap-2 pt-2 border-t border-slate-800/80 flex-wrap sm:flex-nowrap" },
+                    React.createElement(
+                      "select",
+                      {
+                        className: "flex-1 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer min-w-[180px]",
+                        value: depTaskId,
+                        onChange: (e) => setDepTaskId(e.target.value)
+                      },
+                      React.createElement("option", { value: "" }, "-- Link to another task --"),
+                      (tasks || [])
+                        .filter((t) => t.id !== selectedTask.id && (!selectedTask.parents || !selectedTask.parents.some((p) => p.id === t.id)))
+                        .map((t) =>
+                          React.createElement(
+                            "option",
+                            { key: t.id, value: t.id },
+                            "#" + t.id + " " + (t.repo_alias ? "[" + t.repo_alias + "] " : "") + t.title + " (" + t.status + ")"
+                          )
+                        )
+                    ),
+                    React.createElement(
+                      "select",
+                      {
+                        className: "bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer shrink-0",
+                        value: depLinkType,
+                        onChange: (e) => setDepLinkType(e.target.value)
+                      },
+                      React.createElement("option", { value: "blocks" }, "🔴 Blocks (Hard Blocker)"),
+                      React.createElement("option", { value: "relates_to" }, "🔵 Relates to (Soft Peer)")
+                    ),
+                    React.createElement(
+                      "button",
+                      {
+                        type: "button",
+                        disabled: !depTaskId,
+                        className: "px-3 py-1.5 rounded text-xs font-medium text-indigo-300 bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0",
+                        onClick: handleLinkDependency
+                      },
+                      "+ Link"
                     )
                   )
                 ),

@@ -133,6 +133,8 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
     """Resolve the local repository path for a given Kanban board."""
     slug = (board.get("slug") or "").strip()
     git_url = (board.get("git_url") or "").strip()
+    if not git_url and board.get("repositories"):
+        git_url = (board["repositories"][0].get("git_url") or "").strip()
     if not git_url and board.get("description"):
         match = re.search(r"(?:https?://|git@)[^\s)]+", board["description"])
         if match:
@@ -303,6 +305,15 @@ def get_all_builtin_cron_jobs() -> dict[str, dict[str, Any]]:
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM boards ORDER BY created_at ASC")
                 boards = [dict(row) for row in cursor.fetchall()]
+                for b in boards:
+                    cursor.execute(
+                        "SELECT * FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
+                        (b["slug"],),
+                    )
+                    b_repos = [dict(r) for r in cursor.fetchall()]
+                    b["repositories"] = b_repos
+                    if b_repos and not b.get("git_url"):
+                        b["git_url"] = b_repos[0].get("git_url", "")
         except Exception as e:
             _log.warning("Failed to query boards for cron generation: %s", e)
 

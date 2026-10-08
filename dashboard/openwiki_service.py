@@ -39,11 +39,12 @@ SETUP_OPENWIKI_TASK_TITLE_PREFIX = "chore(repo): setup OpenWiki"
 
 
 def build_openwiki_setup_task_prompt(
-    board_slug: str, repo_path: Path | None = None
+    board_slug: str, repo_path: Path | None = None, repo_alias: str | None = None
 ) -> str:
     """Generate structured instructions for zf-builder to generate OpenWiki agent docs via OpenWiki MCP in repository code mode."""
     path_hint = f" (`{repo_path}`)" if repo_path else ""
-    return f"""Set up OpenWiki machine-readable agent documentation for this repository{path_hint} on board `{board_slug}` in repository code mode.
+    target_desc = f"repository `{repo_alias}`" if repo_alias else "this repository"
+    return f"""Set up OpenWiki machine-readable agent documentation for {target_desc}{path_hint} on board `{board_slug}` in repository code mode.
 
 ## Target
 Directory: `{OPENWIKI_RELATIVE_DIR}/` (managed via OpenWiki MCP in repository code mode)
@@ -93,10 +94,13 @@ Generate a high-signal, machine-readable architectural knowledge base in `{OPENW
 """
 
 
-def check_board_openwiki_status(board_slug: str) -> dict[str, Any]:
-    """Check if openwiki/ exists for a board and check active setup task status."""
+def check_board_openwiki_status(
+    board_slug: str, repo_alias: str | None = None
+) -> dict[str, Any]:
+    """Check if openwiki/ exists for a repository and check active setup task status."""
     return check_board_setup_status(
         board_slug,
+        repo_alias=repo_alias,
         has_key="has_openwiki",
         path_key="openwiki_path",
         preview_key="wiki_index_preview",
@@ -108,10 +112,13 @@ def check_board_openwiki_status(board_slug: str) -> dict[str, Any]:
     )
 
 
-def create_openwiki_setup_task(board_slug: str, actor: str = "user") -> dict[str, Any]:
-    """Create or return an existing setup task to generate openwiki/ documentation."""
+def create_openwiki_setup_task(
+    board_slug: str, repo_alias: str | None = None, actor: str = "user"
+) -> dict[str, Any]:
+    """Create or return an existing setup task to generate openwiki/ documentation for a repository."""
     return create_setup_task(
         board_slug,
+        repo_alias=repo_alias,
         status_checker=check_board_openwiki_status,
         title=SETUP_OPENWIKI_TASK_TITLE,
         prompt_builder=build_openwiki_setup_task_prompt,

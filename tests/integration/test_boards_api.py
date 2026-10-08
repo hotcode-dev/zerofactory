@@ -222,3 +222,99 @@ def test_board_status_endpoints_do_not_clone(api_client: TestClient, monkeypatch
 
     clones = [c for c in calls if len(c) >= 2 and c[1] == "clone"]
     assert not clones, f"status endpoints triggered git clone: {clones}"
+
+
+def test_board_multi_repositories_and_architecture(api_client: TestClient):
+    """Verify multi-repo management and architecture notes endpoints on boards."""
+    # 1. Create a board with initial repositories and architecture
+    arch_initial = """---
+dependencies:
+  api-gateway: [common-lib, order-service]
+---
+### Notes
+Shared protobufs in common-lib.
+"""
+    res = api_client.post(
+        "/api/plugins/zerofactory/boards",
+        json={
+            "git_url": "https://github.com/my-org/api-gateway.git",
+            "description": "API Gateway service",
+            "architecture": arch_initial,
+            "repositories": [
+                {
+                    "repo_alias": "common-lib",
+                    "git_url": "https://github.com/my-org/common-lib.git",
+                    "target_branch": "main",
+                },
+                {
+                    "repo_alias": "order-service",
+                    "git_url": "https://github.com/my-org/order-service.git",
+                    "target_branch": "main",
+                },
+            ],
+        },
+    )
+    assert res.status_code == 200
+    slug = res.json()["slug"]
+    assert slug == "my-org-api-gateway"
+
+    # 2. GET board and verify repositories and architecture
+    board_res = api_client.get(f"/api/plugins/zerofactory/boards/{slug}")
+    assert board_res.status_code == 200
+    b = board_res.json()["board"]
+    assert b["architecture"] == arch_initial.strip()
+    aliases = {r["repo_alias"] for r in b["repositories"]}
+    assert "api-gateway" in aliases
+    assert "common-lib" in aliases
+    assert "order-service" in aliases
+
+    # 3. Add 4th repository via POST /repositories
+    add_repo_res = api_client.post(
+        f"/api/plugins/zerofactory/boards/{slug}/repositories",
+        json={
+            "repo_alias": "event-worker",
+            "git_url": "https://github.com/my-org/event-worker.git",
+            "target_branch": "main",
+            "additional_reviewer_usernames": ["worker-lead"],
+        },
+    )
+    assert add_repo_res.status_code == 200
+    assert add_repo_res.json()["repository"]["repo_alias"] == "event-worker"
+
+    # 4. List repositories
+    list_repos_res = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/repositories")
+    assert list_repos_res.status_code == 200
+    repo_aliases = [r["repo_alias"] for r in list_repos_res.json()["repositories"]]
+    assert "event-worker" in repo_aliases
+    assert len(repo_aliases) == 4
+
+    # 5. Update repository
+    put_repo_res = api_client.put(
+        f"/api/plugins/zerofactory/boards/{slug}/repositories/event-worker",
+        json={"target_branch": "develop", "additional_reviewer_usernames": ["worker-lead", "qa-eng"]},
+    )
+    assert put_repo_res.status_code == 200
+    assert put_repo_res.json()["repository"]["target_branch"] == "develop"
+    assert "qa-eng" in put_repo_res.json()["repository"]["additional_reviewer_usernames"]
+
+    # 6. Update architecture via PUT /architecture
+    new_arch = "### Updated Architecture\nAll services ready."
+    arch_res = api_client.put(
+        f"/api/plugins/zerofactory/boards/{slug}/architecture",
+        json={"architecture": new_arch},
+    )
+    assert arch_res.status_code == 200
+    assert arch_res.json()["architecture"] == new_arch
+
+    get_arch_res = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/architecture")
+    assert get_arch_res.status_code == 200
+    assert get_arch_res.json()["architecture"] == new_arch
+
+    # 7. Delete repository
+    del_repo_res = api_client.delete(f"/api/plugins/zerofactory/boards/{slug}/repositories/event-worker")
+    assert del_repo_res.status_code == 200
+
+    list_after_del = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/repositories")
+    aliases_after = [r["repo_alias"] for r in list_after_del.json()["repositories"]]
+    assert "event-worker" not in aliases_after
+    assert len(aliases_after) == 3

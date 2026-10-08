@@ -5,7 +5,9 @@ import subprocess
 from pathlib import Path
 
 from dispatcher.context_builder import (
+    digest_board_architecture_context,
     digest_board_memories_context,
+    digest_parent_and_peer_tasks_context,
     digest_reviewer_git_context,
     format_conventional_message,
 )
@@ -135,3 +137,99 @@ def test_digest_reviewer_git_context_with_commits(tmp_path: Path):
     assert "Pre-Digested PR Changes" in ctx
     assert "feature.py" in ctx
     assert "feat: add hello function" in ctx
+
+
+def test_digest_board_architecture_context(tmp_path: Path):
+    """Verify system architecture notes and multi-repo topology extraction."""
+    db_file = tmp_path / "test.db"
+    with sqlite3.connect(str(db_file)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE boards (
+                slug TEXT PRIMARY KEY,
+                name TEXT,
+                architecture TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE board_repositories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                board_slug TEXT,
+                repo_alias TEXT,
+                git_url TEXT,
+                target_branch TEXT,
+                additional_reviewer_usernames TEXT DEFAULT '[]'
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO boards (slug, name, architecture) VALUES ('b-multi', 'Multi-Repo', 'Services communicate via Kafka events.')"
+        )
+        conn.execute(
+            "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('b-multi', 'gateway', 'git@github.com:org/gateway.git', 'main')"
+        )
+        conn.execute(
+            "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('b-multi', 'auth-service', 'git@github.com:org/auth.git', 'main')"
+        )
+        conn.commit()
+
+    ctx = digest_board_architecture_context("b-multi", current_repo_alias="gateway", db_path=str(db_file))
+    assert "SYSTEM ARCHITECTURE & MULTI-REPO TOPOLOGY" in ctx
+    assert "Active Target Repository: `gateway`" in ctx
+    assert "auth-service" in ctx
+    assert "../auth-service/" in ctx
+    assert "Services communicate via Kafka events." in ctx
+
+
+def test_digest_parent_and_peer_tasks_context(tmp_path: Path):
+    """Verify parent blocker and peer relation extraction."""
+    db_file = tmp_path / "test.db"
+    with sqlite3.connect(str(db_file)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE tasks (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                status TEXT,
+                repo_alias TEXT,
+                pr_url TEXT,
+                metadata TEXT,
+                created_at INTEGER
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE task_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                parent_id TEXT,
+                child_id TEXT,
+                link_type TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, repo_alias, pr_url, created_at) VALUES ('t-1', 'Update common lib', 'done', 'common-lib', 'https://github.com/org/common/pull/1', 100)"
+        )
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, repo_alias, pr_url, created_at) VALUES ('t-2', 'Update auth service', 'running', 'auth-service', '', 200)"
+        )
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, repo_alias, pr_url, created_at) VALUES ('t-3', 'Update gateway', 'todo', 'gateway', '', 300)"
+        )
+
+        # t-2 is blocked by t-1 (blocks) and relates to t-3 (relates_to)
+        conn.execute("INSERT INTO task_links (parent_id, child_id, link_type) VALUES ('t-1', 't-2', 'blocks')")
+        conn.execute("INSERT INTO task_links (parent_id, child_id, link_type) VALUES ('t-2', 't-3', 'relates_to')")
+        conn.commit()
+
+    ctx = digest_parent_and_peer_tasks_context("t-2", db_path=str(db_file))
+    assert "TASK DEPENDENCIES & RELATED FEATURES" in ctx
+    assert "Upstream Completed Dependencies:" in ctx
+    assert "#t-1 [common-lib]: Update common lib" in ctx
+    assert "(PR: https://github.com/org/common/pull/1)" in ctx
+    assert "Related Peer Tasks in this Feature:" in ctx
+    assert "#t-3 [gateway]: Update gateway" in ctx
+

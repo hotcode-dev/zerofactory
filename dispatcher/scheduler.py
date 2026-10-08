@@ -94,15 +94,26 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                 except Exception:
                     settings = {}
 
+                try:
+                    task_cols = {
+                        c[1]
+                        for c in cursor.execute("PRAGMA table_info(tasks)").fetchall()
+                    }
+                except Exception:
+                    task_cols = set()
+                repo_col = ", repo_alias" if "repo_alias" in task_cols else ""
+
                 # 1. Unblock tasks whose parent dependencies are all done
                 cursor.execute("""
                     SELECT id, title FROM tasks
                     WHERE status = 'blocked'
-                    AND id IN (SELECT child_id FROM task_links)
+                    AND id IN (SELECT child_id FROM task_links WHERE link_type = 'blocks' OR link_type IS NULL)
                     AND NOT EXISTS (
                         SELECT 1 FROM task_links tl
                         JOIN tasks pt ON pt.id = tl.parent_id
-                        WHERE tl.child_id = tasks.id AND pt.status != 'done'
+                        WHERE tl.child_id = tasks.id
+                        AND (tl.link_type = 'blocks' OR tl.link_type IS NULL)
+                        AND pt.status != 'done'
                     )
                 """)
                 for row in cursor.fetchall():
@@ -155,8 +166,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     running_per_board[str(rc_row["board_slug"] or "")] = rc_row["cnt"]
 
                 if active_count < max_active_tasks and llm_workers < max_llm_workers:
-                    cursor.execute("""
-                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug, status FROM tasks
+                    cursor.execute(f"""
+                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug, status{repo_col} FROM tasks
                         WHERE status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator')
                         ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
                     """)
@@ -197,6 +208,11 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         board_slug = (
                             row["board_slug"] if "board_slug" in row.keys() else None
                         )
+                        repo_alias = (
+                            str(row["repo_alias"]).strip()
+                            if ("repo_alias" in row.keys() and row["repo_alias"])
+                            else None
+                        )
                         board_key = str(board_slug or "")
                         board_cap = board_max_running.get(
                             board_key, DEFAULT_MAX_CONCURRENT_WORKERS
@@ -220,6 +236,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 tenant,
                                 db_path,
                                 board_slug=board_slug,
+                                repo_alias=repo_alias,
                             )
                             if wt:
                                 workspace_path = wt
@@ -259,7 +276,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                     )
                                 else:
                                     repo_for_task = _disp.resolve_task_repo_path(
-                                        cursor, board_slug, tenant
+                                        cursor,
+                                        board_slug,
+                                        tenant,
+                                        repo_alias=repo_alias,
                                     )
                                     if repo_for_task and repo_for_task.exists():
                                         merged_ok, conflict_files, merge_err = (
@@ -316,6 +336,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 branch_name,
                                 board_slug=row["board_slug"],
                                 metadata=row["metadata"],
+                                repo_alias=repo_alias,
                             )
                         except Exception as e:
                             _log.error(
@@ -387,8 +408,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
                 if not os.environ.get("ZEROFACTORY_SKIP_GIT"):
-                    cursor.execute("""
-                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata FROM tasks
+                    cursor.execute(f"""
+                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata{repo_col} FROM tasks
                         WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
                            OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator'))
                            OR (status = 'running' AND metadata LIKE '%"awaiting_pr": true%')
@@ -422,6 +443,11 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         board_slug = (
                             row["board_slug"] if "board_slug" in row.keys() else None
                         )
+                        repo_alias = (
+                            str(row["repo_alias"]).strip()
+                            if ("repo_alias" in row.keys() and row["repo_alias"])
+                            else None
+                        )
                         raw_meta = row["metadata"] if "metadata" in row.keys() else "{}"
                         meta = {}
                         try:
@@ -431,14 +457,25 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                         if not workspace_path or not Path(workspace_path).exists():
                             repo_for_task = _disp.resolve_task_repo_path(
-                                cursor, board_slug, tenant
+                                cursor, board_slug, tenant, repo_alias=repo_alias
                             )
                             if repo_for_task:
-                                cand_wt = (
-                                    repo_for_task.parent
-                                    / f"{repo_for_task.name}-worktrees"
-                                    / task_id
-                                )
+                                target_name = repo_alias or repo_for_task.name
+                                if board_slug:
+                                    cand_wt = (
+                                        Path.home()
+                                        / "git"
+                                        / f"{board_slug}-worktrees"
+                                        / task_id
+                                        / target_name
+                                    )
+                                else:
+                                    cand_wt = (
+                                        repo_for_task.parent
+                                        / f"{repo_for_task.name}-worktrees"
+                                        / task_id
+                                        / target_name
+                                    )
                                 if cand_wt.exists():
                                     workspace_path = str(cand_wt)
                                     cursor.execute(
@@ -473,7 +510,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                         if not repo_path or not repo_path.exists():
                             repo_path = _disp.resolve_task_repo_path(
-                                cursor, board_slug, tenant
+                                cursor, board_slug, tenant, repo_alias=repo_alias
                             )
 
                         if not repo_path or not repo_path.exists():
@@ -557,6 +594,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         db_path,
                                         board_slug=board_slug,
                                         repo_path=repo_path,
+                                        repo_alias=repo_alias,
                                     )
                                     if wt and Path(wt).exists():
                                         workspace_path = wt
@@ -1074,12 +1112,29 @@ def _poll_pr_and_route_review(
         additional_reviewer_usernames: set[str] = set()
         if board_slug:
             try:
-                board_row = cursor.execute(
-                    "SELECT additional_reviewer_usernames FROM boards WHERE slug = ?",
-                    (board_slug,),
-                ).fetchone()
-                if board_row and board_row[0]:
-                    additional_reviewer_usernames = set(json.loads(board_row[0]))
+                task_repo_alias = (
+                    row["repo_alias"].strip()
+                    if ("repo_alias" in row.keys() and row["repo_alias"])
+                    else None
+                )
+                if task_repo_alias:
+                    repo_row = cursor.execute(
+                        "SELECT additional_reviewer_usernames FROM board_repositories WHERE board_slug = ? AND repo_alias = ?",
+                        (board_slug, task_repo_alias),
+                    ).fetchone()
+                    if repo_row and repo_row[0]:
+                        additional_reviewer_usernames = set(json.loads(repo_row[0]))
+                else:
+                    repo_rows = cursor.execute(
+                        "SELECT additional_reviewer_usernames FROM board_repositories WHERE board_slug = ?",
+                        (board_slug,),
+                    ).fetchall()
+                    for r in repo_rows:
+                        if r and r[0]:
+                            try:
+                                additional_reviewer_usernames.update(json.loads(r[0]))
+                            except Exception:
+                                pass
             except (TypeError, ValueError, json.JSONDecodeError):
                 _log.warning(
                     "Ignoring malformed additional reviewer allowlist for board %s",
@@ -1241,6 +1296,11 @@ def _poll_pr_and_route_review(
                     task_id,
                 ),
             )
+            repo_alias = (
+                str(row["repo_alias"]).strip()
+                if ("repo_alias" in row.keys() and row["repo_alias"])
+                else None
+            )
             _disp.setup_worktree(
                 cursor,
                 task_id,
@@ -1249,6 +1309,7 @@ def _poll_pr_and_route_review(
                 tenant,
                 db_path,
                 board_slug=board_slug,
+                repo_alias=repo_alias,
             )
             reason_text = (
                 f"Review feedback received (Round {commit_review_count}/{max_review_rounds}, {len(actionable_comments)} actionable comment(s)), routed back to {builder_author}"
@@ -1750,6 +1811,11 @@ def _package_and_open_pr(
             "UPDATE tasks SET assignee = 'zf-reviewer', pr_url = ?, metadata = ?, status = 'todo', updated_at = ? WHERE id = ?",
             (pr_url, json.dumps(meta), now, task_id),
         )
+        repo_alias = (
+            str(row["repo_alias"]).strip()
+            if ("repo_alias" in row.keys() and row["repo_alias"])
+            else None
+        )
         _disp.setup_worktree(
             cursor,
             task_id,
@@ -1758,6 +1824,7 @@ def _package_and_open_pr(
             tenant,
             db_path,
             board_slug=board_slug,
+            repo_alias=repo_alias,
         )
         if had_conflict:
             cursor.execute(

@@ -80,13 +80,20 @@ def sync_open_github_issues(cooldown_seconds: int = 900) -> list[dict]:
         imported_tasks = []
         with get_db_conn() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT slug, git_url FROM boards ORDER BY created_at ASC")
-            boards = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT b.slug, br.repo_alias, br.git_url
+                FROM boards b
+                JOIN board_repositories br ON b.slug = br.board_slug
+                ORDER BY b.created_at ASC
+                """
+            )
+            repos = cursor.fetchall()
 
         cache_updated = False
-        for b in boards:
-            slug = b["slug"]
-            git_url = b["git_url"] or ""
+        for r in repos:
+            slug = r["slug"]
+            git_url = r["git_url"] or ""
             m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)(?:\.git)?$", git_url)
             if not m:
                 continue

@@ -24,3 +24,32 @@ def test_run_migrations_applies_pending_in_order_and_once(tmp_path: Path):
         assert conn.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 1
     finally:
         conn.close()
+
+
+def test_migration_0001_initial_schema(tmp_path: Path):
+    """Verify 0001 initial schema creates boards, board_repositories, tasks, and task_links with unified multi-repo structure."""
+    from migrations import run_migrations
+
+    conn = sqlite3.connect(tmp_path / "actual.db")
+    try:
+        applied = run_migrations(conn)
+        assert "0001_initial_schema" in applied
+
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(boards)")
+        board_cols = {row[1] for row in cur.fetchall()}
+        assert {"slug", "description", "architecture", "max_concurrent_running", "auto_record_memory", "jira_url"}.issubset(board_cols)
+
+        cur.execute("PRAGMA table_info(board_repositories)")
+        repo_cols = {row[1] for row in cur.fetchall()}
+        assert {"id", "board_slug", "repo_alias", "git_url", "target_branch", "additional_reviewer_usernames"}.issubset(repo_cols)
+
+        cur.execute("PRAGMA table_info(tasks)")
+        task_cols = {row[1] for row in cur.fetchall()}
+        assert "repo_alias" in task_cols
+
+        cur.execute("PRAGMA table_info(task_links)")
+        link_cols = {row[1] for row in cur.fetchall()}
+        assert "link_type" in link_cols
+    finally:
+        conn.close()

@@ -11,7 +11,7 @@ graph LR
 
 ---
 
-## 🎯 Priority 1 (Immediate Epic): Multi-Repository Boards & System Topology
+## ✅ Priority 1 (Implemented): Multi-Repository Boards & System Architecture
 
 ### Problem Statement
 Real-world production architectures are rarely isolated single-repository monoliths. When teams operate microservices (e.g. shared libraries, API gateways, backend services, event consumers), an AI agent working in one repository is blind to:
@@ -23,59 +23,67 @@ Real-world production architectures are rarely isolated single-repository monoli
 ### Objectives & Deliverables
 
 #### 1. Multi-Repository Association per Board
-- Extend the Kanban board data model from a single `git_url` to support multiple linked repositories per board.
-- New relational entity: `board_repositories`:
+- Extended the Kanban board data model to support multiple linked repositories per board.
+- Relational entity `board_repositories`:
   - `board_slug`: Foreign key to board.
   - `repo_alias`: Unique identifier within the board (e.g. `common-lib`, `api-gateway`, `order-service`, `event-worker`).
-  - `git_url`: Remote Git repository URL.
-  - `default_branch`: Target base branch (e.g. `main` or `develop`).
+  - `git_url`: Remote Git repository URL or local path.
+  - `target_branch`: Target base branch (e.g. `main` or `develop`).
   - `role`: Service classification (`library`, `gateway`, `service`, `worker`, `docs`).
-  - `local_cache_path`: Cloned reference directory.
+  - `is_primary`: Flag denoting default repo for new board tasks.
 
-#### 2. System Topology & Relation Notes (`system_topology`)
-- Store a machine-readable architecture and dependency graph per board in YAML/Markdown.
+#### 2. Flat Side-by-Side Task Workspace Layout
+- **Single Primary Repo per Task:** Each task targets one primary repository for git commits, precommit checks, and pull requests (`1 task = 1 branch = 1 PR`).
+- **Side-by-Side Sibling Checkouts:**
+  ```text
+  ~/git/zerofactory-worktrees/task-102/
+  ├── order-service/        <-- Primary target repo (writable worktree, branch task/102)
+  ├── common-lib/           <-- Sibling repo (read-only clean detached checkout of main)
+  ├── api-gateway/          <-- Sibling repo (read-only clean detached checkout of main)
+  └── notification-worker/  <-- Sibling repo (read-only clean detached checkout of main)
+  ```
+- **Execution Environment:**
+  - `TERMINAL_CWD` starts inside `./order-service/`.
+  - Natural relative path navigation (`../common-lib`) supports standard monorepo/microservice tooling (`go.work`, npm `file:../common-lib`, Docker Compose contexts) without synthetic directory wrappers.
+
+#### 3. System Architecture & Relation Notes (`architecture`)
+- Persisted on each board as `boards.architecture`.
+- Hybrid format: **YAML frontmatter** for machine-readable dependency edges and communication protocols + **Markdown body** for architecture notes, conventions, and gotchas.
 - Example representation:
-  ```yaml
-  architecture:
-    type: microservices
-    repositories:
-      common-lib:
-        role: library
-        description: "Shared domain models, DTOs, and RPC clients."
-      api-gateway:
-        role: gateway
-        depends_on: [common-lib]
-        calls:
-          - target: order-service
-            protocol: http_rest
-            contract_path: api-gateway/specs/orders.swagger.json
-            notes: "Proxies checkout and order placement with JWT auth."
-      order-service:
-        role: backend_service
-        depends_on: [common-lib]
-        emits:
-          - queue: orders.events
-            broker: aws_sqs
-            schema: common-lib/events/order_created.proto
-            consumed_by: [event-worker]
-      event-worker:
-        role: queue_consumer
-        depends_on: [common-lib]
-        consumes:
-          - queue: orders.events
-            handler: src/consumers/order_event.ts
+  ```markdown
+  ---
+  dependencies:
+    api-gateway: [common-lib, order-service]
+    order-service: [common-lib]
+    notification-worker: [common-lib]
+  communication:
+    api-gateway -> order-service: HTTP REST (port 8080)
+    order-service -> notification-worker: SQS queue "order-events"
+  ---
+
+  ### Microservice Notes & Contracts
+  - **common-lib**: Shared protobufs and DTOs. Bump `package.json` minor version on interface changes.
+  - **order-service**: Emits `OrderCreated` events defined in `common-lib/events/order.proto`.
+  - **api-gateway**: Proxies client requests; contracts located in `specs/swagger.json`.
   ```
 
-#### 3. Automatic Prompt Context Digest (`ContextBuilder`)
-- Automatically compile a `### System Architecture & Microservice Topology` block into the context of `zf-orchestrator`, `zf-builder`, and `zf-reviewer`.
-- Gives the LLM full visibility into:
-  - Upstream dependencies and downstream consumers.
-  - Where contracts and shared schemas live.
-  - Breaking-change risks across the service boundary.
-- Allows read-only inspection of related repo code/specs when working on a primary task.
+#### 4. Sequential Task Chaining & Rich Context Injection
+- Support both **Hard Blocking (`blocks`)** and **Soft Peer Relations (`relates_to`)**:
+  - Example Sequential Flow:
+    - `Task 1: [common-lib] Add refund event schema` ➔ **Blocks** Task 2 & Task 3
+    - `Task 2: [order-service] Emit refund event` ➔ **Blocked by** Task 1, **Relates to** Task 3
+    - `Task 3: [api-gateway] Expose POST /refund endpoint` ➔ **Blocked by** Task 1, **Relates to** Task 2
+- **Dispatcher Auto-Unblock:** When Task 1's PR is merged (`done`), the Dispatcher automatically transitions Task 2 and Task 3 from `blocked` to `todo`. `relates_to` tasks are non-blocking.
+- **Rich Context Injection in `ContextBuilder`:**
+  - When Task 2 runs, the dispatcher automatically injects:
+    1. **Completed Parent Context:** Task 1's title, PR URL, and completion status.
+    2. **Peer Task Context:** Task 3's title, target repo, and status so Task 2 aligns with parallel service work.
+    3. **System Architecture:** Relevant inter-service edges and architecture notes from `boards.architecture`.
+    4. **Sibling Repositories:** Sibling paths (`../<alias>/`), branches, and roles available for read-only inspection.
 
-#### 4. LLM Topology Assistant ("Relation Note Generator")
-- Allow `zf-orchestrator` to automatically scan repos (inspecting `package.json`, `go.mod`, `docker-compose.yml`, protobufs, or OpenAPI specs) to auto-generate and maintain the relational architecture graph.
+#### 5. Hybrid Task Chain Creation & Decomposition
+- Tasks specify `repo_alias`.
+- `zf-orchestrator` and humans can define task dependencies and assign target repositories.
 
 ---
 

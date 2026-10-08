@@ -52,17 +52,35 @@ flowchart TD
 | # | Invariant | Enforced by |
 |---|---|---|
 | 1 | Agents never run `git add/commit/push` — the dispatcher packages all work | worker prompts + dispatcher step 3 |
-| 2 | `main` is never touched by agents — every task runs in `~/git/<repo>-worktrees/<task_id>` | `worktree.setup_worktree` |
-| 3 | A PR is only created after the deterministic precommit gate passes | `worktree.run_deterministic_precommit` |
-| 4 | `done` is strictly terminal — packaging runs while the task is `running` (`awaiting_pr`) | scheduler terminal-done guard |
-| 5 | Exactly one status reply is posted to a source GitHub issue, only at PR-open time | `scheduler.post_issue_pr_comment` |
-| 6 | Nothing runs unbounded: worker timeout 3600s, retries capped, review rounds capped | reaper + `_handle_precommit_failure` + review cap |
+| 2 | `main` (or target branch) is never touched by agents — every task runs in `~/git/<repo_alias>-worktrees/<task_id>` | `worktree.setup_worktree` |
+| 3 | Sibling repositories linked to the board check out side-by-side for cross-service inspection | `worktree.resolve_task_repo_path` |
+| 4 | All repositories on a board are equal first-class peers with independent URLs, branches, reviewers, and precommit gates | `board_repositories` schema + dispatcher |
+| 5 | A PR is only created after the deterministic precommit gate passes on the task's repository | `worktree.run_deterministic_precommit` |
+| 6 | `done` is strictly terminal — packaging runs while the task is `running` (`awaiting_pr`) | scheduler terminal-done guard |
+| 7 | Exactly one status reply is posted to a source GitHub issue, only at PR-open time | `scheduler.post_issue_pr_comment` |
+| 8 | Nothing runs unbounded: worker timeout 3600s, retries capped, review rounds capped | reaper + `_handle_precommit_failure` + review cap |
 
 ---
 
-## 2. Task Model
+## 2. Board & Task Model
 
-### 2.1 Statuses (Kanban columns)
+### 2.1 Project Workspace & Multi-Repository Architecture
+
+Zero Factory organizes work into **Project Boards** that contain one or more equal peer Git repositories:
+
+- **Board Container (`boards`)**: Identified by an explicit user-configured **Board Slug** (e.g. `ecommerce-suite`, `order-system`). Contains project-wide metadata:
+  - `slug`: Unique board identifier used in CLI, URLs, and task routing.
+  - `description`: Scope and purpose of the project.
+  - `architecture`: Cross-service architectural boundaries, interface schemas, and inter-service contracts (injected into agent prompts).
+  - `max_concurrent_running`: Caps concurrent active tasks for this project (default 1).
+  - `auto_record_memory`: Automatic convention & gotcha extraction toggle.
+  - `jira_url`: Linked Jira Cloud project / filter URL.
+- **Equal Peer Repositories (`board_repositories`)**:
+  - Each repository is an equal first-class peer (`board_slug`, `repo_alias`, `git_url`, `target_branch`, `additional_reviewer_usernames`).
+  - Every repository features independent configuration: custom target branch (default `main`), trusted reviewers, independent precommit verification (`.zerofactory/precommit.sh`), independent OpenWiki machine-readable docs (`openwiki/`), and GitHub issue templates.
+  - Tasks declare both `board_slug` and `repo_alias`. Sibling repositories on the board check out side-by-side in workspaces for cross-repo inspection.
+
+### 2.2 Statuses (Kanban columns)
 
 | Status | Meaning | Who moves tasks here |
 |---|---|---|
@@ -72,7 +90,7 @@ flowchart TD
 | `blocked` | **Human gate only**: awaiting merge, review cap, exhausted budgets, unverifiable state | reviewer, dispatcher (budgets exhausted), human |
 | `done` | Completed — **strictly terminal** | dispatcher (MERGED/CLOSED/no-diff), human, orchestrator |
 
-### 2.2 Metadata flags & counters
+### 2.3 Metadata flags & counters
 
 | Key | Set by | Meaning |
 |---|---|---|
@@ -91,7 +109,7 @@ flowchart TD
 | `blocked_reason_type` | `move_task` (from `block --reason <code>`), dispatcher | Canonical routing code — `changes-requested` / `approved` / `human-gate` / `stuck` (retry budget exhausted), matched exactly, never prose |
 | `awaiting_interview`, `last_interview_reply` | orchestrator grill flow | Human interview state |
 
-### 2.3 Titles are state-free
+### 2.4 Titles are state-free
 
 Task titles never carry mutable lifecycle state — UI badges derive from structured fields:
 "waiting for merge" = `status=blocked && assignee=human`, "merge conflict" =
@@ -99,7 +117,7 @@ Task titles never carry mutable lifecycle state — UI badges derive from struct
 survive by convention: `[Triage]` (set once at issue import) and the `[AI:<profile>]`
 attribution prefix on GitHub PR titles/bodies (`ai_prefix`).
 
-### 2.4 State machine
+### 2.5 State machine
 
 ```mermaid
 stateDiagram-v2
@@ -190,8 +208,8 @@ Polls tasks matching: `pr_url` set and not `done`, OR `blocked` with a builder a
    - **`approved` verdict or `reviewDecision == APPROVED`** → `blocked` +
      `assignee=human` ("Reviewer approved; awaiting human merge").
 3. **Packaging fallback** (no PR yet, or `done`/`blocked` handoff): deterministic
-   **precommit gate** (§6) → conflict checks → commit (conventional message) → merge latest
-   target branch → push `task/<id>` → `gh pr create` (body carries `Fixes #N` / Jira link) →
+   **precommit gate** on the target repository (`repo_alias`) (§6) → conflict checks against the repository's configured `target_branch` → commit (conventional message) → merge latest
+   target branch → push `task/<id>` → `gh pr create` (body carries `Fixes #N` / Jira link, reviewer assigned from repository's trusted list) →
    `todo` + `assignee=zf-reviewer` + `metadata.packaged_by` → worktree removed →
    **issue reply** (§10). No diff vs base ("No commits between") → `done` directly.
 
@@ -232,8 +250,10 @@ flowchart TD
 ## 5. Prompt Assembly per Handoff (Session-per-Handoff)
 
 Each handoff spawns a **brand-new** session; durable state lives in git, the PR, and the DB.
-Common blocks on every prompt: task header (id/title/priority/description/workspace/branch) +
-**repository memory digest** (`digest_board_memories_context`, §12).
+Common blocks on every prompt: task header (id/title/priority/description/workspace/branch),
+**repository memory digest** (`digest_board_memories_context`, §12),
+**cross-service architecture notes & contracts** (`## System Architecture & Inter-Service Contracts` from `board.architecture`),
+and **multi-repository context** (target repository alias, base branch, and sibling repository locations).
 
 | Handoff | Profile | Injected blocks | Terminal action expected |
 |---|---|---|---|
@@ -290,8 +310,8 @@ flowchart LR
   (`uv pip install --python python3` / `pip install --user`). If installation is impossible the
   gate exits non-zero with an actionable hint — it **never** degrades to `unittest discover`
   (the suite is pytest-based; fallback produced bogus collection errors).
-- Setup for a new board: dashboard banner / `hermes zerofactory setup-repo` files a P0 task
-  (§13) that generates the board's script.
+- Setup for a repository: dashboard per-repo cards/banners or `hermes zerofactory setup-repo --board <slug> [--repo <alias>]` files a P0 task
+  (§13) that generates the repository's `.zerofactory/precommit.sh` script.
 - Failure handling: `_handle_precommit_failure` records `precommit_retries` +
   `last_precommit_error`, re-spawns `zf-builder` with the exact output (≤ 3 retries), then
   blocks the task for human inspection.
@@ -304,8 +324,8 @@ flowchart LR
 flowchart TD
     W["setup_worktree<br/>~/git/repo-worktrees/TASK_ID<br/>branch task/TASK_ID"] --> WORK["agentic edits + tests in worktree"]
     WORK --> PRE["precommit gate (§6)"]
-    PRE --> STAGE["auto-format results staged<br/>conventional commit authored"]
-    STAGE --> MERGE["pull_and_merge_main<br/>target branch of the board"]
+    STAGE["auto-format results staged<br/>conventional commit authored"]
+    STAGE --> MERGE["pull_and_merge_main<br/>target branch of the repository"]
     MERGE -->|conflicts| CF{"conflict_retries under limit?"}
     CF -->|yes| CFB["conflict_retries++ in metadata<br/>zf-builder conflict session<br/>-> back to precommit"]
     CFB --> PRE
@@ -452,13 +472,13 @@ flowchart LR
 
 ## 13. Setup Bootstrapping (P0 tasks)
 
-Each board can be bootstrapped with dedicated P0 tasks (deduplicated; dashboard banners or CLI):
+Every repository linked to a board can be bootstrapped with dedicated P0 tasks (deduplicated; dashboard per-repo cards or CLI):
 
 | Flow | Command / button | Task delivers | Dedup key |
 |---|---|---|---|
-| Precommit gate | `hermes zerofactory setup-repo` | `.zerofactory/precommit.sh` (detects tooling; self-bootstrapping pinned tools; format→build→test; `install-hook`) | `setup:precommit` |
-| OpenWiki docs | `hermes zerofactory setup-openwiki` | `openwiki/` via OpenWiki MCP lifecycle, linked from `AGENTS.md` | `setup:openwiki` |
-| GitHub issue templates | `setup-gh-issues` endpoint | issue templates + labels via worktree → builder → precommit → PR | `setup:gh-issues` |
+| Precommit gate | `hermes zerofactory setup-repo --board <slug> [--repo <alias>]` | `.zerofactory/precommit.sh` (detects tooling; self-bootstrapping pinned tools; format→build→test; `install-hook`) | `setup:precommit[:<alias>]` |
+| OpenWiki docs | `hermes zerofactory setup-openwiki --board <slug> [--repo <alias>]` | `openwiki/` via OpenWiki MCP lifecycle, linked from `AGENTS.md` | `setup:openwiki[:<alias>]` |
+| GitHub issue templates | `setup-gh-issues` endpoint / modal | issue templates + labels via worktree → builder → precommit → PR | `setup:gh-issues[:<alias>]` |
 
 The precommit setup prompt itself encodes the gate's invariants: pytest-only test runs
 (**never** `unittest discover` for pytest suites) and mandatory runtime self-bootstrapping of
@@ -479,7 +499,7 @@ runtime → installed deps → simple functions → minimum viable diff) via bun
 
 ---
 
-## 15. Environment Knobs (`ZEROFACTORY_*`)
+## 15. Environment Knobs & Storage (`ZEROFACTORY_*`)
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -500,7 +520,7 @@ runtime → installed deps → simple functions → minimum viable diff) via bun
 | `ZEROFACTORY_SKIP_PRECOMMIT_SETUP` | unset | skip auto precommit-setup task on board create |
 | `ZEROFACTORY_SKIP_GH_API` | unset | skip GitHub API calls |
 
-Board settings (per board, DB): `target_branch`, `max_concurrent_running`,
-`auto_record_memory`, `additional_reviewer_usernames`, `jira_url`.
-Global settings (dashboard): `max_active_tasks`, `max_concurrent_llm_workers`,
-Langfuse tracing, auto-record toggle.
+- **Storage & Migrations**: Backed by embedded SQLite (`kanban.db` / `zerofactory.db`) in WAL mode. Schema is initialized via single consolidated migration `migrations/0001_initial_schema.sql`.
+- **Board Settings (`boards`)**: `slug`, `description`, `architecture`, `max_concurrent_running`, `auto_record_memory`, `jira_url`.
+- **Repository Settings (`board_repositories`)**: `repo_alias`, `git_url`, `target_branch`, `additional_reviewer_usernames`.
+- **Global Settings (dashboard)**: `max_active_tasks`, `max_concurrent_llm_workers`, Langfuse tracing, auto-record toggle.

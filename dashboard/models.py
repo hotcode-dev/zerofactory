@@ -11,7 +11,7 @@ _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, _PLUGIN_ROOT)
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 try:
     from ..paths import (  # type: ignore
@@ -57,11 +57,52 @@ ACTIVITY_ACTORS: list[str] = [
 ]
 
 
+VALID_REPO_ROLES = {"library", "gateway", "service", "worker", "docs", "other"}
+
+
+class BoardRepoCreate(BaseModel):
+    repo_alias: str = Field(..., min_length=1, max_length=128, description="Friendly alias (e.g. common-lib, order-service)")
+    git_url: str = Field(..., min_length=1, description="Remote Git URL")
+    target_branch: str | None = Field(default="main", description="Target base branch")
+    additional_reviewer_usernames: list[str] | None = Field(
+        default_factory=list,
+        description="Additional GitHub usernames whose PR feedback is trusted",
+    )
+    role: str | None = Field(default=None, description="Optional classification (service, library, worker, etc.)")
+    is_primary: bool | None = Field(default=None, description="Legacy/optional flag")
+
+
+class BoardRepoUpdate(BaseModel):
+    git_url: str | None = None
+    target_branch: str | None = None
+    additional_reviewer_usernames: list[str] | None = None
+    role: str | None = None
+    is_primary: bool | None = None
+
+
+class BoardRepoResponse(BaseModel):
+    id: int
+    board_slug: str
+    repo_alias: str
+    git_url: str
+    target_branch: str
+    additional_reviewer_usernames: list[str] = Field(default_factory=list)
+    created_at: int
+    updated_at: int
+
+
+class BoardArchitectureUpdate(BaseModel):
+    architecture: str = Field(..., description="Hybrid YAML frontmatter + Markdown body describing architecture")
+
+
 class BoardCreate(BaseModel):
-    git_url: str = Field(
-        ...,
-        min_length=1,
-        description="Remote Git URL (e.g. https://github.com/owner/repo.git)",
+    slug: str | None = Field(
+        default=None,
+        description="Board slug / identifier. If omitted, derived from git_url or first repository.",
+    )
+    git_url: str | None = Field(
+        default=None,
+        description="Remote Git URL for initial repository (if repositories list is omitted)",
     )
     description: str | None = ""
     target_branch: str | None = Field(
@@ -89,6 +130,22 @@ class BoardCreate(BaseModel):
         default=False,
         description="Automatically trigger setup task for .zerofactory/precommit.sh if missing",
     )
+    architecture: str | None = Field(
+        default="",
+        description="Inter-service architecture and dependency notes",
+    )
+    repositories: list[BoardRepoCreate] | None = Field(
+        default=None,
+        description="List of linked repositories for this board",
+    )
+
+    @model_validator(mode="after")
+    def validate_repositories_or_git_url(self):
+        has_git_url = bool(self.git_url and self.git_url.strip())
+        has_repos = bool(self.repositories and len(self.repositories) > 0)
+        if not has_git_url and not has_repos:
+            raise ValueError("Either git_url or repositories must be provided and non-empty")
+        return self
 
 
 class BoardUpdate(BaseModel):
@@ -113,6 +170,14 @@ class BoardUpdate(BaseModel):
         default=None,
         description="Optional Jira Cloud link / project URL (e.g. https://your-domain.atlassian.net)",
     )
+    architecture: str | None = Field(
+        default=None,
+        description="Inter-service architecture and dependency notes",
+    )
+    repositories: list[BoardRepoCreate] | None = Field(
+        default=None,
+        description="Optional list of linked repositories to create/update",
+    )
 
 
 class BoardTestClone(BaseModel):
@@ -133,6 +198,7 @@ class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=256)
     description: str | None = ""
     board_slug: str | None = None
+    repo_alias: str | None = None
     status: str | None = "triage"
     assignee: str | None = "unassigned"
     priority: str | None = "P2"
@@ -155,6 +221,7 @@ class TaskUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     board_slug: str | None = None
+    repo_alias: str | None = None
     status: str | None = None
     assignee: str | None = None
     priority: str | None = None

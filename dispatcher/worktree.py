@@ -20,22 +20,50 @@ from .config import (
 
 
 def resolve_task_repo_path(
-    cursor: sqlite3.Cursor | None, board_slug: str | None, tenant: str | None
+    cursor: sqlite3.Cursor | None,
+    board_slug: str | None,
+    tenant: str | None,
+    repo_alias: str | None = None,
 ) -> Path:
-    """Resolve the git repository root for a task given its board_slug and tenant."""
-    # 1. If board_slug is provided, query boards table and resolve repo path
+    """Resolve the git repository root for a task given its board_slug, tenant, and repo_alias."""
+    # 0. Check board_repositories if board_slug and cursor are provided
     if board_slug and cursor:
         try:
-            cursor.execute(
-                "SELECT slug, description, git_url FROM boards WHERE slug = ?",
-                (board_slug,),
-            )
-            b_row = cursor.fetchone()
-            if b_row:
-                b_dict = dict(b_row)
-                if b_dict.get("git_url"):
+            repo_row = None
+            if repo_alias:
+                try:
+                    cursor.execute(
+                        "SELECT repo_alias, git_url, target_branch FROM board_repositories WHERE board_slug = ? AND repo_alias = ?",
+                        (board_slug, repo_alias),
+                    )
+                    repo_row = cursor.fetchone()
+                except Exception:
+                    pass
+            if not repo_row:
+                try:
+                    cursor.execute(
+                        "SELECT repo_alias, git_url, target_branch FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+                        (board_slug,),
+                    )
+                    repo_row = cursor.fetchone()
+                except Exception:
+                    pass
+            if not repo_row:
+                try:
+                    cursor.execute("SELECT slug, git_url FROM boards WHERE slug = ?", (board_slug,))
+                    b_row = cursor.fetchone()
+                    if b_row and dict(b_row).get("git_url"):
+                        repo_row = {"repo_alias": dict(b_row)["slug"], "git_url": dict(b_row)["git_url"]}
+                except Exception:
+                    pass
+
+            if repo_row:
+                r_dict = dict(repo_row)
+                alias = (r_dict.get("repo_alias") or "").strip()
+                url = (r_dict.get("git_url") or "").strip()
+                if url:
                     try:
-                        p = Path(b_dict["git_url"])
+                        p = Path(url)
                         if p.is_dir() and (p / ".git").exists():
                             return p.resolve()
                     except Exception:
@@ -44,18 +72,21 @@ def resolve_task_repo_path(
                     try:
                         from ..builtin_cron import resolve_board_repo_path
                     except (ImportError, ValueError):
-                        from .builtin_cron import (
-                            resolve_board_repo_path,  # type: ignore
-                        )
+                        from .builtin_cron import resolve_board_repo_path  # type: ignore
                 except Exception:
                     from builtin_cron import resolve_board_repo_path  # type: ignore
-                resolved_b = resolve_board_repo_path(b_dict)
-                if (
-                    resolved_b
-                    and resolved_b.exists()
-                    and (resolved_b / ".git").exists()
-                ):
-                    return resolved_b
+
+                resolved_r = resolve_board_repo_path({"git_url": url, "slug": alias})
+                if resolved_r and resolved_r.exists() and (resolved_r / ".git").exists():
+                    return resolved_r
+
+                if alias:
+                    g_alias = Path.home() / "git" / alias
+                    if g_alias.exists() and (g_alias / ".git").exists():
+                        return g_alias
+                    for sub in (Path.home() / "git").glob(f"*/{alias}"):
+                        if sub.is_dir() and (sub / ".git").exists():
+                            return sub
         except Exception:
             pass
 
@@ -96,6 +127,7 @@ def setup_worktree(
     db_path: Path,
     board_slug: str | None = None,
     repo_path: Path | None = None,
+    repo_alias: str | None = None,
 ) -> str | None:
     """Ensure git worktree and branch exist for task execution."""
     valid_profiles = getattr(_d(), "VALID_PROFILES", VALID_PROFILES)
@@ -128,15 +160,32 @@ def setup_worktree(
     steps = StepTracker(task_id)
     steps.start("worktree.setup", f"assignee={assignee}")
 
-    # Resolve repo path
+    # Fetch repo_alias from tasks if not explicitly passed
+    if not repo_alias and cursor:
+        try:
+            cursor.execute("SELECT repo_alias FROM tasks WHERE id = ?", (task_id,))
+            t_row = cursor.fetchone()
+            if t_row and t_row[0]:
+                repo_alias = str(t_row[0]).strip()
+        except Exception:
+            pass
+
+    # Resolve primary repo path
     if not repo_path:
-        repo_path = _d().resolve_task_repo_path(cursor, board_slug, tenant)
+        repo_path = _d().resolve_task_repo_path(
+            cursor, board_slug, tenant, repo_alias=repo_alias
+        )
     if not repo_path or not repo_path.exists():
         steps.end("fail", f"repo path unresolvable: {repo_path}")
         return None
-    reponame = repo_path.name
 
-    worktree_dir = repo_path.parent / f"{reponame}-worktrees" / str(task_id)
+    target_name = repo_alias or repo_path.name
+    if board_slug:
+        worktree_base = Path.home() / "git" / f"{board_slug}-worktrees"
+    else:
+        worktree_base = repo_path.parent / f"{repo_path.name}-worktrees"
+    task_root = worktree_base / str(task_id)
+    worktree_dir = task_root / target_name
     worktree_dir.parent.mkdir(parents=True, exist_ok=True)
 
     branch_name = f"task/{task_id}"
@@ -144,12 +193,21 @@ def setup_worktree(
         target_branch = ""
         if cursor and board_slug:
             try:
-                cursor.execute(
-                    "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
-                )
-                b_row = cursor.fetchone()
-                if b_row and b_row[0]:
-                    target_branch = str(b_row[0]).strip()
+                if repo_alias:
+                    cursor.execute(
+                        "SELECT target_branch FROM board_repositories WHERE board_slug = ? AND repo_alias = ?",
+                        (board_slug, repo_alias),
+                    )
+                    br_row = cursor.fetchone()
+                    if br_row and br_row[0]:
+                        target_branch = str(br_row[0]).strip()
+                if not target_branch:
+                    cursor.execute(
+                        "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
+                    )
+                    b_row = cursor.fetchone()
+                    if b_row and b_row[0]:
+                        target_branch = str(b_row[0]).strip()
             except Exception:
                 pass
 
@@ -278,6 +336,81 @@ def setup_worktree(
             # Sync newly created worktree with latest default branch if assignee is builder
             if assignee == "zf-builder" and worktree_dir.exists():
                 _d().pull_and_merge_main(worktree_dir, repo_path, default_branch)
+
+        # Provision side-by-side sibling repositories
+        if cursor and board_slug:
+            try:
+                cursor.execute(
+                    "SELECT repo_alias, git_url, target_branch FROM board_repositories WHERE board_slug = ? AND repo_alias != ?",
+                    (board_slug, target_name),
+                )
+                sibling_rows = [dict(r) for r in cursor.fetchall()]
+                for s in sibling_rows:
+                    s_alias = (s.get("repo_alias") or "").strip()
+                    if not s_alias:
+                        continue
+                    s_dir = task_root / s_alias
+                    if not s_dir.exists():
+                        s_repo = _d().resolve_task_repo_path(
+                            cursor, board_slug, tenant, repo_alias=s_alias
+                        )
+                        if s_repo and s_repo.exists():
+                            s_branch = (s.get("target_branch") or "main").strip()
+                            try:
+                                _d().sync_repo_main(s_repo, default_branch=s_branch)
+                            except Exception:
+                                pass
+                            s_ref = f"origin/{s_branch}"
+                            v = subprocess.run(
+                                [
+                                    "git",
+                                    "show-ref",
+                                    "--verify",
+                                    "--quiet",
+                                    f"refs/remotes/{s_ref}",
+                                ],
+                                cwd=s_repo,
+                                timeout=5,
+                            )
+                            if v.returncode != 0:
+                                v2 = subprocess.run(
+                                    [
+                                        "git",
+                                        "show-ref",
+                                        "--verify",
+                                        "--quiet",
+                                        f"refs/heads/{s_branch}",
+                                    ],
+                                    cwd=s_repo,
+                                    timeout=5,
+                                )
+                                s_ref = s_branch if v2.returncode == 0 else "HEAD"
+                            try:
+                                subprocess.run(
+                                    [
+                                        "git",
+                                        "worktree",
+                                        "add",
+                                        "--detach",
+                                        str(s_dir),
+                                        s_ref,
+                                    ],
+                                    check=True,
+                                    cwd=s_repo,
+                                    timeout=10,
+                                    capture_output=True,
+                                )
+                            except Exception as sib_err:
+                                _log.debug(
+                                    "Could not add detached worktree for sibling %s: %s",
+                                    s_alias,
+                                    sib_err,
+                                )
+            except Exception as e:
+                _log.debug(
+                    "Error provisioning sibling worktrees for %s: %s", board_slug, e
+                )
+
         cursor.execute(
             "UPDATE tasks SET workspace_kind = 'dir', workspace_path = ?, branch_name = ? WHERE id = ?",
             (str(worktree_dir), branch_name, task_id),
@@ -430,9 +563,49 @@ def _delete_remote_branch(task_id: str, repo_path: Path) -> None:
 
 
 def _remove_worktree(workspace_path: str | None, repo_path: Path) -> None:
-    """Safely remove a git worktree without hanging the dispatch cycle."""
+    """Safely remove a git worktree and any sibling worktrees without hanging the dispatch cycle."""
     if not workspace_path or not Path(workspace_path).exists():
         return
+
+    ws_path = Path(workspace_path)
+    task_root = ws_path.parent
+
+    # 1. Clean up any sibling worktrees in task_root if under a -worktrees directory
+    try:
+        if task_root.exists() and "-worktrees" in str(task_root):
+            for item in task_root.iterdir():
+                if item.is_dir() and item != ws_path and (item / ".git").is_file():
+                    try:
+                        rev_res = subprocess.run(
+                            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            cwd=str(item),
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+                        sib_main = None
+                        if rev_res.returncode == 0:
+                            c_dir = Path(rev_res.stdout.strip())
+                            sib_main = c_dir.parent if c_dir.name == ".git" else c_dir
+                        if sib_main and sib_main.exists():
+                            subprocess.run(
+                                ["git", "worktree", "remove", str(item), "--force"],
+                                cwd=str(sib_main),
+                                capture_output=True,
+                                timeout=_WORKTREE_REMOVE_TIMEOUT,
+                            )
+                            subprocess.run(
+                                ["git", "worktree", "prune"],
+                                cwd=str(sib_main),
+                                capture_output=True,
+                                timeout=_WORKTREE_REMOVE_TIMEOUT,
+                            )
+                    except Exception as e:
+                        _log.debug("Could not cleanly remove sibling worktree %s: %s", item, e)
+    except Exception as e:
+        _log.debug("Could not inspect siblings in task_root %s: %s", task_root, e)
+
+    # 2. Remove primary worktree
     try:
         subprocess.run(
             ["git", "worktree", "remove", workspace_path, "--force"],
@@ -487,6 +660,21 @@ def _remove_worktree(workspace_path: str | None, repo_path: Path) -> None:
                 "Worktree directory still present after cleanup attempts: %s",
                 workspace_path,
             )
+
+    # 3. Clean up task_root directory if empty or under -worktrees
+    try:
+        import shutil
+
+        if (
+            task_root.exists()
+            and "-worktrees" in str(task_root)
+            and task_root != repo_path.parent
+            and task_root != Path.home()
+            and task_root != Path.home() / "git"
+        ):
+            shutil.rmtree(str(task_root), ignore_errors=True)
+    except Exception:
+        pass
 
 
 def _handle_pr_conflict_from_github(

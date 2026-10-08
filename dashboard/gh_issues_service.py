@@ -31,11 +31,12 @@ SETUP_GH_ISSUES_TASK_DEDUP_KEY = "setup:gh-issues"
 
 
 def build_gh_issues_setup_task_prompt(
-    board_slug: str, repo_path: Path | None = None
+    board_slug: str, repo_path: Path | None = None, repo_alias: str | None = None
 ) -> str:
     """Generate structured instructions for zf-builder to set up GitHub Issue templates and labels."""
     path_hint = f" at `{repo_path}`" if repo_path else ""
-    return f"""Set up standardized GitHub Issue templates and Zero Factory AI triage labels for this repository{path_hint} on board `{board_slug}`.
+    target_desc = f"repository `{repo_alias}`" if repo_alias else "this repository"
+    return f"""Set up standardized GitHub Issue templates and Zero Factory AI triage labels for {target_desc}{path_hint} on board `{board_slug}`.
 
 Target Directory: `{GH_ISSUES_RELATIVE_DIR}/`
 
@@ -82,10 +83,13 @@ This requires:
 """
 
 
-def check_board_gh_issues_status(board_slug: str) -> dict[str, Any]:
-    """Check if .github/ISSUE_TEMPLATE exists for a board and check active setup task status."""
+def check_board_gh_issues_status(
+    board_slug: str, repo_alias: str | None = None
+) -> dict[str, Any]:
+    """Check if .github/ISSUE_TEMPLATE exists for a repository and check active setup task status."""
     return check_board_setup_status(
         board_slug,
+        repo_alias=repo_alias,
         has_key="has_gh_issues",
         path_key="gh_issues_path",
         preview_key="template_preview",
@@ -97,11 +101,14 @@ def check_board_gh_issues_status(board_slug: str) -> dict[str, Any]:
     )
 
 
-def create_gh_issues_setup_task(board_slug: str, actor: str = "user") -> dict[str, Any]:
+def create_gh_issues_setup_task(
+    board_slug: str, repo_alias: str | None = None, actor: str = "user"
+) -> dict[str, Any]:
     """Create (or deduplicate to) a P0 setup task that provisions GitHub
-    Issue templates via worktree -> zf-builder -> precommit -> GitHub PR."""
+    Issue templates for a repository via worktree -> zf-builder -> precommit -> GitHub PR."""
     return create_setup_task(
         board_slug,
+        repo_alias=repo_alias,
         status_checker=check_board_gh_issues_status,
         title=SETUP_GH_ISSUES_TASK_TITLE,
         prompt_builder=build_gh_issues_setup_task_prompt,

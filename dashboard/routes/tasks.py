@@ -350,17 +350,28 @@ def create_task(req: TaskCreate):
         tags_json = json.dumps(tags)
         metadata_json = json.dumps(meta)
 
+        repo_alias_val = (req.repo_alias or "").strip() or None
+        if not repo_alias_val and board_slug:
+            cursor.execute(
+                "SELECT repo_alias FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+                (board_slug,),
+            )
+            r_row = cursor.fetchone()
+            if r_row:
+                repo_alias_val = r_row[0]
+
         cursor.execute(
             """
             INSERT INTO tasks (
-                id, board_slug, title, description, status, assignee, priority,
+                id, board_slug, repo_alias, title, description, status, assignee, priority,
                 workspace_path, workspace_kind, branch_name, pr_url, tenant,
                 tags, metadata, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 task_id,
                 board_slug,
+                repo_alias_val,
                 req.title.strip(),
                 req.description or "",
                 status_val,
@@ -422,7 +433,7 @@ def get_task(task_id: str):
 
         cursor.execute(
             """
-            SELECT t.id, t.title, t.status, t.assignee, t.priority
+            SELECT t.id, t.title, t.status, t.assignee, t.priority, t.repo_alias, tl.link_type
             FROM task_links tl
             JOIN tasks t ON t.id = tl.parent_id
             WHERE tl.child_id = ?
@@ -433,7 +444,7 @@ def get_task(task_id: str):
 
         cursor.execute(
             """
-            SELECT t.id, t.title, t.status, t.assignee, t.priority
+            SELECT t.id, t.title, t.status, t.assignee, t.priority, t.repo_alias, tl.link_type
             FROM task_links tl
             JOIN tasks t ON t.id = tl.child_id
             WHERE tl.parent_id = ?
@@ -650,6 +661,10 @@ def update_task(task_id: str, req: TaskUpdate):
         updates.append("board_slug = ?")
         params.append(req.board_slug)
         changes.append(f"moved to board {req.board_slug}")
+    if req.repo_alias is not None:
+        updates.append("repo_alias = ?")
+        params.append(req.repo_alias.strip() or None)
+        changes.append(f"repo_alias set to {req.repo_alias}")
     if req.status is not None:
         # Status is a lifecycle TRANSITION with side effects (worker stop, flags,
         # marker cleanup, dispatch trigger) — always applied by /move so exactly
@@ -1103,16 +1118,22 @@ def add_dependency(task_id: str, link: DependencyLink):
         if parent_id == child_id:
             raise HTTPException(status_code=400, detail="Task cannot depend on itself")
 
+        link_type_val = (link.link_type or "blocks").strip().lower()
+        if link_type_val not in ("blocks", "relates_to"):
+            link_type_val = "blocks"
+
         cursor.execute(
-            "INSERT OR IGNORE INTO task_links (parent_id, child_id, created_at) VALUES (?, ?, ?)",
-            (parent_id, child_id, now),
+            """INSERT INTO task_links (parent_id, child_id, link_type, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(parent_id, child_id) DO UPDATE SET link_type = excluded.link_type""",
+            (parent_id, child_id, link_type_val, now),
         )
         log_activity(
-            conn, child_id, "user", "link", f"Added parent dependency #{parent_id}"
+            conn, child_id, "user", "link", f"Added {link_type_val} dependency #{parent_id}"
         )
         conn.commit()
 
-    return {"ok": True, "parent_id": parent_id, "child_id": child_id}
+        return {"ok": True, "parent_id": parent_id, "child_id": child_id, "link_type": link_type_val}
 
 
 @router.delete("/tasks/{task_id}/dependencies/{parent_id}")

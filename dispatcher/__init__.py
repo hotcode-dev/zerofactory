@@ -94,7 +94,9 @@ from .config import (
     resolve_profile_state_db,
 )
 from .context_builder import (
+    digest_board_architecture_context,
     digest_board_memories_context,
+    digest_parent_and_peer_tasks_context,
     digest_reviewer_git_context,
     format_conventional_message,
 )
@@ -220,6 +222,8 @@ __all__ = [
     # Context & GitHub
     "digest_reviewer_git_context",
     "digest_board_memories_context",
+    "digest_board_architecture_context",
+    "digest_parent_and_peer_tasks_context",
     "format_conventional_message",
     "ai_prefix",
     "extract_gh_repo_info",

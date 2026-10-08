@@ -54,30 +54,44 @@ def get_repo_resolver():
 
 
 def _find_setup_task(
-    cursor, board_slug: str, title_prefix: str, dedup_substring: str, active_only: bool
+    cursor,
+    board_slug: str,
+    title_prefix: str,
+    dedup_substring: str,
+    active_only: bool,
+    repo_alias: str | None = None,
 ) -> tuple[str | None, str | None]:
-    """Locate the newest setup task matching the title prefix or dedup key.
-
-    When active_only is set, restricts to statuses that represent active work
-    (triage/todo/running). A 'blocked' task means 'awaiting human merge', NOT
-    'active work', so active-only is used for deduplication while the
-    non-done variant is used for UI display (the 'Setup in Progress' badge).
-    """
+    """Locate the newest setup task matching the title prefix or dedup key."""
     status_clause = (
         "status IN ('triage', 'todo', 'running')" if active_only else "status != 'done'"
     )
-    cursor.execute(
-        f"""
-        SELECT id, status, title FROM tasks
-        WHERE board_slug = ? AND {status_clause}
-        AND (
-            title LIKE ?
-            OR metadata LIKE ?
+    if repo_alias:
+        cursor.execute(
+            f"""
+            SELECT id, status, title FROM tasks
+            WHERE board_slug = ? AND {status_clause}
+            AND (repo_alias = ? OR repo_alias IS NULL OR repo_alias = '')
+            AND (
+                title LIKE ?
+                OR metadata LIKE ?
+            )
+            ORDER BY created_at DESC LIMIT 1
+        """,
+            (board_slug, repo_alias, f"{title_prefix}%", f"%{dedup_substring}%"),
         )
-        ORDER BY created_at DESC LIMIT 1
-    """,
-        (board_slug, f"{title_prefix}%", f"%{dedup_substring}%"),
-    )
+    else:
+        cursor.execute(
+            f"""
+            SELECT id, status, title FROM tasks
+            WHERE board_slug = ? AND {status_clause}
+            AND (
+                title LIKE ?
+                OR metadata LIKE ?
+            )
+            ORDER BY created_at DESC LIMIT 1
+        """,
+            (board_slug, f"{title_prefix}%", f"%{dedup_substring}%"),
+        )
     t_row = cursor.fetchone()
     return (
         t_row["id"] if t_row else None,
@@ -87,6 +101,7 @@ def _find_setup_task(
 
 def check_board_setup_status(
     board_slug: str,
+    repo_alias: str | None = None,
     *,
     has_key: str,
     path_key: str,
@@ -97,7 +112,7 @@ def check_board_setup_status(
     preview_relpath: str | None = None,
     target_is_dir: bool = False,
 ) -> dict[str, Any]:
-    """Check whether a board's setup target exists on disk and report the active setup task."""
+    """Check whether a repository setup target exists on disk and report active setup task."""
     init_db()
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -107,6 +122,7 @@ def check_board_setup_status(
             return {
                 "ok": False,
                 "error": f"Board '{board_slug}' not found",
+                "repo_alias": repo_alias,
                 has_key: False,
                 "pending_task_id": None,
                 "pending_task_status": None,
@@ -115,14 +131,39 @@ def check_board_setup_status(
                 preview_key: None,
             }
 
-        board = dict(row)
+        # Resolve repository from board_repositories
+        if repo_alias:
+            cursor.execute(
+                "SELECT * FROM board_repositories WHERE board_slug = ? AND repo_alias = ?",
+                (board_slug, repo_alias),
+            )
+            r_row = cursor.fetchone()
+        else:
+            cursor.execute(
+                "SELECT * FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+                (board_slug,),
+            )
+            r_row = cursor.fetchone()
+
+        target_repo = dict(r_row) if r_row else {}
+        effective_alias = target_repo.get("repo_alias") or repo_alias or ""
 
         # Check for pending setup task
         pending_task_id, pending_task_status = _find_setup_task(
-            cursor, board_slug, title_prefix, dedup_substring, active_only=False
+            cursor,
+            board_slug,
+            title_prefix,
+            dedup_substring,
+            active_only=False,
+            repo_alias=effective_alias,
         )
         dedup_task_id, dedup_task_status = _find_setup_task(
-            cursor, board_slug, title_prefix, dedup_substring, active_only=True
+            cursor,
+            board_slug,
+            title_prefix,
+            dedup_substring,
+            active_only=True,
+            repo_alias=effective_alias,
         )
 
     # Check filesystem for the setup target
@@ -131,13 +172,14 @@ def check_board_setup_status(
     preview = None
 
     resolver = get_repo_resolver()
-    if resolver:
+    if resolver and target_repo:
         try:
             prev = os.environ.get("ZEROFACTORY_SKIP_CLONE")
-            # Read-only status check: never let the resolver auto-clone the remote.
             os.environ["ZEROFACTORY_SKIP_CLONE"] = "1"
             try:
-                repo_path = resolver(board)
+                repo_path = resolver(
+                    {"slug": effective_alias, "git_url": target_repo.get("git_url", "")}
+                )
             finally:
                 if prev is None:
                     os.environ.pop("ZEROFACTORY_SKIP_CLONE", None)
@@ -157,11 +199,12 @@ def check_board_setup_status(
                             except Exception:
                                 pass
         except Exception as e:
-            _log.debug("Failed checking repo path for board %s: %s", board_slug, e)
+            _log.debug("Failed checking repo path for board %s (%s): %s", board_slug, effective_alias, e)
 
     return {
         "ok": True,
         "board_slug": board_slug,
+        "repo_alias": effective_alias,
         has_key: has_target,
         path_key: target_full_path,
         preview_key: preview,
@@ -174,8 +217,9 @@ def check_board_setup_status(
 
 def create_setup_task(
     board_slug: str,
+    repo_alias: str | None = None,
     *,
-    status_checker: Callable[[str], dict[str, Any]],
+    status_checker: Callable[..., dict[str, Any]],
     title: str,
     prompt_builder: Callable[..., str],
     files: list[str],
@@ -184,46 +228,86 @@ def create_setup_task(
     created_label: str,
     actor: str = "user",
 ) -> dict[str, Any]:
-    """Create (or deduplicate to) a P0 setup task for a board."""
+    """Create (or deduplicate to) a P0 setup task for a board repository."""
     init_db()
 
-    # 1. Verify board exists
     with get_db_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM boards WHERE slug = ?", (board_slug,))
         row = cursor.fetchone()
         if not row:
             return {"ok": False, "error": f"Board '{board_slug}' not found"}
-        board = dict(row)
 
-    # 2. Check if an ACTIVE setup task already exists (dedup source).
-    # Note: 'blocked' tasks (awaiting human merge) must NOT dedup — otherwise a
-    # finished-but-unmerged task permanently wedges regenerate/retry flows.
-    status_info = status_checker(board_slug)
+        if repo_alias:
+            cursor.execute(
+                "SELECT * FROM board_repositories WHERE board_slug = ? AND repo_alias = ?",
+                (board_slug, repo_alias),
+            )
+            r_row = cursor.fetchone()
+        else:
+            cursor.execute(
+                "SELECT * FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+                (board_slug,),
+            )
+            r_row = cursor.fetchone()
+        if r_row:
+            target_repo = dict(r_row)
+            effective_alias = target_repo["repo_alias"]
+        else:
+            target_repo = {"repo_alias": repo_alias or board_slug, "git_url": ""}
+            effective_alias = repo_alias or board_slug
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM board_repositories WHERE board_slug = ?",
+            (board_slug,),
+        )
+        repo_count = cursor.fetchone()[0]
+
+    try:
+        status_info = status_checker(board_slug, repo_alias=effective_alias)
+    except TypeError:
+        status_info = status_checker(board_slug)
     if status_info.get("dedup_task_id"):
         return {
             "ok": True,
             "task_id": status_info["dedup_task_id"],
+            "repo_alias": effective_alias,
             "status": status_info["dedup_task_status"],
             "already_exists": True,
             "message": f"{progress_label} setup task '{status_info['dedup_task_id']}' is already in progress ({status_info['dedup_task_status']}).",
         }
 
-    # 3. Resolve repo path for prompt hint
     resolver = get_repo_resolver()
-    repo_path = resolver(board) if resolver else None
+    repo_path = (
+        resolver({"slug": effective_alias, "git_url": target_repo.get("git_url", "")})
+        if resolver
+        else None
+    )
 
-    # 4. Create the P0 task
+    if repo_count > 1 and effective_alias:
+        effective_title = f"{title} ({effective_alias})"
+        effective_dedup = f"{dedup_key}:{effective_alias}"
+    else:
+        effective_title = title
+        effective_dedup = dedup_key
+
+    # Create the P0 task
+    try:
+        task_desc = prompt_builder(board_slug, repo_path=repo_path, repo_alias=effective_alias)
+    except TypeError:
+        task_desc = prompt_builder(board_slug, repo_path=repo_path)
+
     req = TaskCreate(
-        title=title,
-        description=prompt_builder(board_slug, repo_path=repo_path),
+        title=effective_title,
+        description=task_desc,
         status="todo",
         priority="P0",
         assignee="zf-builder",
         board_slug=board_slug,
+        repo_alias=effective_alias,
         category="config",
         files=files,
-        dedup_key=dedup_key,
+        dedup_key=effective_dedup,
         actor=actor or "user",
     )
 
@@ -238,7 +322,8 @@ def create_setup_task(
     return {
         "ok": True,
         "task_id": task_id,
+        "repo_alias": effective_alias,
         "status": "todo",
         "already_exists": False,
-        "message": f"Created {created_label} setup task '{task_id}' for board '{board_slug}'.",
+        "message": f"Created {created_label} setup task '{task_id}' for repo '{effective_alias}' on board '{board_slug}'.",
     }
