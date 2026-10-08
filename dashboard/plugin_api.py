@@ -133,6 +133,7 @@ try:
         SettingsUpdate,
         TaskCreate,
         TaskMove,
+        TaskSplitRequest,
         TaskUpdate,
     )
 except (ImportError, ValueError):
@@ -155,6 +156,7 @@ except (ImportError, ValueError):
         SettingsUpdate,
         TaskCreate,
         TaskMove,
+        TaskSplitRequest,
         TaskUpdate,
     )
 
@@ -330,6 +332,7 @@ try:
         list_tasks,
         move_task,
         remove_dependency,
+        split_task,
         update_task,
     )
 except (ImportError, ValueError):
@@ -403,6 +406,7 @@ except (ImportError, ValueError):
         list_tasks,
         move_task,
         remove_dependency,
+        split_task,
         update_task,
     )
 

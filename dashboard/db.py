@@ -293,6 +293,13 @@ def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
             d["metadata"] = json.loads(d["metadata"])
         except Exception:
             d["metadata"] = {}
+    if "metadata" in d and isinstance(d["metadata"], dict):
+        if "target_repos" in d["metadata"] and isinstance(d["metadata"]["target_repos"], list):
+            d["target_repos"] = d["metadata"]["target_repos"]
+        elif d.get("repo_alias"):
+            d["target_repos"] = [d["repo_alias"]]
+        else:
+            d["target_repos"] = []
     return d
 
 

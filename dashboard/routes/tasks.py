@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -43,6 +44,7 @@ try:
         InterviewReply,
         TaskCreate,
         TaskMove,
+        TaskSplitRequest,
         TaskUpdate,
         normalize_assignee,
         normalize_blocked_reason_type,
@@ -72,6 +74,7 @@ except (ImportError, ValueError):
         InterviewReply,
         TaskCreate,
         TaskMove,
+        TaskSplitRequest,
         TaskUpdate,
         normalize_assignee,
         normalize_blocked_reason_type,
@@ -353,10 +356,17 @@ def create_task(req: TaskCreate):
             if t not in tags:
                 tags.append(t)
 
+        if req.target_repos:
+            cleaned_target_repos = [str(r).strip() for r in req.target_repos if str(r).strip()]
+            if cleaned_target_repos:
+                meta["target_repos"] = cleaned_target_repos
+
         tags_json = json.dumps(tags)
         metadata_json = json.dumps(meta)
 
         repo_alias_val = (req.repo_alias or "").strip() or None
+        if not repo_alias_val and meta.get("target_repos"):
+            repo_alias_val = meta["target_repos"][0]
         if not repo_alias_val and board_slug:
             cursor.execute(
                 "SELECT repo_alias FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
@@ -714,7 +724,33 @@ def update_task(task_id: str, req: TaskUpdate):
     if req.tags is not None:
         updates.append("tags = ?")
         params.append(json.dumps(req.tags))
-    if req.metadata is not None:
+    if req.target_repos is not None:
+        cleaned_target_repos = [str(r).strip() for r in req.target_repos if str(r).strip()]
+        if req.metadata is not None:
+            req.metadata["target_repos"] = cleaned_target_repos
+        else:
+            with get_db_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                m_row = cursor.fetchone()
+                existing_meta = {}
+                if m_row and m_row[0]:
+                    try:
+                        existing_meta = (
+                            json.loads(m_row[0])
+                            if isinstance(m_row[0], str)
+                            else dict(m_row[0])
+                        )
+                    except Exception:
+                        existing_meta = {}
+                existing_meta["target_repos"] = cleaned_target_repos
+                updates.append("metadata = ?")
+                params.append(json.dumps(existing_meta))
+                changes.append(f"target_repos updated ({len(cleaned_target_repos)} repos)")
+    if req.metadata is not None and req.target_repos is None:
+        updates.append("metadata = ?")
+        params.append(json.dumps(req.metadata))
+    elif req.metadata is not None and req.target_repos is not None:
         updates.append("metadata = ?")
         params.append(json.dumps(req.metadata))
 
@@ -1205,6 +1241,199 @@ def triage_task(task_id: str):
         "status": target_status,
         "assignee": assignee,
         "message": "Task queued for Grill-with-Docs triage by zf-orchestrator.",
+    }
+
+
+@router.post("/tasks/{task_id}/split")
+def split_task(task_id: str, req: TaskSplitRequest | None = None):
+    """Split/separate a Triage task into distinct Todo tasks (one per target repo)."""
+    init_db()
+    now = int(time.time())
+    if req is None:
+        req = TaskSplitRequest()
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(row)
+        board_slug = task.get("board_slug") or ""
+        meta = task.get("metadata") or {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+
+        # 1. Determine repos to split into
+        target_repos: list[str] = []
+        if req.repos:
+            target_repos = [str(r).strip() for r in req.repos if str(r).strip()]
+        elif req.tasks:
+            target_repos = [
+                str(t.get("repo_alias") or "").strip()
+                for t in req.tasks
+                if (t.get("repo_alias") or "").strip()
+            ]
+        elif meta.get("target_repos") and isinstance(meta["target_repos"], list):
+            target_repos = [str(r).strip() for r in meta["target_repos"] if str(r).strip()]
+        else:
+            # Fallback to all repositories on the board
+            cursor.execute(
+                "SELECT repo_alias FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
+                (board_slug,),
+            )
+            target_repos = [r[0] for r in cursor.fetchall() if r[0]]
+
+        # Deduplicate preserving order
+        seen = set()
+        target_repos = [r for r in target_repos if not (r in seen or seen.add(r))]
+
+        if len(target_repos) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"At least 2 target repositories are required to split task (found: {target_repos})",
+            )
+
+        # 2. Build child tasks per repo
+        created_tasks: list[dict[str, Any]] = []
+        raw_title = task.get("title") or "Task"
+        clean_title = re.sub(r"^\[Triage\]\s*", "", raw_title, flags=re.IGNORECASE).strip()
+        parent_desc = task.get("description") or ""
+        priority_val = task.get("priority") or "P2"
+        parent_tags = task.get("tags") or []
+        if isinstance(parent_tags, str):
+            try:
+                parent_tags = json.loads(parent_tags)
+            except Exception:
+                parent_tags = []
+
+        actor = req.actor or os.environ.get("HERMES_PROFILE") or "zf-orchestrator"
+
+        custom_tasks_by_repo = {}
+        if req.tasks:
+            for ct in req.tasks:
+                if isinstance(ct, dict) and ct.get("repo_alias"):
+                    custom_tasks_by_repo[ct["repo_alias"]] = ct
+
+        for repo in target_repos:
+            child_id = generate_task_id(board_slug)
+            custom_info = custom_tasks_by_repo.get(repo, {})
+            child_title = custom_info.get("title") or f"[{repo}] {clean_title}"
+            child_desc = custom_info.get("description") or (
+                f"{parent_desc}\n\n---\n*Decomposed from Triage task `{task_id}` for repository `{repo}`.*"
+            )
+
+            child_meta = dict(meta)
+            for k in (
+                "worker_pid",
+                "session_id",
+                "started_at",
+                "last_worker_failure",
+                "sessions",
+                "target_repos",
+                "decomposed_into",
+            ):
+                child_meta.pop(k, None)
+            child_meta["decomposed_from"] = task_id
+            child_meta["parent_triage_task"] = task_id
+            child_meta["repo_alias"] = repo
+
+            child_tags = list(parent_tags)
+            repo_tag = f"repo:{repo}"
+            if repo_tag not in child_tags:
+                child_tags.append(repo_tag)
+
+            cursor.execute(
+                """
+                INSERT INTO tasks (
+                    id, board_slug, repo_alias, title, description, status, assignee, priority,
+                    workspace_path, workspace_kind, branch_name, pr_url, tenant,
+                    tags, metadata, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'todo', 'zf-builder', ?, ?, 'worktree', ?, '', ?, ?, ?, ?, ?)
+                """,
+                (
+                    child_id,
+                    board_slug,
+                    repo,
+                    child_title,
+                    child_desc,
+                    priority_val,
+                    None,
+                    f"task/{child_id}",
+                    task.get("tenant") or "",
+                    json.dumps(child_tags),
+                    json.dumps(child_meta),
+                    now,
+                    now,
+                ),
+            )
+
+            cursor.execute(
+                "INSERT OR IGNORE INTO task_links (parent_id, child_id, link_type, created_at) VALUES (?, ?, 'relates_to', ?)",
+                (task_id, child_id, now),
+            )
+
+            log_activity(
+                conn,
+                child_id,
+                actor,
+                "create",
+                f"Created from Triage split of {task_id} (target repo: {repo})",
+            )
+            created_tasks.append({
+                "id": child_id,
+                "repo_alias": repo,
+                "title": child_title,
+                "status": "todo",
+                "assignee": "zf-builder",
+            })
+
+        # 3. Transition parent Triage task to done (completed decomposition)
+        child_ids = [c["id"] for c in created_tasks]
+        meta["decomposed_into"] = child_ids
+        meta["decomposed_at"] = now
+        meta["target_repos"] = target_repos
+
+        cursor.execute(
+            "UPDATE tasks SET status = 'done', assignee = 'zf-orchestrator', metadata = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(meta), now, task_id),
+        )
+
+        log_activity(
+            conn,
+            task_id,
+            actor,
+            "triage_split",
+            f"Separated into {len(created_tasks)} Todo tasks: {', '.join(child_ids)}",
+        )
+
+        lines = [
+            f"🔀 **Triage Decomposition Complete**: Separated into {len(created_tasks)} Todo tasks across {len(target_repos)} repositories for parallel implementation:\n"
+        ]
+        for c in created_tasks:
+            lines.append(
+                f"- **`{c['id']}`** (`{c['repo_alias']}`): {c['title']} → assigned to `zf-builder`"
+            )
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+            (task_id, actor, "\n".join(lines), now),
+        )
+
+        conn.commit()
+
+        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get(
+            "ZEROFACTORY_DISABLE_DISPATCHER"
+        ):
+            _trigger_async_dispatch("split_task")
+
+    return {
+        "ok": True,
+        "parent_task_id": task_id,
+        "message": f"Successfully separated {task_id} into {len(created_tasks)} Todo tasks.",
+        "created_tasks": created_tasks,
     }
 
 

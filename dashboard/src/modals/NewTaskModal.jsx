@@ -81,25 +81,126 @@ export function NewTaskModal(props) {
           React.createElement(
             "div",
             { className: "space-y-1.5" },
-            React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Repository (Multi-Repo Architecture) *"),
             React.createElement(
-              "select",
-              {
-                className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer font-mono",
-                value: currentRepoAlias,
-                onChange: (e) => setNewTaskForm({
-                  ...newTaskForm,
-                  repo_alias: e.target.value
-                })
-              },
-              boardRepos.map((r) =>
+              "div",
+              { className: "flex items-center justify-between" },
+              React.createElement(
+                "label",
+                { className: "block text-xs font-semibold text-slate-400 tracking-wide" },
+                newTaskForm.status === "triage" && boardRepos.length > 1
+                  ? "Target Repositories (Multi-Repo Triage) *"
+                  : "Target Repository (Multi-Repo Architecture) *"
+              ),
+              newTaskForm.status === "triage" && boardRepos.length > 1 &&
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-2" },
                 React.createElement(
-                  "option",
-                  { key: r.repo_alias, value: r.repo_alias },
-                  r.repo_alias + " (" + (r.target_branch || "main") + ")"
+                  "button",
+                  {
+                    type: "button",
+                    className: "text-[11px] text-indigo-400 hover:text-indigo-300 font-medium cursor-pointer transition-colors",
+                    onClick: () => {
+                      const all = boardRepos.map((r) => r.repo_alias);
+                      setNewTaskForm({
+                        ...newTaskForm,
+                        target_repos: all,
+                        repo_alias: all[0] || ""
+                      });
+                    }
+                  },
+                  "Select All"
+                ),
+                React.createElement("span", { className: "text-slate-600 text-[10px]" }, "•"),
+                React.createElement(
+                  "button",
+                  {
+                    type: "button",
+                    className: "text-[11px] text-slate-400 hover:text-slate-300 font-medium cursor-pointer transition-colors",
+                    onClick: () => {
+                      const first = boardRepos[0].repo_alias;
+                      setNewTaskForm({
+                        ...newTaskForm,
+                        target_repos: [first],
+                        repo_alias: first
+                      });
+                    }
+                  },
+                  "Reset"
                 )
               )
             ),
+            newTaskForm.status === "triage" && boardRepos.length > 1
+              ? React.createElement(
+                  "div",
+                  { className: "p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2.5" },
+                  React.createElement(
+                    "div",
+                    { className: "flex flex-wrap gap-2" },
+                    boardRepos.map((r) => {
+                      const activeList = (newTaskForm.target_repos && newTaskForm.target_repos.length > 0)
+                        ? newTaskForm.target_repos
+                        : (currentRepoAlias ? [currentRepoAlias] : [boardRepos[0].repo_alias]);
+                      const isSelected = activeList.includes(r.repo_alias);
+                      return React.createElement(
+                        "button",
+                        {
+                          key: r.repo_alias,
+                          type: "button",
+                          onClick: () => {
+                            let next;
+                            if (isSelected) {
+                              if (activeList.length > 1) {
+                                next = activeList.filter((x) => x !== r.repo_alias);
+                              } else {
+                                next = activeList;
+                              }
+                            } else {
+                              next = [...activeList, r.repo_alias];
+                            }
+                            setNewTaskForm({
+                              ...newTaskForm,
+                              target_repos: next,
+                              repo_alias: next[0] || ""
+                            });
+                          },
+                          className: "px-2.5 py-1.5 rounded-md text-xs font-mono font-medium border transition-all cursor-pointer flex items-center gap-1.5 " +
+                            (isSelected
+                              ? "bg-indigo-950/70 border-indigo-500/60 text-indigo-200 shadow-xs shadow-indigo-950/40"
+                              : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-300 hover:border-slate-700")
+                        },
+                        React.createElement("span", { className: isSelected ? "text-indigo-400 font-bold" : "text-slate-600" }, isSelected ? "✓" : "○"),
+                        "📦 " + r.repo_alias,
+                        React.createElement("span", { className: "text-[10px] text-slate-500 font-sans" }, `(${r.target_branch || "main"})`)
+                      );
+                    })
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "text-[10px] text-indigo-400/90 font-sans flex items-center gap-1.5" },
+                    React.createElement("span", null, "🔀"),
+                    React.createElement("span", null, "Multi-repo triage tasks can be automatically split into individual Todo tasks per repository once triaged.")
+                  )
+                )
+              : React.createElement(
+                  "select",
+                  {
+                    className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer font-mono",
+                    value: currentRepoAlias,
+                    onChange: (e) => setNewTaskForm({
+                      ...newTaskForm,
+                      repo_alias: e.target.value,
+                      target_repos: [e.target.value]
+                    })
+                  },
+                  boardRepos.map((r) =>
+                    React.createElement(
+                      "option",
+                      { key: r.repo_alias, value: r.repo_alias },
+                      r.repo_alias + " (" + (r.target_branch || "main") + ")"
+                    )
+                  )
+                ),
             React.createElement("p", { className: "text-[10px] text-slate-500 m-0 font-sans" }, "Repository checked out as writable worktree (task/<id> branch). Sibling repos are checked out side-by-side.")
           ),
           React.createElement(

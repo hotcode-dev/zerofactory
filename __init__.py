@@ -20,12 +20,16 @@ try:
         MemoryCreate,
         TaskCreate,
         TaskMove,
+        TaskSplitRequest,
         TaskUpdate,
         get_db_conn,
         init_db,
     )
     from .dashboard.plugin_api import (
         MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH,
+    )
+    from .dashboard.plugin_api import (
+        split_task as _split_task,
     )
     from .dashboard.plugin_api import (
         add_comment as _add_comment,
@@ -93,12 +97,16 @@ except ImportError:
         MemoryCreate,
         TaskCreate,
         TaskMove,
+        TaskSplitRequest,
         TaskUpdate,
         get_db_conn,
         init_db,
     )
     from plugin_api import (
         MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH,
+    )
+    from plugin_api import (
+        split_task as _split_task,
     )
     from plugin_api import (
         add_comment as _add_comment,
@@ -275,6 +283,11 @@ def register(ctx: Any):
             "--repo",
             default=None,
             help="Target repository alias on the board (e.g. backend, frontend)",
+        )
+        p_create.add_argument(
+            "--target-repos",
+            default=None,
+            help="Comma-separated target repository aliases for multi-repo triage tasks (e.g. repo1,repo2)",
         )
         p_create.add_argument("--parent", default=None, help="Parent task ID")
         p_create.add_argument(
@@ -530,6 +543,23 @@ def register(ctx: Any):
         # dispatch
         subparsers.add_parser("dispatch", help="Trigger dispatch cycle")
 
+        # split
+        p_split = subparsers.add_parser(
+            "split",
+            help="Split/separate a Triage task into distinct Todo tasks per target repository",
+        )
+        p_split.add_argument("task_id", help="Parent Triage task ID")
+        p_split.add_argument(
+            "--repos",
+            default=None,
+            help="Optional comma-separated list of repository aliases to split into (defaults to task target_repos or board repos)",
+        )
+        p_split.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing split (defaults to HERMES_PROFILE or 'user')",
+        )
+
         # check-stuck
         p_stuck = subparsers.add_parser(
             "check-stuck",
@@ -777,6 +807,12 @@ def register(ctx: Any):
             actor_val = (
                 getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
             )
+            target_repos_arg = getattr(args, "target_repos", None)
+            target_repos_list = (
+                [r.strip() for r in target_repos_arg.split(",") if r.strip()]
+                if target_repos_arg
+                else None
+            )
             req = TaskCreate(
                 title=args.title,
                 description=desc,
@@ -785,6 +821,7 @@ def register(ctx: Any):
                 assignee=args.assignee,
                 board_slug=args.board,
                 repo_alias=getattr(args, "repo", None),
+                target_repos=target_repos_list,
                 parent_id=args.parent,
                 files=files_list,
                 category=getattr(args, "category", "bug-fix"),
@@ -1109,6 +1146,25 @@ def register(ctx: Any):
                 print(f"Moved task {args.task_id} to {args.status} (reason: {reason})")
             else:
                 print(f"Moved task {args.task_id} to {args.status}")
+
+        elif action == "split":
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            repos = (
+                [r.strip() for r in args.repos.split(",") if r.strip()]
+                if getattr(args, "repos", None)
+                else None
+            )
+            res = _split_task(args.task_id, TaskSplitRequest(repos=repos, actor=actor))
+            print(f"\n✓ Successfully split triage task {args.task_id}:")
+            for t in res.get("created_tasks", []):
+                print(
+                    f"  - {t['id']} [{t['repo_alias']}]: {t['title']} → {t['status']} ({t['assignee']})"
+                )
+            print()
 
         elif action == "update":
             status_val = getattr(args, "status", None)

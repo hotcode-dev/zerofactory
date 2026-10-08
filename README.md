@@ -99,6 +99,8 @@ hermes zerofactory list                           # List all tasks
 hermes zerofactory list --status running          # Filter tasks by status
 hermes zerofactory list --assignee zf-builder     # Filter tasks by assignee
 hermes zerofactory create "Implement Feature X"   # Create a new ticket
+hermes zerofactory create "Bug #42" --target-repos api,web # Create multi-repo triage task
+hermes zerofactory split <task_id> [--repos api,web]       # Decompose multi-repo triage into Todo tasks
 hermes zerofactory import-gh-issue 42             # Deterministically import GitHub issue #42
 hermes zerofactory move <task_id> running          # Transition task status
 hermes zerofactory block <task_id> --reason "..." # Block a task

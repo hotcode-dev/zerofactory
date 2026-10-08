@@ -123,7 +123,8 @@ export function ZeroFactoryKanbanApp() {
       tenant: "",
       pr_url: "",
       board_slug: "",
-      repo_alias: ""
+      repo_alias: "",
+      target_repos: []
     });
 
     const [newBoardForm, setNewBoardForm] = useState({
@@ -1366,6 +1367,9 @@ export function ZeroFactoryKanbanApp() {
         const payload = {
           ...newTaskForm,
           repo_alias: targetRepoAlias,
+          target_repos: newTaskForm.target_repos && newTaskForm.target_repos.length > 0
+            ? newTaskForm.target_repos
+            : (targetRepoAlias ? [targetRepoAlias] : undefined),
           pr_url: newTaskForm.pr_url && newTaskForm.pr_url.trim() ? newTaskForm.pr_url.trim() : null,
           board_slug: chosenBoard
         };
@@ -1385,7 +1389,8 @@ export function ZeroFactoryKanbanApp() {
           tenant: "",
           pr_url: "",
           board_slug: "",
-          repo_alias: ""
+          repo_alias: "",
+          target_repos: []
         });
         loadTasksAndStats();
       } catch (err) {

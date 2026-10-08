@@ -108,8 +108,30 @@ Zero Factory organizes work into **Project Boards** that contain one or more equ
 | `permanently_blocked`, `blocked_reason` | reaper / dispatcher | Hard-stop marker + human-readable cause (display only) |
 | `blocked_reason_type` | `move_task` (from `block --reason <code>`), dispatcher | Canonical routing code — `changes-requested` / `approved` / `human-gate` / `stuck` (retry budget exhausted), matched exactly, never prose |
 | `awaiting_interview`, `last_interview_reply` | orchestrator grill flow | Human interview state |
+| `target_repos` | task creator, orchestrator, split flow | List of target repo aliases for multi-repo triage tasks |
+| `decomposed_into` | `split_task` API/CLI | IDs of child tasks generated during triage decomposition |
 
-### 2.4 Titles are state-free
+### 2.4 Multi-Repository Triage Decomposition
+
+In multi-repo project boards, cross-cutting bugs or features frequently impact two or more peer repositories (e.g., an authentication contract change impacting both `frontend` and `backend`).
+
+Because Zero Factory adheres to strict Git worktree isolation—binding each active builder task to a single repository checkout (`tasks.repo_alias`)—a single builder session cannot commit or open pull requests across multiple repositories simultaneously.
+
+**Decomposition Workflow:**
+1. **Multi-Repo Triage Task Creation**:
+   - The user or importer creates a `triage` task declaring `target_repos: ["frontend", "backend"]`.
+   - The dashboard Kanban card displays the `🔀 2 repos (frontend, backend)` badge and indicates `Ready to Split`.
+2. **Decomposition Execution**:
+   - **Via Dashboard**: The human clicks `🔀 Split into Todo` in the Task Detail modal.
+   - **Via Agentic Orchestrator**: `zf-orchestrator` executes `hermes zerofactory split <task_id>` after resolving scope and acceptance criteria.
+   - **Via CLI / API**: `hermes zerofactory split <task_id> [--repos front,back]` or `POST /api/plugins/zerofactory/tasks/{task_id}/split`.
+3. **Atomic Task Separation**:
+   - For each target repository, a dedicated child task is created in `todo` assigned to `zf-builder` with `repo_alias` set to that repository and acceptance criteria extracted from the parent triage task.
+   - Child tasks are linked to the parent via `task_links` with `link_type = 'relates_to'` (ensuring both child tasks can run in parallel without blocking each other).
+   - The parent triage task is marked `done` (assignee `zf-orchestrator`), recording `decomposed_into` in metadata and posting an audit summary comment.
+   - The dispatcher is asynchronously kicked to spawn builder workers for the new `todo` tasks.
+
+### 2.5 Titles are state-free
 
 Task titles never carry mutable lifecycle state — UI badges derive from structured fields:
 "waiting for merge" = `status=blocked && assignee=human`, "merge conflict" =

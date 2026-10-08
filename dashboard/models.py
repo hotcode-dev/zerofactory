@@ -213,6 +213,7 @@ class TaskCreate(BaseModel):
     category: str | None = "bug-fix"
     dedup_key: str | None = None
     actor: str | None = None
+    target_repos: list[str] | None = None
     task_id: str | None = None
     metadata: dict[str, Any] | None = None
 
@@ -222,6 +223,7 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     board_slug: str | None = None
     repo_alias: str | None = None
+    target_repos: list[str] | None = None
     status: str | None = None
     assignee: str | None = None
     priority: str | None = None
@@ -239,6 +241,12 @@ class TaskMove(BaseModel):
     actor: str | None = "user"
     reason: str | None = None
     assignee: str | None = None
+
+
+class TaskSplitRequest(BaseModel):
+    repos: list[str] | None = None
+    tasks: list[dict[str, Any]] | None = None
+    actor: str | None = None
 
 
 class CommentCreate(BaseModel):

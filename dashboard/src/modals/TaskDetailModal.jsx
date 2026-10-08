@@ -100,6 +100,26 @@ export function TaskDetailModal(props) {
               "button",
               {
                 type: "button",
+                className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-teal-300 hover:text-white bg-teal-950/70 hover:bg-teal-900 border border-teal-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+                onClick: async () => {
+                  try {
+                    const res = await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/split", { method: "POST" });
+                    const count = (res.created_tasks && res.created_tasks.length) || 0;
+                    showToast("🔀 Split triage task into " + count + " Todo tasks", "success");
+                    loadTaskDetails(selectedTask.id);
+                    loadTasksAndStats();
+                  } catch (err) {
+                    showToast("Split failed: " + err.message, "error");
+                  }
+                }
+              },
+              "🔀 Split into Todo"
+            ),
+          selectedTask.status === "triage" &&
+            React.createElement(
+              "button",
+              {
+                type: "button",
                 className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
                 onClick: async () => {
                   try {
@@ -216,10 +236,32 @@ export function TaskDetailModal(props) {
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Repository & Board"),
                     React.createElement(
                       "div",
-                      { className: "flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono min-h-[34px]" },
+                      { className: "flex items-center justify-between" },
+                      React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" },
+                        selectedTask.target_repos && selectedTask.target_repos.length > 1
+                          ? "Target Repositories (" + selectedTask.target_repos.length + " repos)"
+                          : "Target Repository & Board"
+                      ),
+                      selectedTask.target_repos && selectedTask.target_repos.length > 1 && selectedTask.status === "triage" &&
+                      React.createElement(
+                        "span",
+                        { className: "text-[10px] text-teal-400 font-mono" },
+                        "Ready to Split 🔀"
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center flex-wrap gap-1.5 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono min-h-[34px]" },
+                      selectedTask.target_repos && selectedTask.target_repos.length > 1 ?
+                        selectedTask.target_repos.map((r) =>
+                          React.createElement(
+                            "span",
+                            { key: r, className: "px-2 py-0.5 rounded font-semibold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60" },
+                            "📦 " + r
+                          )
+                        ) :
                       selectedTask.repo_alias ?
                         React.createElement("span", { className: "px-2 py-0.5 rounded font-semibold bg-teal-950/80 text-teal-300 border border-teal-800/60" }, "📦 " + selectedTask.repo_alias) :
                         React.createElement("span", { className: "text-slate-400" }, "Default Repo"),

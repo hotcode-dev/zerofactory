@@ -256,7 +256,13 @@ def spawn_agent_worker(
             f"     * If needed, update openwiki/ documentation or ADRs in {workdir}.\n"
             f"     * Update the task description with the finalized specification, acceptance criteria, and test plan:\n"
             f'       hermes zerofactory update {task_id} --description "<comprehensive specification & acceptance criteria>"\n'
-            f"     * Promote the task to Todo and reassign to zf-builder:\n"
+            f"     * MULTI-REPO DECOMPOSITION (IF TASK TARGETS MULTIPLE REPOSITORIES):\n"
+            f"       If this task relates to 2 or more repositories (or target_repos contains multiple repositories), Zero Factory isolates each builder task to a single repo worktree.\n"
+            f"       Decompose this triage task into separate Todo tasks per repository:\n"
+            f"       hermes zerofactory split {task_id} --repos <repo1,repo2,...>\n"
+            f"       This will automatically create linked Todo tasks for each repository, mark this triage task done, and dispatch zf-builder for each.\n"
+            f"     * SINGLE-REPO PROMOTION:\n"
+            f"       If the task targets only 1 repository:\n"
             f"       hermes zerofactory move {task_id} todo --assignee zf-builder\n"
             f"     * Provide a clear triage summary confirming the handoff to zf-builder.\n"
         )

@@ -448,3 +448,70 @@ def test_stale_agent_completion_cannot_clobber_parked_state(
         ]
         == "done"
     )
+
+
+def test_triage_task_split_multi_repo(api_client: TestClient):
+    """Verify decomposing a multi-repo triage task into separate todo tasks per repo."""
+    # 1. Create a multi-repo board with frontend and backend
+    board_res = api_client.post(
+        "/api/plugins/zerofactory/boards",
+        json={
+            "slug": "split-test-board",
+            "description": "Multi-repo Split Board",
+            "repositories": [
+                {"repo_alias": "frontend", "git_url": "https://github.com/org/front.git"},
+                {"repo_alias": "backend", "git_url": "https://github.com/org/back.git"},
+            ],
+        },
+    )
+    assert board_res.status_code == 200
+    board_slug = board_res.json()["slug"]
+
+    # 2. Create a triage task targeting both repositories
+    task_res = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={
+            "title": "[Triage] [Bug] Session token serialization mismatch",
+            "description": "Token signature mismatch across gateway and service",
+            "board_slug": board_slug,
+            "status": "triage",
+            "priority": "P0",
+            "target_repos": ["frontend", "backend"],
+        },
+    )
+    assert task_res.status_code == 200
+    parent_id = task_res.json()["id"]
+
+    # Verify task details expose target_repos
+    detail_res = api_client.get(f"/api/plugins/zerofactory/tasks/{parent_id}")
+    assert detail_res.status_code == 200
+    parent_task = detail_res.json()["task"]
+    assert parent_task["status"] == "triage"
+    assert parent_task.get("target_repos") == ["frontend", "backend"]
+
+    # 3. Call split endpoint
+    split_res = api_client.post(f"/api/plugins/zerofactory/tasks/{parent_id}/split")
+    assert split_res.status_code == 200
+    split_data = split_res.json()
+    assert split_data["ok"] is True
+    assert split_data["parent_task_id"] == parent_id
+    created = split_data["created_tasks"]
+    assert len(created) == 2
+
+    front_task = next(c for c in created if c["repo_alias"] == "frontend")
+    back_task = next(c for c in created if c["repo_alias"] == "backend")
+    assert front_task["status"] == "todo"
+    assert front_task["assignee"] == "zf-builder"
+    assert back_task["status"] == "todo"
+    assert back_task["assignee"] == "zf-builder"
+
+    # 4. Verify parent task moved to done and has task_links and summary comments
+    parent_after = api_client.get(f"/api/plugins/zerofactory/tasks/{parent_id}").json()["task"]
+    assert parent_after["status"] == "done"
+    assert parent_after["assignee"] == "zf-orchestrator"
+    children = parent_after.get("children", [])
+    assert len(children) == 2
+    assert all(c["link_type"] == "relates_to" for c in children)
+    comments = parent_after.get("comments", [])
+    assert any("Triage Decomposition Complete" in c["body"] for c in comments)
+

@@ -117,7 +117,16 @@ export function KanbanBoard(props) {
                                       "div",
                                       { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" },
                                       selectedBoard === "all" && t.board_slug && React.createElement("span", { className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[0.625rem] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📋 " + t.board_slug),
-                                      t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 text-teal-300 font-mono text-[0.625rem] bg-teal-950/60 border border-teal-800/60 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📦 " + t.repo_alias),
+                                      t.target_repos && t.target_repos.length > 1 ?
+                                        React.createElement(
+                                          "span",
+                                          {
+                                            className: "inline-flex items-center gap-1 text-indigo-300 font-mono text-[0.625rem] bg-indigo-950/60 border border-indigo-800/60 px-1.5 py-0.5 rounded truncate max-w-[150px]",
+                                            title: "Target Repos: " + t.target_repos.join(", ")
+                                          },
+                                          "🔀 " + t.target_repos.length + " repos (" + t.target_repos.join(", ") + ")"
+                                        ) :
+                                        (t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 text-teal-300 font-mono text-[0.625rem] bg-teal-950/60 border border-teal-800/60 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📦 " + t.repo_alias)),
                                       t.tenant && !t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant),
                                       t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name),
                                       t.pr_url &&
@@ -233,8 +242,9 @@ export function KanbanBoard(props) {
                                       const isHumanReview = t.status === "blocked" && t.assignee === "human" && hasPr;
                                       const isHumanBlockedNoPr = t.status === "blocked" && t.assignee === "human" && !hasPr;
                                       const isBlocked = t.status === "blocked";
+                                      const isMultiRepoTriage = t.status === "triage" && t.target_repos && t.target_repos.length > 1;
 
-                                      if (!isBlocked && !isHumanTriage && !isHumanReview && !isHumanBlockedNoPr) {
+                                      if (!isBlocked && !isHumanTriage && !isHumanReview && !isHumanBlockedNoPr && !isMultiRepoTriage) {
                                         return null;
                                       }
 
@@ -247,7 +257,11 @@ export function KanbanBoard(props) {
                                         dotClass = "bg-indigo-400 zfk-pulse-active";
                                         labelText = isGrillInterview
                                           ? "🎯 Waiting for Human Decision • Grill Interview"
-                                          : "🎯 Waiting for Human Input";
+                                          : (isMultiRepoTriage ? "🔀 Multi-Repo Triage • Ready to Split" : "🎯 Waiting for Human Input");
+                                      } else if (isMultiRepoTriage) {
+                                        badgeClass = "bg-indigo-500/15 border-indigo-500/30 text-indigo-300";
+                                        dotClass = "bg-indigo-400";
+                                        labelText = "🔀 Multi-Repo Triage • Ready to Split";
                                       } else if (metaStr.includes("\"conflict_retries\"")) {
                                         badgeClass = "bg-amber-500/15 border-amber-500/30 text-amber-300";
                                         dotClass = "bg-amber-400";

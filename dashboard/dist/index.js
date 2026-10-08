@@ -356,7 +356,10 @@ var ZeroFactoryDashboard = (function(exports) {
 					draggable: true,
 					onDragStart: (e) => handleDragStart(e, t),
 					onClick: () => loadTaskDetails(t.id)
-				}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "font-mono text-[0.6875rem] font-semibold text-slate-400 tracking-wider" }, t.id), React.createElement("div", { className: "flex items-center gap-1.5 flex-wrap" }, React.createElement("span", { className: "text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border " + prioClass }, t.priority || "P2"), React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass }, t.assignee || "unassigned"))), React.createElement("h4", { className: "text-xs font-semibold text-slate-200 leading-snug line-clamp-2 m-0 group-hover:text-white" }, t.title), React.createElement("div", { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" }, selectedBoard === "all" && t.board_slug && React.createElement("span", { className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[0.625rem] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📋 " + t.board_slug), t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 text-teal-300 font-mono text-[0.625rem] bg-teal-950/60 border border-teal-800/60 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📦 " + t.repo_alias), t.tenant && !t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant), t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name), t.pr_url && React.createElement("a", {
+				}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "font-mono text-[0.6875rem] font-semibold text-slate-400 tracking-wider" }, t.id), React.createElement("div", { className: "flex items-center gap-1.5 flex-wrap" }, React.createElement("span", { className: "text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border " + prioClass }, t.priority || "P2"), React.createElement("span", { className: "text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded border " + roleClass }, t.assignee || "unassigned"))), React.createElement("h4", { className: "text-xs font-semibold text-slate-200 leading-snug line-clamp-2 m-0 group-hover:text-white" }, t.title), React.createElement("div", { className: "flex items-center gap-2 text-[0.6875rem] text-slate-400 flex-wrap" }, selectedBoard === "all" && t.board_slug && React.createElement("span", { className: "inline-flex items-center gap-1 text-sky-400 font-mono text-[0.625rem] bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📋 " + t.board_slug), t.target_repos && t.target_repos.length > 1 ? React.createElement("span", {
+					className: "inline-flex items-center gap-1 text-indigo-300 font-mono text-[0.625rem] bg-indigo-950/60 border border-indigo-800/60 px-1.5 py-0.5 rounded truncate max-w-[150px]",
+					title: "Target Repos: " + t.target_repos.join(", ")
+				}, "🔀 " + t.target_repos.length + " repos (" + t.target_repos.join(", ") + ")") : t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 text-teal-300 font-mono text-[0.625rem] bg-teal-950/60 border border-teal-800/60 px-1.5 py-0.5 rounded truncate max-w-[130px]" }, "📦 " + t.repo_alias), t.tenant && !t.repo_alias && React.createElement("span", { className: "inline-flex items-center gap-1 truncate max-w-[140px]" }, "📁 " + t.tenant), t.branch_name && React.createElement("span", { className: "inline-flex items-center gap-1 text-indigo-300 font-mono truncate max-w-[120px]" }, "🌿 " + t.branch_name), t.pr_url && React.createElement("a", {
 					href: t.pr_url,
 					target: "_blank",
 					rel: "noopener noreferrer",
@@ -401,14 +404,19 @@ var ZeroFactoryDashboard = (function(exports) {
 					const isHumanReview = t.status === "blocked" && t.assignee === "human" && hasPr;
 					const isHumanBlockedNoPr = t.status === "blocked" && t.assignee === "human" && !hasPr;
 					const isBlocked = t.status === "blocked";
-					if (!isBlocked && !isHumanTriage && !isHumanReview && !isHumanBlockedNoPr) return null;
+					const isMultiRepoTriage = t.status === "triage" && t.target_repos && t.target_repos.length > 1;
+					if (!isBlocked && !isHumanTriage && !isHumanReview && !isHumanBlockedNoPr && !isMultiRepoTriage) return null;
 					let badgeClass = "";
 					let dotClass = "";
 					let labelText = "";
 					if (isGrillInterview || t.status === "triage" && t.assignee === "human") {
 						badgeClass = "bg-indigo-500/20 border-indigo-500/40 text-indigo-200";
 						dotClass = "bg-indigo-400 zfk-pulse-active";
-						labelText = isGrillInterview ? "🎯 Waiting for Human Decision • Grill Interview" : "🎯 Waiting for Human Input";
+						labelText = isGrillInterview ? "🎯 Waiting for Human Decision • Grill Interview" : isMultiRepoTriage ? "🔀 Multi-Repo Triage • Ready to Split" : "🎯 Waiting for Human Input";
+					} else if (isMultiRepoTriage) {
+						badgeClass = "bg-indigo-500/15 border-indigo-500/30 text-indigo-300";
+						dotClass = "bg-indigo-400";
+						labelText = "🔀 Multi-Repo Triage • Ready to Split";
 					} else if (metaStr.includes("\"conflict_retries\"")) {
 						badgeClass = "bg-amber-500/15 border-amber-500/30 text-amber-300";
 						dotClass = "bg-amber-400";
@@ -2079,6 +2087,20 @@ var ZeroFactoryDashboard = (function(exports) {
 				onClick: () => handleDeleteTask(selectedTask.id)
 			}, "Delete Task"), React.createElement("div", { className: "flex items-center gap-2" }, selectedTask.status === "triage" && React.createElement("button", {
 				type: "button",
+				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-teal-300 hover:text-white bg-teal-950/70 hover:bg-teal-900 border border-teal-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+				onClick: async () => {
+					try {
+						const res = await fetchJSON("/api/plugins/zerofactory/tasks/" + selectedTask.id + "/split", { method: "POST" });
+						const count = res.created_tasks && res.created_tasks.length || 0;
+						showToast("🔀 Split triage task into " + count + " Todo tasks", "success");
+						loadTaskDetails(selectedTask.id);
+						loadTasksAndStats();
+					} catch (err) {
+						showToast("Split failed: " + err.message, "error");
+					}
+				}
+			}, "🔀 Split into Todo"), selectedTask.status === "triage" && React.createElement("button", {
+				type: "button",
 				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
 				onClick: async () => {
 					try {
@@ -2169,7 +2191,10 @@ var ZeroFactoryDashboard = (function(exports) {
 		].map((p) => React.createElement("option", {
 			key: p,
 			value: p
-		}, p)))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Repository & Board"), React.createElement("div", { className: "flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono min-h-[34px]" }, selectedTask.repo_alias ? React.createElement("span", { className: "px-2 py-0.5 rounded font-semibold bg-teal-950/80 text-teal-300 border border-teal-800/60" }, "📦 " + selectedTask.repo_alias) : React.createElement("span", { className: "text-slate-400" }, "Default Repo"), selectedTask.board_slug && React.createElement("span", { className: "text-slate-500 text-[11px]" }, "(" + selectedTask.board_slug + ")")))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL"), selectedTask.pr_url && React.createElement("a", {
+		}, p)))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, selectedTask.target_repos && selectedTask.target_repos.length > 1 ? "Target Repositories (" + selectedTask.target_repos.length + " repos)" : "Target Repository & Board"), selectedTask.target_repos && selectedTask.target_repos.length > 1 && selectedTask.status === "triage" && React.createElement("span", { className: "text-[10px] text-teal-400 font-mono" }, "Ready to Split 🔀")), React.createElement("div", { className: "flex items-center flex-wrap gap-1.5 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono min-h-[34px]" }, selectedTask.target_repos && selectedTask.target_repos.length > 1 ? selectedTask.target_repos.map((r) => React.createElement("span", {
+			key: r,
+			className: "px-2 py-0.5 rounded font-semibold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60"
+		}, "📦 " + r)) : selectedTask.repo_alias ? React.createElement("span", { className: "px-2 py-0.5 rounded font-semibold bg-teal-950/80 text-teal-300 border border-teal-800/60" }, "📦 " + selectedTask.repo_alias) : React.createElement("span", { className: "text-slate-400" }, "Default Repo"), selectedTask.board_slug && React.createElement("span", { className: "text-slate-500 text-[11px]" }, "(" + selectedTask.board_slug + ")")))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Pull Request URL"), selectedTask.pr_url && React.createElement("a", {
 			href: selectedTask.pr_url,
 			target: "_blank",
 			rel: "noopener noreferrer",
@@ -2358,12 +2383,55 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, boards.map((b) => React.createElement("option", {
 			key: b.slug,
 			value: b.slug
-		}, b.slug)))), boardRepos.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Target Repository (Multi-Repo Architecture) *"), React.createElement("select", {
+		}, b.slug)))), boardRepos.length > 0 && React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, newTaskForm.status === "triage" && boardRepos.length > 1 ? "Target Repositories (Multi-Repo Triage) *" : "Target Repository (Multi-Repo Architecture) *"), newTaskForm.status === "triage" && boardRepos.length > 1 && React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("button", {
+			type: "button",
+			className: "text-[11px] text-indigo-400 hover:text-indigo-300 font-medium cursor-pointer transition-colors",
+			onClick: () => {
+				const all = boardRepos.map((r) => r.repo_alias);
+				setNewTaskForm({
+					...newTaskForm,
+					target_repos: all,
+					repo_alias: all[0] || ""
+				});
+			}
+		}, "Select All"), React.createElement("span", { className: "text-slate-600 text-[10px]" }, "•"), React.createElement("button", {
+			type: "button",
+			className: "text-[11px] text-slate-400 hover:text-slate-300 font-medium cursor-pointer transition-colors",
+			onClick: () => {
+				const first = boardRepos[0].repo_alias;
+				setNewTaskForm({
+					...newTaskForm,
+					target_repos: [first],
+					repo_alias: first
+				});
+			}
+		}, "Reset"))), newTaskForm.status === "triage" && boardRepos.length > 1 ? React.createElement("div", { className: "p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2.5" }, React.createElement("div", { className: "flex flex-wrap gap-2" }, boardRepos.map((r) => {
+			const activeList = newTaskForm.target_repos && newTaskForm.target_repos.length > 0 ? newTaskForm.target_repos : currentRepoAlias ? [currentRepoAlias] : [boardRepos[0].repo_alias];
+			const isSelected = activeList.includes(r.repo_alias);
+			return React.createElement("button", {
+				key: r.repo_alias,
+				type: "button",
+				onClick: () => {
+					let next;
+					if (isSelected) {
+						if (activeList.length > 1) next = activeList.filter((x) => x !== r.repo_alias);
+						else next = activeList;
+					} else next = [...activeList, r.repo_alias];
+					setNewTaskForm({
+						...newTaskForm,
+						target_repos: next,
+						repo_alias: next[0] || ""
+					});
+				},
+				className: "px-2.5 py-1.5 rounded-md text-xs font-mono font-medium border transition-all cursor-pointer flex items-center gap-1.5 " + (isSelected ? "bg-indigo-950/70 border-indigo-500/60 text-indigo-200 shadow-xs shadow-indigo-950/40" : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-300 hover:border-slate-700")
+			}, React.createElement("span", { className: isSelected ? "text-indigo-400 font-bold" : "text-slate-600" }, isSelected ? "✓" : "○"), "📦 " + r.repo_alias, React.createElement("span", { className: "text-[10px] text-slate-500 font-sans" }, `(${r.target_branch || "main"})`));
+		})), React.createElement("div", { className: "text-[10px] text-indigo-400/90 font-sans flex items-center gap-1.5" }, React.createElement("span", null, "🔀"), React.createElement("span", null, "Multi-repo triage tasks can be automatically split into individual Todo tasks per repository once triaged."))) : React.createElement("select", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer font-mono",
 			value: currentRepoAlias,
 			onChange: (e) => setNewTaskForm({
 				...newTaskForm,
-				repo_alias: e.target.value
+				repo_alias: e.target.value,
+				target_repos: [e.target.value]
 			})
 		}, boardRepos.map((r) => React.createElement("option", {
 			key: r.repo_alias,
@@ -3465,7 +3533,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			tenant: "",
 			pr_url: "",
 			board_slug: "",
-			repo_alias: ""
+			repo_alias: "",
+			target_repos: []
 		});
 		const [newBoardForm, setNewBoardForm] = useState({
 			slug: "",
@@ -4642,6 +4711,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				const payload = {
 					...newTaskForm,
 					repo_alias: targetRepoAlias,
+					target_repos: newTaskForm.target_repos && newTaskForm.target_repos.length > 0 ? newTaskForm.target_repos : targetRepoAlias ? [targetRepoAlias] : void 0,
 					pr_url: newTaskForm.pr_url && newTaskForm.pr_url.trim() ? newTaskForm.pr_url.trim() : null,
 					board_slug: chosenBoard
 				};
@@ -4661,7 +4731,8 @@ var ZeroFactoryDashboard = (function(exports) {
 					tenant: "",
 					pr_url: "",
 					board_slug: "",
-					repo_alias: ""
+					repo_alias: "",
+					target_repos: []
 				});
 				loadTasksAndStats();
 			} catch (err) {

@@ -25,10 +25,16 @@ When reviewing external issues imported into `Triage` (`[Triage] [Bug]` or `[Tri
 2. **Issue Type Classification**:
    - **`[Bug]` (Defects & Regressions)**: Inspect reproduction steps. Formulate a reproduction hypothesis and test plan for `zf-builder`. If reproduction details are missing or ambiguous, record a comment requesting human clarification and leave in `Triage` (or move to `Blocked`).
    - **`[Feature]` (Enhancements & New Capabilities)**: Review acceptance criteria, architectural alignment, and dependencies. Decompose large features into focused subtasks if needed.
-3. **Promotion & Delegation to Builder**: Once scope, reproduction, and acceptance criteria are clear:
+3. **Promotion & Delegation to Builder**: Once scope, reproduction, and acceptance criteria are clear for a single repository:
    - Move status to `Todo` (`hermes zerofactory move <task-id> todo`).
    - Assign to `zf-builder`.
    - The dispatcher will automatically spawn a dedicated git worktree and assign `zf-builder` for implementation.
+4. **Multi-Repository Bugs and Features (Multi-Repo Boards)**:
+   - If an issue touches multiple repositories (e.g., bug relates to 2 repositories, or shared schemas/APIs):
+   - ZeroFactory isolates each task and worktree to a single repository.
+   - Decompose the triage task into separate repository tasks using:
+     `hermes zerofactory split <task-id> --repos <repo1,repo2,...>`
+   - This automatically creates linked `Todo` tasks for each repository assigned to `zf-builder`, marks the parent triage task `Done`, and dispatches builder sessions.
 
 ## Communication & Style
 - Concise, action-oriented, and direct.
