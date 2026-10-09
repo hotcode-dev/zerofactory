@@ -74,9 +74,23 @@ def _init_test_db(db_path: Path):
                 slug TEXT PRIMARY KEY,
                 name TEXT,
                 description TEXT,
-                git_url TEXT,
-                target_branch TEXT,
-                max_concurrent_running INTEGER DEFAULT 1
+                max_concurrent_running INTEGER DEFAULT 1,
+                created_at INTEGER,
+                updated_at INTEGER
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE board_repositories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                board_slug TEXT NOT NULL,
+                repo_alias TEXT NOT NULL,
+                git_url TEXT NOT NULL,
+                target_branch TEXT NOT NULL DEFAULT 'main',
+                additional_reviewer_usernames TEXT NOT NULL DEFAULT '[]',
+                created_at INTEGER,
+                updated_at INTEGER
             )
             """
         )
@@ -604,10 +618,10 @@ def test_run_dispatch_cycle_per_board_idle_scanning(tmp_path: Path):
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             """
-            INSERT INTO boards (slug, name, git_url, target_branch)
+            INSERT INTO boards (slug, name)
             VALUES 
-                ('idle-board-enabled', 'Enabled', '', 'main'),
-                ('idle-board-disabled', 'Disabled', '', 'main')
+                ('idle-board-enabled', 'Enabled'),
+                ('idle-board-disabled', 'Disabled')
             """
         )
         conn.commit()
@@ -721,4 +735,65 @@ def test_run_dispatch_cycle_relates_to_does_not_block_task(tmp_path: Path):
 
         c_relates = conn.execute("SELECT status FROM tasks WHERE id = 'c-relates'").fetchone()
         assert c_relates["status"] in ("todo", "running")
+
+
+def test_zf_board_git_url_resolves_from_board_repositories(tmp_path: Path):
+    """_zf_board_git_url falls back to board_repositories when boards has no git_url."""
+    from dispatcher.scheduler import _zf_board_git_url
+
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("INSERT INTO boards (slug, name) VALUES ('br-board', 'BR Board')")
+        conn.execute(
+            "INSERT INTO board_repositories (board_slug, repo_alias, git_url) VALUES ('br-board', 'alias1', 'git@github.com:foo/bar.git')"
+        )
+        conn.commit()
+        cursor = conn.cursor()
+        url = _zf_board_git_url(cursor, "br-board")
+        assert url == "git@github.com:foo/bar.git"
+
+
+def test_run_dispatch_cycle_respects_scanner_last_run_cooldown(tmp_path: Path):
+    """Dispatcher respects last_run_timestamp in scanner cron config to honor cooldown."""
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+    lock_file = tmp_path / "dispatcher.lock"
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute("INSERT INTO boards (slug, name) VALUES ('recent-board', 'Recent')")
+        conn.commit()
+
+    import time
+    import dispatcher
+
+    spawned = []
+    now = int(time.time())
+
+    def mock_spawn(board_slug, repo_path):
+        spawned.append(board_slug)
+        return 12345
+
+    # last run was 60 seconds ago; cooldown is 15 minutes (900 seconds)
+    recent_cfg = {
+        "scan_on_idle": True,
+        "idle_scan_cooldown_minutes": 15,
+        "idle_scan_max_todo": 2,
+        "enabled": True,
+        "last_run_timestamp": now - 60,
+    }
+
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.object(dispatcher, "reap_active_scanners"),
+        patch.object(dispatcher, "spawn_board_scanner", side_effect=mock_spawn),
+        patch.object(dispatcher, "resolve_task_repo_path", return_value=tmp_path),
+        patch.object(dispatcher, "clean_stale_git_locks"),
+        patch.object(dispatcher, "get_scanner_cron_config", return_value=recent_cfg),
+    ):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+        assert res["scans_triggered"] == 0
+        assert "recent-board" not in spawned
+
 

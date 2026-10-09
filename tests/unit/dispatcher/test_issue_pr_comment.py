@@ -115,8 +115,12 @@ def _seed_task(db_path: Path, metadata: dict, workspace_dir: Path):
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO boards (slug, name, git_url, target_branch) "
-            "VALUES ('b1', 'Board', 'https://github.com/foo/bar.git', 'main')"
+            "INSERT INTO boards (slug, name) "
+            "VALUES ('b1', 'Board')"
+        )
+        conn.execute(
+            "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) "
+            "VALUES ('b1', 'main', 'https://github.com/foo/bar.git', 'main')"
         )
         conn.execute(
             "INSERT INTO tasks VALUES (?, 'Work Item', '', 'running', 'zf-builder', "

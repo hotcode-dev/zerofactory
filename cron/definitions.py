@@ -467,7 +467,7 @@ def get_scanner_cron_config(board_slug: str) -> dict[str, Any]:
                 continue
             for j in load_jobs_from_file_fn(target):
                 if isinstance(j, dict) and j.get("id") == job_id:
-                    enabled = j.get("enabled", True)
+                    enabled = bool(j.get("enabled", True)) and j.get("state") != "paused"
                     sched = j.get("schedule") or {}
                     sched_disp = str(
                         j.get("schedule_display") or sched.get("display") or ""
@@ -487,6 +487,17 @@ def get_scanner_cron_config(board_slug: str) -> dict[str, Any]:
                     if env_soi is not None:
                         soi = env_soi.strip().lower() in ("1", "true", "yes")
 
+                    last_run_at = j.get("last_run_at")
+                    last_run_ts = 0
+                    if last_run_at:
+                        try:
+                            from datetime import datetime
+
+                            dt = datetime.fromisoformat(last_run_at)
+                            last_run_ts = int(dt.timestamp())
+                        except Exception:
+                            pass
+
                     return {
                         "enabled": bool(enabled),
                         "scan_on_idle": soi and bool(enabled),
@@ -494,6 +505,7 @@ def get_scanner_cron_config(board_slug: str) -> dict[str, Any]:
                             j.get("idle_scan_cooldown_minutes") or 15
                         ),
                         "idle_scan_max_todo": int(j.get("idle_scan_max_todo") or 2),
+                        "last_run_timestamp": last_run_ts,
                     }
     except Exception as e:
         _log.debug("Error reading scanner cron config for %s: %s", board_slug, e)

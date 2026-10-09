@@ -203,6 +203,14 @@ def setup_worktree(
                         target_branch = str(br_row[0]).strip()
                 if not target_branch:
                     cursor.execute(
+                        "SELECT target_branch FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+                        (board_slug,),
+                    )
+                    br_row = cursor.fetchone()
+                    if br_row and br_row[0]:
+                        target_branch = str(br_row[0]).strip()
+                if not target_branch:
+                    cursor.execute(
                         "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
                     )
                     b_row = cursor.fetchone()

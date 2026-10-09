@@ -648,9 +648,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                 try:
                     b_rows = cursor.execute(
-                        "SELECT slug, git_url, max_concurrent_running FROM boards"
+                        "SELECT slug, max_concurrent_running FROM boards"
                     ).fetchall()
-                except Exception:
+                except Exception as e:
+                    _log.warning("Failed to query boards for idle scanner check: %s", e)
                     b_rows = []
 
                 todo_per_board: dict[str, int] = {}
@@ -698,7 +699,10 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                     if board_active_running < board_mcr and board_todo_count < max_todo:
                         if board_slug not in _active_scanners:
-                            last_scan = _last_idle_scan_times.get(board_slug, 0)
+                            last_scan = max(
+                                _last_idle_scan_times.get(board_slug, 0),
+                                int(cron_cfg.get("last_run_timestamp") or 0),
+                            )
                             if (now - last_scan) >= cooldown_seconds:
                                 repo_for_task = _disp.resolve_task_repo_path(
                                     cursor, board_slug, None
@@ -768,6 +772,15 @@ def _zf_board_git_url(cursor: "sqlite3.Cursor | None", board_slug: str | None) -
     """Best-effort board git_url used as owner/repo fallback for issue comments."""
     if not board_slug or cursor is None:
         return ""
+    try:
+        row = cursor.execute(
+            "SELECT git_url FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+            (board_slug,),
+        ).fetchone()
+        if row and row[0]:
+            return str(row[0]).strip()
+    except Exception:
+        pass
     try:
         row = cursor.execute(
             "SELECT git_url FROM boards WHERE slug = ?", (board_slug,)
@@ -1624,14 +1637,32 @@ def _package_and_open_pr(
             )
 
         target_branch = ""
+        repo_alias = str(dict(row).get("repo_alias") or "").strip()
         if board_slug:
             try:
-                cursor.execute(
-                    "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
-                )
-                b_row = cursor.fetchone()
-                if b_row and b_row[0]:
-                    target_branch = str(b_row[0]).strip()
+                if repo_alias:
+                    cursor.execute(
+                        "SELECT target_branch FROM board_repositories WHERE board_slug = ? AND repo_alias = ?",
+                        (board_slug, repo_alias),
+                    )
+                    br_row = cursor.fetchone()
+                    if br_row and br_row[0]:
+                        target_branch = str(br_row[0]).strip()
+                if not target_branch:
+                    cursor.execute(
+                        "SELECT target_branch FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+                        (board_slug,),
+                    )
+                    br_row = cursor.fetchone()
+                    if br_row and br_row[0]:
+                        target_branch = str(br_row[0]).strip()
+                if not target_branch:
+                    cursor.execute(
+                        "SELECT target_branch FROM boards WHERE slug = ?", (board_slug,)
+                    )
+                    b_row = cursor.fetchone()
+                    if b_row and b_row[0]:
+                        target_branch = str(b_row[0]).strip()
             except Exception:
                 pass
 
