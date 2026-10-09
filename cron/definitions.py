@@ -37,11 +37,20 @@ def build_board_scanner_prompt(board: dict[str, Any], workdir: str | None) -> st
         else "Current repository workspace"
     )
 
+    repos_list = [
+        f"- `{r.get('repo_alias')}` ({r.get('git_url', '')})"
+        for r in board.get("repositories", [])
+        if r.get("repo_alias")
+    ]
+    repos_desc = "\n".join(repos_list) if repos_list else f"- `{slug}`"
+
     return f"""Scan the workspace repository for code quality issues, tech debt, and improvement opportunities for the '{slug}' board.
 
 ## Context:
 - Working Directory: {workdir_desc}
 - Target Board: `{slug}`
+- Board Repositories:
+{repos_desc}
 
 ## STEP 1: Scanner Pre-Flight Board Check (CRITICAL)
 Before inspecting files, review all existing tasks on the board:
@@ -66,8 +75,9 @@ Run: `hermes zerofactory list --board "{slug}"`
 ## STEP 3: Create Task with Fingerprint Safeguard (MAXIMUM 1 TASK TOTAL):
 If you find a genuine, unaddressed issue:
 Write your detailed context to a temporary file (e.g. `/tmp/task_desc.md`) and run:
-`hermes zerofactory create "<issue title>" --description-file "/tmp/task_desc.md" --board "{slug}" --files "<relative_path1>,<relative_path2>" --category "<category>" --priority P0 --status todo --assignee zf-builder`
+`hermes zerofactory create "<issue title>" --description-file "/tmp/task_desc.md" --board "{slug}" --repo "<repo_alias>" --files "<relative_path1>,<relative_path2>" --category "<category>" --priority P0 --status todo --assignee zf-builder`
 (Alternatively, pass inline `--description "<detailed context>"` if short).
+- Always pass `--repo` with the exact repository alias (from the board's repositories) where the issue lives.
 - Always pass `--files` with all affected relative file paths (e.g., `--files "src/auth.ts,src/session.ts"`). Zero Factory computes a multi-file fingerprint safeguard to prevent duplicate tasks.
 - Always pass `--category` (one of: `bug-fix`, `refactoring`, `performance`, `documentation`, `testing`, `security`, `config`).
 - In description: Clear context with RELATIVE file paths and line numbers only. NEVER use absolute paths in the description!
