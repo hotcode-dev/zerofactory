@@ -278,7 +278,7 @@ def test_reap_active_workers_parks_exhausted_stuck_task(tmp_path: Path):
         "SELECT status, assignee, metadata FROM tasks WHERE id = 't-stuck2'"
     ).fetchone()
     assert row["status"] == "blocked"
-    assert row["assignee"] == "human"
+    assert row["assignee"] == "zf-builder"
     saved_meta = json.loads(row["metadata"])
     assert saved_meta["permanently_blocked"] is True
     assert saved_meta["worker_failure_retries"] == 3

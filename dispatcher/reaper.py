@@ -237,7 +237,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         )
                         meta["blocked_reason_type"] = "stuck"
                         cursor.execute(
-                            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                            "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                             (json.dumps(meta), now, task_id),
                         )
                         cursor.execute(
@@ -304,7 +304,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     )
                     meta["blocked_reason_type"] = "stuck"
                     cursor.execute(
-                        "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                         (json.dumps(meta), now, task_id),
                     )
                     cursor.execute(
@@ -417,7 +417,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 )
                 meta["blocked_reason_type"] = "stuck"
                 cursor.execute(
-                    "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
                     (json.dumps(meta), now, task_id),
                 )
                 cursor.execute(
