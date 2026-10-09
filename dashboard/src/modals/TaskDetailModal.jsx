@@ -33,6 +33,19 @@ export function TaskDetailModal(props) {
 
   const [depTaskId, setDepTaskId] = React.useState("");
   const [depLinkType, setDepLinkType] = React.useState("blocks");
+  const [depSearchQuery, setDepSearchQuery] = React.useState("");
+  const [isDepDropdownOpen, setIsDepDropdownOpen] = React.useState(false);
+  const depDropdownRef = React.useRef(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event) {
+      if (depDropdownRef.current && !depDropdownRef.current.contains(event.target)) {
+        setIsDepDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleLinkDependency = async () => {
     if (!depTaskId || !selectedTask) return;
@@ -44,6 +57,8 @@ export function TaskDetailModal(props) {
       });
       showToast("Linked dependency #" + depTaskId + " (" + depLinkType + ")", "success");
       setDepTaskId("");
+      setDepSearchQuery("");
+      setIsDepDropdownOpen(false);
       loadTaskDetails(selectedTask.id);
       loadTasksAndStats();
     } catch (err) {
@@ -751,22 +766,112 @@ export function TaskDetailModal(props) {
                   React.createElement(
                     "div",
                     { className: "flex items-center gap-2 pt-2 border-t border-slate-800/80 flex-wrap sm:flex-nowrap" },
+                    // Searchable task dropdown
                     React.createElement(
-                      "select",
-                      {
-                        className: "flex-1 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 cursor-pointer min-w-[180px]",
-                        value: depTaskId,
-                        onChange: (e) => setDepTaskId(e.target.value)
-                      },
-                      React.createElement("option", { value: "" }, "-- Link to another task --"),
-                      (tasks || [])
-                        .filter((t) => t.id !== selectedTask.id && (!selectedTask.parents || !selectedTask.parents.some((p) => p.id === t.id)))
-                        .map((t) =>
+                      "div",
+                      { className: "relative flex-1 min-w-[200px] max-w-full", ref: depDropdownRef },
+                      React.createElement(
+                        "div",
+                        {
+                          className: "flex items-center bg-slate-900 border border-slate-800 focus-within:border-indigo-500 rounded px-2.5 py-1.5 text-xs gap-1.5 transition-colors"
+                        },
+                        React.createElement("span", { className: "text-slate-500 select-none text-[11px]" }, "🔍"),
+                        React.createElement("input", {
+                          type: "text",
+                          className: "bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none w-full min-w-0",
+                          placeholder: depTaskId
+                            ? (() => {
+                                const t = (tasks || []).find((item) => String(item.id) === String(depTaskId));
+                                return t ? "#" + t.id + " " + (t.repo_alias ? "[" + t.repo_alias + "] " : "") + t.title : "-- Link to another task --";
+                              })()
+                            : "Search task to link...",
+                          value: depSearchQuery,
+                          onFocus: () => setIsDepDropdownOpen(true),
+                          onChange: (e) => {
+                            setDepSearchQuery(e.target.value);
+                            setIsDepDropdownOpen(true);
+                          }
+                        }),
+                        depTaskId &&
                           React.createElement(
-                            "option",
-                            { key: t.id, value: t.id },
-                            "#" + t.id + " " + (t.repo_alias ? "[" + t.repo_alias + "] " : "") + t.title + " (" + t.status + ")"
+                            "button",
+                            {
+                              type: "button",
+                              className: "text-slate-500 hover:text-slate-300 text-xs px-1 cursor-pointer",
+                              onClick: () => {
+                                setDepTaskId("");
+                                setDepSearchQuery("");
+                              },
+                              title: "Clear selection"
+                            },
+                            "✕"
                           )
+                      ),
+                      isDepDropdownOpen &&
+                        React.createElement(
+                          "div",
+                          {
+                            className: "absolute left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-lg shadow-2xl z-30 divide-y divide-slate-800/50"
+                          },
+                          (() => {
+                            const query = depSearchQuery.trim().toLowerCase();
+                            const availableTasks = (tasks || []).filter(
+                              (t) =>
+                                t.id !== selectedTask.id &&
+                                (!selectedTask.parents || !selectedTask.parents.some((p) => p.id === t.id))
+                            );
+                            const filtered = availableTasks.filter((t) => {
+                              if (!query) return true;
+                              const matchId = String(t.id).includes(query);
+                              const matchTitle = (t.title || "").toLowerCase().includes(query);
+                              const matchRepo = (t.repo_alias || "").toLowerCase().includes(query);
+                              const matchStatus = (t.status || "").toLowerCase().includes(query);
+                              return matchId || matchTitle || matchRepo || matchStatus;
+                            });
+
+                            if (filtered.length === 0) {
+                              return React.createElement(
+                                "div",
+                                { className: "p-2.5 text-xs text-slate-500 text-center" },
+                                "No matching tasks found"
+                              );
+                            }
+
+                            return filtered.map((t) =>
+                              React.createElement(
+                                "button",
+                                {
+                                  key: t.id,
+                                  type: "button",
+                                  className:
+                                    "w-full text-left px-2.5 py-2 hover:bg-slate-800/80 transition-colors flex items-center justify-between gap-2 text-xs cursor-pointer " +
+                                    (String(depTaskId) === String(t.id) ? "bg-indigo-950/40 text-indigo-200" : "text-slate-300"),
+                                  onClick: () => {
+                                    setDepTaskId(t.id);
+                                    setDepSearchQuery("");
+                                    setIsDepDropdownOpen(false);
+                                  }
+                                },
+                                React.createElement(
+                                  "div",
+                                  { className: "flex items-center gap-1.5 min-w-0 flex-1" },
+                                  React.createElement("span", { className: "font-mono font-semibold text-indigo-400 shrink-0" }, "#" + t.id),
+                                  t.repo_alias &&
+                                    React.createElement(
+                                      "span",
+                                      { className: "px-1 py-0.2 rounded text-[10px] font-mono bg-slate-800 text-teal-300 border border-slate-700/60 shrink-0" },
+                                      t.repo_alias
+                                    ),
+                                  React.createElement("span", { className: "truncate" }, t.title)
+                                ),
+                                React.createElement(
+                                  "span",
+                                  { className: "text-[10px] capitalize px-1.5 py-0.5 rounded border border-slate-700/70 bg-slate-800/60 text-slate-400 shrink-0" },
+                                  t.status
+                                )
+                              )
+                            );
+                          })()
                         )
                     ),
                     React.createElement(
