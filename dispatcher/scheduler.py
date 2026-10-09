@@ -1633,6 +1633,7 @@ def _package_and_open_pr(
                 check=True,
                 cwd=workspace_path,
                 capture_output=True,
+                text=True,
                 timeout=60,
             )
 
@@ -1738,6 +1739,7 @@ def _package_and_open_pr(
             check=True,
             cwd=workspace_path,
             capture_output=True,
+            text=True,
             timeout=180,
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
@@ -1877,7 +1879,12 @@ def _package_and_open_pr(
         steps.end("ok", f"routed to reviewer: {pr_url}")
         return True
     except subprocess.CalledProcessError as e:
-        err_msg = (e.stderr or "").strip() or str(e)
+        raw_err = e.stderr or b""
+        if isinstance(raw_err, bytes):
+            err_msg = raw_err.decode("utf-8", errors="replace").strip()
+        else:
+            err_msg = str(raw_err).strip()
+        err_msg = err_msg or str(e)
         if "No commits between" in err_msg:
             steps.end("skip", "no commits between branch and main")
             _log.info(
