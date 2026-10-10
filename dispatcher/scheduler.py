@@ -1185,9 +1185,13 @@ def _poll_pr_and_route_review(
         # via the worker retry budget.
         blocked_type = str(task_meta.get("blocked_reason_type") or "human-gate")
         has_actionable_feedback = (
-            decision == "CHANGES_REQUESTED" or blocked_type == "changes-requested"
+            decision == "CHANGES_REQUESTED"
+            or blocked_type == "changes-requested"
+            or bool(actionable_comments)
         )
-        is_approved = decision == "APPROVED" or blocked_type == "approved"
+        is_approved = (
+            decision == "APPROVED" or blocked_type == "approved"
+        ) and not has_actionable_feedback
 
         if has_actionable_feedback and row["status"] in ("blocked", "todo"):
             for c in new_pr_comments:
@@ -1300,6 +1304,8 @@ def _poll_pr_and_route_review(
                 )
                 return True
 
+            task_meta.pop("blocked_reason", None)
+            task_meta.pop("blocked_reason_type", None)
             cursor.execute(
                 "UPDATE tasks SET assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
                 (

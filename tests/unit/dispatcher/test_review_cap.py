@@ -786,3 +786,44 @@ class TestApprovedParkIdempotent:
             ).fetchone()
             meta = json.loads(meta_row["metadata"])
             assert "cmt_late" in meta["processed_review_comment_ids"]
+
+    def test_actionable_comment_on_parked_approved_task_unparks_to_builder(
+        self, tmp_path: Path
+    ):
+        """When an actionable comment arrives on a parked approved task, it unparks and routes to builder."""
+        db_path = tmp_path / "test.db"
+        _init_test_db(db_path)
+        task_id = "t-parked-actionable-comment"
+        self._seed_task(
+            db_path,
+            task_id,
+            {
+                "blocked_reason": "Reviewer approved; awaiting human merge",
+                "blocked_reason_type": "approved",
+                "packaged_by": "zf-builder",
+                "processed_review_comment_ids": ["cmt_old"],
+            },
+            assignee="human",
+        )
+        actionable_comment = [
+            {
+                "comment_id": "cmt_human_feedback",
+                "author": "human-reviewer",
+                "body": "All origins should be able to call to check the status. Please fix CORS.",
+                "state": "COMMENTED",
+            }
+        ]
+
+        self._run_cycles(db_path, n=1, comments=actionable_comment)
+
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            assert row["status"] == "todo"
+            assert row["assignee"] == "zf-builder"
+            meta = json.loads(row["metadata"])
+            assert "blocked_reason" not in meta
+            assert "blocked_reason_type" not in meta
+            assert "cmt_human_feedback" in meta["processed_review_comment_ids"]
