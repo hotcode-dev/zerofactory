@@ -222,13 +222,13 @@ Polls tasks matching: `pr_url` set and not `done`, OR `blocked` with a builder a
      status `done`.
    - `CONFLICTING` → conflict resolution flow (unless a builder already resolved and is
      handing off — then fall through to packaging).
-   - **`changes-requested` verdict (`blocked_reason_type`) or `reviewDecision == CHANGES_REQUESTED`** → record comments (memory
+   - **`changes-requested` verdict (`blocked_reason_type`), `reviewDecision == CHANGES_REQUESTED`, or actionable PR review comments (`is_actionable_review_comment`)** → record comments (memory
      auto-extraction runs here), bump `commit_review_count` (reset when the head SHA changes),
-     remove worktree, route back to builder: `todo` + `assignee=<PR author>` + review-comment
-     prompt block. When `commit_review_count > ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**)
+     remove worktree, clear `blocked_reason` / `blocked_reason_type`, route back to builder: `todo` + `assignee=<PR author>` + review-comment
+     prompt block. Actionable review feedback from reviewers/humans overrides any prior `approved` status and unparks tasks back to `todo`. When `commit_review_count > ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**)
      → escalate: `blocked` + `assignee=human` + `review_cap_reached`.
-   - **`approved` verdict or `reviewDecision == APPROVED`** → `blocked` +
-     `assignee=human` ("Reviewer approved; awaiting human merge").
+   - **`approved` verdict or `reviewDecision == APPROVED` (with no actionable comments)** → `blocked` +
+     `assignee=human` ("Reviewer approved; awaiting human merge"). If late non-actionable comments arrive while already parked, they are forwarded to task comments idempotently without re-parking side effects.
 3. **Packaging fallback** (no PR yet, or `done`/`blocked` handoff): deterministic
    **precommit gate** on the target repository (`repo_alias`) (§6) → conflict checks against the repository's configured `target_branch` → commit (conventional message) → merge latest
    target branch → push `task/<id>` → `gh pr create` (body carries `Fixes #N` / Jira link, reviewer assigned from repository's trusted list) →
@@ -370,16 +370,17 @@ flowchart TD
 The **reviewer never merges** and never uses `--approve`/`--request-changes` (GitHub blocks
 self-approval); it posts `[AI:zf-reviewer]`-prefixed review comments and signals its verdict
 with a canonical code (`hermes zerofactory block <id> --reason <code>`). The **dispatcher**
-routes on deterministic signals only — GitHub `reviewDecision` (human reviewers) or the
-task's `blocked_reason_type` code. Comments are forwarded as content only; a reviewer that
-crashes before signaling self-heals via the worker retry budget:
+routes on deterministic signals — GitHub `reviewDecision` (human reviewers), the
+task's `blocked_reason_type` code, and actionable PR critique comments (`is_actionable_review_comment`).
+Non-actionable or automated notes (approvals, builder verification notes, resolution summaries, dedup notes)
+are recorded as content without triggering a reroute; substantive critique immediately unparks and routes to builder:
 
 | Signal detected in step 3 | Route |
 |---|---|
-| `blocked_reason_type == changes-requested` or `reviewDecision == CHANGES_REQUESTED` | `todo` + builder + 🚨 review-comment block (round counter++) |
-| `blocked_reason_type == approved` or `reviewDecision == APPROVED` | `blocked` + `human` |
+| `blocked_reason_type == changes-requested`, `reviewDecision == CHANGES_REQUESTED`, or actionable PR review comment(s) | `todo` + builder + 🚨 review-comment block (round counter++; unparks approved tasks) |
+| `blocked_reason_type == approved` or `reviewDecision == APPROVED` (no actionable comments) | `blocked` + `human` (awaiting merge; idempotent parking) |
 | `commit_review_count > 2` (per commit SHA; resets on new commits) | escalate `blocked` + `human` + `review_cap_reached` |
-| Neither (comments only) | record comments only; no routing |
+| Non-actionable comments only (approval notes, builder notes, automated bot messages) | record comments only; no reroute |
 
 Review rounds are **themed** (round 1: correctness/tests/security/Ponytail gatekeeping;
 round 2: verification & polish) and hard-capped — the dispatcher is the enforcement point,
