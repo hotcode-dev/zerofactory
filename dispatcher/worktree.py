@@ -181,7 +181,14 @@ def setup_worktree(
 
     target_name = repo_alias or repo_path.name
     if board_slug:
-        worktree_base = Path.home() / "git" / f"{board_slug}-worktrees"
+        try:
+            from paths import get_board_worktrees_dir  # type: ignore
+        except Exception:
+            try:
+                from ..paths import get_board_worktrees_dir  # type: ignore
+            except Exception:
+                get_board_worktrees_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "worktrees"  # type: ignore
+        worktree_base = get_board_worktrees_dir(board_slug)
     else:
         worktree_base = repo_path.parent / f"{repo_path.name}-worktrees"
     task_root = worktree_base / str(task_id)
@@ -578,9 +585,10 @@ def _remove_worktree(workspace_path: str | None, repo_path: Path) -> None:
     ws_path = Path(workspace_path)
     task_root = ws_path.parent
 
-    # 1. Clean up any sibling worktrees in task_root if under a -worktrees directory
+    # 1. Clean up any sibling worktrees in task_root if under a -worktrees or workspaces/.../worktrees directory
     try:
-        if task_root.exists() and "-worktrees" in str(task_root):
+        is_managed_worktree = "-worktrees" in str(task_root) or "worktrees" in task_root.parts
+        if task_root.exists() and is_managed_worktree:
             for item in task_root.iterdir():
                 if item.is_dir() and item != ws_path and (item / ".git").is_file():
                     try:
@@ -669,16 +677,21 @@ def _remove_worktree(workspace_path: str | None, repo_path: Path) -> None:
                 workspace_path,
             )
 
-    # 3. Clean up task_root directory if empty or under -worktrees
+    # 3. Clean up task_root directory if empty or under -worktrees / workspaces/.../worktrees
     try:
         import shutil
 
+        is_managed_task_root = (
+            "-worktrees" in str(task_root)
+            or ("worktrees" in task_root.parts and task_root.name == str(ws_path.parent.name))
+        )
         if (
             task_root.exists()
-            and "-worktrees" in str(task_root)
+            and is_managed_task_root
             and task_root != repo_path.parent
             and task_root != Path.home()
             and task_root != Path.home() / "git"
+            and task_root != Path.home() / ".zerofactory"
         ):
             shutil.rmtree(str(task_root), ignore_errors=True)
     except Exception:

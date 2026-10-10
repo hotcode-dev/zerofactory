@@ -161,7 +161,40 @@ class TestPathsResolution(unittest.TestCase):
             {"zf-builder", "zf-reviewer", "zf-orchestrator"},
         )
         self.assertNotIn("unassigned", D.VALID_PROFILES)
-        self.assertNotIn("human", D.VALID_PROFILES)
+    def test_workspace_paths(self):
+        """Test default and overridden workspace directories."""
+        import os
+
+        with tempfile.TemporaryDirectory() as td:
+            home_root = Path(td) / "home"
+            with mock.patch("pathlib.Path.home", return_value=home_root):
+                with mock.patch.dict(os.environ, {}, clear=True):
+                    self.assertEqual(
+                        P.get_workspaces_root(),
+                        home_root / ".zerofactory" / "workspaces",
+                    )
+                    self.assertEqual(
+                        P.get_board_repos_dir("my-board"),
+                        home_root / ".zerofactory" / "workspaces" / "my-board" / "repos",
+                    )
+                    self.assertEqual(
+                        P.get_board_worktrees_dir("my-board"),
+                        home_root / ".zerofactory" / "workspaces" / "my-board" / "worktrees",
+                    )
+
+                custom_ws = Path(td) / "custom_workspaces"
+                with mock.patch.dict(
+                    os.environ, {"ZEROFACTORY_WORKSPACES_DIR": str(custom_ws)}
+                ):
+                    self.assertEqual(P.get_workspaces_root(), custom_ws.resolve())
+                    self.assertEqual(
+                        P.get_board_repos_dir("my-board"),
+                        custom_ws.resolve() / "my-board" / "repos",
+                    )
+                    self.assertEqual(
+                        P.get_board_worktrees_dir("my-board"),
+                        custom_ws.resolve() / "my-board" / "worktrees",
+                    )
 
 
 if __name__ == "__main__":

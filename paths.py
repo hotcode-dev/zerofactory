@@ -158,3 +158,27 @@ def resolve_profile_state_db(assignee: str) -> Path | None:
         return p4
 
     return None
+
+
+def get_workspaces_root() -> Path:
+    """Return the root directory for Zero Factory managed repositories and worktrees.
+
+    Defaults to ``~/.zerofactory/workspaces`` unless overridden by
+    ``ZEROFACTORY_WORKSPACES_DIR``.
+    """
+    import os
+
+    override = os.environ.get("ZEROFACTORY_WORKSPACES_DIR")
+    if override and override.strip():
+        return Path(os.path.expanduser(override.strip())).resolve()
+    return Path.home() / ".zerofactory" / "workspaces"
+
+
+def get_board_repos_dir(board_slug: str) -> Path:
+    """Return the base repositories directory for a board under ~/.zerofactory/workspaces/<board_slug>/repos."""
+    return get_workspaces_root() / board_slug / "repos"
+
+
+def get_board_worktrees_dir(board_slug: str) -> Path:
+    """Return the task worktrees directory for a board under ~/.zerofactory/workspaces/<board_slug>/worktrees."""
+    return get_workspaces_root() / board_slug / "worktrees"

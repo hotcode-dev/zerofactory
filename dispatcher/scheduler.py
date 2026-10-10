@@ -462,13 +462,26 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             if repo_for_task:
                                 target_name = repo_alias or repo_for_task.name
                                 if board_slug:
+                                    try:
+                                        from paths import get_board_worktrees_dir  # type: ignore
+                                    except Exception:
+                                        try:
+                                            from ..paths import get_board_worktrees_dir  # type: ignore
+                                        except Exception:
+                                            get_board_worktrees_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "worktrees"  # type: ignore
                                     cand_wt = (
-                                        Path.home()
-                                        / "git"
-                                        / f"{board_slug}-worktrees"
+                                        get_board_worktrees_dir(board_slug)
                                         / task_id
                                         / target_name
                                     )
+                                    if not cand_wt.exists():
+                                        cand_wt = (
+                                            Path.home()
+                                            / "git"
+                                            / f"{board_slug}-worktrees"
+                                            / task_id
+                                            / target_name
+                                        )
                                 else:
                                     cand_wt = (
                                         repo_for_task.parent

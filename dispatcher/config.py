@@ -40,6 +40,9 @@ try:
         HUMAN,
         PROFILE_MAP,
         UNASSIGNED,
+        get_board_repos_dir,
+        get_board_worktrees_dir,
+        get_workspaces_root,
         normalize_assignee,
         resolve_profile_state_db,
     )
@@ -48,6 +51,9 @@ except (ImportError, ValueError):
         HUMAN,
         PROFILE_MAP,
         UNASSIGNED,
+        get_board_repos_dir,
+        get_board_worktrees_dir,
+        get_workspaces_root,
         normalize_assignee,
         resolve_profile_state_db,
     )

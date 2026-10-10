@@ -98,11 +98,21 @@ def get_plugin_root() -> Path:
     except Exception:
         pass
 
-    # 3. Path heuristic: if within a `<name>-worktrees/<task_id>` folder
+    # 3. Path heuristic: if within a `<name>-worktrees/<task_id>` or `workspaces/<board>/worktrees/<task_id>/<repo>` folder
     if "-worktrees" in cur.parent.name:
         candidate_repo = cur.parent.parent / cur.parent.name.replace("-worktrees", "")
         if (candidate_repo / "plugin.yaml").exists():
             return candidate_repo
+    elif "worktrees" in cur.parts and "workspaces" in cur.parts:
+        try:
+            wt_idx = cur.parts.index("worktrees")
+            board_dir = Path(*cur.parts[:wt_idx])
+            repo_name = cur.name
+            candidate_repo = board_dir / "repos" / repo_name
+            if (candidate_repo / "plugin.yaml").exists():
+                return candidate_repo
+        except Exception:
+            pass
 
     return cur
 

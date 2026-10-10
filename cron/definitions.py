@@ -181,16 +181,30 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         except Exception:
             pass
 
-    # 1. Direct owner/repo matches under ~/git/
+    # 1. Primary isolated location: ~/.zerofactory/workspaces/<board_slug>/repos/<alias>
+    try:
+        from paths import get_board_repos_dir  # type: ignore
+    except Exception:
+        try:
+            from ..paths import get_board_repos_dir  # type: ignore
+        except Exception:
+            get_board_repos_dir = lambda b: home / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+
+    if slug:
+        board_repos_dir = get_board_repos_dir(slug)
+        for cname in candidate_names:
+            candidates.append(board_repos_dir / cname)
+
+    # 2. Direct owner/repo matches under ~/git/
     if owner and repo:
         candidates.append(home / "git" / owner / repo)
         candidates.append(home / "git" / f"{owner}-{repo}")
 
-    # 2. Candidate names directly under ~/git/
+    # 3. Candidate names directly under ~/git/
     for cname in candidate_names:
         candidates.append(home / "git" / cname)
 
-    # 3. Check immediate subdirectories of ~/git
+    # 4. Check immediate subdirectories of ~/git
     git_root = home / "git"
     if git_root.is_dir():
         try:
@@ -203,7 +217,7 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         except Exception:
             pass
 
-    # 4. Check current working directory if matching
+    # 5. Check current working directory if matching
     try:
         cwd = Path.cwd()
         if (cwd / ".git").exists() and any(
@@ -217,7 +231,7 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         if cand.is_dir() and (cand / ".git").exists():
             return cand.resolve()
 
-    # 5. Optional auto-clone
+    # 6. Optional auto-clone — prefers ~/.zerofactory/workspaces/<slug>/repos/<repo>
     auto_clone_enabled = os.environ.get("ZEROFACTORY_AUTO_CLONE", "1").lower() not in (
         "0",
         "false",
@@ -229,11 +243,12 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         and not os.environ.get("ZEROFACTORY_SKIP_GIT")
         and not os.environ.get("ZEROFACTORY_SKIP_CLONE")
     ):
-        target_clone = home / "git" / (repo or slug)
-        if owner and (home / "git" / owner).is_dir():
-            target_clone = home / "git" / owner / (repo or slug)
-        elif owner and repo:
-            target_clone = home / "git" / owner / repo
+        target_name = repo or slug
+        if slug:
+            target_clone = get_board_repos_dir(slug) / target_name
+        else:
+            target_clone = home / ".zerofactory" / "workspaces" / "default" / "repos" / target_name
+
         try:
             target_clone.parent.mkdir(parents=True, exist_ok=True)
             res = subprocess.run(
