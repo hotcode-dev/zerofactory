@@ -54,33 +54,40 @@ class TestCronDefinitionsUnit(unittest.TestCase):
 
     def test_resolve_board_repo_path_http_and_ssh(self):
         """resolve_board_repo_path handles HTTP, SSH, and description fallbacks."""
-        # Current workspace is zerofactory, which should resolve
-        b_http = {
-            "slug": "zerofactory",
-            "git_url": "https://github.com/hotcode-dev/zerofactory.git",
-        }
-        b_ssh = {
-            "slug": "zerofactory",
-            "git_url": "git@github.com:hotcode-dev/zerofactory.git",
-        }
-        b_proto = {
-            "slug": "zerofactory",
-            "git_url": "ssh://git@github.com/hotcode-dev/zerofactory.git",
-        }
-        b_desc = {
-            "slug": "zerofactory",
-            "description": "Project at git@github.com:hotcode-dev/zerofactory.git",
-        }
+        with tempfile.TemporaryDirectory() as td:
+            fake_repos = Path(td) / "repos"
+            repo_dir = fake_repos / "zerofactory"
+            repo_dir.mkdir(parents=True)
+            (repo_dir / ".git").mkdir()
 
-        res_http = resolve_board_repo_path(b_http)
-        res_ssh = resolve_board_repo_path(b_ssh)
-        res_proto = resolve_board_repo_path(b_proto)
-        res_desc = resolve_board_repo_path(b_desc)
+            b_http = {
+                "slug": "zerofactory",
+                "git_url": "https://github.com/hotcode-dev/zerofactory.git",
+            }
+            b_ssh = {
+                "slug": "zerofactory",
+                "git_url": "git@github.com:hotcode-dev/zerofactory.git",
+            }
+            b_proto = {
+                "slug": "zerofactory",
+                "git_url": "ssh://git@github.com/hotcode-dev/zerofactory.git",
+            }
+            b_desc = {
+                "slug": "zerofactory",
+                "description": "Project at git@github.com:hotcode-dev/zerofactory.git",
+            }
 
-        self.assertIsNotNone(res_http)
-        self.assertEqual(res_http, res_ssh)
-        self.assertEqual(res_http, res_proto)
-        self.assertEqual(res_http, res_desc)
+            with patch("paths.get_board_repos_dir", return_value=fake_repos):
+                res_http = resolve_board_repo_path(b_http)
+                res_ssh = resolve_board_repo_path(b_ssh)
+                res_proto = resolve_board_repo_path(b_proto)
+                res_desc = resolve_board_repo_path(b_desc)
+
+                self.assertIsNotNone(res_http)
+                self.assertEqual(res_http, res_ssh)
+                self.assertEqual(res_http, res_proto)
+                self.assertEqual(res_http, res_desc)
+                self.assertEqual(res_http, repo_dir.resolve())
 
     def test_no_board_cron_generation(self):
         """When database has no boards, only core cron jobs are returned."""

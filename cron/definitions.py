@@ -195,38 +195,6 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         for cname in candidate_names:
             candidates.append(board_repos_dir / cname)
 
-    # 2. Direct owner/repo matches under ~/git/
-    if owner and repo:
-        candidates.append(home / "git" / owner / repo)
-        candidates.append(home / "git" / f"{owner}-{repo}")
-
-    # 3. Candidate names directly under ~/git/
-    for cname in candidate_names:
-        candidates.append(home / "git" / cname)
-
-    # 4. Check immediate subdirectories of ~/git
-    git_root = home / "git"
-    if git_root.is_dir():
-        try:
-            for child in git_root.iterdir():
-                if child.is_dir():
-                    for cname in candidate_names:
-                        sub = child / cname
-                        if sub not in candidates:
-                            candidates.append(sub)
-        except Exception:
-            pass
-
-    # 5. Check current working directory if matching
-    try:
-        cwd = Path.cwd()
-        if (cwd / ".git").exists() and any(
-            cname in (cwd.name, cwd.name.lower()) for cname in candidate_names
-        ):
-            candidates.insert(0, cwd)
-    except Exception:
-        pass
-
     for cand in candidates:
         if cand.is_dir() and (cand / ".git").exists():
             return cand.resolve()

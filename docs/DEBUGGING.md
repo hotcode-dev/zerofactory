@@ -127,7 +127,7 @@ Rules of thumb:
 ## 4. Layer 2 — verify physically (don't trust the DB alone)
 
 ```bash
-cd ~/git/<repo>-worktrees/<task_id>   # the worktree is ground truth for code state
+cd ~/.zerofactory/workspaces/<board>/worktrees/<task_id>/<repo>   # the worktree is ground truth for code state
 git status --porcelain && git log --oneline -5
 bash .zerofactory/precommit.sh        # reproduce the gate exactly as the dispatcher runs it
 gh pr view task/<task_id> --json state,reviewDecision,mergeable

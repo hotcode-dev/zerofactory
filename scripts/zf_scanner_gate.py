@@ -457,11 +457,18 @@ def resolve_repo_path(
         except Exception:
             pass
 
-    # 2. Check standard ~/git directories
-    home = Path.home()
+    # 2. Check ~/.zerofactory/workspaces/<board_slug>/repos/<alias>
+    try:
+        from paths import get_board_repos_dir  # type: ignore
+    except Exception:
+        try:
+            from ..paths import get_board_repos_dir  # type: ignore
+        except Exception:
+            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+
+    b_repos = get_board_repos_dir(board_slug)
     candidates: list[Path] = [
-        home / "git" / repo_alias,
-        home / "git" / board_slug / repo_alias,
+        b_repos / repo_alias,
     ]
 
     owner, repo_name = "", ""
@@ -470,26 +477,7 @@ def resolve_repo_path(
         parts = cleaned_url.replace(":", "/").split("/")
         if len(parts) >= 1:
             repo_name = parts[-1]
-            candidates.append(home / "git" / repo_name)
-        if len(parts) >= 2:
-            owner = parts[-2]
-            candidates.append(home / "git" / owner / repo_name)
-            candidates.append(home / "git" / f"{owner}-{repo_name}")
-
-    git_root = home / "git"
-    if git_root.is_dir():
-        try:
-            for child in git_root.iterdir():
-                if child.is_dir():
-                    sub = child / repo_alias
-                    if sub not in candidates:
-                        candidates.append(sub)
-                    if repo_name:
-                        sub_repo = child / repo_name
-                        if sub_repo not in candidates:
-                            candidates.append(sub_repo)
-        except Exception:
-            pass
+            candidates.append(b_repos / repo_name)
 
     for cand in candidates:
         if cand.is_dir() and (cand / ".git").exists():

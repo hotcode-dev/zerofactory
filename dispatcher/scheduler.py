@@ -474,14 +474,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         / task_id
                                         / target_name
                                     )
-                                    if not cand_wt.exists():
-                                        cand_wt = (
-                                            Path.home()
-                                            / "git"
-                                            / f"{board_slug}-worktrees"
-                                            / task_id
-                                            / target_name
-                                        )
                                 else:
                                     cand_wt = (
                                         repo_for_task.parent

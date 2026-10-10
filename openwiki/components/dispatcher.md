@@ -48,7 +48,7 @@ Within one cycle it:
    and the global `DEFAULT_MAX_CONCURRENT_WORKERS` /
    `DEFAULT_MAX_CONCURRENT_LLM_WORKERS` caps (`repo://dispatcher/config.py#L79-L111`).
 3. **Provisions a worktree** — `setup_worktree` creates a dedicated
-   `<reponame>-worktrees/<task_id>` worktree on a `task/<task_id>` branch, so a
+   `~/.zerofactory/workspaces/<board>/worktrees/<task_id>` worktree on a `task/<task_id>` branch, so a
    worker never touches `main` directly
    (`repo://dispatcher/worktree.py#L89-L140`).
 4. **Spawns the worker** — `spawn_agent_worker` launches the assigned specialist

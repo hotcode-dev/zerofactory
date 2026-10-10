@@ -36,5 +36,5 @@ The workflow is managed via the **Zero Factory Kanban** system with explicit Hum
 5. **Human Merge (HITL)**: Approved tasks move to `Blocked` for final human review and merge on GitHub. Once merged, the dispatcher marks the task as `Done`.
 
 ## Best Practices
-- **Never commit directly to `main`**: All agent development happens in isolated Git worktrees (`~/git/<repo>-worktrees/<task_id>`).
+- **Never commit directly to `main`**: All agent development happens in isolated Git worktrees (`~/.zerofactory/workspaces/<board>/worktrees/<task_id>`).
 - **Use `hermes zerofactory` CLI**: Inspect tasks, trigger manual dispatch cycles, and check queue health anytime.

@@ -17,7 +17,7 @@ Core Responsibilities:
      * zf-builder: Implementation, test writing, worktree-isolated development.
      * zf-reviewer: Thematic code review, security and performance audits, PR polish.
 4. Isolated Git Worktree Provisioning:
-   - Provisions isolated git worktrees (`~/git/<repo>-worktrees/<task_id>`) with dedicated
+   - Provisions isolated git worktrees (`~/.zerofactory/workspaces/<board>/worktrees/<task_id>`) with dedicated
      feature branches (`task/<task_id>`).
    - Automatically synchronizes worktrees with the default branch (e.g. 'main') and detects
      merge conflicts, routing conflicting tasks back to builder agents for resolution.

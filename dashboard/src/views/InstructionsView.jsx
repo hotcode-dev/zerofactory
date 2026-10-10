@@ -18,7 +18,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             {
               icon: "🌳",
               title: "Isolated Git Worktrees",
-              desc: "Every task executes in its own dedicated Git worktree (~/git/<repo>-worktrees/<task_id>). Main is never touched directly."
+              desc: "Every task executes in its own dedicated Git worktree (~/.zerofactory/workspaces/<board>/worktrees/<task_id>). Main is never touched directly."
             },
             {
               icon: "🔍",
@@ -110,7 +110,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                   title: "Worktree & Launch",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/git/<repo>-worktrees/<task_id>), and spawns zf-builder in Running."
+                  desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/.zerofactory/workspaces/<board>/worktrees/<task_id>), and spawns zf-builder in Running."
                 },
                 {
                   num: "4",
@@ -232,7 +232,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
           badge: "Emerald Profile (Senior Engineer)",
           desc: "Takes tickets from Todo into Running, operating in an isolated Git worktree. Writes clean code and tests applying the Ponytail Ladder of Laziness.",
           responsibilities: [
-            "Operates inside dedicated Git worktrees (~/git/<repo>-worktrees/<task_id>)",
+            "Operates inside dedicated Git worktrees (~/.zerofactory/workspaces/<board>/worktrees/<task_id>)",
             "Never touches or modifies the repository main branch directly",
             "Applies the 7-rung Ladder of Laziness: stdlib-first, surgical diffs, and zero package bloat",
             "Writes production code alongside automated unit and integration tests",
@@ -371,12 +371,15 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
           React.createElement(
             "div",
             { className: "p-4.5 bg-slate-950 border border-slate-700 rounded-xl space-y-2 font-mono text-xs text-slate-100 shadow-inner" },
-            React.createElement("div", { className: "text-indigo-300 font-bold" }, "# Worktree Directory Structure"),
-            React.createElement("div", { className: "text-white font-bold" }, "~/git/"),
-            React.createElement("div", { className: "pl-4 text-slate-300" }, "├── my-repo/                    # Main repository (untouched by workers)"),
-            React.createElement("div", { className: "pl-4 text-emerald-300 font-bold" }, "└── my-repo-worktrees/"),
-            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "├── zf-dev-9a4f210b/        # Isolated worktree for Task 1 (board code prefix)"),
-            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "└── zf-dev-b72e189c/        # Isolated worktree for Task 2 (board code prefix)")
+            React.createElement("div", { className: "text-indigo-300 font-bold" }, "# Workspace Directory Structure"),
+            React.createElement("div", { className: "text-white font-bold" }, "~/.zerofactory/workspaces/<board_slug>/"),
+            React.createElement("div", { className: "pl-4 text-slate-300" }, "├── repos/"),
+            React.createElement("div", { className: "pl-8 text-slate-300" }, "└── my-repo/              # Pristine origin mirror (untouched by workers)"),
+            React.createElement("div", { className: "pl-4 text-emerald-300 font-bold" }, "└── worktrees/"),
+            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "├── zf-dev-9a4f210b/      # Isolated worktree for Task 1"),
+            React.createElement("div", { className: "pl-12 text-slate-400" }, "└── my-repo/"),
+            React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "└── zf-dev-b72e189c/      # Isolated worktree for Task 2"),
+            React.createElement("div", { className: "pl-12 text-slate-400" }, "└── my-repo/")
           ),
           React.createElement(
             "div",

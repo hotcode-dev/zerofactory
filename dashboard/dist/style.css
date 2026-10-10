@@ -2088,6 +2088,9 @@
 .pl-8 {
   padding-left: calc(var(--spacing) * 8);
 }
+.pl-12 {
+  padding-left: calc(var(--spacing) * 12);
+}
 .text-center {
   text-align: center;
 }

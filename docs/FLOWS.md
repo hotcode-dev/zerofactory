@@ -34,7 +34,7 @@ flowchart TD
 
     subgraph EXT["External Systems"]
         GH["GitHub — PRs, issues, branches"]
-        WS["Git worktrees<br/>~/git/repo-worktrees/task_id"]
+        WS["Git worktrees<br/>~/.zerofactory/workspaces/board/worktrees/task_id"]
     end
 
     CLAIM -->|"hermes -p profile --yolo --cli chat"| ORCH
@@ -52,7 +52,7 @@ flowchart TD
 | # | Invariant | Enforced by |
 |---|---|---|
 | 1 | Agents never run `git add/commit/push` — the dispatcher packages all work | worker prompts + dispatcher step 3 |
-| 2 | `main` (or target branch) is never touched by agents — every task runs in `~/git/<repo_alias>-worktrees/<task_id>` | `worktree.setup_worktree` |
+| 2 | `main` (or target branch) is never touched by agents — every task runs in `~/.zerofactory/workspaces/<board_slug>/worktrees/<task_id>` | `worktree.setup_worktree` |
 | 3 | Sibling repositories linked to the board check out side-by-side for cross-service inspection | `worktree.resolve_task_repo_path` |
 | 4 | All repositories on a board are equal first-class peers with independent URLs, branches, reviewers, and precommit gates | `board_repositories` schema + dispatcher |
 | 5 | A PR is only created after the deterministic precommit gate passes on the task's repository | `worktree.run_deterministic_precommit` |
@@ -344,7 +344,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    W["setup_worktree<br/>~/git/repo-worktrees/TASK_ID<br/>branch task/TASK_ID"] --> WORK["agentic edits + tests in worktree"]
+    W["setup_worktree<br/>~/.zerofactory/workspaces/board/worktrees/TASK_ID<br/>branch task/TASK_ID"] --> WORK["agentic edits + tests in worktree"]
     WORK --> PRE["precommit gate (§6)"]
     STAGE["auto-format results staged<br/>conventional commit authored"]
     STAGE --> MERGE["pull_and_merge_main<br/>target branch of the repository"]

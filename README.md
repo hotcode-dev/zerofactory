@@ -41,7 +41,7 @@ graph TD
 | **Multi-Repository Project Workspaces** | Project boards link one or more equal Git repositories side-by-side with explicit board slugs, cross-service architecture prompts, and per-repository precommit/OpenWiki tooling. |
 | **Plugin-First Architecture** | Self-contained Hermes plugin with zero external Node.js or `hermes-profile-manager` dependencies. |
 | **Isolated Profiles** | Profiles are cleanly namespaced (`zf-orchestrator`, `zf-builder`, `zf-reviewer`) in `~/.hermes/profiles/` and never clash with personal user profiles. |
-| **Isolated Git Worktrees** | Every task runs in its own dedicated Git worktree (`~/git/<repo_alias>-worktrees/<task_id>`). Sibling repositories on the board check out side-by-side. Agents never touch `main` directly. |
+| **Isolated Git Worktrees** | Every task runs in its own dedicated Git worktree (`~/.zerofactory/workspaces/<board>/worktrees/<task_id>`). Sibling repositories on the board check out side-by-side. Agents never touch `main` directly. |
 | **Thematic Continuous Review** | Layered code review capping at 2 focused rounds (Correctness & Tests → Verification & Polish) before handing off to human merge. |
 | **Deterministic Precommit Gate** | Standardized format ➔ build ➔ test pipeline (`.zerofactory/precommit.sh`) ensuring zero broken builds or lint errors before PRs. |
 | **OpenWiki Context Optimization** | Machine-readable architecture wiki (`openwiki/`) that slashes agent context bloat and exploratory tool calls by 30–40%. |
@@ -232,7 +232,7 @@ Project Board: checkout-platform
    - Automatically injected into all agent prompts (`## System Architecture & Inter-Service Contracts`) so workers understand boundaries before modifying code.
 4. **Side-by-Side Worktree Isolation**:
    - Tasks target a specific repository (`repo_alias`).
-   - The dispatcher provisions the task worktree at `~/git/<repo_alias>-worktrees/<task_id>` while ensuring sibling repositories on the board are checked out side-by-side for cross-service inspection.
+   - The dispatcher provisions the task worktree at `~/.zerofactory/workspaces/<board>/worktrees/<task_id>/<repo_alias>` while ensuring sibling repositories on the board are checked out side-by-side for cross-service inspection.
 
 ---
 

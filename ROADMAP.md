@@ -36,7 +36,7 @@ Real-world production architectures are rarely isolated single-repository monoli
 - **Single Primary Repo per Task:** Each task targets one primary repository for git commits, precommit checks, and pull requests (`1 task = 1 branch = 1 PR`).
 - **Side-by-Side Sibling Checkouts:**
   ```text
-  ~/git/zerofactory-worktrees/task-102/
+  ~/.zerofactory/workspaces/<board_slug>/worktrees/task-102/
   ├── order-service/        <-- Primary target repo (writable worktree, branch task/102)
   ├── common-lib/           <-- Sibling repo (read-only clean detached checkout of main)
   ├── api-gateway/          <-- Sibling repo (read-only clean detached checkout of main)

@@ -355,12 +355,12 @@ class TestOpenWikiGate(unittest.TestCase):
     def test_resolve_repo_path_with_git_urls(self):
         # Verify git_url cleaning with various formats (exercises re.sub)
         with tempfile.TemporaryDirectory() as temp_git_dir:
-            temp_home = Path(temp_git_dir)
-            repo_dir = temp_home / "git" / "zerohub"
+            temp_repos = Path(temp_git_dir) / "repos"
+            repo_dir = temp_repos / "zerohub"
             repo_dir.mkdir(parents=True)
             (repo_dir / ".git").mkdir()
 
-            with patch("pathlib.Path.home", return_value=temp_home):
+            with patch("paths.get_board_repos_dir", return_value=temp_repos):
                 # 1. Standard https url
                 res = self.gate.resolve_repo_path("test-board", "zerohub", "https://github.com/hotcode-dev/zerohub.git", self.tmp)
                 self.assertEqual(res, repo_dir.resolve())

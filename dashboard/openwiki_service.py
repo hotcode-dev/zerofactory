@@ -200,13 +200,16 @@ def sync_board_openwiki_workspace(
                     except Exception:
                         pass
                 if not repo_path:
-                    for cand in (
-                        Path.home() / "git" / alias,
-                        Path.home() / "git" / board_slug / alias,
-                    ):
-                        if cand.is_dir() and (cand / ".git").exists():
-                            repo_path = cand.resolve()
-                            break
+                    try:
+                        from paths import get_board_repos_dir  # type: ignore
+                    except Exception:
+                        try:
+                            from ..paths import get_board_repos_dir  # type: ignore
+                        except Exception:
+                            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+                    b_repo = get_board_repos_dir(board_slug) / alias
+                    if b_repo.is_dir() and (b_repo / ".git").exists():
+                        repo_path = b_repo.resolve()
                 if repo_path:
                     linked_repos.append(
                         {
