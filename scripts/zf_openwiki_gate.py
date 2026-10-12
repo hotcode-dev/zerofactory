@@ -268,10 +268,8 @@ def resolve_repo_path(
         if cand.is_dir() and (cand / ".git").exists():
             return cand.resolve()
 
-    if current_dir and (current_dir / ".git").exists():
-        return current_dir
-
     return None
+
 
 
 def has_active_openwiki_task(

@@ -373,3 +373,12 @@ class TestOpenWikiGate(unittest.TestCase):
                 res_empty = self.gate.resolve_repo_path("test-board", "zerohub", "", self.tmp)
                 self.assertEqual(res_empty, repo_dir.resolve())
 
+                # 4. Returns None when repo is missing and current_dir is an unrelated repo
+                res_missing = self.gate.resolve_repo_path(
+                    "test-board",
+                    "other-repo",
+                    "https://github.com/hotcode-dev/other-repo.git",
+                    self.tmp,
+                )
+                self.assertIsNone(res_missing)
+

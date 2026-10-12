@@ -667,6 +667,24 @@ class TestZfScannerGateMultiRepo(unittest.TestCase):
                             '--board "ecommerce" --repo "frontend"', combined
                         )
 
+    def test_resolve_repo_path_unrelated_dir_returns_none(self):
+        fake_curr = self.tmp / "unrelated_repo"
+        fake_curr.mkdir(parents=True)
+        (fake_curr / ".git").mkdir()
+
+        with tempfile.TemporaryDirectory() as temp_git_dir:
+            temp_repos = Path(temp_git_dir) / "repos"
+            temp_repos.mkdir(parents=True)
+            with patch("paths.get_board_repos_dir", return_value=temp_repos):
+                res = self.mod.resolve_repo_path(
+                    "ecommerce",
+                    "nonexistent",
+                    "https://github.com/hotcode-dev/nonexistent.git",
+                    fake_curr,
+                )
+                self.assertIsNone(res)
+
 
 if __name__ == "__main__":
     unittest.main()
+
