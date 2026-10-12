@@ -45,6 +45,25 @@ def test_build_openwiki_setup_task_prompt():
     assert "index.md" in prompt  # only inside the "Do NOT key off" prohibition
 
 
+def test_build_openwiki_setup_task_prompt_multi_repo():
+    siblings = [
+        {"alias": "zerohub-shared", "path": "/path/to/zerohub-shared"},
+        {"alias": "zerohub-worker", "path": "/path/to/zerohub-worker"},
+    ]
+    prompt = build_openwiki_setup_task_prompt(
+        "test-board",
+        repo_alias="zerohub",
+        sibling_repos=siblings,
+    )
+    assert "Multi-Repository Workspace Integration" in prompt
+    assert "zerohub-shared" in prompt
+    assert "zerohub-worker" in prompt
+    assert "Cross-Repo Linking & Dependencies" in prompt
+    assert "wiki:<sibling-repo-alias>/openwiki/..." in prompt
+    assert "wiki-workspaces.json" not in prompt  # internal detail kept clean
+
+
+
 def test_openwiki_status_missing_board(initialized_db: Path):
     res = check_board_openwiki_status("nonexistent-board")
     assert res["ok"] is False

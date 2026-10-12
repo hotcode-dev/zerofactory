@@ -38,12 +38,105 @@ SETUP_OPENWIKI_TASK_DEDUP_KEY = "setup:openwiki"
 SETUP_OPENWIKI_TASK_TITLE_PREFIX = "chore(repo): setup OpenWiki"
 
 
+def get_board_linked_repos(
+    board_slug: str, db_path: str | Path | None = None
+) -> list[dict[str, Any]]:
+    """Retrieve all resolved repositories belonging to a board."""
+    if not board_slug:
+        return []
+    import os
+    import sqlite3
+    try:
+        from .db import DEFAULT_DB_PATH, get_db_path
+    except (ImportError, ValueError):
+        from db import DEFAULT_DB_PATH, get_db_path  # type: ignore
+
+    eff_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
+    if not eff_db.exists():
+        return []
+
+    resolver = get_repo_resolver()
+    linked_repos: list[dict[str, Any]] = []
+
+    try:
+        with sqlite3.connect(str(eff_db), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT repo_alias, git_url, target_branch FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
+                (board_slug,),
+            )
+            rows = cursor.fetchall()
+            for r in rows:
+                alias = r["repo_alias"]
+                url = r["git_url"]
+                repo_path = None
+                if resolver:
+                    try:
+                        resolved = resolver({"git_url": url, "slug": alias})
+                        if resolved and resolved.is_dir() and (resolved / ".git").exists():
+                            repo_path = resolved.resolve()
+                    except Exception:
+                        pass
+                if not repo_path:
+                    try:
+                        from paths import get_board_repos_dir  # type: ignore
+                    except Exception:
+                        try:
+                            from ..paths import get_board_repos_dir  # type: ignore
+                        except Exception:
+                            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+                    b_repo = get_board_repos_dir(board_slug) / alias
+                    if b_repo.is_dir() and (b_repo / ".git").exists():
+                        repo_path = b_repo.resolve()
+                if repo_path:
+                    linked_repos.append(
+                        {
+                            "alias": alias,
+                            "path": repo_path,
+                            "url": url,
+                        }
+                    )
+    except Exception:
+        pass
+    return linked_repos
+
+
 def build_openwiki_setup_task_prompt(
-    board_slug: str, repo_path: Path | None = None, repo_alias: str | None = None
+    board_slug: str,
+    repo_path: Path | None = None,
+    repo_alias: str | None = None,
+    sibling_repos: list[dict[str, Any]] | None = None,
 ) -> str:
     """Generate structured instructions for zf-builder to generate OpenWiki agent docs via OpenWiki MCP in repository code mode."""
     path_hint = f" (`{repo_path}`)" if repo_path else ""
     target_desc = f"repository `{repo_alias}`" if repo_alias else "this repository"
+
+    # Discover sibling repositories if not explicitly passed
+    if sibling_repos is None and board_slug:
+        all_board_repos = get_board_linked_repos(board_slug)
+        sibling_repos = [
+            r for r in all_board_repos if not repo_alias or r.get("alias") != repo_alias
+        ]
+
+    multi_repo_section = ""
+    if sibling_repos:
+        sibling_lines = "\n".join(
+            f"   - Sibling repo `{s.get('alias')}` (accessible at relative path `../{s.get('alias')}/`)"
+            for s in sibling_repos
+        )
+        multi_repo_section = f"""
+## Multi-Repository Workspace Integration
+This repository is linked to a shared OpenWiki workspace (`{board_slug}`) alongside sibling repositories:
+{sibling_lines}
+
+- **Cross-Repo Linking & Dependencies**:
+  - The board's OpenWiki workspace registry links these repositories together.
+  - In your documentation taxonomy (especially in `/openwiki/architecture.md` or a dedicated `/openwiki/architecture/dependencies.md`), explicitly document how this repository interacts with its sibling repositories (shared contracts, schemas, API endpoints, or shared client libraries).
+  - Use qualified OpenWiki cross-workspace references where applicable (e.g., `wiki:<sibling-repo-alias>/openwiki/...`).
+  - Read sibling code at `../<sibling-repo-alias>/` as needed to accurately verify inter-service integration points and contracts.
+"""
+
     return f"""Set up OpenWiki machine-readable agent documentation for {target_desc}{path_hint} on board `{board_slug}` in repository code mode.
 
 ## Target
@@ -52,7 +145,7 @@ Pointer: `AGENTS.md` (managed via OpenWiki)
 
 ## Goal
 Generate a high-signal, machine-readable architectural knowledge base in `{OPENWIKI_RELATIVE_DIR}/` (Docs for Agents pattern) using the **OpenWiki MCP server** (in repository code mode) and its standard artifacts, so agents consume the wiki instead of re-reading source. This optimizes context windows, slashes exploratory token consumption by 30–40%, and prevents multi-agent hallucination across Zero Factory workers (`zf-builder`, `zf-reviewer`, `zf-orchestrator`).
-
+{multi_repo_section}
 ## Instructions
 1. **OpenWiki MCP Server & Skill (Repository Code Mode)**:
    - The `openwiki` MCP server is pre-configured in your `zf-builder` profile.
@@ -116,7 +209,7 @@ def create_openwiki_setup_task(
     board_slug: str, repo_alias: str | None = None, actor: str = "user"
 ) -> dict[str, Any]:
     """Create or return an existing setup task to generate openwiki/ documentation for a repository."""
-    return create_setup_task(
+    res = create_setup_task(
         board_slug,
         repo_alias=repo_alias,
         status_checker=check_board_openwiki_status,
@@ -168,59 +261,9 @@ def sync_board_openwiki_workspace(
     import json
     import os
     import re
-    import sqlite3
     import tempfile
-    from .db import DEFAULT_DB_PATH, get_db_path
 
-    eff_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
-    if not eff_db.exists():
-        return {"status": "skipped", "reason": "Database not found"}
-
-    resolver = get_repo_resolver()
-    linked_repos: list[dict[str, Any]] = []
-
-    try:
-        with sqlite3.connect(str(eff_db), timeout=5.0) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT repo_alias, git_url, target_branch FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
-                (board_slug,),
-            )
-            rows = cursor.fetchall()
-            for r in rows:
-                alias = r["repo_alias"]
-                url = r["git_url"]
-                repo_path = None
-                if resolver:
-                    try:
-                        resolved = resolver({"git_url": url, "slug": alias})
-                        if resolved and resolved.is_dir() and (resolved / ".git").exists():
-                            repo_path = resolved.resolve()
-                    except Exception:
-                        pass
-                if not repo_path:
-                    try:
-                        from paths import get_board_repos_dir  # type: ignore
-                    except Exception:
-                        try:
-                            from ..paths import get_board_repos_dir  # type: ignore
-                        except Exception:
-                            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
-                    b_repo = get_board_repos_dir(board_slug) / alias
-                    if b_repo.is_dir() and (b_repo / ".git").exists():
-                        repo_path = b_repo.resolve()
-                if repo_path:
-                    linked_repos.append(
-                        {
-                            "alias": alias,
-                            "path": repo_path,
-                            "url": url,
-                        }
-                    )
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
+    linked_repos = get_board_linked_repos(board_slug, db_path=db_path)
     if not linked_repos:
         return {"status": "skipped", "reason": "No local repositories resolved"}
 
