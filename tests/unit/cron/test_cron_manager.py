@@ -41,7 +41,6 @@ class TestCronManagerUnit(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             jobs_file = Path(td) / "jobs.json"
             initial_jobs = [
-                {"id": "zero-factory-task-queue-check", "origin": "zerofactory"},
                 {
                     "id": "zero-factory-improvement-scanner-active-board",
                     "origin": "zerofactory",
@@ -79,7 +78,6 @@ class TestCronManagerUnit(unittest.TestCase):
 
             remaining = load_jobs_from_file(jobs_file)
             remaining_ids = [j["id"] for j in remaining]
-            self.assertIn("zero-factory-task-queue-check", remaining_ids)
             self.assertIn(
                 "zero-factory-improvement-scanner-active-board", remaining_ids
             )
@@ -101,7 +99,6 @@ class TestCronManagerUnit(unittest.TestCase):
                     "id": "zero-factory-improvement-scanner-other-board",
                     "origin": "zerofactory",
                 },
-                {"id": "zero-factory-task-queue-check", "origin": "zerofactory"},
             ]
             save_jobs_to_file(jobs_file, initial_jobs)
 
@@ -114,7 +111,6 @@ class TestCronManagerUnit(unittest.TestCase):
                 "zero-factory-improvement-scanner-board-to-delete", remaining_ids
             )
             self.assertIn("zero-factory-improvement-scanner-other-board", remaining_ids)
-            self.assertIn("zero-factory-task-queue-check", remaining_ids)
 
     def test_update_builtin_job_semantics(self):
         """Updating job fields flags custom_config and survives sync until reset."""
@@ -139,35 +135,45 @@ class TestCronManagerUnit(unittest.TestCase):
 
             orig_override = os.environ.get("ZEROFACTORY_CRON_JOBS_FILE")
             os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(jobs_file)
-            try:
-                # 1. Update minutes
-                res = update_builtin_job(job_id, {"minutes": 60})
-                self.assertTrue(res["ok"])
-                jobs = load_jobs_from_file(jobs_file)
-                self.assertEqual(jobs[0]["schedule"]["minutes"], 60)
-                self.assertTrue(jobs[0]["custom_config"])
+            from cron.definitions import CORE_CRON_JOBS
+            test_core_def = {
+                "id": job_id,
+                "name": "Zero Factory task queue check",
+                "schedule": {"kind": "interval", "minutes": 120, "display": "every 120m"},
+                "enabled": True,
+                "state": "scheduled",
+                "origin": "zerofactory",
+            }
+            with patch.dict(CORE_CRON_JOBS, {job_id: test_core_def}):
+                try:
+                    # 1. Update minutes
+                    res = update_builtin_job(job_id, {"minutes": 60})
+                    self.assertTrue(res["ok"])
+                    jobs = load_jobs_from_file(jobs_file)
+                    self.assertEqual(jobs[0]["schedule"]["minutes"], 60)
+                    self.assertTrue(jobs[0]["custom_config"])
 
-                # 2. Toggle enabled to False -> state=paused
-                res_toggle = update_builtin_job(job_id, {"enabled": False})
-                self.assertTrue(res_toggle["ok"])
-                jobs_toggle = load_jobs_from_file(jobs_file)
-                self.assertFalse(jobs_toggle[0]["enabled"])
-                self.assertEqual(jobs_toggle[0]["state"], "paused")
-                self.assertIsNotNone(jobs_toggle[0]["paused_at"])
+                    # 2. Toggle enabled to False -> state=paused
+                    res_toggle = update_builtin_job(job_id, {"enabled": False})
+                    self.assertTrue(res_toggle["ok"])
+                    jobs_toggle = load_jobs_from_file(jobs_file)
+                    self.assertFalse(jobs_toggle[0]["enabled"])
+                    self.assertEqual(jobs_toggle[0]["state"], "paused")
+                    self.assertIsNotNone(jobs_toggle[0]["paused_at"])
 
-                # 3. Reset job restores canonical definitions
-                res_reset = reset_builtin_job(job_id)
-                self.assertTrue(res_reset["ok"])
-                jobs_reset = load_jobs_from_file(jobs_file)
-                self.assertEqual(jobs_reset[0]["schedule"]["minutes"], 120)
-                self.assertTrue(jobs_reset[0]["enabled"])
-                self.assertEqual(jobs_reset[0]["state"], "scheduled")
-                self.assertFalse(jobs_reset[0].get("custom_config", False))
-            finally:
-                if orig_override is not None:
-                    os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = orig_override
-                else:
-                    os.environ.pop("ZEROFACTORY_CRON_JOBS_FILE", None)
+                    # 3. Reset job restores canonical definitions
+                    res_reset = reset_builtin_job(job_id)
+                    self.assertTrue(res_reset["ok"])
+                    jobs_reset = load_jobs_from_file(jobs_file)
+                    self.assertEqual(jobs_reset[0]["schedule"]["minutes"], 120)
+                    self.assertTrue(jobs_reset[0]["enabled"])
+                    self.assertEqual(jobs_reset[0]["state"], "scheduled")
+                    self.assertFalse(jobs_reset[0].get("custom_config", False))
+                finally:
+                    if orig_override is not None:
+                        os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = orig_override
+                    else:
+                        os.environ.pop("ZEROFACTORY_CRON_JOBS_FILE", None)
 
     def test_update_builtin_job_scan_on_idle(self):
         """Updating scan_on_idle and idle thresholds via update_builtin_job saves to jobs.json."""

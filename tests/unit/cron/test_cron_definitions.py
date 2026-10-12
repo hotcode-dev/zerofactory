@@ -23,12 +23,8 @@ class TestCronDefinitionsUnit(unittest.TestCase):
     """Test core cron definitions and dynamic board scanner generation."""
 
     def test_core_cron_jobs_schema(self):
-        """Queue watchdog operates in No-Agent mode with correct script."""
-        queue_job = CORE_CRON_JOBS["zero-factory-task-queue-check"]
-        self.assertTrue(queue_job["no_agent"])
-        self.assertEqual(queue_job["script"], "zf_queue_watchdog.py")
-        self.assertEqual(queue_job["profile"], "zf-orchestrator")
-        self.assertEqual(queue_job["schedule"]["kind"], "interval")
+        """CORE_CRON_JOBS dictionary exists for future core jobs."""
+        self.assertIsInstance(CORE_CRON_JOBS, dict)
 
     def test_build_board_scanner_prompt(self):
         """Prompt contains board slug, pre-flight checks, and safety rules."""
@@ -112,7 +108,6 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                         if jid.startswith("zero-factory-improvement-scanner-")
                     ]
                     self.assertEqual(scanners, [])
-                    self.assertIn("zero-factory-task-queue-check", jobs)
                 finally:
                     if orig_bc:
                         builtin_cron.get_db_path = orig_bc
@@ -293,14 +288,10 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                 builtin_cron.get_db_path = lambda: db_file
                 try:
                     jobs = get_all_builtin_cron_jobs()
-                    core_job = jobs.get("zero-factory-task-queue-check")
                     scanner_job = jobs.get(
                         "zero-factory-improvement-scanner-demo-board"
                     )
                     openwiki_job = jobs.get("zero-factory-openwiki-update-demo-board")
-
-                    self.assertIsNotNone(core_job)
-                    self.assertEqual(core_job.get("category"), "core")
 
                     self.assertIsNotNone(scanner_job)
                     self.assertEqual(scanner_job.get("category"), "scanner")

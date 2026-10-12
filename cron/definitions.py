@@ -238,33 +238,8 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
     return None
 
 
-CORE_CRON_JOBS: dict[str, dict[str, Any]] = {
-    "zero-factory-task-queue-check": {
-        "id": "zero-factory-task-queue-check",
-        "name": "Zero Factory task queue check",
-        "prompt": TASK_QUEUE_CHECK_PROMPT,
-        "skills": [],
-        "skill": None,
-        "model": DEFAULT_CRON_MODEL,
-        "provider": DEFAULT_CRON_PROVIDER,
-        "base_url": DEFAULT_CRON_BASE_URL,
-        "script": "zf_queue_watchdog.py",
-        "no_agent": True,
-        "context_from": None,
-        "schedule": {"kind": "interval", "minutes": 120, "display": "every 120m"},
-        "schedule_display": "every 120m",
-        "enabled": True,
-        "state": "scheduled",
-        "paused_at": None,
-        "paused_reason": None,
-        "deliver": None,
-        "origin": "zerofactory",
-        "category": "core",
-        "enabled_toolsets": ["terminal", "file"],
-        "workdir": None,
-        "profile": "zf-orchestrator",
-    }
-}
+# Core cron jobs shared across all boards (can be added here in the future).
+CORE_CRON_JOBS: dict[str, dict[str, Any]] = {}
 
 BUILTIN_CRON_JOBS: dict[str, dict[str, Any]] = {}
 
