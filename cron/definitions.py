@@ -460,7 +460,14 @@ def get_scanner_cron_config(board_slug: str) -> dict[str, Any]:
                 continue
             for j in load_jobs_from_file_fn(target):
                 if isinstance(j, dict) and j.get("id") == job_id:
-                    enabled = bool(j.get("enabled", True)) and j.get("state") != "paused"
+                    # Hermes marks non-recurring kind="idle" jobs as state="completed" (enabled=False) after execution.
+                    # As long as the job is not explicitly paused (state == "paused"), consider it enabled for idle scanning.
+                    is_paused = j.get("state") == "paused" or bool(j.get("paused_at"))
+                    enabled = (
+                        not is_paused
+                        if (j.get("scan_on_idle") or j.get("schedule", {}).get("kind") == "idle")
+                        else (bool(j.get("enabled", True)) and not is_paused)
+                    )
                     sched = j.get("schedule") or {}
                     sched_disp = str(
                         j.get("schedule_display") or sched.get("display") or ""

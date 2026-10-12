@@ -244,6 +244,35 @@ class TestCronDefinitionsUnit(unittest.TestCase):
                 self.assertEqual(cfg["idle_scan_max_todo"], 4)
                 self.assertTrue(cfg["enabled"])
 
+    def test_get_scanner_cron_config_completed_state_still_enabled(self):
+        """Hermes marks one-shot/idle jobs as completed (enabled=False). get_scanner_cron_config must treat them as enabled unless paused."""
+        from cron.definitions import get_scanner_cron_config
+
+        with tempfile.TemporaryDirectory() as td:
+            jobs_file = Path(td) / "jobs.json"
+            jobs_file.write_text(
+                json.dumps(
+                    {
+                        "jobs": [
+                            {
+                                "id": "zero-factory-improvement-scanner-my-project",
+                                "enabled": False,
+                                "state": "completed",
+                                "scan_on_idle": True,
+                                "idle_scan_cooldown_minutes": 15,
+                                "schedule": {"kind": "idle", "display": "on idle"},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.dict(os.environ, {"ZEROFACTORY_CRON_JOBS_FILE": str(jobs_file)}):
+                cfg = get_scanner_cron_config("my-project")
+                self.assertTrue(cfg["scan_on_idle"])
+                self.assertTrue(cfg["enabled"])
+
     def test_cron_job_categories(self):
         """Core, scanner, and openwiki jobs define their respective category attribute."""
         with tempfile.TemporaryDirectory() as td:

@@ -220,9 +220,10 @@ def ensure_builtin_cron_jobs() -> dict[str, Any]:
 
                 # Re-activate any scanner job that was retired as a one-shot completed job (only if scheduler enabled)
                 # Note: NEVER re-activate "paused" jobs here — if a job is paused, it was disabled by configuration or user.
+                # Scanner jobs with kind="idle" are retired to "completed" by Hermes after execution; they should be kept
+                # active/scheduled regardless of custom_config (preserving custom thresholds/settings).
                 if (
                     curr.get("state") == "completed"
-                    and not is_custom
                     and is_cron_scheduler_enabled_fn()
                 ):
                     curr["state"] = "scheduled"

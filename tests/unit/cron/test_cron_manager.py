@@ -274,6 +274,55 @@ class TestCronManagerUnit(unittest.TestCase):
             self.assertFalse(scanner_job.get("scan_on_idle"))
             self.assertEqual(scanner_job.get("idle_scan_cooldown_minutes"), 25)
 
+    def test_ensure_builtin_cron_jobs_reactivates_completed_scanner_with_custom_config(self):
+        """Hermes marks completed on one-shot/idle jobs. ensure_builtin_cron_jobs must reactivate it even if custom_config=True."""
+        with tempfile.TemporaryDirectory() as td:
+            jobs_file = Path(td) / "jobs.json"
+            job_id = "zero-factory-improvement-scanner-my-board"
+            initial_jobs = [
+                {
+                    "id": job_id,
+                    "name": "Zero Factory improvement scanner (my-board)",
+                    "schedule": {"kind": "idle", "display": "on idle"},
+                    "enabled": False,
+                    "state": "completed",
+                    "origin": "zerofactory",
+                    "custom_config": True,
+                    "idle_scan_cooldown_minutes": 25,
+                }
+            ]
+            save_jobs_to_file(jobs_file, initial_jobs)
+
+            db_path = Path(td) / "test.db"
+            with sqlite3.connect(str(db_path)) as conn:
+                conn.execute(
+                    "CREATE TABLE boards (slug TEXT PRIMARY KEY, description TEXT, git_url TEXT, created_at REAL, updated_at REAL)"
+                )
+                conn.execute(
+                    "INSERT INTO boards (slug, description, git_url, created_at, updated_at) VALUES ('my-board', 'Main', '', 1, 1)"
+                )
+                conn.commit()
+
+            with patch.dict(
+                os.environ,
+                {
+                    "ZEROFACTORY_DB": str(db_path),
+                    "ZEROFACTORY_CRON_JOBS_FILE": str(jobs_file),
+                },
+            ):
+                os.environ.pop("ZEROFACTORY_SKIP_CRON_SYNC", None)
+                try:
+                    ensure_builtin_cron_jobs()
+                finally:
+                    os.environ["ZEROFACTORY_SKIP_CRON_SYNC"] = "1"
+
+            jobs = load_jobs_from_file(jobs_file)
+            scanner_job = next(j for j in jobs if j["id"] == job_id)
+            self.assertTrue(scanner_job["enabled"])
+            self.assertEqual(scanner_job["state"], "scheduled")
+            self.assertEqual(scanner_job.get("idle_scan_cooldown_minutes"), 25)
+
 
 if __name__ == "__main__":
     unittest.main()
+
