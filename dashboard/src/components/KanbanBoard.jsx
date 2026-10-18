@@ -13,6 +13,7 @@ export function KanbanBoard(props) {
     handleDragStart,
     loadTaskDetails,
     selectedBoard,
+    currentBoard,
     stoppingSessionId,
     handleStopTaskSession,
     handleAdvanceTask
@@ -148,7 +149,37 @@ export function KanbanBoard(props) {
                                         "span",
                                         { className: "text-[0.625rem] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20" },
                                         "⏳ " + t.blocking_parent_count + " blocker"
-                                      )
+                                      ),
+                                      (() => {
+                                        const tags = Array.isArray(t.tags) ? t.tags : (typeof t.tags === "string" ? t.tags.split(",") : []);
+                                        const cleanTags = tags.map(x => String(x).trim().toLowerCase());
+                                        if (cleanTags.some(x => x === "hitl" || x === "manual-review" || x === "tag:hitl" || x === "tag:manual-review")) return null;
+                                        if (cleanTags.some(x => x === "automerge" || x === "yolo" || x === "tag:automerge" || x === "tag:yolo")) {
+                                          return React.createElement(
+                                            "span",
+                                            { className: "inline-flex items-center gap-1 text-amber-300 font-mono text-[0.625rem] bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded truncate max-w-[120px] shadow-xs", title: "Auto-Merge Active: Merges automatically once approved by reviewer" },
+                                            "⚡ Auto-merge"
+                                          );
+                                        }
+                                        const meta = typeof t.metadata === "string" ? (() => { try { return JSON.parse(t.metadata); } catch(e) { return {}; } })() : (t.metadata || {});
+                                        const issueLabels = (((meta && meta.external_issue && meta.external_issue.labels) || [])).map(x => String(x).trim().toLowerCase());
+                                        if (issueLabels.some(x => x === "hitl" || x === "manual-review")) return null;
+                                        if (issueLabels.some(x => x === "automerge" || x === "yolo")) {
+                                          return React.createElement(
+                                            "span",
+                                            { className: "inline-flex items-center gap-1 text-amber-300 font-mono text-[0.625rem] bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded truncate max-w-[120px] shadow-xs", title: "Auto-Merge Active: Merges automatically once approved by reviewer" },
+                                            "⚡ Auto-merge"
+                                          );
+                                        }
+                                        if (currentBoard && currentBoard.automerge) {
+                                          return React.createElement(
+                                            "span",
+                                            { className: "inline-flex items-center gap-1 text-amber-300 font-mono text-[0.625rem] bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded truncate max-w-[120px] shadow-xs", title: "Auto-Merge Active: Merges automatically once approved by reviewer" },
+                                            "⚡ Auto-merge"
+                                          );
+                                        }
+                                        return null;
+                                      })()
                                     ),
                                     (t.status === "running" || (t.session_progress && (t.session_progress.has_session || (t.session_progress.sessions && t.session_progress.sessions.length > 0)))) &&
                                     (() => {

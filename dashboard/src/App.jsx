@@ -138,6 +138,7 @@ export function ZeroFactoryKanbanApp() {
       architecture: "",
       max_concurrent_running: 1,
       auto_record_memory: true,
+      automerge: false,
       additional_reviewer_usernames: "",
       jira_url: "",
       auto_setup_precommit: true
@@ -152,6 +153,7 @@ export function ZeroFactoryKanbanApp() {
       repositories: [],
       max_concurrent_running: 1,
       auto_record_memory: true,
+      automerge: false,
       additional_reviewer_usernames: "",
       jira_url: ""
     });
@@ -190,6 +192,7 @@ export function ZeroFactoryKanbanApp() {
         target_branch: "",
         max_concurrent_running: 1,
         auto_record_memory: true,
+        automerge: false,
         additional_reviewer_usernames: "",
         auto_setup_precommit: true
       });
@@ -1479,6 +1482,7 @@ export function ZeroFactoryKanbanApp() {
             architecture: (newBoardForm.architecture || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
+            automerge: Boolean(newBoardForm.automerge),
             jira_url: (newBoardForm.jira_url || "").trim(),
             auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false),
             repositories: formattedRepos.length > 0 ? formattedRepos : [{
@@ -1503,6 +1507,7 @@ export function ZeroFactoryKanbanApp() {
           architecture: "",
           max_concurrent_running: 1,
           auto_record_memory: true,
+          automerge: false,
           additional_reviewer_usernames: "",
           jira_url: "",
           auto_setup_precommit: true
@@ -1561,6 +1566,7 @@ export function ZeroFactoryKanbanApp() {
           repositories: curr.repositories || [],
           max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1,
           auto_record_memory: curr.auto_record_memory !== false,
+          automerge: Boolean(curr.automerge),
           additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : "",
           jira_url: curr.jira_url || ""
         });
@@ -1599,6 +1605,7 @@ export function ZeroFactoryKanbanApp() {
             architecture: (editBoardForm.architecture || "").trim(),
             max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
+            automerge: Boolean(editBoardForm.automerge),
             jira_url: (editBoardForm.jira_url || "").trim(),
             repositories: formattedRepos
           })
@@ -1924,6 +1931,7 @@ export function ZeroFactoryKanbanApp() {
                     handleDragStart,
                     loadTaskDetails,
                     selectedBoard,
+                    currentBoard: boards.find(b => b.slug === selectedBoard),
                     stoppingSessionId,
                     handleStopTaskSession,
                     handleAdvanceTask

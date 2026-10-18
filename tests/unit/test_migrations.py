@@ -38,7 +38,7 @@ def test_migration_0001_initial_schema(tmp_path: Path):
         cur = conn.cursor()
         cur.execute("PRAGMA table_info(boards)")
         board_cols = {row[1] for row in cur.fetchall()}
-        assert {"slug", "description", "architecture", "max_concurrent_running", "auto_record_memory", "jira_url"}.issubset(board_cols)
+        assert {"slug", "description", "architecture", "max_concurrent_running", "auto_record_memory", "jira_url", "automerge"}.issubset(board_cols)
 
         cur.execute("PRAGMA table_info(board_repositories)")
         repo_cols = {row[1] for row in cur.fetchall()}

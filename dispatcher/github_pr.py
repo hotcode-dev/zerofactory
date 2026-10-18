@@ -524,3 +524,104 @@ def is_actionable_review_comment(
 
     # Inline diff review comments or PR comments from reviewer/human with substance
     return True
+
+
+def is_task_automerge_enabled(
+    task: dict[str, Any],
+    board: dict[str, Any] | None = None,
+) -> bool:
+    """Resolve whether auto-merge applies to the given task.
+
+    Precedence:
+    1. Task tags or Jira labels containing 'hitl' or 'manual-review' -> False (opt-out wins for safety)
+    2. Task tags or Jira labels containing 'automerge' or 'yolo' -> True (opt-in override)
+    3. Board default: board.get('automerge', False) -> bool
+    """
+    raw_tags = task.get("tags") or []
+    if isinstance(raw_tags, str):
+        try:
+            parsed = json.loads(raw_tags)
+            tags = [str(t).strip().lower() for t in parsed] if isinstance(parsed, list) else []
+        except Exception:
+            tags = [t.strip().lower() for t in raw_tags.split(",") if t.strip()]
+    elif isinstance(raw_tags, list):
+        tags = [str(t).strip().lower() for t in raw_tags if str(t).strip()]
+    else:
+        tags = []
+
+    # Check opt-out tags
+    opt_out_indicators = {"hitl", "manual-review", "tag:hitl", "tag:manual-review"}
+    if any(t in opt_out_indicators for t in tags):
+        return False
+
+    # Check opt-in tags
+    opt_in_indicators = {"automerge", "yolo", "tag:automerge", "tag:yolo"}
+    if any(t in opt_in_indicators for t in tags):
+        return True
+
+    # Check external issue labels if present in metadata
+    meta = task.get("metadata") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+    ext_issue = meta.get("external_issue") or {}
+    issue_labels = [str(l).strip().lower() for l in ext_issue.get("labels", []) if str(l).strip()]
+    if any(l in ("hitl", "manual-review") for l in issue_labels):
+        return False
+    if any(l in ("automerge", "yolo") for l in issue_labels):
+        return True
+
+    # Fall back to board-level setting
+    if board:
+        return bool(board.get("automerge", False))
+    return False
+
+
+def attempt_pr_automerge(
+    pr_url: str,
+    repo_path: Path,
+) -> tuple[bool, str]:
+    """Execute GitHub auto-merge using the GitHub CLI (gh).
+
+    Attempts squash merge with delete-branch. If status checks or reviews are required/pending,
+    attempts `--auto --squash` so GitHub handles merging when CI passes.
+
+    Returns (success: bool, message: str).
+    """
+    if os.environ.get("ZEROFACTORY_SKIP_GIT"):
+        return True, "Simulated merge in skip-git mode"
+
+    if not pr_url:
+        return False, "No PR URL available to merge"
+
+    # 1. Attempt immediate squash merge
+    res = subprocess.run(
+        ["gh", "pr", "merge", pr_url, "--squash", "--delete-branch"],
+        cwd=str(repo_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if res.returncode == 0:
+        return True, "Squash merged successfully"
+
+    err = (res.stderr or "").strip()
+
+    # 2. If status checks / branch protections are required, try --auto
+    err_lower = err.lower()
+    if any(kw in err_lower for kw in ("status check", "required", "behind", "in progress", "pending")):
+        res_auto = subprocess.run(
+            ["gh", "pr", "merge", pr_url, "--auto", "--squash", "--delete-branch"],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if res_auto.returncode == 0:
+            return True, "Auto-merge enabled for GitHub CI completion"
+        err = (res_auto.stderr or "").strip() or err
+
+    return False, err or "gh pr merge returned non-zero exit code"
+

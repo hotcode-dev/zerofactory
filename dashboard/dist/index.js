@@ -324,7 +324,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/KanbanBoard.jsx
 	function KanbanBoard(props) {
-		const { tasksByColumn, dragOverCol, handleDragOver, handleDragLeave, handleDrop, handleDragStart, loadTaskDetails, selectedBoard, stoppingSessionId, handleStopTaskSession, handleAdvanceTask } = props;
+		const { tasksByColumn, dragOverCol, handleDragOver, handleDragLeave, handleDrop, handleDragStart, loadTaskDetails, selectedBoard, currentBoard, stoppingSessionId, handleStopTaskSession, handleAdvanceTask } = props;
 		return React.createElement("div", { className: "overflow-x-auto pb-4 -mx-1 px-1 zfk-scrollbar" }, React.createElement("div", {
 			className: "grid grid-cols-5 gap-3.5 items-start min-w-[1100px] w-full",
 			style: {
@@ -366,7 +366,32 @@ var ZeroFactoryDashboard = (function(exports) {
 					onClick: (e) => e.stopPropagation(),
 					className: "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.625rem] font-mono font-semibold bg-purple-500/15 hover:bg-purple-500/30 text-purple-300 hover:text-purple-100 border border-purple-500/30 transition-all duration-150 truncate max-w-[140px] shadow-xs cursor-pointer",
 					title: "Pull Request: " + t.pr_url
-				}, renderPrIcon("w-2.5 h-2.5 shrink-0 text-purple-400"), formatPrLabel(t.pr_url)), t.blocking_parent_count > 0 && React.createElement("span", { className: "text-[0.625rem] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20" }, "⏳ " + t.blocking_parent_count + " blocker")), (t.status === "running" || t.session_progress && (t.session_progress.has_session || t.session_progress.sessions && t.session_progress.sessions.length > 0)) && (() => {
+				}, renderPrIcon("w-2.5 h-2.5 shrink-0 text-purple-400"), formatPrLabel(t.pr_url)), t.blocking_parent_count > 0 && React.createElement("span", { className: "text-[0.625rem] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20" }, "⏳ " + t.blocking_parent_count + " blocker"), (() => {
+					const cleanTags = (Array.isArray(t.tags) ? t.tags : typeof t.tags === "string" ? t.tags.split(",") : []).map((x) => String(x).trim().toLowerCase());
+					if (cleanTags.some((x) => x === "hitl" || x === "manual-review" || x === "tag:hitl" || x === "tag:manual-review")) return null;
+					if (cleanTags.some((x) => x === "automerge" || x === "yolo" || x === "tag:automerge" || x === "tag:yolo")) return React.createElement("span", {
+						className: "inline-flex items-center gap-1 text-amber-300 font-mono text-[0.625rem] bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded truncate max-w-[120px] shadow-xs",
+						title: "Auto-Merge Active: Merges automatically once approved by reviewer"
+					}, "⚡ Auto-merge");
+					const meta = typeof t.metadata === "string" ? (() => {
+						try {
+							return JSON.parse(t.metadata);
+						} catch (e) {
+							return {};
+						}
+					})() : t.metadata || {};
+					const issueLabels = (meta && meta.external_issue && meta.external_issue.labels || []).map((x) => String(x).trim().toLowerCase());
+					if (issueLabels.some((x) => x === "hitl" || x === "manual-review")) return null;
+					if (issueLabels.some((x) => x === "automerge" || x === "yolo")) return React.createElement("span", {
+						className: "inline-flex items-center gap-1 text-amber-300 font-mono text-[0.625rem] bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded truncate max-w-[120px] shadow-xs",
+						title: "Auto-Merge Active: Merges automatically once approved by reviewer"
+					}, "⚡ Auto-merge");
+					if (currentBoard && currentBoard.automerge) return React.createElement("span", {
+						className: "inline-flex items-center gap-1 text-amber-300 font-mono text-[0.625rem] bg-amber-950/60 border border-amber-800/60 px-1.5 py-0.5 rounded truncate max-w-[120px] shadow-xs",
+						title: "Auto-Merge Active: Merges automatically once approved by reviewer"
+					}, "⚡ Auto-merge");
+					return null;
+				})()), (t.status === "running" || t.session_progress && (t.session_progress.has_session || t.session_progress.sessions && t.session_progress.sessions.length > 0)) && (() => {
 					const tSessions = t.session_progress && t.session_progress.sessions || [];
 					const isRunning = t.status === "running";
 					const ongoingSess = isRunning ? tSessions.find((s) => s.status === "ongoing" || s.is_active) || t.session_progress : null;
@@ -2090,7 +2115,33 @@ var ZeroFactoryDashboard = (function(exports) {
 		return React.createElement(Modal, {
 			isOpen: Boolean(selectedTask),
 			onClose: () => setSelectedTask(null),
-			title: React.createElement("div", { className: "flex items-center gap-3 min-w-0" }, React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id), React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)),
+			title: React.createElement("div", { className: "flex items-center gap-3 min-w-0" }, React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id), (() => {
+				const cleanTags = (Array.isArray(selectedTask.tags) ? selectedTask.tags : typeof selectedTask.tags === "string" ? selectedTask.tags.split(",") : []).map((x) => String(x).trim().toLowerCase());
+				if (cleanTags.some((x) => x === "hitl" || x === "manual-review" || x === "tag:hitl" || x === "tag:manual-review")) return null;
+				if (cleanTags.some((x) => x === "automerge" || x === "yolo" || x === "tag:automerge" || x === "tag:yolo")) return React.createElement("span", {
+					className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-xs",
+					title: "Auto-Merge Active"
+				}, "⚡ Auto-merge");
+				const meta = typeof selectedTask.metadata === "string" ? (() => {
+					try {
+						return JSON.parse(selectedTask.metadata);
+					} catch (e) {
+						return {};
+					}
+				})() : selectedTask.metadata || {};
+				const issueLabels = (meta && meta.external_issue && meta.external_issue.labels || []).map((x) => String(x).trim().toLowerCase());
+				if (issueLabels.some((x) => x === "hitl" || x === "manual-review")) return null;
+				if (issueLabels.some((x) => x === "automerge" || x === "yolo")) return React.createElement("span", {
+					className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-xs",
+					title: "Auto-Merge Active"
+				}, "⚡ Auto-merge");
+				const b = (boards || []).find((x) => x.slug === selectedTask.board_slug);
+				if (b && b.automerge) return React.createElement("span", {
+					className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-xs",
+					title: "Auto-Merge Active"
+				}, "⚡ Auto-merge");
+				return null;
+			})(), React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)),
 			bodyClassName: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1",
 			footerClassName: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
 			footer: React.createElement(React.Fragment, null, React.createElement("button", {
@@ -2734,7 +2785,15 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newBoardForm,
 				auto_setup_precommit: e.target.checked
 			})
-		}))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, boards.length > 0 && React.createElement("button", {
+		})), React.createElement("div", { className: "pt-2 border-t border-slate-800/60 flex flex-col gap-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "⚡ Auto-Merge Approved PRs"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Automatically merge PRs when zf-reviewer approves without human sign-off.")), React.createElement("input", {
+			type: "checkbox",
+			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+			checked: Boolean(newBoardForm.automerge),
+			onChange: (e) => setNewBoardForm({
+				...newBoardForm,
+				automerge: e.target.checked
+			})
+		})), Boolean(newBoardForm.automerge) && React.createElement("div", { className: "p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] leading-relaxed" }, "⚠️ Warning: Auto-merge directly merges to target branch once approved. Ensure repository has comprehensive automated tests in .zerofactory/precommit.sh."))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, boards.length > 0 && React.createElement("button", {
 			type: "button",
 			className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer",
 			onClick: () => setShowNewBoardModal(false)
@@ -2935,7 +2994,15 @@ var ZeroFactoryDashboard = (function(exports) {
 				...editBoardForm,
 				auto_record_memory: e.target.checked
 			})
-		}))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
+		})), React.createElement("div", { className: "pt-2 border-t border-slate-800/60 flex flex-col gap-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "⚡ Auto-Merge Approved PRs"), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Automatically merge PRs when zf-reviewer approves without human sign-off.")), React.createElement("input", {
+			type: "checkbox",
+			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+			checked: Boolean(editBoardForm.automerge),
+			onChange: (e) => setEditBoardForm({
+				...editBoardForm,
+				automerge: e.target.checked
+			})
+		})), Boolean(editBoardForm.automerge) && React.createElement("div", { className: "p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] leading-relaxed" }, "⚠️ Warning: Auto-merge directly merges to target branch once approved. Ensure repository has comprehensive automated tests in .zerofactory/precommit.sh."))), React.createElement("div", { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" }, React.createElement("button", {
 			type: "button",
 			className: "mr-auto px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
 			onClick: handleDeleteBoard,
@@ -3600,6 +3667,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			architecture: "",
 			max_concurrent_running: 1,
 			auto_record_memory: true,
+			automerge: false,
 			additional_reviewer_usernames: "",
 			jira_url: "",
 			auto_setup_precommit: true
@@ -3613,6 +3681,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			repositories: [],
 			max_concurrent_running: 1,
 			auto_record_memory: true,
+			automerge: false,
 			additional_reviewer_usernames: "",
 			jira_url: ""
 		});
@@ -3645,6 +3714,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				target_branch: "",
 				max_concurrent_running: 1,
 				auto_record_memory: true,
+				automerge: false,
 				additional_reviewer_usernames: "",
 				auto_setup_precommit: true
 			});
@@ -4851,6 +4921,7 @@ var ZeroFactoryDashboard = (function(exports) {
 						architecture: (newBoardForm.architecture || "").trim(),
 						max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
 						auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
+						automerge: Boolean(newBoardForm.automerge),
 						jira_url: (newBoardForm.jira_url || "").trim(),
 						auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false),
 						repositories: formattedRepos.length > 0 ? formattedRepos : [{
@@ -4878,6 +4949,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					architecture: "",
 					max_concurrent_running: 1,
 					auto_record_memory: true,
+					automerge: false,
 					additional_reviewer_usernames: "",
 					jira_url: "",
 					auto_setup_precommit: true
@@ -4944,6 +5016,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					repositories: curr.repositories || [],
 					max_concurrent_running: typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1 ? curr.max_concurrent_running : 1,
 					auto_record_memory: curr.auto_record_memory !== false,
+					automerge: Boolean(curr.automerge),
 					additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : "",
 					jira_url: curr.jira_url || ""
 				});
@@ -4976,6 +5049,7 @@ var ZeroFactoryDashboard = (function(exports) {
 						architecture: (editBoardForm.architecture || "").trim(),
 						max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
 						auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
+						automerge: Boolean(editBoardForm.automerge),
 						jira_url: (editBoardForm.jira_url || "").trim(),
 						repositories: formattedRepos
 					})
@@ -5254,6 +5328,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			handleDragStart,
 			loadTaskDetails,
 			selectedBoard,
+			currentBoard: boards.find((b) => b.slug === selectedBoard),
 			stoppingSessionId,
 			handleStopTaskSession,
 			handleAdvanceTask

@@ -125,6 +125,36 @@ def spawn_agent_worker(
     deps_digest = _d().digest_parent_and_peer_tasks_context(task_id)
     deps_block = f"{deps_digest}\n\n" if deps_digest else ""
 
+    automerge_enabled = False
+    try:
+        _db = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
+        if _db.exists():
+            with sqlite3.connect(str(_db), timeout=2.0) as _c:
+                _c.row_factory = sqlite3.Row
+                _task_r = _c.execute(
+                    "SELECT tags, metadata FROM tasks WHERE id = ?", (task_id,)
+                ).fetchone()
+                _board_r = (
+                    _c.execute(
+                        "SELECT automerge FROM boards WHERE slug = ?", (board_slug or "",)
+                    ).fetchone()
+                    if board_slug
+                    else None
+                )
+                if _task_r:
+                    task_dict = {
+                        "tags": _task_r["tags"],
+                        "metadata": _task_r["metadata"],
+                    }
+                    board_dict = (
+                        {"automerge": _board_r["automerge"]} if _board_r else {}
+                    )
+                    automerge_enabled = _d().is_task_automerge_enabled(
+                        task_dict, board_dict
+                    )
+    except Exception:
+        pass
+
     if assignee == "zf-reviewer":
         target_branch = ""
         if board_slug:
@@ -146,6 +176,18 @@ def spawn_agent_worker(
             Path(workdir), branch_name, target_branch=target_branch or None
         )
         pre_digested_block = f"\n{pre_digested_git}\n\n" if pre_digested_git else "\n"
+        automerge_reviewer_block = (
+            "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
+            "This PR will be automatically merged into the target branch immediately upon your approval without human review.\n"
+            "- Strictly scrutinize test coverage: Ensure comprehensive unit/integration tests are included in the diff.\n"
+            "- Do NOT approve (`--reason 'approved'`) if test coverage is insufficient or if edge cases are untested.\n"
+            "- If tests are inadequate or broken, issue `--reason 'changes-requested'` with specific testing requirements.\n\n"
+        ) if automerge_enabled else ""
+        reviewer_approved_action = (
+            "run `hermes zerofactory block {task_id} --reason 'approved'` (Auto-Merge is ACTIVE: the dispatcher will automatically merge this PR into the target branch upon your approval; DO NOT mark done yourself)."
+            if automerge_enabled
+            else "run `hermes zerofactory block {task_id} --reason 'approved'` (the task will be assigned to human for review/merge, and the dispatcher will automatically move the task to 'done' once merged on GitHub; DO NOT mark done yourself)."
+        )
         prompt = (
             f"Task ID: {task_id}\n"
             f"Title: {title}\n"
@@ -160,6 +202,7 @@ def spawn_agent_worker(
             f"{arch_block}"
             f"{deps_block}"
             f"{pre_digested_block}"
+            f"{automerge_reviewer_block}"
             f"Your goal as Reviewer:\n"
             f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
             f"2. Apply Ponytail Anti-Overengineering Review (7-Rung Ladder of Laziness):\n"
@@ -174,7 +217,7 @@ def spawn_agent_worker(
             f"   - In your review comment or summary, include a line: `GOTCHA: <rule>` or `CONVENTION: <rule>` (the system will auto-record it).\n"
             f'   - Or run: `hermes zerofactory memory add --board {board_slug or "default"} "<rule>" --category <gotcha|convention>`.\n'
             f"6. When finished:\n"
-            f"   - If approved: run `hermes zerofactory block {task_id} --reason 'approved'` (the task will be assigned to human for review/merge, and the dispatcher will automatically move the task to 'done' once merged on GitHub; DO NOT mark done yourself).\n"
+            f"   - If approved: {reviewer_approved_action}\n"
             f"   - If changes are requested: run `hermes zerofactory block {task_id} --reason 'changes-requested'` (the dispatcher will route it back to the builder).\n"
             f"7. Provide a clear review summary.\n"
         )
@@ -292,6 +335,14 @@ def spawn_agent_worker(
             or (not conflict_check_verified and Path(workdir).exists())
             or (conflict_check_verified and Path(workdir).exists() and bool(_files))
         )
+        automerge_builder_block = (
+            "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
+            "This task is operating in Auto-Merge mode. Upon approval by `zf-reviewer`, this PR will be merged directly into the base branch WITHOUT human review.\n"
+            "- You MUST write comprehensive, robust automated tests covering all new logic and edge cases.\n"
+            "- You MUST verify that `./.zerofactory/precommit.sh` executes and passes cleanly before completing the task.\n"
+            "- Missing tests or unverified changes will be rejected by the reviewer.\n\n"
+        ) if automerge_enabled else ""
+
         if has_conflict:
             if conflict_check_verified and Path(workdir).exists():
                 conflicted_files = _files
@@ -317,6 +368,7 @@ def spawn_agent_worker(
                 f"{memories_block}"
                 f"{arch_block}"
                 f"{deps_block}"
+                f"{automerge_builder_block}"
                 f"🚨 CRITICAL: MERGE CONFLICT DETECTED WITH MAIN BRANCH\n"
                 f"The latest changes from the main branch conflict with this task branch.\n"
                 f"Conflicted files:\n{file_list_str}\n\n"
@@ -421,6 +473,14 @@ def spawn_agent_worker(
                     f"NOTE: Do NOT run git commands (git add/commit/push/checkout). Your worktree is already synced with latest main. The factory dispatcher automatically stages, commits, and opens PRs upon task completion.\n"
                 )
 
+            automerge_builder_block = (
+                "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
+                "This task is operating in Auto-Merge mode. Upon approval by `zf-reviewer`, this PR will be merged directly into the base branch WITHOUT human review.\n"
+                "- You MUST write comprehensive, robust automated tests covering all new logic and edge cases.\n"
+                "- You MUST verify that `./.zerofactory/precommit.sh` executes and passes cleanly before completing the task.\n"
+                "- Missing tests or unverified changes will be rejected by the reviewer.\n\n"
+            ) if automerge_enabled else ""
+
             prompt = (
                 f"Task ID: {task_id}\n"
                 f"Title: {title}\n"
@@ -434,6 +494,7 @@ def spawn_agent_worker(
                 f"{memories_block}"
                 f"{arch_block}"
                 f"{deps_block}"
+                f"{automerge_builder_block}"
                 f"{review_comments_prompt}"
                 f"{goal_instructions}"
             )

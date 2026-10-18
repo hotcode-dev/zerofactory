@@ -442,6 +442,32 @@ export function NewBoardModal(props) {
             checked: Boolean(newBoardForm.auto_setup_precommit !== false),
             onChange: (e) => setNewBoardForm({ ...newBoardForm, auto_setup_precommit: e.target.checked })
           })
+        ),
+
+        React.createElement(
+          "div",
+          { className: "pt-2 border-t border-slate-800/60 flex flex-col gap-1.5" },
+          React.createElement(
+            "div",
+            { className: "flex items-center justify-between" },
+            React.createElement(
+              "div",
+              null,
+              React.createElement("label", { className: "block text-xs font-semibold text-slate-300" }, "⚡ Auto-Merge Approved PRs"),
+              React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Automatically merge PRs when zf-reviewer approves without human sign-off.")
+            ),
+            React.createElement("input", {
+              type: "checkbox",
+              className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+              checked: Boolean(newBoardForm.automerge),
+              onChange: (e) => setNewBoardForm({ ...newBoardForm, automerge: e.target.checked })
+            })
+          ),
+          Boolean(newBoardForm.automerge) && React.createElement(
+            "div",
+            { className: "p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] leading-relaxed" },
+            "⚠️ Warning: Auto-merge directly merges to target branch once approved. Ensure repository has comprehensive automated tests in .zerofactory/precommit.sh."
+          )
         )
       ),
 

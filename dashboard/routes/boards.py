@@ -130,6 +130,7 @@ def list_boards():
             b["jira_url"] = (b.get("jira_url") or "").strip()
             b["architecture"] = (b.get("architecture") or "").strip()
             b["auto_record_memory"] = bool(b.get("auto_record_memory", 1))
+            b["automerge"] = bool(b.get("automerge", 0))
             cursor.execute(
                 "SELECT id, board_slug, repo_alias, git_url, target_branch, additional_reviewer_usernames, created_at, updated_at "
                 "FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
@@ -179,6 +180,7 @@ def get_board(slug: str):
         b["jira_url"] = (b.get("jira_url") or "").strip()
         b["architecture"] = (b.get("architecture") or "").strip()
         b["auto_record_memory"] = bool(b.get("auto_record_memory", 1))
+        b["automerge"] = bool(b.get("automerge", 0))
         cursor.execute(
             "SELECT id, board_slug, repo_alias, git_url, target_branch, additional_reviewer_usernames, created_at, updated_at "
             "FROM board_repositories WHERE board_slug = ? ORDER BY id ASC",
@@ -285,6 +287,7 @@ def create_board(req: BoardCreate):
     architecture = (req.architecture or "").strip()
     mcr = max(1, req.max_concurrent_running or 1)
     arm = 1 if (req.auto_record_memory is None or req.auto_record_memory) else 0
+    am = 1 if req.automerge else 0
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -297,9 +300,9 @@ def create_board(req: BoardCreate):
         cursor.execute(
             """INSERT INTO boards (
                 slug, description, max_concurrent_running, 
-                auto_record_memory, jira_url, architecture, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (slug, desc, mcr, arm, jira_url, architecture, now, now),
+                auto_record_memory, automerge, jira_url, architecture, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (slug, desc, mcr, arm, am, jira_url, architecture, now, now),
         )
 
         for r in repos_to_add:
@@ -487,6 +490,10 @@ def update_board(slug: str, req: BoardUpdate):
             arm = 1 if req.auto_record_memory else 0
             updates.append("auto_record_memory = ?")
             params.append(arm)
+        if req.automerge is not None:
+            am = 1 if req.automerge else 0
+            updates.append("automerge = ?")
+            params.append(am)
         if req.jira_url is not None:
             updates.append("jira_url = ?")
             params.append(req.jira_url.strip())

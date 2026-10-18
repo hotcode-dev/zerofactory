@@ -24,10 +24,12 @@ def test_board_create_validation():
         git_url="https://github.com/owner/repo.git",
         target_branch="develop",
         max_concurrent_running=2,
+        automerge=True,
     )
     assert b.git_url == "https://github.com/owner/repo.git"
     assert b.target_branch == "develop"
     assert b.max_concurrent_running == 2
+    assert b.automerge is True
 
     # Empty git_url fails
     with pytest.raises(ValidationError):

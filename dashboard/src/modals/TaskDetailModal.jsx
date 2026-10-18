@@ -91,6 +91,37 @@ export function TaskDetailModal(props) {
         "div",
         { className: "flex items-center gap-3 min-w-0" },
         React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id),
+        (() => {
+          const tags = Array.isArray(selectedTask.tags) ? selectedTask.tags : (typeof selectedTask.tags === "string" ? selectedTask.tags.split(",") : []);
+          const cleanTags = tags.map(x => String(x).trim().toLowerCase());
+          if (cleanTags.some(x => x === "hitl" || x === "manual-review" || x === "tag:hitl" || x === "tag:manual-review")) return null;
+          if (cleanTags.some(x => x === "automerge" || x === "yolo" || x === "tag:automerge" || x === "tag:yolo")) {
+            return React.createElement(
+              "span",
+              { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-xs", title: "Auto-Merge Active" },
+              "⚡ Auto-merge"
+            );
+          }
+          const meta = typeof selectedTask.metadata === "string" ? (() => { try { return JSON.parse(selectedTask.metadata); } catch(e) { return {}; } })() : (selectedTask.metadata || {});
+          const issueLabels = (((meta && meta.external_issue && meta.external_issue.labels) || [])).map(x => String(x).trim().toLowerCase());
+          if (issueLabels.some(x => x === "hitl" || x === "manual-review")) return null;
+          if (issueLabels.some(x => x === "automerge" || x === "yolo")) {
+            return React.createElement(
+              "span",
+              { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-xs", title: "Auto-Merge Active" },
+              "⚡ Auto-merge"
+            );
+          }
+          const b = (boards || []).find(x => x.slug === selectedTask.board_slug);
+          if (b && b.automerge) {
+            return React.createElement(
+              "span",
+              { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-xs", title: "Auto-Merge Active" },
+              "⚡ Auto-merge"
+            );
+          }
+          return null;
+        })(),
         React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)
       ),
       bodyClassName: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1",

@@ -118,10 +118,12 @@ from .git_ops import (
 from .github_pr import (
     ai_prefix,
     extract_gh_repo_info,
+    attempt_pr_automerge,
     fetch_pr_review_comments,
     format_task_comment_body,
     is_actionable_review_comment,
     is_reviewer_approval_comment,
+    is_task_automerge_enabled,
 )
 from .process_manager import (
     is_pid_alive,

@@ -1396,6 +1396,94 @@ def _poll_pr_and_route_review(
 
             task_meta["processed_review_comment_ids"] = list(processed_cmt_ids)
 
+            # Check if Auto-Merge is enabled for this task
+            board_dict = {}
+            if board_slug:
+                try:
+                    cursor.execute(
+                        "SELECT automerge FROM boards WHERE slug = ?",
+                        (board_slug,),
+                    )
+                    board_row = cursor.fetchone()
+                    if board_row:
+                        try:
+                            board_dict = {"automerge": board_row["automerge"]}
+                        except (IndexError, KeyError):
+                            board_dict = {"automerge": board_row[0]}
+                except Exception:
+                    board_dict = {}
+
+            tags_val = []
+            try:
+                if "tags" in row.keys() and row["tags"]:
+                    tags_val = row["tags"]
+            except Exception:
+                tags_val = []
+
+            task_dict = {"tags": tags_val, "metadata": task_meta}
+            automerge_active = _disp.is_task_automerge_enabled(task_dict, board_dict)
+
+            if automerge_active:
+                merged, merge_msg = _disp.attempt_pr_automerge(current_pr_url, repo_path)
+                if merged:
+                    log_step_state(
+                        "pr_poll",
+                        task_id,
+                        "automerged",
+                        f"{current_pr_url} auto-merged ({merge_msg})",
+                    )
+                    _disp.stop_task_worker(task_id, cursor)
+                    _disp._remove_worktree(workspace_path, repo_path)
+                    _disp._delete_remote_branch(task_id, repo_path)
+                    task_meta.pop("blocked_reason", None)
+                    task_meta.pop("blocked_reason_type", None)
+                    cursor.execute(
+                        "UPDATE tasks SET status = 'done', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                        (
+                            json.dumps(task_meta),
+                            now,
+                            task_id,
+                        ),
+                    )
+                    cursor.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'automerged', ?, ?)",
+                        (
+                            task_id,
+                            f"PR automatically merged via Auto-Merge mode ({merge_msg})",
+                            now,
+                        ),
+                    )
+                    return True
+                else:
+                    log_step_state(
+                        "pr_poll",
+                        task_id,
+                        "automerge_failed",
+                        f"Auto-merge failed: {merge_msg}; parking for human",
+                    )
+                    task_meta["blocked_reason"] = f"Reviewer approved; auto-merge failed ({merge_msg[:80]}); awaiting human merge"
+                    task_meta["blocked_reason_type"] = "approved"
+
+                    _disp.stop_task_worker(task_id, cursor)
+                    _disp._remove_worktree(workspace_path, repo_path)
+                    cursor.execute(
+                        "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, workspace_path = NULL, updated_at = ? WHERE id = ?",
+                        (
+                            json.dumps(task_meta),
+                            now,
+                            task_id,
+                        ),
+                    )
+                    cursor.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'approved', ?, ?)",
+                        (
+                            task_id,
+                            f"Reviewer approved PR; auto-merge failed ({merge_msg[:100]}); task assigned to human awaiting merge",
+                            now,
+                        ),
+                    )
+                    return True
+
             already_parked = (
                 row["status"] == "blocked"
                 and assignee == "human"

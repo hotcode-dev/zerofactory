@@ -126,6 +126,10 @@ class BoardCreate(BaseModel):
         default="",
         description="Optional Jira Cloud link / project URL (e.g. https://your-domain.atlassian.net)",
     )
+    automerge: bool | None = Field(
+        default=False,
+        description="Enable automatic PR merging upon review approval",
+    )
     auto_setup_precommit: bool | None = Field(
         default=False,
         description="Automatically trigger setup task for .zerofactory/precommit.sh if missing",
@@ -161,6 +165,10 @@ class BoardUpdate(BaseModel):
     auto_record_memory: bool | None = Field(
         default=None,
         description="Enable automatic memory recording from reviewer feedback",
+    )
+    automerge: bool | None = Field(
+        default=None,
+        description="Enable automatic PR merging upon review approval",
     )
     additional_reviewer_usernames: list[str] | None = Field(
         default=None,
