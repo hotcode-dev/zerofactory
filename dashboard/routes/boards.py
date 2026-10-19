@@ -575,6 +575,7 @@ def update_board(slug: str, req: BoardUpdate):
         board_data["jira_url"] = (board_data.get("jira_url") or "").strip()
         board_data["architecture"] = (board_data.get("architecture") or "").strip()
         board_data["auto_record_memory"] = bool(board_data.get("auto_record_memory", 1))
+        board_data["automerge"] = bool(board_data.get("automerge", 0))
 
         cursor.execute(
             """SELECT id, board_slug, repo_alias, git_url, target_branch, additional_reviewer_usernames, created_at, updated_at

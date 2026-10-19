@@ -124,6 +124,7 @@ def test_worker_prompt_automerge_injection(tmp_path, monkeypatch):
     with (
         patch("subprocess.Popen") as mock_popen,
         patch("dispatcher.worker_spawner.resolve_profile_state_db", return_value=None),
+        patch("dispatcher.check_unresolved_conflicts_safe", return_value=(True, [], "")),
     ):
         mock_proc = MagicMock()
         mock_proc.pid = 1234
