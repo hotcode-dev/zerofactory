@@ -1560,9 +1560,10 @@ export function ZeroFactoryKanbanApp() {
     };
 
     // Open Edit Board Modal
-    const handleOpenEditBoard = () => {
-      if (!selectedBoard) return;
-      const curr = boards.find((b) => b.slug === selectedBoard);
+    const handleOpenEditBoard = (targetSlug) => {
+      const slugToEdit = (typeof targetSlug === "string" && targetSlug) ? targetSlug : selectedBoard;
+      if (!slugToEdit || slugToEdit === "all") return;
+      const curr = boards.find((b) => b.slug === slugToEdit);
       if (curr) {
         setCloneTestResult(null);
         setEditBoardForm({

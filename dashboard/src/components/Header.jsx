@@ -1,4 +1,5 @@
 import React from "react";
+import { BoardSelector } from "./BoardSelector.jsx";
 
 export function Header(props) {
   const {
@@ -42,17 +43,21 @@ export function Header(props) {
             React.createElement(
               "div",
               { className: "flex items-center gap-4 flex-wrap" },
-              React.createElement(
-                "div",
-                { className: "flex items-center gap-3.5" },
-                React.createElement("div", { className: "w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/25 text-sm tracking-wider shrink-0" }, "ZF"),
-                React.createElement(
-                  "div",
-                  null,
-                  React.createElement("h1", { className: "text-xl font-bold tracking-tight text-white flex items-center gap-2" }, "Zero Factory Kanban"),
-                  React.createElement("p", { className: "text-xs text-slate-400 font-medium" }, "Autonomous Multi-Agent Coordination Engine")
-                )
-              ),
+              // Board Selector Dropdown
+              React.createElement(BoardSelector, {
+                boards,
+                selectedBoard,
+                onSelectBoard: (val) => {
+                  setSelectedBoard(val);
+                  loadTasksAndStats(val);
+                  loadMemories(val);
+                  loadSessions(val);
+                  loadAgents(val);
+                },
+                onOpenNewBoard: handleOpenNewBoardModal,
+                onOpenEditBoard: handleOpenEditBoard || handleOpenEditBoardModal,
+                liveSessions: sessionsList
+              }),
               // Navigation Tabs: Board vs Activities vs Instructions
               React.createElement(
                 "div",
@@ -132,53 +137,6 @@ export function Header(props) {
                   onClick: () => setActiveView("board")
                 },
                 "← Back to Board"
-              ),
-              // Board Switcher (if boards exist)
-              boards.length > 0
-                ? React.createElement(
-                  "select",
-                  {
-                    className: "bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none cursor-pointer transition-colors shadow-sm",
-                    value: selectedBoard,
-                    onChange: (e) => {
-                      const val = e.target.value;
-                      setSelectedBoard(val);
-                      loadTasksAndStats(val);
-                      loadMemories(val);
-                      loadSessions(val);
-                      loadAgents(val);
-                    }
-                  },
-                  React.createElement(
-                    "option",
-                    { key: "all", value: "all" },
-                    "All Boards (" + boards.reduce((acc, b) => acc + (b.task_count || 0), 0) + ")"
-                  ),
-                  boards.map((b) =>
-                    React.createElement(
-                      "option",
-                      { key: b.slug, value: b.slug },
-                      b.slug + (b.task_count ? " (" + b.task_count + ")" : "")
-                    )
-                  )
-                )
-                : React.createElement(
-                  "span",
-                  { className: "px-2.5 py-1 text-xs font-semibold text-amber-300 bg-amber-950/60 border border-amber-800/60 rounded-lg" },
-                  "No Boards Configured"
-                ),
-              React.createElement(
-                "button",
-                {
-                  className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold " +
-                    (boards.length === 0
-                      ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30"
-                      : "bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm") +
-                    " transition-all duration-150 cursor-pointer",
-                  onClick: handleOpenNewBoardModal,
-                  title: "Create New Board"
-                },
-                "+ Board"
               ),
               selectedBoard && selectedBoard !== "all" &&
               React.createElement(

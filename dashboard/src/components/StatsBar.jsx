@@ -7,7 +7,7 @@ export function StatsBar(props) {
   return (
     React.createElement(
       "div",
-      { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1" },
+      { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pt-1" },
       React.createElement(
         "div",
         { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
@@ -50,17 +50,6 @@ export function StatsBar(props) {
           { className: "flex flex-col min-w-0" },
           React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, (stats.columns && stats.columns.done) || 0),
           React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Completed")
-        )
-      ),
-      React.createElement(
-        "div",
-        { className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150" },
-        React.createElement("div", { className: "w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0 bg-emerald-500/15 text-emerald-400" }, "🌿"),
-        React.createElement(
-          "div",
-          { className: "flex flex-col min-w-0" },
-          React.createElement("span", { className: "text-lg font-bold text-white tracking-tight leading-none" }, stats.active_worktrees || 0),
-          React.createElement("span", { className: "text-[11px] text-slate-400 font-medium truncate mt-1" }, "Git Worktrees")
         )
       ),
       React.createElement(
