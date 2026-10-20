@@ -85,6 +85,12 @@ DEFAULT_LANGFUSE_ENV = "zerofactory"
 # persisted to board_memories for that repository.
 DEFAULT_AUTO_RECORD_MEMORY = True
 
+# Maximum wall-clock execution duration (in seconds) before an active task worker is terminated as stuck.
+DEFAULT_TASK_TIMEOUT_SECONDS = 3600  # 1 hour max running time
+
+# Maximum idle duration (in seconds) with no log output or session updates before an agent worker is reaped.
+DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 900  # 15 mins with no log/session update
+
 # Seconds view of the cooldown default — the single unit-conversion point for the
 # default path. The DB stores minutes; the dispatcher converts to seconds where needed.
 DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS = DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES * 60
@@ -94,6 +100,8 @@ SETTING_KEYS = (
     "max_active_tasks",
     "max_concurrent_llm_workers",
     "activity_retention_days",
+    "task_timeout_seconds",
+    "inactivity_timeout_seconds",
     "enable_cron_scheduler",
     "langfuse_enabled",
     "langfuse_base_url",
@@ -110,6 +118,8 @@ DEFAULT_SETTING_VALUES: dict[str, str] = {
     "max_active_tasks": str(DEFAULT_MAX_ACTIVE_TASKS),
     "max_concurrent_llm_workers": str(DEFAULT_MAX_CONCURRENT_LLM_WORKERS),
     "activity_retention_days": str(DEFAULT_ACTIVITY_RETENTION_DAYS),
+    "task_timeout_seconds": str(DEFAULT_TASK_TIMEOUT_SECONDS),
+    "inactivity_timeout_seconds": str(DEFAULT_INACTIVITY_TIMEOUT_SECONDS),
     "enable_cron_scheduler": "true" if DEFAULT_ENABLE_CRON_SCHEDULER else "false",
     "langfuse_enabled": "true" if DEFAULT_LANGFUSE_ENABLED else "false",
     "langfuse_base_url": DEFAULT_LANGFUSE_BASE_URL,
@@ -152,6 +162,8 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
         "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
         "max_concurrent_llm_workers": DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         "activity_retention_days": DEFAULT_ACTIVITY_RETENTION_DAYS,
+        "task_timeout_seconds": DEFAULT_TASK_TIMEOUT_SECONDS,
+        "inactivity_timeout_seconds": DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
         "enable_cron_scheduler": DEFAULT_ENABLE_CRON_SCHEDULER,
         "langfuse_enabled": DEFAULT_LANGFUSE_ENABLED,
         "langfuse_base_url": DEFAULT_LANGFUSE_BASE_URL,
@@ -191,6 +203,14 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
             c = _clamp_int(v, 1)
             if c is not None:
                 settings["activity_retention_days"] = c
+        elif k == "task_timeout_seconds":
+            c = _clamp_int(v, 1)
+            if c is not None:
+                settings["task_timeout_seconds"] = c
+        elif k == "inactivity_timeout_seconds":
+            c = _clamp_int(v, 1)
+            if c is not None:
+                settings["inactivity_timeout_seconds"] = c
         elif k == "enable_cron_scheduler":
             settings["enable_cron_scheduler"] = _parse_bool(v)
         elif k == "langfuse_enabled":

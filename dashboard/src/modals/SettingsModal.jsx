@@ -85,6 +85,34 @@ export function SettingsModal(props) {
                     }),
                     React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")
                   ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Task Timeout (Seconds)"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 60,
+                      step: 60,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      value: settingsForm.task_timeout_seconds ?? 3600,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, task_timeout_seconds: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max running time before an active task worker is considered stuck and reaped. Increase if tasks run long test suites. Default: 3600 (1 hour).")
+                  ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Inactivity Timeout (Seconds)"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 60,
+                      step: 60,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      value: settingsForm.inactivity_timeout_seconds ?? 900,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, inactivity_timeout_seconds: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max idle time with no log output or session update before a worker is reaped. Default: 900 (15 minutes).")
+                  ),
 
                   React.createElement(
                     "div",

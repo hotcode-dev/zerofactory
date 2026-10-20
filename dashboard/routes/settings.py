@@ -77,6 +77,18 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('activity_retention_days', ?, ?)",
                 (val, now),
             )
+        if req.task_timeout_seconds is not None:
+            val = str(max(1, int(req.task_timeout_seconds)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('task_timeout_seconds', ?, ?)",
+                (val, now),
+            )
+        if req.inactivity_timeout_seconds is not None:
+            val = str(max(1, int(req.inactivity_timeout_seconds)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('inactivity_timeout_seconds', ?, ?)",
+                (val, now),
+            )
         if req.enable_cron_scheduler is not None:
             try:
                 from ..builtin_cron import set_cron_scheduler_enabled

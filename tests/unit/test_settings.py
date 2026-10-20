@@ -30,6 +30,14 @@ class TestSettingsUnit(unittest.TestCase):
             str(S.DEFAULT_ACTIVITY_RETENTION_DAYS),
         )
         self.assertEqual(
+            S.DEFAULT_SETTING_VALUES["task_timeout_seconds"],
+            str(S.DEFAULT_TASK_TIMEOUT_SECONDS),
+        )
+        self.assertEqual(
+            S.DEFAULT_SETTING_VALUES["inactivity_timeout_seconds"],
+            str(S.DEFAULT_INACTIVITY_TIMEOUT_SECONDS),
+        )
+        self.assertEqual(
             S.DEFAULT_SETTING_VALUES["enable_cron_scheduler"],
             "true" if S.DEFAULT_ENABLE_CRON_SCHEDULER else "false",
         )
@@ -49,6 +57,12 @@ class TestSettingsUnit(unittest.TestCase):
         self.assertEqual(
             res["activity_retention_days"], S.DEFAULT_ACTIVITY_RETENTION_DAYS
         )
+        self.assertEqual(
+            res["task_timeout_seconds"], S.DEFAULT_TASK_TIMEOUT_SECONDS
+        )
+        self.assertEqual(
+            res["inactivity_timeout_seconds"], S.DEFAULT_INACTIVITY_TIMEOUT_SECONDS
+        )
         self.assertEqual(res["enable_cron_scheduler"], S.DEFAULT_ENABLE_CRON_SCHEDULER)
         self.assertEqual(res["auto_record_memory"], S.DEFAULT_AUTO_RECORD_MEMORY)
         conn.close()
@@ -63,6 +77,8 @@ class TestSettingsUnit(unittest.TestCase):
                 ("max_active_tasks", "-5"),
                 ("max_concurrent_llm_workers", "0"),
                 ("activity_retention_days", "0"),
+                ("task_timeout_seconds", "-100"),
+                ("inactivity_timeout_seconds", "0"),
                 ("enable_cron_scheduler", "1"),
                 ("auto_record_memory", "yes"),
             ],
@@ -74,6 +90,8 @@ class TestSettingsUnit(unittest.TestCase):
         self.assertEqual(res["max_active_tasks"], 1)
         self.assertEqual(res["max_concurrent_llm_workers"], 1)
         self.assertEqual(res["activity_retention_days"], 1)
+        self.assertEqual(res["task_timeout_seconds"], 1)
+        self.assertEqual(res["inactivity_timeout_seconds"], 1)
         # Boolean parsing
         self.assertTrue(res["enable_cron_scheduler"])
         self.assertTrue(res["auto_record_memory"])

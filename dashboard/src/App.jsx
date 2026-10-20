@@ -48,6 +48,8 @@ export function ZeroFactoryKanbanApp() {
     const [settingsForm, setSettingsForm] = useState({
       max_active_tasks: 10,
       max_concurrent_llm_workers: 10,
+      task_timeout_seconds: 3600,
+      inactivity_timeout_seconds: 900,
       langfuse_enabled: false,
       langfuse_base_url: "https://cloud.langfuse.com",
       langfuse_public_key: "",
@@ -207,6 +209,8 @@ export function ZeroFactoryKanbanApp() {
           setSettingsForm({
             max_active_tasks: data.settings.max_active_tasks ?? 10,
             max_concurrent_llm_workers: data.settings.max_concurrent_llm_workers ?? 10,
+            task_timeout_seconds: data.settings.task_timeout_seconds ?? 3600,
+            inactivity_timeout_seconds: data.settings.inactivity_timeout_seconds ?? 900,
             langfuse_enabled: Boolean(data.settings.langfuse_enabled),
             langfuse_base_url: data.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
             langfuse_public_key: data.settings.langfuse_public_key ?? "",
@@ -229,6 +233,8 @@ export function ZeroFactoryKanbanApp() {
         const payload = {
           max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
           max_concurrent_llm_workers: Math.max(1, parseInt(settingsForm.max_concurrent_llm_workers, 10) || 10),
+          task_timeout_seconds: Math.max(1, parseInt(settingsForm.task_timeout_seconds, 10) || 3600),
+          inactivity_timeout_seconds: Math.max(1, parseInt(settingsForm.inactivity_timeout_seconds, 10) || 900),
           langfuse_enabled: Boolean(settingsForm.langfuse_enabled),
           langfuse_base_url: String(settingsForm.langfuse_base_url || "").trim(),
           langfuse_public_key: String(settingsForm.langfuse_public_key || "").trim(),
@@ -247,6 +253,8 @@ export function ZeroFactoryKanbanApp() {
           setSettingsForm({
             max_active_tasks: res.settings.max_active_tasks ?? 10,
             max_concurrent_llm_workers: res.settings.max_concurrent_llm_workers ?? 10,
+            task_timeout_seconds: res.settings.task_timeout_seconds ?? 3600,
+            inactivity_timeout_seconds: res.settings.inactivity_timeout_seconds ?? 900,
             langfuse_enabled: Boolean(res.settings.langfuse_enabled),
             langfuse_base_url: res.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
             langfuse_public_key: res.settings.langfuse_public_key ?? "",

@@ -100,8 +100,8 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
     running_rows = cursor.fetchall()
     reaped = 0
 
-    task_timeout = _d().get_task_timeout_seconds()
-    inactivity_timeout = _d().get_inactivity_timeout_seconds()
+    task_timeout = _d().get_task_timeout_seconds(cursor)
+    inactivity_timeout = _d().get_inactivity_timeout_seconds(cursor)
 
     for row in running_rows:
         task_id = str(row["id"])
@@ -481,8 +481,8 @@ def check_stuck_tasks(
         close_conn = True
 
     now = int(time.time())
-    task_timeout = _d().get_task_timeout_seconds()
-    inactivity_timeout = _d().get_inactivity_timeout_seconds()
+    task_timeout = _d().get_task_timeout_seconds(cursor)
+    inactivity_timeout = _d().get_inactivity_timeout_seconds(cursor)
 
     results = []
     try:

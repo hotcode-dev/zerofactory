@@ -3059,7 +3059,27 @@ var ZeroFactoryDashboard = (function(exports) {
 				...settingsForm,
 				max_concurrent_llm_workers: e.target.value
 			})
-		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🧠"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules from reviewer feedback and rejections.")), React.createElement("input", {
+		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Caps task workers and improvement scans combined across all boards; per-board limits and task WIP still apply. Default: 10.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Task Timeout (Seconds)"), React.createElement("input", {
+			type: "number",
+			min: 60,
+			step: 60,
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+			value: settingsForm.task_timeout_seconds ?? 3600,
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				task_timeout_seconds: e.target.value
+			})
+		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max running time before an active task worker is considered stuck and reaped. Increase if tasks run long test suites. Default: 3600 (1 hour).")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Inactivity Timeout (Seconds)"), React.createElement("input", {
+			type: "number",
+			min: 60,
+			step: 60,
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+			value: settingsForm.inactivity_timeout_seconds ?? 900,
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				inactivity_timeout_seconds: e.target.value
+			})
+		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max idle time with no log output or session update before a worker is reaped. Default: 900 (15 minutes).")), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🧠"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules from reviewer feedback and rejections.")), React.createElement("input", {
 			type: "checkbox",
 			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
 			checked: Boolean(settingsForm.auto_record_memory !== false),
@@ -3572,6 +3592,8 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [settingsForm, setSettingsForm] = useState({
 			max_active_tasks: 10,
 			max_concurrent_llm_workers: 10,
+			task_timeout_seconds: 3600,
+			inactivity_timeout_seconds: 900,
 			langfuse_enabled: false,
 			langfuse_base_url: "https://cloud.langfuse.com",
 			langfuse_public_key: "",
@@ -3728,6 +3750,8 @@ var ZeroFactoryDashboard = (function(exports) {
 					setSettingsForm({
 						max_active_tasks: data.settings.max_active_tasks ?? 10,
 						max_concurrent_llm_workers: data.settings.max_concurrent_llm_workers ?? 10,
+						task_timeout_seconds: data.settings.task_timeout_seconds ?? 3600,
+						inactivity_timeout_seconds: data.settings.inactivity_timeout_seconds ?? 900,
 						langfuse_enabled: Boolean(data.settings.langfuse_enabled),
 						langfuse_base_url: data.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
 						langfuse_public_key: data.settings.langfuse_public_key ?? "",
@@ -3749,6 +3773,8 @@ var ZeroFactoryDashboard = (function(exports) {
 				const payload = {
 					max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
 					max_concurrent_llm_workers: Math.max(1, parseInt(settingsForm.max_concurrent_llm_workers, 10) || 10),
+					task_timeout_seconds: Math.max(1, parseInt(settingsForm.task_timeout_seconds, 10) || 3600),
+					inactivity_timeout_seconds: Math.max(1, parseInt(settingsForm.inactivity_timeout_seconds, 10) || 900),
 					langfuse_enabled: Boolean(settingsForm.langfuse_enabled),
 					langfuse_base_url: String(settingsForm.langfuse_base_url || "").trim(),
 					langfuse_public_key: String(settingsForm.langfuse_public_key || "").trim(),
@@ -3767,6 +3793,8 @@ var ZeroFactoryDashboard = (function(exports) {
 					setSettingsForm({
 						max_active_tasks: res.settings.max_active_tasks ?? 10,
 						max_concurrent_llm_workers: res.settings.max_concurrent_llm_workers ?? 10,
+						task_timeout_seconds: res.settings.task_timeout_seconds ?? 3600,
+						inactivity_timeout_seconds: res.settings.inactivity_timeout_seconds ?? 900,
 						langfuse_enabled: Boolean(res.settings.langfuse_enabled),
 						langfuse_base_url: res.settings.langfuse_base_url ?? "https://cloud.langfuse.com",
 						langfuse_public_key: res.settings.langfuse_public_key ?? "",

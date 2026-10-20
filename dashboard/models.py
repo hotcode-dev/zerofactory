@@ -319,6 +319,16 @@ class SettingsUpdate(BaseModel):
         ge=1,
         description="Days to retain task_activity log rows before pruning (default 30)",
     )
+    task_timeout_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        description="Max running duration (seconds) before worker is considered stuck (default 3600)",
+    )
+    inactivity_timeout_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        description="Max idle duration (seconds) with no log output before worker is considered hung (default 900)",
+    )
     enable_cron_scheduler: bool | None = Field(
         default=None, description="Enable periodic background cron scheduler execution"
     )

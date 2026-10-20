@@ -16,10 +16,12 @@ try:
         DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
         DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
         DEFAULT_IDLE_SCAN_MAX_TODO,
+        DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
         DEFAULT_MAX_ACTIVE_TASKS,
         DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         DEFAULT_MAX_CONCURRENT_WORKERS,
         DEFAULT_SCAN_ON_IDLE,
+        DEFAULT_TASK_TIMEOUT_SECONDS,
         load_settings,
     )
 except (ImportError, ValueError):
@@ -28,10 +30,12 @@ except (ImportError, ValueError):
         DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
         DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS,
         DEFAULT_IDLE_SCAN_MAX_TODO,
+        DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
         DEFAULT_MAX_ACTIVE_TASKS,
         DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         DEFAULT_MAX_CONCURRENT_WORKERS,
         DEFAULT_SCAN_ON_IDLE,
+        DEFAULT_TASK_TIMEOUT_SECONDS,
         load_settings,
     )
 
@@ -59,12 +63,6 @@ except (ImportError, ValueError):
     )
 
 _log = logging.getLogger("zerofactory.kanban.dispatcher")
-
-# Maximum wall-clock execution duration (in seconds) before an active task worker is terminated as stuck.
-DEFAULT_TASK_TIMEOUT_SECONDS = 3600  # 1 hour max running time
-
-# Maximum idle duration (in seconds) with no log output or session updates before an agent worker is reaped.
-DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 900  # 15 mins with no log/session update
 
 # Maximum worker failure/timeout retries before task is permanently blocked.
 DEFAULT_MAX_WORKER_RETRIES = 3
@@ -154,23 +152,38 @@ def get_spawn_grace_seconds() -> int:
     )
 
 
-def get_task_timeout_seconds() -> int:
+def get_task_timeout_seconds(conn_or_cursor: Any = None) -> int:
     """Return maximum allowed running duration before worker is considered stuck."""
-    return int(
-        os.environ.get(
-            "ZEROFACTORY_TASK_TIMEOUT_SECONDS", str(DEFAULT_TASK_TIMEOUT_SECONDS)
-        )
-    )
+    env_val = os.environ.get("ZEROFACTORY_TASK_TIMEOUT_SECONDS")
+    if env_val is not None:
+        try:
+            return max(1, int(env_val))
+        except (ValueError, TypeError):
+            pass
+    if conn_or_cursor is not None:
+        try:
+            settings = load_settings(conn_or_cursor)
+            return int(settings.get("task_timeout_seconds", DEFAULT_TASK_TIMEOUT_SECONDS))
+        except Exception:
+            pass
+    return DEFAULT_TASK_TIMEOUT_SECONDS
 
 
-def get_inactivity_timeout_seconds() -> int:
+def get_inactivity_timeout_seconds(conn_or_cursor: Any = None) -> int:
     """Return maximum allowed inactivity before worker is considered hung."""
-    return int(
-        os.environ.get(
-            "ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS",
-            str(DEFAULT_INACTIVITY_TIMEOUT_SECONDS),
-        )
-    )
+    env_val = os.environ.get("ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS")
+    if env_val is not None:
+        try:
+            return max(1, int(env_val))
+        except (ValueError, TypeError):
+            pass
+    if conn_or_cursor is not None:
+        try:
+            settings = load_settings(conn_or_cursor)
+            return int(settings.get("inactivity_timeout_seconds", DEFAULT_INACTIVITY_TIMEOUT_SECONDS))
+        except Exception:
+            pass
+    return DEFAULT_INACTIVITY_TIMEOUT_SECONDS
 
 
 def get_db_path() -> Path:
