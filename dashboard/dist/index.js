@@ -291,14 +291,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			},
 			disabled: boards.length === 0,
 			title: boards.length === 0 ? "Create a board first" : "Create New Task"
-		}, "+ New Task"), React.createElement("button", {
-			className: "inline-flex items-center justify-center p-2 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
-			onClick: () => {
-				loadBoards();
-				loadTasksAndStats();
-			},
-			title: "Refresh Board"
-		}, "🔄"))));
+		}, "+ New Task"))));
 	}
 	//#endregion
 	//#region dashboard/src/utils/icons.js
