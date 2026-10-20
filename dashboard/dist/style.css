@@ -956,6 +956,12 @@
     border-color: color-mix(in oklab, var(--color-indigo-500) 70%, transparent);
   }
 }
+.border-indigo-600\/60 {
+  border-color: color-mix(in srgb, oklch(51.1% 0.262 276.966) 60%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in oklab, var(--color-indigo-600) 60%, transparent);
+  }
+}
 .border-indigo-700 {
   border-color: var(--color-indigo-700);
 }

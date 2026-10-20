@@ -1356,8 +1356,8 @@ var ZeroFactoryDashboard = (function(exports) {
 				},
 				{
 					icon: "🧠",
-					title: "Native Repository Memory",
-					desc: "Durable SQLite knowledge substrate (kanban.db) persisting conventions, gotchas, and architectural decisions."
+					title: "Mem0 Vector Memory",
+					desc: "Hybrid semantic vector memory via Mem0 + Qdrant (FastEmbed ONNX CPU / OpenAI), auto-recorded on task completion."
 				}
 			].map((card, idx) => React.createElement("div", {
 				key: idx,
@@ -1449,7 +1449,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					title: "Human Merge",
 					badge: "Blocked ➔ Done",
 					bcolor: "text-rose-100 bg-rose-900/90 border-rose-500/70",
-					desc: "Approved PR waits in Blocked. Once human merges on GitHub, dispatcher marks task Done and prunes the worktree."
+					desc: "Approved PR waits in Blocked. Once human merges on GitHub, dispatcher marks task Done, prunes worktree, and triggers automated background Mem0 memory extraction."
 				}
 			].map((step, idx) => React.createElement("div", {
 				key: idx,
@@ -1608,6 +1608,63 @@ var ZeroFactoryDashboard = (function(exports) {
 				key: idx,
 				className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-4.5 space-y-2 shadow-sm"
 			}, React.createElement("div", { className: "flex items-center gap-2 font-bold text-white text-xs font-mono" }, React.createElement("span", null, w.icon), w.title), React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, w.desc)))), React.createElement("div", { className: "p-4.5 bg-sky-950/50 border border-sky-500/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-sky-200 text-sm" }, "🎯 Key Agent Benefits:"), React.createElement("ul", { className: "text-slate-100 text-xs leading-relaxed m-0 pl-4 space-y-1 font-normal list-disc" }, React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "30–40% Token Savings:"), " Slashes exploratory grep_search, find_by_name, and random file reads by up to 40%."), React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "Prevents Context Drift:"), " Prevents agents from hallucinating outdated conventions or diverging from established patterns."), React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "Native MCP Tools (Zero ENV):"), " Pre-configured stdio MCP server (openwiki_begin, openwiki_submit_page, openwiki_search) with 0 external API keys or manual exports required."), React.createElement("li", null, React.createElement("strong", { className: "text-white" }, "Fast Onboarding:"), " New tasks start immediately with full architectural orientation in a single compact markdown read."))), React.createElement("div", { className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 text-xs text-slate-300 font-medium" }, React.createElement("span", null, "Setup trigger: 1-click recommendation banner on Kanban board, Board Settings modal, or CLI:"), React.createElement("span", { className: "font-mono text-sky-300 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-700 select-all shrink-0" }, "hermes zerofactory setup-openwiki --board <slug>"))));
+		};
+		const renderMemorySection = () => {
+			return React.createElement("div", { className: "space-y-6" }, React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 shadow-md" }, React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" }, React.createElement("h3", { className: "text-base font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, React.createElement("span", null, "🧠"), "Mem0 Hybrid Vector Memory Substrate"), React.createElement("span", { className: "text-xs font-mono px-2.5 py-0.5 rounded-full font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60" }, "Qdrant Vector DB • SQLite Dual-Write")), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "Zero Factory integrates ", React.createElement("strong", { className: "text-white" }, "Mem0"), " alongside an embedded ", React.createElement("strong", { className: "text-white" }, "Qdrant"), " vector database and local SQLite storage. Specialist agents and developers persist repository conventions, architectural decisions, and bug gotchas scoped per board. When tasks execute, relevant memories are semantically queried and injected into prompts so agents never repeat past mistakes."), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4" }, [
+				{
+					title: "FastEmbed (Local ONNX CPU)",
+					badge: "100% Local • Default",
+					badgeColor: "text-emerald-300 bg-emerald-950/80 border-emerald-800/60",
+					icon: "⚡",
+					desc: "Runs locally on CPU via onnxruntime using BAAI/bge-small-en-v1.5 (384-dim). Zero external OpenAI API keys needed."
+				},
+				{
+					title: "OpenAI / Compatible Embeddings",
+					badge: "Cloud / Custom",
+					badgeColor: "text-amber-300 bg-amber-950/80 border-amber-800/60",
+					icon: "🌐",
+					desc: "Supports OpenAI embeddings (text-embedding-3-small, 1536-dim) or any OpenAI-compatible embedding API with API key override."
+				},
+				{
+					title: "Direct Vectorization (infer=False)",
+					badge: "Zero Hallucination",
+					badgeColor: "text-sky-300 bg-sky-950/80 border-sky-800/60",
+					icon: "🎯",
+					desc: "Clean structured memory statements are vectorized directly without LLM re-inference, ensuring high-fidelity extraction without hallucinations."
+				}
+			].map((item, idx) => React.createElement("div", {
+				key: idx,
+				className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-4.5 space-y-2 shadow-sm"
+			}, React.createElement("div", { className: "flex items-center justify-between gap-1" }, React.createElement("div", { className: "flex items-center gap-2 font-bold text-white text-xs font-mono" }, React.createElement("span", null, item.icon), item.title), React.createElement("span", { className: "text-[10px] font-mono px-1.5 py-0.5 rounded border font-semibold " + item.badgeColor }, item.badge)), React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, item.desc))))), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" }, React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" }, React.createElement("h3", { className: "text-base font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, React.createElement("span", null, "🔄"), "Automated Background Recording (No Manual Tasks Needed)"), React.createElement("span", { className: "text-xs font-mono px-2.5 py-0.5 rounded-full font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60" }, "Zero Token Overhead")), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "Unlike traditional tools that require filing separate chore tickets to record memories, Zero Factory records repository knowledge automatically in the background:"), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-4" }, React.createElement("div", { className: "p-4.5 bg-slate-950/80 border border-slate-700/80 rounded-xl space-y-2 shadow-sm" }, React.createElement("div", { className: "font-bold text-emerald-300 text-xs flex items-center gap-2" }, "🎉 On PR Merge / Task Completion (Done):"), React.createElement("p", { className: "text-slate-200 text-xs leading-relaxed m-0 font-normal" }, "When a PR merges on GitHub and the dispatcher marks the ticket as ", React.createElement("span", { className: "font-mono text-emerald-300 bg-slate-900 px-1 py-0.5 rounded border border-slate-700" }, "Done"), ", key architectural implementations, conventions, and test patterns are parsed and automatically committed to Mem0 vector storage and SQLite.")), React.createElement("div", { className: "p-4.5 bg-slate-950/80 border border-slate-700/80 rounded-xl space-y-2 shadow-sm" }, React.createElement("div", { className: "font-bold text-purple-300 text-xs flex items-center gap-2" }, "🔍 On Review Feedback & Blockers:"), React.createElement("p", { className: "text-slate-200 text-xs leading-relaxed m-0 font-normal" }, "When reviewers leave feedback or tasks are blocked with review reasons, structured prefixes like ", React.createElement("span", { className: "font-mono text-indigo-300 bg-slate-900 px-1 py-0.5 rounded border border-slate-700" }, "GOTCHA:"), ", ", React.createElement("span", { className: "font-mono text-indigo-300 bg-slate-900 px-1 py-0.5 rounded border border-slate-700" }, "CONVENTION:"), ", or ", React.createElement("span", { className: "font-mono text-indigo-300 bg-slate-900 px-1 py-0.5 rounded border border-slate-700" }, "DECISION:"), " are automatically captured.")))), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" }, React.createElement("h3", { className: "text-base font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, React.createElement("span", null, "🏷️"), "Structured Taxonomy & Prompt Pre-Digestion"), React.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs" }, [
+				{
+					cat: "convention",
+					color: "text-indigo-300 bg-indigo-950/80 border-indigo-800/60",
+					desc: "Coding styles, project layouts, test frameworks"
+				},
+				{
+					cat: "gotcha",
+					color: "text-rose-300 bg-rose-950/80 border-rose-800/60",
+					desc: "Concurrency race conditions, fragile mocks, edge cases"
+				},
+				{
+					cat: "decision",
+					color: "text-emerald-300 bg-emerald-950/80 border-emerald-800/60",
+					desc: "Key design choices that govern future implementations"
+				},
+				{
+					cat: "rejected_path",
+					color: "text-amber-300 bg-amber-950/80 border-amber-800/60",
+					desc: "Discarded attempts to prevent repeating failed paths"
+				},
+				{
+					cat: "general",
+					color: "text-slate-300 bg-slate-950/80 border-slate-700/80",
+					desc: "Broad repository context and dependency nuances"
+				}
+			].map((t, idx) => React.createElement("div", {
+				key: idx,
+				className: "p-3 rounded-xl border space-y-1.5 shadow-sm " + t.color
+			}, React.createElement("span", { className: "font-bold font-mono text-xs block" }, t.cat), React.createElement("p", { className: "text-[11px] text-slate-200 leading-snug m-0 font-normal" }, t.desc)))), React.createElement("div", { className: "p-4 bg-indigo-950/40 border border-indigo-600/60 rounded-xl space-y-2 text-xs" }, React.createElement("div", { className: "font-bold text-indigo-200 text-xs flex items-center gap-2" }, "🎯 Automatic Agent Injection:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, "Before ", React.createElement("strong", { className: "text-white" }, "zf-builder"), " or ", React.createElement("strong", { className: "text-white" }, "zf-reviewer"), " launches, the dispatcher performs semantic cosine retrieval matching the current task's title and description against the board's memories. Relevant conventions and gotchas are injected into the prompt under ", React.createElement("span", { className: "font-mono text-indigo-300 bg-slate-950 px-1 py-0.5 rounded border border-slate-700" }, "## Repository Memory & Conventions"), "."))), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" }, React.createElement("h3", { className: "text-base font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, React.createElement("span", null, "⚙️"), "Configuration & Settings"), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "Memory engine settings are easily accessible in the Dashboard ", React.createElement("strong", { className: "text-white" }, "Settings Modal"), " (top navigation bar):"), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3 text-xs" }, React.createElement("div", { className: "p-3.5 bg-slate-950/80 border border-slate-700/80 rounded-xl space-y-1" }, React.createElement("div", { className: "font-mono font-bold text-indigo-300" }, "mem0_enabled"), React.createElement("p", { className: "text-slate-200 m-0 font-normal" }, "Master switch to turn Mem0 vector memory on or off across all boards.")), React.createElement("div", { className: "p-3.5 bg-slate-950/80 border border-slate-700/80 rounded-xl space-y-1" }, React.createElement("div", { className: "font-mono font-bold text-indigo-300" }, "mem0_embedder_provider"), React.createElement("p", { className: "text-slate-200 m-0 font-normal" }, "Toggle between FastEmbed (Local ONNX CPU, no API key) and OpenAI.")), React.createElement("div", { className: "p-3.5 bg-slate-950/80 border border-slate-700/80 rounded-xl space-y-1" }, React.createElement("div", { className: "font-mono font-bold text-indigo-300" }, "mem0_model & mem0_base_url"), React.createElement("p", { className: "text-slate-200 m-0 font-normal" }, "Defaults to active Hermes agent config (~/.hermes/config.yaml).")), React.createElement("div", { className: "p-3.5 bg-slate-950/80 border border-slate-700/80 rounded-xl space-y-1" }, React.createElement("div", { className: "font-mono font-bold text-indigo-300" }, "Auto-Record Toggle"), React.createElement("p", { className: "text-slate-200 m-0 font-normal" }, "Per-board override button in Agents -> Repository Memory sub-tab header.")))));
 		};
 		const renderCliSection = () => {
 			return React.createElement("div", { className: "space-y-5" }, [
@@ -1804,6 +1861,11 @@ var ZeroFactoryDashboard = (function(exports) {
 				icon: "🛡️"
 			},
 			{
+				id: "memory",
+				label: "Mem0 Repository Memory",
+				icon: "🧠"
+			},
+			{
 				id: "cli",
 				label: "CLI Cheat Sheet",
 				icon: "💻"
@@ -1818,7 +1880,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			type: "button",
 			className: "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-150 cursor-pointer " + (instructionTab === tab.id ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400" : "bg-slate-900/80 text-slate-200 hover:text-white hover:bg-slate-800 border border-slate-700/80 font-medium"),
 			onClick: () => setInstructionTab(tab.id)
-		}, React.createElement("span", null, tab.icon), tab.label))), instructionTab === "overview" && renderOverviewSection(), instructionTab === "specialists" && renderSpecialistsSection(), instructionTab === "lifecycle" && renderLifecycleSection(), instructionTab === "worktrees" && renderWorktreesSection(), instructionTab === "quality" && renderQualitySection(), instructionTab === "cli" && renderCliSection(), instructionTab === "crons" && renderCronsSection());
+		}, React.createElement("span", null, tab.icon), tab.label))), instructionTab === "overview" && renderOverviewSection(), instructionTab === "specialists" && renderSpecialistsSection(), instructionTab === "lifecycle" && renderLifecycleSection(), instructionTab === "worktrees" && renderWorktreesSection(), instructionTab === "quality" && renderQualitySection(), instructionTab === "memory" && renderMemorySection(), instructionTab === "cli" && renderCliSection(), instructionTab === "crons" && renderCronsSection());
 	}
 	//#endregion
 	//#region dashboard/src/components/Modal.jsx

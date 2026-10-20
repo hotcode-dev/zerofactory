@@ -45,6 +45,7 @@ graph TD
 | **Thematic Continuous Review** | Layered code review capping at 2 focused rounds (Correctness & Tests → Verification & Polish) before handing off to human merge. |
 | **Deterministic Precommit Gate** | Standardized format ➔ build ➔ test pipeline (`.zerofactory/precommit.sh`) ensuring zero broken builds or lint errors before PRs. |
 | **OpenWiki Context Optimization** | Machine-readable architecture wiki (`openwiki/`) that slashes agent context bloat and exploratory tool calls by 30–40%. |
+| **Mem0 Vector Memory Substrate** | Hybrid semantic vector memory powered by Mem0 + embedded Qdrant with dual embedder support (FastEmbed 100% local ONNX CPU or OpenAI). Auto-extracts repository lessons upon task completion / PR merge, with dual-write to `kanban.db` SQLite. |
 | **Durable Kanban Storage** | Embedded SQLite backend with Write-Ahead Logging (`WAL` mode) and a glassmorphic web dashboard UI. |
 
 ---
@@ -158,7 +159,7 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
    - **Global LLM capacity**: Settings → Global Max Concurrent LLM Workers caps running task agents and in-flight improvement scanners across all boards. For example, with a cap of 3, two running tasks on one board and one on another leave no slot for further tasks or scanners. The per-board running limits and Max Active Tasks (task WIP) apply independently. No-Agent queue checks do not consume LLM capacity.
 4. **Deterministic Precommit & PR Creation (`Running`)**: When `zf-builder` finishes, the dispatcher executes `.zerofactory/precommit.sh` in the worktree (format ➔ build ➔ tests). Auto-formatted changes are staged, and if tests fail, the builder receives error logs to auto-fix (up to 3 retries). Once clean, the dispatcher commits, merges with latest main, pushes, opens a GitHub Pull Request, and routes it to `zf-reviewer` in `Running` for thematic review (Correctness & Tests ➔ Verification & Polish, up to 2 rounds).
 5. **Human Action & Merge (`Blocked`)**: Approved PRs move to `Blocked` awaiting human merge. Any crashed workers or merge conflict escalations also move to `Blocked` for operator review.
-6. **Completion (`Done`)**: The human merges the PR on GitHub, and the dispatcher automatically marks the ticket as `Done` and prunes the worktree.
+6. **Completion (`Done`)**: The human merges the PR on GitHub, and the dispatcher automatically marks the ticket as `Done`, prunes the worktree, and triggers automated background repository memory extraction and vectorization via Mem0 (no separate manual task required).
 
 ---
 
@@ -189,7 +190,7 @@ Zero Factory implements a **Session-per-Handoff (Stateless Workers, Stateful Sub
 | **Fault Tolerance & Poisoned Loops** | **High** (Terminated workers discard bad hallucination loops) | **Lower** (Resumed session retains prior confusion or failed debugging traces) |
 | **Reviewer Diff Clarity** | **High** (Reviewer receives clean, pre-digested current delta) | **Lower** (Reviewer history mixes original diff with updated diffs) |
 | **Role & Profile Isolation** | **Strict** (Builder & Reviewer maintain isolated profiles, tools, and DBs) | **Strict** (Maintains role separation, but with accumulated history) |
-| **Working Memory Continuity** | Persisted via **Native `kanban.db` Memory** (conventions, gotchas, decisions pre-digested into prompt) | ✅ Full conversation memory (remembers reasoning, discarded ideas, test nuances) |
+| **Working Memory Continuity** | Persisted via **Mem0 Vector Memory & `kanban.db`** (conventions, gotchas, decisions semantically retrieved into prompt) | ✅ Full conversation memory (remembers reasoning, discarded ideas, test nuances) |
 
 ### Stateless Workers, Stateful Substrate
 
@@ -236,14 +237,22 @@ Project Board: checkout-platform
 
 ---
 
-## Native `kanban.db` Memory & Agents Dashboard
+## Mem0 Vector Memory & Agents Dashboard
 
-Zero Factory features **Native `kanban.db` Memory** — a durable, local SQLite repository knowledge substrate that allows specialist agents and developers to persist conventions, gotchas, architecture decisions, and rejected paths scoped per board.
+Zero Factory features an intelligent hybrid memory architecture powered by **Mem0** and an embedded **Qdrant** vector database, alongside a durable SQLite `kanban.db` substrate. This allows specialist agents and developers to persist conventions, gotchas, architecture decisions, and rejected paths scoped per board with semantic similarity retrieval.
 
-### Why Native `kanban.db` Memory?
-1. **Zero External Infrastructure**: Stored directly in `kanban.db` via SQLite table `board_memories` with cascading cleanup on board deletion.
-2. **Deterministic Pre-Digest**: Automatically pre-digested by `dispatcher.py` into spawned worker prompts (`zf-builder`, `zf-reviewer`, `zf-orchestrator`), ensuring agents never repeat past mistakes or violate repository conventions.
-3. **Structured Taxonomy**:
+### Why Mem0 Vector Memory?
+1. **Semantic Vector Search**: Memories are vectorized and queried via cosine similarity (`filters={"user_id": board_slug}`), ensuring agents retrieve the most semantically relevant conventions and historical gotchas even if phrasing differs.
+2. **Dual Embedder Engine Options (100% Local or Cloud)**:
+   - **FastEmbed (Default, 100% Local)**: Powered by local ONNX model `BAAI/bge-small-en-v1.5` (384 dimensions) running on CPU via `onnxruntime`. **Zero external OpenAI API keys needed**.
+   - **OpenAI / Compatible Embeddings**: Supports standard OpenAI embeddings (defaults to `text-embedding-3-small`, 1536 dimensions) or OpenAI-compatible custom endpoints with an optional API key override.
+   - **Dimension-Isolated Collections**: Uses distinct Qdrant collections (`zerofactory_memories_fastembed` vs `zerofactory_memories_openai`) to prevent vector dimension mismatch when toggling providers.
+3. **Deterministic Pre-Digest & Zero Hallucination**:
+   - Memory additions use `infer=False` to directly vectorize clean, structured repository facts without LLM re-inference or hallucination.
+   - Relevant memories are automatically retrieved and pre-digested by the dispatcher into spawned worker prompts (`zf-builder` and `zf-reviewer`), preventing agents from repeating past mistakes.
+4. **Dual-Write Architecture**:
+   - Dual-writes to both Qdrant vector storage and the local SQLite `board_memories` table, guaranteeing 100% backwards compatibility with Kanban UI cards, CLI commands, and offline viewing.
+5. **Structured Taxonomy**:
    - `convention`: Coding rules, file formats, test execution expectations.
    - `gotcha`: Concurrency pitfalls, fragile mocks, subtle edge cases.
    - `decision`: Architectural and design choices that govern future work.
@@ -251,7 +260,7 @@ Zero Factory features **Native `kanban.db` Memory** — a durable, local SQLite 
    - `general`: General repository knowledge.
 
 ### Integrated "Agents" Dashboard
-The dashboard navigation tab has evolved from `AI Sessions` to **`Agents`**:
+The dashboard navigation tab features an integrated **`Agents`** center:
 - **3 Specialist Agent Cards**: Real-time status (`🟢 Active` vs `⚪ Idle`), live execution activity, active session model & duration, and direct links to active Kanban tasks.
 - **Sub-Tab Switcher**: Seamlessly switch between `💬 AI Sessions` (full execution history & chat resume links) and `🧠 Repository Memory` (knowledge cards with search, category filtering, and modal CRUD).
 
@@ -267,15 +276,22 @@ hermes zerofactory memory add --board <slug> "<content>" --category convention -
 hermes zerofactory memory delete <memory_id>
 ```
 
-### Automated Memory Recording & Disable Controls
-Zero Factory automatically captures repository insights during developer and agent workflows:
-- **Automated Extraction**: When `zf-reviewer` leaves PR comments, a task is moved to `blocked` with a review reason, or comments are posted to a task, lines prefixed with:
+### Automated Background Memory Recording
+Zero Factory automatically captures repository insights during developer and agent workflows **without creating separate manual Kanban tasks**:
+- **Task Completion & PR Merge (`Done`)**: When a pull request is merged on GitHub and the dispatcher marks the task as `Done`, key learnings, conventions, and architectural notes are extracted and recorded in the background automatically.
+- **Reviewer Feedback Extraction**: When `zf-reviewer` leaves PR comments, a task is moved to `blocked` with a review reason, or comments are posted to a task, lines prefixed with:
   `GOTCHA:`, `CONVENTION:`, `RULE:`, `DECISION:`, `ARCH:`, `REJECTED_PATH:`, `LESSON:`, `LEARNING:`, or `TIP:`
-  are automatically extracted, tagged (`auto-recorded`, `from-<actor>`), deduplicated, and persisted to `board_memories`.
-- **Noise Protection**: Arbitrary comments and routine approvals are deliberately excluded to prevent prompt pollution and keep repository context high-signal.
-- **Multi-Level Controls to Disable**:
-  1. **Global Setting**: Settings Modal toggle (`Auto-record repository memory`) or `PATCH /api/plugins/zerofactory/settings`.
-  2. **Per-Board Override**: Board Edit modal checkbox, or the 1-click `⚡ Auto-Record: ON/OFF` button in the `Agents` -> `Repository Memory` sub-tab header, or `PATCH /api/plugins/zerofactory/boards/<slug>`.
+  are automatically extracted, tagged (`auto-recorded`, `from-<actor>`), deduplicated, and persisted.
+- **Noise Protection**: Routine approvals and chatter are excluded to keep vector memory high-signal.
+
+### Configuration & Settings Controls
+- **Global Settings (Dashboard Settings Modal / API)**:
+  - `mem0_enabled`: Toggle Mem0 memory engine globally (True/False).
+  - `mem0_embedder_provider`: Select `fastembed` (100% local ONNX CPU) or `openai` (Cloud API).
+  - `mem0_embedder_model`: Customize embedding model (`BAAI/bge-small-en-v1.5` default for FastEmbed, `text-embedding-3-small` default for OpenAI).
+  - `mem0_base_url` & `mem0_model`: Inherited by default from active Hermes agent config (`~/.hermes/config.yaml`), with manual override support.
+  - `mem0_api_key`: Optional API key override for custom endpoints or OpenAI embeddings.
+- **Per-Board Override**: Board Edit modal checkbox, or the 1-click `⚡ Auto-Record: ON/OFF` button in the `Agents` -> `Repository Memory` sub-tab header (`PATCH /api/plugins/zerofactory/boards/<slug>`).
 
 ---
 
