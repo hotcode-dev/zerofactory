@@ -788,7 +788,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
               "div",
               { className: "p-3.5 bg-slate-950/80 border border-slate-700/80 rounded-xl space-y-1" },
               React.createElement("div", { className: "font-mono font-bold text-indigo-300" }, "mem0_model & mem0_base_url"),
-              React.createElement("p", { className: "text-slate-200 m-0 font-normal" }, "Defaults to active Hermes agent config (~/.hermes/config.yaml).")
+              React.createElement("p", { className: "text-slate-200 m-0 font-normal" }, "Used in OpenAI mode (defaults to ~/.hermes/config.yaml; hidden when FastEmbed is active).")
             ),
             React.createElement(
               "div",

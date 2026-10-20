@@ -289,7 +289,7 @@ Zero Factory automatically captures repository insights during developer and age
   - `mem0_enabled`: Toggle Mem0 memory engine globally (True/False).
   - `mem0_embedder_provider`: Select `fastembed` (100% local ONNX CPU) or `openai` (Cloud API).
   - `mem0_embedder_model`: Customize embedding model (`BAAI/bge-small-en-v1.5` default for FastEmbed, `text-embedding-3-small` default for OpenAI).
-  - `mem0_base_url` & `mem0_model`: Inherited by default from active Hermes agent config (`~/.hermes/config.yaml`), with manual override support.
+  - `mem0_base_url` & `mem0_model`: Used when OpenAI / compatible endpoint mode is selected (defaults to `~/.hermes/config.yaml`). Hidden when FastEmbed is selected since FastEmbed runs 100% locally on CPU without needing an LLM or external base URL.
   - `mem0_api_key`: Optional API key override for custom endpoints or OpenAI embeddings.
 - **Per-Board Override**: Board Edit modal checkbox, or the 1-click `⚡ Auto-Record: ON/OFF` button in the `Agents` -> `Repository Memory` sub-tab header (`PATCH /api/plugins/zerofactory/boards/<slug>`).
 

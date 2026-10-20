@@ -172,41 +172,11 @@ export function SettingsModal(props) {
                         "div",
                         { className: "space-y-1" },
                         React.createElement("div", { className: "flex items-center justify-between" },
-                          React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Mem0 LLM Model"),
-                          React.createElement("span", { className: "text-[10px] text-indigo-400 font-medium" }, "Inherits from Hermes agent")
-                        ),
-                        React.createElement("input", {
-                          type: "text",
-                          placeholder: "RadixArk/Qwen3.8-27B-NVFP4 (inherited from ~/.hermes/config.yaml)",
-                          className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
-                          value: settingsForm.mem0_model ?? "",
-                          onChange: (e) => setSettingsForm({ ...settingsForm, mem0_model: e.target.value })
-                        })
-                      ),
-                      React.createElement(
-                        "div",
-                        { className: "space-y-1" },
-                        React.createElement("div", { className: "flex items-center justify-between" },
-                          React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Mem0 / Hermes Base URL"),
-                          React.createElement("span", { className: "text-[10px] text-indigo-400 font-medium" }, "Inherits from Hermes base_url")
-                        ),
-                        React.createElement("input", {
-                          type: "text",
-                          placeholder: "https://spark.ntsd.dev:8001/v1 (inherited from ~/.hermes/config.yaml)",
-                          className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
-                          value: settingsForm.mem0_base_url ?? "",
-                          onChange: (e) => setSettingsForm({ ...settingsForm, mem0_base_url: e.target.value })
-                        })
-                      ),
-                      React.createElement(
-                        "div",
-                        { className: "space-y-1" },
-                        React.createElement("div", { className: "flex items-center justify-between" },
                           React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Embedder Engine"),
                           React.createElement(
                             "span",
-                            { className: `text-[10px] font-medium ${settingsForm.mem0_embedder_provider !== "openai" ? "text-emerald-400" : "text-amber-400"}` },
-                            settingsForm.mem0_embedder_provider !== "openai" ? "✓ 100% Local (No OpenAI Key Required)" : "Requires OpenAI API Key"
+                            { className: `text-[10px] font-medium ${settingsForm.mem0_embedder_provider === "openai" ? "text-amber-400" : "text-emerald-400"}` },
+                            settingsForm.mem0_embedder_provider === "openai" ? "Requires OpenAI API Key" : "✓ 100% Local (No OpenAI Key Required)"
                           )
                         ),
                         React.createElement("select", {
@@ -218,33 +188,82 @@ export function SettingsModal(props) {
                           React.createElement("option", { value: "openai" }, "OpenAI / Compatible Embeddings")
                         )
                       ),
-                      React.createElement(
-                        "div",
-                        { className: "grid grid-cols-2 gap-3" },
+                      settingsForm.mem0_embedder_provider === "openai" && React.createElement(
+                        React.Fragment,
+                        null,
                         React.createElement(
                           "div",
                           { className: "space-y-1" },
-                          React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Embedding Model"),
+                          React.createElement("div", { className: "flex items-center justify-between" },
+                            React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Mem0 LLM Model"),
+                            React.createElement("span", { className: "text-[10px] text-indigo-400 font-medium" }, "Inherits from Hermes agent")
+                          ),
                           React.createElement("input", {
                             type: "text",
-                            placeholder: settingsForm.mem0_embedder_provider === "openai" ? "text-embedding-3-small" : "BAAI/bge-small-en-v1.5 (default)",
+                            placeholder: "RadixArk/Qwen3.8-27B-NVFP4 (inherited from ~/.hermes/config.yaml)",
                             className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
-                            value: settingsForm.mem0_embedder_model ?? "",
-                            onChange: (e) => setSettingsForm({ ...settingsForm, mem0_embedder_model: e.target.value })
+                            value: settingsForm.mem0_model ?? "",
+                            onChange: (e) => setSettingsForm({ ...settingsForm, mem0_model: e.target.value })
                           })
                         ),
                         React.createElement(
                           "div",
                           { className: "space-y-1" },
-                          React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "API Key (Optional)"),
+                          React.createElement("div", { className: "flex items-center justify-between" },
+                            React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Mem0 / Hermes Base URL"),
+                            React.createElement("span", { className: "text-[10px] text-indigo-400 font-medium" }, "Inherits from Hermes base_url")
+                          ),
                           React.createElement("input", {
-                            type: "password",
-                            placeholder: settingsForm.mem0_embedder_provider === "openai" ? "sk-..." : "Not needed for FastEmbed",
+                            type: "text",
+                            placeholder: "https://spark.ntsd.dev:8001/v1 (inherited from ~/.hermes/config.yaml)",
                             className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
-                            value: settingsForm.mem0_api_key ?? "",
-                            onChange: (e) => setSettingsForm({ ...settingsForm, mem0_api_key: e.target.value })
+                            value: settingsForm.mem0_base_url ?? "",
+                            onChange: (e) => setSettingsForm({ ...settingsForm, mem0_base_url: e.target.value })
                           })
+                        ),
+                        React.createElement(
+                          "div",
+                          { className: "grid grid-cols-2 gap-3" },
+                          React.createElement(
+                            "div",
+                            { className: "space-y-1" },
+                            React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Embedding Model"),
+                            React.createElement("input", {
+                              type: "text",
+                              placeholder: "text-embedding-3-small",
+                              className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                              value: settingsForm.mem0_embedder_model ?? "",
+                              onChange: (e) => setSettingsForm({ ...settingsForm, mem0_embedder_model: e.target.value })
+                            })
+                          ),
+                          React.createElement(
+                            "div",
+                            { className: "space-y-1" },
+                            React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "API Key (Optional)"),
+                            React.createElement("input", {
+                              type: "password",
+                              placeholder: "sk-...",
+                              className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                              value: settingsForm.mem0_api_key ?? "",
+                              onChange: (e) => setSettingsForm({ ...settingsForm, mem0_api_key: e.target.value })
+                            })
+                          )
                         )
+                      ),
+                      settingsForm.mem0_embedder_provider !== "openai" && React.createElement(
+                        "div",
+                        { className: "space-y-1" },
+                        React.createElement("div", { className: "flex items-center justify-between" },
+                          React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "FastEmbed ONNX Model"),
+                          React.createElement("span", { className: "text-[10px] text-slate-400 font-medium" }, "Runs on local CPU (384-dim)")
+                        ),
+                        React.createElement("input", {
+                          type: "text",
+                          placeholder: "BAAI/bge-small-en-v1.5 (default)",
+                          className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+                          value: settingsForm.mem0_embedder_model ?? "",
+                          onChange: (e) => setSettingsForm({ ...settingsForm, mem0_embedder_model: e.target.value })
+                        })
                       )
                     )
                   ),
