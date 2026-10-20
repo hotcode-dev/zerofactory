@@ -45,6 +45,10 @@ class TestSettingsUnit(unittest.TestCase):
             S.DEFAULT_SETTING_VALUES["auto_record_memory"],
             "true" if S.DEFAULT_AUTO_RECORD_MEMORY else "false",
         )
+        self.assertEqual(
+            S.DEFAULT_SETTING_VALUES["mem0_enabled"],
+            "true" if S.DEFAULT_MEM0_ENABLED else "false",
+        )
 
     def test_load_settings_missing_table_returns_defaults(self):
         """When settings table is absent, load_settings returns module defaults."""
@@ -65,6 +69,10 @@ class TestSettingsUnit(unittest.TestCase):
         )
         self.assertEqual(res["enable_cron_scheduler"], S.DEFAULT_ENABLE_CRON_SCHEDULER)
         self.assertEqual(res["auto_record_memory"], S.DEFAULT_AUTO_RECORD_MEMORY)
+        self.assertEqual(res["mem0_enabled"], S.DEFAULT_MEM0_ENABLED)
+        self.assertEqual(
+            res["mem0_embedder_provider"], S.DEFAULT_MEM0_EMBEDDER_PROVIDER
+        )
         conn.close()
 
     def test_load_settings_clamping_and_coercion(self):
@@ -81,6 +89,7 @@ class TestSettingsUnit(unittest.TestCase):
                 ("inactivity_timeout_seconds", "0"),
                 ("enable_cron_scheduler", "1"),
                 ("auto_record_memory", "yes"),
+                ("mem0_enabled", "1"),
             ],
         )
         conn.commit()
@@ -95,6 +104,7 @@ class TestSettingsUnit(unittest.TestCase):
         # Boolean parsing
         self.assertTrue(res["enable_cron_scheduler"])
         self.assertTrue(res["auto_record_memory"])
+        self.assertTrue(res["mem0_enabled"])
         conn.close()
 
     def test_load_settings_boolean_falsy(self):
@@ -106,6 +116,7 @@ class TestSettingsUnit(unittest.TestCase):
             [
                 ("enable_cron_scheduler", "0"),
                 ("auto_record_memory", "no"),
+                ("mem0_enabled", "false"),
             ],
         )
         conn.commit()
@@ -113,6 +124,7 @@ class TestSettingsUnit(unittest.TestCase):
         res = S.load_settings(conn)
         self.assertFalse(res["enable_cron_scheduler"])
         self.assertFalse(res["auto_record_memory"])
+        self.assertFalse(res["mem0_enabled"])
         conn.close()
 
     def test_load_settings_langfuse_fields(self):

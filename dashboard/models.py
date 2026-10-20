@@ -355,6 +355,30 @@ class SettingsUpdate(BaseModel):
         default=None,
         description="Automatically record gotchas/conventions to board memory on reviewer feedback",
     )
+    mem0_enabled: bool | None = Field(
+        default=None,
+        description="Enable Mem0 semantic memory retrieval and vector store",
+    )
+    mem0_base_url: str | None = Field(
+        default=None,
+        description="Mem0 LLM and Embedder base URL (defaults to Hermes agent base_url)",
+    )
+    mem0_api_key: str | None = Field(
+        default=None,
+        description="Mem0 API key (defaults to Hermes agent OPENAI_API_KEY)",
+    )
+    mem0_model: str | None = Field(
+        default=None,
+        description="Mem0 LLM model (defaults to Hermes agent model)",
+    )
+    mem0_embedder_provider: str | None = Field(
+        default=None,
+        description="Mem0 embedder provider: fastembed (local CPU, no API key) or openai",
+    )
+    mem0_embedder_model: str | None = Field(
+        default=None,
+        description="Mem0 embedding model",
+    )
 
 
 class LangfuseTestRequest(BaseModel):

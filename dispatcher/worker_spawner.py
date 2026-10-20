@@ -114,7 +114,10 @@ def spawn_agent_worker(
             pass
 
     repo_header = f"Repository: {repo_alias}\n" if repo_alias else ""
-    memories_digest = _d().digest_board_memories_context(board_slug)
+    task_context = f"Task: {title}\nDescription: {description or ''}\nRepository: {repo_alias or ''}"
+    memories_digest = _d().digest_board_memories_context(
+        board_slug, task_context=task_context
+    )
     memories_block = f"{memories_digest}\n\n" if memories_digest else ""
 
     arch_digest = _d().digest_board_architecture_context(

@@ -144,6 +144,43 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('auto_record_memory', ?, ?)",
                 (val, now),
             )
+        if req.mem0_enabled is not None:
+            val = "true" if req.mem0_enabled else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('mem0_enabled', ?, ?)",
+                (val, now),
+            )
+        if req.mem0_base_url is not None:
+            val = str(req.mem0_base_url).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('mem0_base_url', ?, ?)",
+                (val, now),
+            )
+        if req.mem0_api_key is not None:
+            val = str(req.mem0_api_key).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('mem0_api_key', ?, ?)",
+                (val, now),
+            )
+        if req.mem0_model is not None:
+            val = str(req.mem0_model).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('mem0_model', ?, ?)",
+                (val, now),
+            )
+        if req.mem0_embedder_provider is not None:
+            val = str(req.mem0_embedder_provider).strip().lower()
+            if val in ("fastembed", "openai"):
+                cursor.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('mem0_embedder_provider', ?, ?)",
+                    (val, now),
+                )
+        if req.mem0_embedder_model is not None:
+            val = str(req.mem0_embedder_model).strip()
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('mem0_embedder_model', ?, ?)",
+                (val, now),
+            )
         conn.commit()
 
     res = get_settings()

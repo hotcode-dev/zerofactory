@@ -1026,6 +1026,41 @@ def _poll_pr_and_route_review(
                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'merged', 'PR merged by human, task completed', ?)",
                 (task_id, now),
             )
+            if board_slug:
+                try:
+                    desc_text = (
+                        row["description"]
+                        if ("description" in row.keys() and row["description"])
+                        else ""
+                    )
+                    title_text = (
+                        row["title"]
+                        if ("title" in row.keys() and row["title"])
+                        else ""
+                    )
+                    task_text = f"{title_text}\n{desc_text}".strip()
+                    if task_text:
+                        try:
+                            from ..dashboard.plugin_api import (
+                                extract_and_record_memory,
+                            )
+                        except (ImportError, ValueError):
+                            from dashboard.plugin_api import (
+                                extract_and_record_memory,
+                            )
+                        extract_and_record_memory(
+                            conn,
+                            board_slug=board_slug,
+                            text=task_text,
+                            task_id=task_id,
+                            author="task-done",
+                        )
+                except Exception as e:
+                    _log.debug(
+                        "Auto-record memory on PR merge failed for task %s: %s",
+                        task_id,
+                        e,
+                    )
             return True
         elif pr_state == "CLOSED":
             log_step_state(

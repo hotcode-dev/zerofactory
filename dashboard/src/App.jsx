@@ -56,7 +56,13 @@ export function ZeroFactoryKanbanApp() {
       langfuse_secret_key: "",
       langfuse_capture_mode: "sanitized",
       langfuse_env: "zerofactory",
-      auto_record_memory: true
+      auto_record_memory: true,
+      mem0_enabled: true,
+      mem0_base_url: "",
+      mem0_api_key: "",
+      mem0_model: "",
+      mem0_embedder_provider: "fastembed",
+      mem0_embedder_model: ""
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
@@ -217,7 +223,13 @@ export function ZeroFactoryKanbanApp() {
             langfuse_secret_key: data.settings.langfuse_secret_key ?? "",
             langfuse_capture_mode: data.settings.langfuse_capture_mode ?? "sanitized",
             langfuse_env: data.settings.langfuse_env ?? "zerofactory",
-            auto_record_memory: data.settings.auto_record_memory ?? true
+            auto_record_memory: data.settings.auto_record_memory ?? true,
+            mem0_enabled: data.settings.mem0_enabled ?? true,
+            mem0_base_url: data.settings.mem0_base_url ?? "",
+            mem0_api_key: data.settings.mem0_api_key ?? "",
+            mem0_model: data.settings.mem0_model ?? "",
+            mem0_embedder_provider: data.settings.mem0_embedder_provider ?? "fastembed",
+            mem0_embedder_model: data.settings.mem0_embedder_model ?? ""
           });
           setCronSchedulerEnabled(isCronEnabled);
         }
@@ -241,7 +253,13 @@ export function ZeroFactoryKanbanApp() {
           langfuse_secret_key: String(settingsForm.langfuse_secret_key || "").trim(),
           langfuse_capture_mode: String(settingsForm.langfuse_capture_mode || "sanitized").trim(),
           langfuse_env: String(settingsForm.langfuse_env || "zerofactory").trim(),
-          auto_record_memory: Boolean(settingsForm.auto_record_memory !== false)
+          auto_record_memory: Boolean(settingsForm.auto_record_memory !== false),
+          mem0_enabled: Boolean(settingsForm.mem0_enabled !== false),
+          mem0_base_url: String(settingsForm.mem0_base_url || "").trim(),
+          mem0_api_key: String(settingsForm.mem0_api_key || "").trim(),
+          mem0_model: String(settingsForm.mem0_model || "").trim(),
+          mem0_embedder_provider: String(settingsForm.mem0_embedder_provider || "fastembed").trim().toLowerCase(),
+          mem0_embedder_model: String(settingsForm.mem0_embedder_model || "").trim()
         };
         const res = await fetchJSON(API_BASE + "/settings", {
           method: "PATCH",
@@ -261,7 +279,13 @@ export function ZeroFactoryKanbanApp() {
             langfuse_secret_key: res.settings.langfuse_secret_key ?? "",
             langfuse_capture_mode: res.settings.langfuse_capture_mode ?? "sanitized",
             langfuse_env: res.settings.langfuse_env ?? "zerofactory",
-            auto_record_memory: res.settings.auto_record_memory ?? true
+            auto_record_memory: res.settings.auto_record_memory ?? true,
+            mem0_enabled: res.settings.mem0_enabled ?? true,
+            mem0_base_url: res.settings.mem0_base_url ?? "",
+            mem0_api_key: res.settings.mem0_api_key ?? "",
+            mem0_model: res.settings.mem0_model ?? "",
+            mem0_embedder_provider: res.settings.mem0_embedder_provider ?? "fastembed",
+            mem0_embedder_model: res.settings.mem0_embedder_model ?? ""
           });
         }
         showToast("Global settings saved successfully!", "success");

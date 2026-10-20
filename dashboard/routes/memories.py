@@ -155,6 +155,27 @@ def create_board_memory(slug: str, req: MemoryCreate):
         )
         conn.commit()
 
+    try:
+        try:
+            from ..memory_service import get_mem0_client
+        except (ImportError, ValueError):
+            from memory_service import get_mem0_client  # type: ignore
+        client = get_mem0_client()
+        if client:
+            client.add(
+                req.content.strip(),
+                user_id=slug,
+                metadata={
+                    "memory_id": mem_id,
+                    "category": cat,
+                    "task_id": req.task_id or "",
+                    "author": author,
+                    "tags": req.tags or [],
+                },
+            )
+    except Exception as _me:
+        _log.debug("Mem0 memory index failed: %s", _me)
+
     return {
         "ok": True,
         "memory": {
@@ -261,6 +282,18 @@ def delete_board_memory(memory_id: str):
                 status_code=404, detail=f"Memory '{memory_id}' not found"
             )
         conn.commit()
+
+    try:
+        try:
+            from ..memory_service import get_mem0_client
+        except (ImportError, ValueError):
+            from memory_service import get_mem0_client  # type: ignore
+        client = get_mem0_client()
+        if client:
+            client.delete(memory_id)
+    except Exception:
+        pass
+
     return {"ok": True, "deleted": memory_id}
 
 

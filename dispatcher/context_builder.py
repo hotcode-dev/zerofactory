@@ -207,9 +207,12 @@ def digest_reviewer_git_context(
 
 
 def digest_board_memories_context(
-    board_slug: str | None, db_path: str | None = None, limit: int = 8
+    board_slug: str | None,
+    task_context: str | None = None,
+    db_path: str | None = None,
+    limit: int = 8,
 ) -> str:
-    """Extract pre-digested repository memories, conventions, and gotchas for agent worker prompt.
+    """Extract semantically matched repository memories, conventions, and gotchas via Mem0.
 
     Pre-injects relevant repository knowledge learned from prior tasks directly into the agent
     prompt to prevent repeat mistakes and align code style with repository conventions.
@@ -217,52 +220,80 @@ def digest_board_memories_context(
     if not board_slug:
         return ""
 
-    target_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
-    if not target_db.exists():
-        return ""
+    memories: list[dict[str, Any]] = []
 
+    # 1. Use Mem0 semantic search if task_context is provided
     try:
-        with sqlite3.connect(str(target_db), timeout=2.0) as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            rows = cur.execute(
-                """
-                SELECT category, content, tags, author
-                FROM board_memories
-                WHERE board_slug = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-                """,
-                (board_slug, limit),
-            ).fetchall()
+        try:
+            from ..dashboard.memory_service import search_board_memories
+        except (ImportError, ValueError):
+            from dashboard.memory_service import search_board_memories  # type: ignore
 
-            if not rows:
-                return ""
-
-            lines = [
-                "🧠 REPOSITORY KNOWLEDGE & CONVENTIONS (Learned from prior tasks):"
-            ]
-            for r in rows:
-                cat = r["category"] or "general"
-                content = (r["content"] or "").strip().replace("\n", " ")
-                if len(content) > 200:
-                    content = content[:197] + "..."
-                tag_str = ""
-                try:
-                    tags = json.loads(r["tags"] or "[]")
-                    if tags and isinstance(tags, list):
-                        tag_str = f" [tags: {', '.join(tags)}]"
-                except Exception:
-                    pass
-                lines.append(f"- [{cat}] {content}{tag_str}")
-
-            lines.append(
-                "Please adhere to these conventions and avoid known gotchas during execution."
-            )
-            return "\n".join(lines)
+        memories = search_board_memories(
+            board_slug=board_slug,
+            query=task_context,
+            limit=limit,
+            db_path=db_path,
+        )
     except Exception as e:
-        _log.debug("Could not digest board memories for %s: %s", board_slug, e)
+        _log.debug("search_board_memories failed: %s", e)
+
+    # 2. Direct SQLite fallback if search_board_memories returned empty
+    if not memories:
+        target_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
+        if target_db.exists():
+            try:
+                with sqlite3.connect(str(target_db), timeout=2.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    rows = cur.execute(
+                        """
+                        SELECT category, content, tags, author
+                        FROM board_memories
+                        WHERE board_slug = ?
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                        """,
+                        (board_slug, limit),
+                    ).fetchall()
+                    for r in rows:
+                        tag_list = []
+                        try:
+                            tag_list = json.loads(r["tags"] or "[]")
+                        except Exception:
+                            pass
+                        memories.append(
+                            {
+                                "category": r["category"] or "general",
+                                "content": r["content"] or "",
+                                "tags": tag_list,
+                                "author": r["author"] or "user",
+                            }
+                        )
+            except Exception as e:
+                _log.debug("Could not digest board memories for %s: %s", board_slug, e)
+
+    if not memories:
         return ""
+
+    lines = [
+        "🧠 REPOSITORY KNOWLEDGE & CONVENTIONS (Semantically matched for this task):"
+        if task_context
+        else "🧠 REPOSITORY KNOWLEDGE & CONVENTIONS (Learned from prior tasks):"
+    ]
+    for r in memories:
+        cat = r.get("category") or "general"
+        content = (r.get("content") or "").strip().replace("\n", " ")
+        if len(content) > 200:
+            content = content[:197] + "..."
+        tags = r.get("tags") or []
+        tag_str = f" [tags: {', '.join(tags)}]" if tags else ""
+        lines.append(f"- [{cat}] {content}{tag_str}")
+
+    lines.append(
+        "Please adhere to these conventions and avoid known gotchas during execution."
+    )
+    return "\n".join(lines)
 
 
 def digest_board_architecture_context(

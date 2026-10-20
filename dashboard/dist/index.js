@@ -3205,7 +3205,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...settingsForm,
 				inactivity_timeout_seconds: e.target.value
 			})
-		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max idle time with no log output or session update before a worker is reaped. Default: 900 (15 minutes).")), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🧠"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules from reviewer feedback and rejections.")), React.createElement("input", {
+		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max idle time with no log output or session update before a worker is reaped. Default: 900 (15 minutes).")), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🧠"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules when tasks complete or receive review feedback.")), React.createElement("input", {
 			type: "checkbox",
 			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
 			checked: Boolean(settingsForm.auto_record_memory !== false),
@@ -3213,7 +3213,58 @@ var ZeroFactoryDashboard = (function(exports) {
 				...settingsForm,
 				auto_record_memory: e.target.checked
 			})
-		}))), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 space-y-3" }, React.createElement("div", { className: "flex items-start justify-between gap-3" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🤖"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Agent Profiles & Skills")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Synchronize SOUL.md system prompts, skills, and templates across zf-orchestrator, zf-builder, and zf-reviewer in ~/.hermes/profiles/.")), React.createElement("button", {
+		})), React.createElement("div", { className: "flex items-center justify-between pt-1" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "⚡"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Mem0 Semantic Memory Engine")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Use Mem0 vector database for semantic retrieval of repository memories. Inherits Hermes agent model and base URL.")), React.createElement("input", {
+			type: "checkbox",
+			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+			checked: Boolean(settingsForm.mem0_enabled !== false),
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				mem0_enabled: e.target.checked
+			})
+		})), Boolean(settingsForm.mem0_enabled !== false) && React.createElement("div", { className: "space-y-3 pt-1 bg-slate-950/60 p-3 rounded-lg border border-slate-800/70 mt-1" }, React.createElement("div", { className: "space-y-1" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Mem0 LLM Model"), React.createElement("span", { className: "text-[10px] text-indigo-400 font-medium" }, "Inherits from Hermes agent")), React.createElement("input", {
+			type: "text",
+			placeholder: "RadixArk/Qwen3.8-27B-NVFP4 (inherited from ~/.hermes/config.yaml)",
+			className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+			value: settingsForm.mem0_model ?? "",
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				mem0_model: e.target.value
+			})
+		})), React.createElement("div", { className: "space-y-1" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Mem0 / Hermes Base URL"), React.createElement("span", { className: "text-[10px] text-indigo-400 font-medium" }, "Inherits from Hermes base_url")), React.createElement("input", {
+			type: "text",
+			placeholder: "https://spark.ntsd.dev:8001/v1 (inherited from ~/.hermes/config.yaml)",
+			className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+			value: settingsForm.mem0_base_url ?? "",
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				mem0_base_url: e.target.value
+			})
+		})), React.createElement("div", { className: "space-y-1" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Embedder Engine"), React.createElement("span", { className: `text-[10px] font-medium ${settingsForm.mem0_embedder_provider !== "openai" ? "text-emerald-400" : "text-amber-400"}` }, settingsForm.mem0_embedder_provider !== "openai" ? "✓ 100% Local (No OpenAI Key Required)" : "Requires OpenAI API Key")), React.createElement("select", {
+			className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-500 font-sans cursor-pointer",
+			value: settingsForm.mem0_embedder_provider || "fastembed",
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				mem0_embedder_provider: e.target.value
+			})
+		}, React.createElement("option", { value: "fastembed" }, "FastEmbed (Local ONNX CPU - No OpenAI needed)"), React.createElement("option", { value: "openai" }, "OpenAI / Compatible Embeddings"))), React.createElement("div", { className: "grid grid-cols-2 gap-3" }, React.createElement("div", { className: "space-y-1" }, React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "Embedding Model"), React.createElement("input", {
+			type: "text",
+			placeholder: settingsForm.mem0_embedder_provider === "openai" ? "text-embedding-3-small" : "BAAI/bge-small-en-v1.5 (default)",
+			className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+			value: settingsForm.mem0_embedder_model ?? "",
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				mem0_embedder_model: e.target.value
+			})
+		})), React.createElement("div", { className: "space-y-1" }, React.createElement("label", { className: "block text-[11px] font-medium text-slate-300" }, "API Key (Optional)"), React.createElement("input", {
+			type: "password",
+			placeholder: settingsForm.mem0_embedder_provider === "openai" ? "sk-..." : "Not needed for FastEmbed",
+			className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
+			value: settingsForm.mem0_api_key ?? "",
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				mem0_api_key: e.target.value
+			})
+		}))))), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 space-y-3" }, React.createElement("div", { className: "flex items-start justify-between gap-3" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🤖"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Agent Profiles & Skills")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Synchronize SOUL.md system prompts, skills, and templates across zf-orchestrator, zf-builder, and zf-reviewer in ~/.hermes/profiles/.")), React.createElement("button", {
 			type: "button",
 			disabled: isSyncingProfiles,
 			onClick: handleSyncProfiles,
@@ -3726,7 +3777,13 @@ var ZeroFactoryDashboard = (function(exports) {
 			langfuse_secret_key: "",
 			langfuse_capture_mode: "sanitized",
 			langfuse_env: "zerofactory",
-			auto_record_memory: true
+			auto_record_memory: true,
+			mem0_enabled: true,
+			mem0_base_url: "",
+			mem0_api_key: "",
+			mem0_model: "",
+			mem0_embedder_provider: "fastembed",
+			mem0_embedder_model: ""
 		});
 		const [isSavingSettings, setIsSavingSettings] = useState(false);
 		const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
@@ -3884,7 +3941,13 @@ var ZeroFactoryDashboard = (function(exports) {
 						langfuse_secret_key: data.settings.langfuse_secret_key ?? "",
 						langfuse_capture_mode: data.settings.langfuse_capture_mode ?? "sanitized",
 						langfuse_env: data.settings.langfuse_env ?? "zerofactory",
-						auto_record_memory: data.settings.auto_record_memory ?? true
+						auto_record_memory: data.settings.auto_record_memory ?? true,
+						mem0_enabled: data.settings.mem0_enabled ?? true,
+						mem0_base_url: data.settings.mem0_base_url ?? "",
+						mem0_api_key: data.settings.mem0_api_key ?? "",
+						mem0_model: data.settings.mem0_model ?? "",
+						mem0_embedder_provider: data.settings.mem0_embedder_provider ?? "fastembed",
+						mem0_embedder_model: data.settings.mem0_embedder_model ?? ""
 					});
 					setCronSchedulerEnabled(isCronEnabled);
 				}
@@ -3907,7 +3970,13 @@ var ZeroFactoryDashboard = (function(exports) {
 					langfuse_secret_key: String(settingsForm.langfuse_secret_key || "").trim(),
 					langfuse_capture_mode: String(settingsForm.langfuse_capture_mode || "sanitized").trim(),
 					langfuse_env: String(settingsForm.langfuse_env || "zerofactory").trim(),
-					auto_record_memory: Boolean(settingsForm.auto_record_memory !== false)
+					auto_record_memory: Boolean(settingsForm.auto_record_memory !== false),
+					mem0_enabled: Boolean(settingsForm.mem0_enabled !== false),
+					mem0_base_url: String(settingsForm.mem0_base_url || "").trim(),
+					mem0_api_key: String(settingsForm.mem0_api_key || "").trim(),
+					mem0_model: String(settingsForm.mem0_model || "").trim(),
+					mem0_embedder_provider: String(settingsForm.mem0_embedder_provider || "fastembed").trim().toLowerCase(),
+					mem0_embedder_model: String(settingsForm.mem0_embedder_model || "").trim()
 				};
 				const res = await fetchJSON(API_BASE + "/settings", {
 					method: "PATCH",
@@ -3927,7 +3996,13 @@ var ZeroFactoryDashboard = (function(exports) {
 						langfuse_secret_key: res.settings.langfuse_secret_key ?? "",
 						langfuse_capture_mode: res.settings.langfuse_capture_mode ?? "sanitized",
 						langfuse_env: res.settings.langfuse_env ?? "zerofactory",
-						auto_record_memory: res.settings.auto_record_memory ?? true
+						auto_record_memory: res.settings.auto_record_memory ?? true,
+						mem0_enabled: res.settings.mem0_enabled ?? true,
+						mem0_base_url: res.settings.mem0_base_url ?? "",
+						mem0_api_key: res.settings.mem0_api_key ?? "",
+						mem0_model: res.settings.mem0_model ?? "",
+						mem0_embedder_provider: res.settings.mem0_embedder_provider ?? "fastembed",
+						mem0_embedder_model: res.settings.mem0_embedder_model ?? ""
 					});
 				}
 				showToast("Global settings saved successfully!", "success");

@@ -84,6 +84,12 @@ DEFAULT_LANGFUSE_ENV = "zerofactory"
 # When enabled, reviewer feedback and rejections with gotchas/conventions are automatically
 # persisted to board_memories for that repository.
 DEFAULT_AUTO_RECORD_MEMORY = True
+DEFAULT_MEM0_ENABLED = True
+DEFAULT_MEM0_BASE_URL = ""
+DEFAULT_MEM0_API_KEY = ""
+DEFAULT_MEM0_MODEL = "RadixArk/Qwen3.8-27B-NVFP4"
+DEFAULT_MEM0_EMBEDDER_PROVIDER = "fastembed"
+DEFAULT_MEM0_EMBEDDER_MODEL = "BAAI/bge-small-en-v1.5"
 
 # Maximum wall-clock execution duration (in seconds) before an active task worker is terminated as stuck.
 DEFAULT_TASK_TIMEOUT_SECONDS = 3600  # 1 hour max running time
@@ -110,6 +116,12 @@ SETTING_KEYS = (
     "langfuse_capture_mode",
     "langfuse_env",
     "auto_record_memory",
+    "mem0_enabled",
+    "mem0_base_url",
+    "mem0_api_key",
+    "mem0_model",
+    "mem0_embedder_provider",
+    "mem0_embedder_model",
 )
 
 # Seed values for the settings table, derived from the constants above (NOT
@@ -128,6 +140,12 @@ DEFAULT_SETTING_VALUES: dict[str, str] = {
     "langfuse_capture_mode": DEFAULT_LANGFUSE_CAPTURE_MODE,
     "langfuse_env": DEFAULT_LANGFUSE_ENV,
     "auto_record_memory": "true" if DEFAULT_AUTO_RECORD_MEMORY else "false",
+    "mem0_enabled": "true" if DEFAULT_MEM0_ENABLED else "false",
+    "mem0_base_url": DEFAULT_MEM0_BASE_URL,
+    "mem0_api_key": DEFAULT_MEM0_API_KEY,
+    "mem0_model": DEFAULT_MEM0_MODEL,
+    "mem0_embedder_provider": DEFAULT_MEM0_EMBEDDER_PROVIDER,
+    "mem0_embedder_model": DEFAULT_MEM0_EMBEDDER_MODEL,
 }
 
 
@@ -172,6 +190,12 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
         "langfuse_capture_mode": DEFAULT_LANGFUSE_CAPTURE_MODE,
         "langfuse_env": DEFAULT_LANGFUSE_ENV,
         "auto_record_memory": DEFAULT_AUTO_RECORD_MEMORY,
+        "mem0_enabled": DEFAULT_MEM0_ENABLED,
+        "mem0_base_url": DEFAULT_MEM0_BASE_URL,
+        "mem0_api_key": DEFAULT_MEM0_API_KEY,
+        "mem0_model": DEFAULT_MEM0_MODEL,
+        "mem0_embedder_provider": DEFAULT_MEM0_EMBEDDER_PROVIDER,
+        "mem0_embedder_model": DEFAULT_MEM0_EMBEDDER_MODEL,
     }
     try:
         rows = conn_or_cursor.execute("SELECT key, value FROM settings").fetchall()
@@ -233,5 +257,23 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
                 settings["langfuse_env"] = str(v).strip()
         elif k == "auto_record_memory":
             settings["auto_record_memory"] = _parse_bool(v)
+        elif k == "mem0_enabled":
+            settings["mem0_enabled"] = _parse_bool(v)
+        elif k == "mem0_base_url":
+            if v is not None:
+                settings["mem0_base_url"] = str(v).strip()
+        elif k == "mem0_api_key":
+            if v is not None:
+                settings["mem0_api_key"] = str(v).strip()
+        elif k == "mem0_model":
+            if v is not None and str(v).strip():
+                settings["mem0_model"] = str(v).strip()
+        elif k == "mem0_embedder_provider":
+            prov = str(v).strip().lower() if v is not None else ""
+            if prov in ("fastembed", "openai"):
+                settings["mem0_embedder_provider"] = prov
+        elif k == "mem0_embedder_model":
+            if v is not None and str(v).strip():
+                settings["mem0_embedder_model"] = str(v).strip()
 
     return settings

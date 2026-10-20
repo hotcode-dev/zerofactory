@@ -128,3 +128,18 @@ def test_extract_and_record_memory_board_disabled():
         "SELECT * FROM board_memories WHERE board_slug = 'disabled-board'"
     ).fetchall()
     assert len(rows) == 0
+
+
+def test_mem0_disabled_setting():
+    """When mem0_enabled is false, get_mem0_client returns None."""
+    from dashboard.memory_service import get_mem0_client
+
+    conn = _init_memory_db()
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('mem0_enabled', 'false')"
+    )
+    conn.commit()
+
+    client = get_mem0_client(conn)
+    assert client is None
+
