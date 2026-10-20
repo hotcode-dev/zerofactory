@@ -385,8 +385,38 @@ def test_reaper_spawn_grace_env_override(monkeypatch):
     now = 5000
     meta = {"spawning_at": now - 400}  # within the 600s override
     conn = _spawn_grace_conn("t-long-grace", meta, now)
-
     reaped = reap_active_workers(conn.cursor(), now=now)
     conn.commit()
 
     assert reaped == 0
+
+
+def test_get_task_timeout_seconds_db_fallback(tmp_path: Path, monkeypatch):
+    """get_task_timeout_seconds reads settings table from DB even without explicit conn."""
+    from dispatcher.config import get_task_timeout_seconds, get_inactivity_timeout_seconds
+    import sqlite3
+
+    db_file = tmp_path / "test_zerofactory.db"
+    monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
+    monkeypatch.delenv("ZEROFACTORY_TASK_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("ZEROFACTORY_INACTIVITY_TIMEOUT_SECONDS", raising=False)
+
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+    conn.execute("INSERT INTO settings VALUES ('task_timeout_seconds', '7200')")
+    conn.execute("INSERT INTO settings VALUES ('inactivity_timeout_seconds', '1800')")
+    conn.commit()
+
+    # Call with conn
+    assert get_task_timeout_seconds(conn) == 7200
+    assert get_inactivity_timeout_seconds(conn) == 1800
+
+    # Call without conn (should open DB automatically)
+    assert get_task_timeout_seconds() == 7200
+    assert get_inactivity_timeout_seconds() == 1800
+
+    # Env var override takes precedence
+    monkeypatch.setenv("ZEROFACTORY_TASK_TIMEOUT_SECONDS", "9999")
+    assert get_task_timeout_seconds() == 9999
+    conn.close()
+
