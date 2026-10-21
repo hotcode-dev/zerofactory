@@ -5125,8 +5125,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			try {
 				setIsSubmittingTask(true);
 				const chosenBoard = newTaskForm.board_slug && newTaskForm.board_slug !== "all" ? newTaskForm.board_slug : selectedBoard && selectedBoard !== "all" ? selectedBoard : boards[0] ? boards[0].slug : "";
-				(boards || []).find((b) => b.slug === chosenBoard);
-				const defaultRepo = chosenRepos[0];
+				const chosenBoardObj = (boards || []).find((b) => b.slug === chosenBoard);
+				const defaultRepo = (chosenBoardObj && chosenBoardObj.repositories || [])[0];
 				const targetRepoAlias = (newTaskForm.repo_alias || (defaultRepo ? defaultRepo.repo_alias : "")).trim() || void 0;
 				const payload = {
 					...newTaskForm,

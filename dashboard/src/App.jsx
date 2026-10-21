@@ -1396,6 +1396,7 @@ export function ZeroFactoryKanbanApp() {
             ? selectedBoard
             : (boards[0] ? boards[0].slug : ""));
         const chosenBoardObj = (boards || []).find((b) => b.slug === chosenBoard);
+        const chosenRepos = (chosenBoardObj && chosenBoardObj.repositories) || [];
         const defaultRepo = chosenRepos[0];
         const targetRepoAlias = (newTaskForm.repo_alias || (defaultRepo ? defaultRepo.repo_alias : "")).trim() || undefined;
 
