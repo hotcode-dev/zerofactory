@@ -135,14 +135,7 @@ def setup_worktree(
     """Ensure git worktree and branch exist for task execution."""
     valid_profiles = getattr(_d(), "VALID_PROFILES", VALID_PROFILES)
     if not assignee or assignee == "unassigned" or assignee not in valid_profiles:
-        if "[zf-reviewer]" in title:
-            assignee = "zf-reviewer"
-        elif "[zf-builder]" in title:
-            assignee = "zf-builder"
-        elif "[zf-orchestrator]" in title:
-            assignee = "zf-orchestrator"
-        else:
-            assignee = "zf-builder"
+        assignee = "zf-builder"
         cursor.execute(
             "UPDATE tasks SET assignee = ?, skills = '[]' WHERE id = ?",
             (assignee, task_id),

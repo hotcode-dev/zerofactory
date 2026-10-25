@@ -248,9 +248,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             pass
 
                         is_conflict_resolution = (
-                            "[pr conflict]" in title.lower()
-                            or "[merge conflict]" in title.lower()
-                            or int(meta.get("conflict_retries", 0)) > 0
+                            int(meta.get("conflict_retries", 0)) > 0
+                            or bool(meta.get("is_conflict_resolution"))
                         )
 
                         # Guardrail: Always pull git to latest before implement
@@ -429,7 +428,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 "zf-orchestrator",
                             )
                             or status == "triage"
-                            or str(title or "").startswith("[Triage]")
                         ) and not row["pr_url"]:
                             log_step_state(
                                 "package",
@@ -534,10 +532,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             continue
 
                         if row["pr_url"]:
-                            if (
-                                row["status"] in ("done", "triage")
-                                or str(title or "").startswith("[Triage]")
-                            ) and (
+                            if (row["status"] in ("done", "triage")) and (
                                 assignee
                                 in (
                                     "zf-reviewer",
@@ -570,7 +565,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 "zf-orchestrator",
                             )
                             and row["status"] != "triage"
-                            and not str(title or "").startswith("[Triage]")
                             and (
                                 not row["pr_url"]
                                 or row["status"] in ("done", "blocked")

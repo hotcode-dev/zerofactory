@@ -131,13 +131,15 @@ Because Zero Factory adheres to strict Git worktree isolation—binding each act
    - The parent triage task is marked `done` (assignee `zf-orchestrator`), recording `decomposed_into` in metadata and posting an audit summary comment.
    - The dispatcher is asynchronously kicked to spawn builder workers for the new `todo` tasks.
 
-### 2.5 Titles are state-free
+### 2.5 Titles are state-free and never used for operational logic
 
-Task titles never carry mutable lifecycle state — UI badges derive from structured fields:
-"waiting for merge" = `status=blocked && assignee=human`, "merge conflict" =
-`metadata.conflict_retries` present, PR author = `metadata.packaged_by`. Two immutable labels
-survive by convention: `[Triage]` (set once at issue import) and the `[AI:<profile>]`
-attribution prefix on GitHub PR titles/bodies (`ai_prefix`).
+Task titles never carry mutable lifecycle state and are strictly display text — UI badges and dispatcher routing derive exclusively from structured fields:
+- "waiting for merge" = `status=blocked && assignee=human`
+- "merge conflict" = `metadata.conflict_retries` present or git index conflict verification
+- PR author = `metadata.packaged_by`
+- Triage state = `status='triage'` or `assignee='zf-orchestrator'`
+
+Task titles are preserved as provided (titles are never automatically renamed or mutated) and are strictly display text. Task titles are never inspected for dispatching, reaper, packaging, conflict resolution, or reviewer routing logic. All lifecycle state, triage state, and routing derive strictly from dedicated database columns (`status`, `assignee`) and structured `metadata`. On GitHub, the `[AI:<profile>]` attribution prefix is added to PR titles and bodies (`ai_prefix`).
 
 ### 2.5 State machine
 

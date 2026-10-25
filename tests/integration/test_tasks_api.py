@@ -515,3 +515,38 @@ def test_triage_task_split_multi_repo(api_client: TestClient):
     comments = parent_after.get("comments", [])
     assert any("Triage Decomposition Complete" in c["body"] for c in comments)
 
+
+def test_move_task_preserves_title_without_mutating(
+    api_client: TestClient, default_board: str
+):
+    """Moving a task from triage to todo/running preserves the title intact as-is."""
+    raw_title = "[Triage] [Bug] Invalid name in npm comman in readme.md"
+    create_res = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={
+            "title": raw_title,
+            "board_slug": default_board,
+            "status": "triage",
+            "assignee": "zf-orchestrator",
+        },
+    )
+    assert create_res.status_code == 200
+    task_id = create_res.json()["id"]
+
+    # Orchestrator promotes single-repo task to todo
+    move_res = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={
+            "status": "todo",
+            "assignee": "zf-builder",
+            "actor": "zf-orchestrator",
+        },
+    )
+    assert move_res.status_code == 200
+
+    task = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()["task"]
+    assert task["status"] == "todo"
+    assert task["assignee"] == "zf-builder"
+    assert task["title"] == raw_title
+
+
