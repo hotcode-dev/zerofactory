@@ -379,7 +379,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, item.id === "has_pr" && renderPrIcon("w-3 h-3 shrink-0"), item.label, item.id === "has_pr" && stats && stats.pr_count > 0 && React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, stats.pr_count)))), React.createElement("div", { className: "flex items-center gap-3" }, onSyncIssues && React.createElement("button", {
 			type: "button",
 			disabled: isSyncingIssues,
-			onClick: onSyncIssues,
+			onClick: () => onSyncIssues(),
 			className: "px-2.5 py-1 rounded-md text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 shadow-xs",
 			title: "Sync open GitHub issues requested for AI investigation into Triage"
 		}, React.createElement("span", { className: isSyncingIssues ? "animate-spin inline-block text-xs" : "text-xs" }, isSyncingIssues ? "🔄" : "🐙"), isSyncingIssues ? "Syncing..." : "Sync GitHub Issues"), React.createElement("label", { className: "flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none" }, React.createElement("input", {
@@ -4184,7 +4184,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		}, [fetchJSON]);
 		const loadPrecommitStatus = useCallback(async (boardSlug, repoAlias) => {
-			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoardRef.current;
 			if (!bSlug || bSlug === "all") {
 				setPrecommitStatus(null);
 				return;
@@ -4207,7 +4207,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		}, [fetchJSON]);
 		const handleTriggerPrecommitSetup = async (boardSlug, repoAlias) => {
-			const bSlug = boardSlug || selectedBoard;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpPrecommit(true);
 			try {
@@ -4223,7 +4223,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		};
 		const loadOpenwikiStatus = useCallback(async (boardSlug, repoAlias) => {
-			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoardRef.current;
 			if (!bSlug || bSlug === "all") {
 				setOpenwikiStatus(null);
 				return;
@@ -4246,7 +4246,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		}, [fetchJSON]);
 		const handleTriggerOpenwikiSetup = async (boardSlug, repoAlias) => {
-			const bSlug = boardSlug || selectedBoard;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpOpenwiki(true);
 			try {
@@ -4262,7 +4262,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		};
 		const loadGhIssuesStatus = useCallback(async (boardSlug, repoAlias) => {
-			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoardRef.current;
 			if (!bSlug || bSlug === "all") {
 				setGhIssuesStatus(null);
 				return;
@@ -4285,7 +4285,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		}, [fetchJSON]);
 		const handleTriggerGhIssuesSetup = async (boardSlug, repoAlias) => {
-			const bSlug = boardSlug || selectedBoard;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpGhIssues(true);
 			try {
@@ -4301,7 +4301,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		};
 		const handleSyncIssues = async (boardSlug) => {
-			const bSlug = boardSlug || selectedBoard;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoard;
 			if (!bSlug || bSlug === "all") {
 				showToast("Please select a specific board to sync issues", "info");
 				return;
@@ -4320,7 +4320,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		};
 		const handleTriggerJiraSetup = async (boardSlug, jiraUrl) => {
-			const bSlug = boardSlug || selectedBoard;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsSettingUpJira(true);
 			try {
@@ -4346,7 +4346,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		};
 		const handleTriggerJiraTest = async (boardSlug) => {
-			const bSlug = boardSlug || selectedBoard;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoard;
 			if (!bSlug || bSlug === "all") return;
 			setIsTestingJira(true);
 			try {
@@ -4363,7 +4363,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		};
 		const loadTasksAndStats = useCallback(async (boardSlug) => {
-			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoardRef.current;
 			if (!bSlug) {
 				setLoading(false);
 				setTasks([]);
@@ -4590,7 +4590,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			activitySearchQuery
 		]);
 		const loadSessions = useCallback(async (boardSlug) => {
-			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoardRef.current;
 			try {
 				setSessionsLoading(true);
 				const query = bSlug && bSlug !== "all" ? "?limit=15&board_slug=" + encodeURIComponent(bSlug) : "?limit=15";
@@ -4603,7 +4603,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		}, [fetchJSON]);
 		const loadAgents = useCallback(async (boardSlug) => {
-			const bSlug = boardSlug !== void 0 ? boardSlug : selectedBoardRef.current;
+			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoardRef.current;
 			try {
 				setAgentsLoading(true);
 				const query = bSlug && bSlug !== "all" ? "?board_slug=" + encodeURIComponent(bSlug) : "";
@@ -4616,7 +4616,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		}, [fetchJSON]);
 		const loadMemories = useCallback(async (slug) => {
-			const bSlug = slug !== void 0 ? slug : selectedBoardRef.current;
+			const bSlug = typeof slug === "string" && slug ? slug : selectedBoardRef.current;
 			if (!bSlug) return;
 			try {
 				setMemoriesLoading(true);
@@ -5608,7 +5608,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			autoRefresh,
 			setAutoRefresh,
 			isSyncingIssues,
-			onSyncIssues: handleSyncIssues
+			onSyncIssues: () => handleSyncIssues()
 		}), React.createElement(SetupBanners, {
 			selectedBoard,
 			precommitStatus,

@@ -388,7 +388,7 @@ export function ZeroFactoryKanbanApp() {
 
     // Precommit status loader
     const loadPrecommitStatus = useCallback(async (boardSlug, repoAlias) => {
-      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoardRef.current;
       if (!bSlug || bSlug === "all") {
         setPrecommitStatus(null);
         return;
@@ -416,7 +416,7 @@ export function ZeroFactoryKanbanApp() {
     }, [fetchJSON]);
 
     const handleTriggerPrecommitSetup = async (boardSlug, repoAlias) => {
-      const bSlug = boardSlug || selectedBoard;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoard;
       if (!bSlug || bSlug === "all") return;
       setIsSettingUpPrecommit(true);
       try {
@@ -441,7 +441,7 @@ export function ZeroFactoryKanbanApp() {
 
     // OpenWiki status loader
     const loadOpenwikiStatus = useCallback(async (boardSlug, repoAlias) => {
-      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoardRef.current;
       if (!bSlug || bSlug === "all") {
         setOpenwikiStatus(null);
         return;
@@ -469,7 +469,7 @@ export function ZeroFactoryKanbanApp() {
     }, [fetchJSON]);
 
     const handleTriggerOpenwikiSetup = async (boardSlug, repoAlias) => {
-      const bSlug = boardSlug || selectedBoard;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoard;
       if (!bSlug || bSlug === "all") return;
       setIsSettingUpOpenwiki(true);
       try {
@@ -494,7 +494,7 @@ export function ZeroFactoryKanbanApp() {
 
     // GitHub Issues status loader
     const loadGhIssuesStatus = useCallback(async (boardSlug, repoAlias) => {
-      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoardRef.current;
       if (!bSlug || bSlug === "all") {
         setGhIssuesStatus(null);
         return;
@@ -522,7 +522,7 @@ export function ZeroFactoryKanbanApp() {
     }, [fetchJSON]);
 
     const handleTriggerGhIssuesSetup = async (boardSlug, repoAlias) => {
-      const bSlug = boardSlug || selectedBoard;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoard;
       if (!bSlug || bSlug === "all") return;
       setIsSettingUpGhIssues(true);
       try {
@@ -546,7 +546,7 @@ export function ZeroFactoryKanbanApp() {
     };
 
     const handleSyncIssues = async (boardSlug) => {
-      const bSlug = boardSlug || selectedBoard;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoard;
       if (!bSlug || bSlug === "all") {
         showToast("Please select a specific board to sync issues", "info");
         return;
@@ -570,7 +570,7 @@ export function ZeroFactoryKanbanApp() {
     };
 
     const handleTriggerJiraSetup = async (boardSlug, jiraUrl) => {
-      const bSlug = boardSlug || selectedBoard;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoard;
       if (!bSlug || bSlug === "all") return;
       setIsSettingUpJira(true);
       try {
@@ -596,7 +596,7 @@ export function ZeroFactoryKanbanApp() {
     };
 
     const handleTriggerJiraTest = async (boardSlug) => {
-      const bSlug = boardSlug || selectedBoard;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoard;
       if (!bSlug || bSlug === "all") return;
       setIsTestingJira(true);
       try {
@@ -619,7 +619,7 @@ export function ZeroFactoryKanbanApp() {
 
     // Load Tasks & Stats
     const loadTasksAndStats = useCallback(async (boardSlug) => {
-      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoardRef.current;
       if (!bSlug) {
         setLoading(false);
         setTasks([]);
@@ -876,7 +876,7 @@ export function ZeroFactoryKanbanApp() {
 
     // Load AI Agent Sessions
     const loadSessions = useCallback(async (boardSlug) => {
-      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoardRef.current;
       try {
         setSessionsLoading(true);
         const query = (bSlug && bSlug !== "all") ? ("?limit=15&board_slug=" + encodeURIComponent(bSlug)) : "?limit=15";
@@ -893,7 +893,7 @@ export function ZeroFactoryKanbanApp() {
 
     // Load 3 Specialist Agents Status
     const loadAgents = useCallback(async (boardSlug) => {
-      const bSlug = boardSlug !== undefined ? boardSlug : selectedBoardRef.current;
+      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoardRef.current;
       try {
         setAgentsLoading(true);
         const query = (bSlug && bSlug !== "all") ? ("?board_slug=" + encodeURIComponent(bSlug)) : "";
@@ -910,7 +910,7 @@ export function ZeroFactoryKanbanApp() {
 
     // Load Board Memories
     const loadMemories = useCallback(async (slug) => {
-      const bSlug = slug !== undefined ? slug : selectedBoardRef.current;
+      const bSlug = (typeof slug === "string" && slug) ? slug : selectedBoardRef.current;
       if (!bSlug) return;
       try {
         setMemoriesLoading(true);
@@ -1942,7 +1942,7 @@ export function ZeroFactoryKanbanApp() {
                     autoRefresh,
                     setAutoRefresh,
                     isSyncingIssues,
-                    onSyncIssues: handleSyncIssues
+                    onSyncIssues: () => handleSyncIssues()
                   }),
                   React.createElement(SetupBanners, {
                     selectedBoard,

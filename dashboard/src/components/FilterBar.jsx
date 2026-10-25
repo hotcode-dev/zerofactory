@@ -120,7 +120,7 @@ export function FilterBar(props) {
                             {
                               type: "button",
                               disabled: isSyncingIssues,
-                              onClick: onSyncIssues,
+                              onClick: () => onSyncIssues(),
                               className:
                                 "px-2.5 py-1 rounded-md text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 shadow-xs",
                               title: "Sync open GitHub issues requested for AI investigation into Triage"
