@@ -63,14 +63,13 @@ Run: `hermes zerofactory list --board "{slug}"`
    "All discovered improvement opportunities are already tracked on the board." and finish without creating any tasks.
 
 ## STEP 2: Scan criteria (prioritized):
-1. **BUG FIXES** — null pointers, missing edge cases, type mismatches, logic errors, broken imports
-2. **DUPLICATE CODE** — repeated patterns that should be extracted or refactored
-3. **MISSING TESTS** — functions/classes without coverage that should have them
-4. **PERFORMANCE** — O(n²) patterns, redundant operations, memory leaks, unoptimized queries
-5. **DOCUMENTATION** — undocumented functions, stale README sections, missing inline comments, broken links
-6. **REFACTORING & SIMPLIFICATION (Ponytail Ladder of Laziness)** — remove dead code/unused exports, eliminate single-caller wrapper layers, replace bespoke reimplementations with standard library functions, flatten nested complexity
-7. **SECURITY** — hardcoded secrets, unsanitized input, missing error handling, unsafe eval/exec usage
-8. **CONFIG** — missing .gitignore files, uncommitted config drift, stale dependencies
+1. **CRITICAL BUGS & SECURITY (with TDD)** — fatal crashes, null pointers, unhandled exceptions, data corruption, auth/security flaws, broken imports. Note in task that zf-builder must write a failing reproduction test first (TDD).
+2. **DEAD CODE ELIMINATION (Ponytail Rung 1: YAGNI)** — prune unused exports, uncalled functions, obsolete compatibility shims, and dead branches before writing tests so unnecessary code is not tested.
+3. **TEST COVERAGE (Safety Net)** — write missing unit/integration tests for core business logic, critical paths, and public interfaces without coverage.
+4. **MINOR BUGS (with TDD)** — edge-case handling, off-by-one errors, non-fatal logic flaws, validation quirks. Note in task that zf-builder must write a failing reproduction test first (TDD).
+5. **DUPLICATE CODE & SIMPLIFICATION (Ponytail Rungs 2, 3, 6)** — extract repeated patterns, replace custom reimplementations with standard library functions, flatten nested complexity.
+6. **PERFORMANCE** — O(n²) patterns, redundant operations, memory leaks, unoptimized queries/I-O.
+7. **DOCUMENTATION & CONFIG** — undocumented public interfaces, stale README sections, broken links, missing .gitignore files, config drift.
 
 ## STEP 3: Create Task with Fingerprint Safeguard (MAXIMUM 1 TASK TOTAL):
 If you find a genuine, unaddressed issue:
