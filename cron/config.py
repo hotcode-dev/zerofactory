@@ -104,6 +104,16 @@ def _load_env_defaults() -> tuple[str, str, str]:
 
 DEFAULT_CRON_MODEL, DEFAULT_CRON_PROVIDER, DEFAULT_CRON_BASE_URL = _load_env_defaults()
 
-TASK_QUEUE_CHECK_PROMPT = """Check the Zero Factory Kanban board (using `hermes zerofactory list` or querying `~/.hermes/zerofactory.db`) - are any tasks stuck in 'running' too long? Any tasks stuck in 'blocked' with '[Human Review]'? Any PRs stuck waiting for Reviewer feedback? Create a new Kanban task using `hermes zerofactory create "[Report] Queue Health" --description "..." --status done` containing your bottleneck report and recommendations."""
+TASK_QUEUE_CHECK_PROMPT = """Autonomous Stuck-Task Diagnosis & Recovery:
+Review the stuck tasks identified on the board. For each stuck task:
+1. Review the failure log, precommit error, or process timeout details.
+2. Determine if it is:
+   a) A recoverable code/test failure (flaky test, minor syntax bug, wrong instruction) -> run:
+      `hermes zerofactory recover <task_id> --guidance "<clear instruction for zf-builder>"`
+   b) An internal Zero Factory platform defect (exception in zerofactory code/scripts) -> run:
+      `hermes zerofactory report-bug --task <task_id> --title "<defect summary>" --body "<stack trace>"`
+   c) An unrecoverable external blocker (missing human credentials, environment failure) -> leave in blocked and inform the human:
+      `hermes zerofactory block <task_id> --reason "<human-gate explanation>"`
+3. Summarize your diagnostic findings and the recovery actions taken."""
 
 DAILY_REPORT_PROMPT = """Generate a comprehensive daily report for Zero Factory using `hermes zerofactory stats` and querying `~/.hermes/zerofactory.db`. Include: total tasks completed, tasks currently running, tasks blocked, agent throughput, and open issues. Summarize with actionable items. Create a new task using `hermes zerofactory create "[Report] Daily Report" --description "..." --status done` with your full report."""

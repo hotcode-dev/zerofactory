@@ -20,6 +20,9 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/constants.js
 	var API_BASE = "/api/plugins/zerofactory";
+	var ZEROFACTORY_REPO = "hotcode-dev/zerofactory";
+	var ZEROFACTORY_GITHUB_URL = `https://github.com/${ZEROFACTORY_REPO}`;
+	`${ZEROFACTORY_REPO}`;
 	var COLUMNS = [
 		{
 			id: "triage",
@@ -271,7 +274,13 @@ var ZeroFactoryDashboard = (function(exports) {
 				}
 			},
 			title: "Global Zero Factory configuration (WIP limits, worker caps)"
-		}, "⚙️ Settings"), React.createElement("button", {
+		}, "⚙️ Settings"), React.createElement("a", {
+			href: ZEROFACTORY_GITHUB_URL,
+			target: "_blank",
+			rel: "noopener noreferrer",
+			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer no-underline",
+			title: "View Zero Factory source repository on GitHub"
+		}, "🐙 GitHub"), React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
 			onClick: handleRunDispatcher || handleDispatch,
 			disabled: isDispatching || boards.length === 0,
@@ -2363,7 +2372,25 @@ var ZeroFactoryDashboard = (function(exports) {
 						showToast("Triage dispatch failed: " + err.message, "error");
 					}
 				}
-			}, "🧭 Grill Triage"), React.createElement("button", {
+			}, "🧭 Grill Triage"), (selectedTask.status === "blocked" || selectedTask.status === "running") && React.createElement("button", {
+				type: "button",
+				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-amber-300 hover:text-white bg-amber-950/70 hover:bg-amber-900 border border-amber-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+				title: "Reset failure counters and retry task in Todo",
+				onClick: async () => {
+					try {
+						await fetchJSON("/api/plugins/zerofactory/tasks/" + selectedTask.id + "/recover", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ actor: "user" })
+						});
+						showToast("🔄 Task recovered back to Todo", "success");
+						loadTaskDetails(selectedTask.id);
+						loadTasksAndStats();
+					} catch (err) {
+						showToast("Recovery failed: " + err.message, "error");
+					}
+				}
+			}, "⚡ Recover Task"), React.createElement("button", {
 				type: "button",
 				className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
 				onClick: () => handleAdvanceTask(selectedTask)

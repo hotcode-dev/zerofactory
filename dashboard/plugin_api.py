@@ -133,6 +133,8 @@ try:
         SettingsUpdate,
         TaskCreate,
         TaskMove,
+        TaskRecoverRequest,
+        TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
     )
@@ -156,6 +158,8 @@ except (ImportError, ValueError):
         SettingsUpdate,
         TaskCreate,
         TaskMove,
+        TaskRecoverRequest,
+        TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
     )
@@ -331,7 +335,9 @@ try:
         get_task_sessions,
         list_tasks,
         move_task,
+        recover_task,
         remove_dependency,
+        report_task_bug,
         split_task,
         update_task,
     )
@@ -405,7 +411,9 @@ except (ImportError, ValueError):
         get_task_sessions,
         list_tasks,
         move_task,
+        recover_task,
         remove_dependency,
+        report_task_bug,
         split_task,
         update_task,
     )

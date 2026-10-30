@@ -104,6 +104,8 @@ hermes zerofactory create "Bug #42" --target-repos api,web # Create multi-repo t
 hermes zerofactory split <task_id> [--repos api,web]       # Decompose multi-repo triage into Todo tasks
 hermes zerofactory import-gh-issue 42             # Deterministically import GitHub issue #42
 hermes zerofactory move <task_id> running          # Transition task status
+hermes zerofactory recover <task_id> [--guidance "..."] # Recover stuck task to Todo with builder advice
+hermes zerofactory report-bug --task <task_id> --title "..." # Report internal Zero Factory defect to GitHub issues
 hermes zerofactory block <task_id> --reason "..." # Block a task
 hermes zerofactory comment <task_id> "Note..."    # Post a comment to a ticket
 
@@ -299,7 +301,7 @@ Zero Factory automatically captures repository insights during developer and age
 
 Zero Factory is architected to drastically minimize LLM token consumption (up to 95% token savings) across periodic automation cycles using Hermes Agent's **No-Agent Mode (`no_agent: true`)**, **Wake-Gate Change Detection (`{"wakeAgent": false}`)**, and **Chained LLM Jobs (`context_from`)**:
 
-- **`zero-factory-task-queue-check`** (every 120m, **0 Tokens - No-Agent Mode**):
+- **`zero-factory-task-queue-check`** (every 15m, **0 Tokens - No-Agent Mode**):
   - Operates in Hermes **No-Agent Mode** via `scripts/zf_queue_watchdog.py`.
   - Runs purely in Python (consuming 0 LLM tokens). Audits running workers, reaps stuck subprocesses, and triggers `run_dispatch_cycle()`.
   - When the queue is healthy, emits `{"wakeAgent": false}` to silently exit without invoking any LLM.

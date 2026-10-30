@@ -420,3 +420,140 @@ def test_get_task_timeout_seconds_db_fallback(tmp_path: Path, monkeypatch):
     assert get_task_timeout_seconds() == 9999
     conn.close()
 
+
+def test_check_stuck_tasks_all_4_states(tmp_path: Path, monkeypatch):
+    """check_stuck_tasks accurately identifies the 4 distinct stuck states."""
+    import sqlite3
+    import json
+    from dispatcher.reaper import check_stuck_tasks, build_stuck_task_context
+
+    db_file = tmp_path / "test_stuck_states.db"
+    monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
+
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("""
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            status TEXT,
+            assignee TEXT,
+            workspace_path TEXT,
+            metadata TEXT,
+            created_at INTEGER,
+            updated_at INTEGER,
+            board_slug TEXT,
+            repo_alias TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE task_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            author TEXT,
+            body TEXT,
+            created_at INTEGER
+        )
+    """)
+
+    now = 10000
+
+    # State 1: Dead worker / orphan running task
+    conn.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "t-orphan",
+            "Orphan Task",
+            "running",
+            "zf-builder",
+            None,
+            json.dumps({"sessions": []}),
+            now - 500,
+            now - 500,
+            "default",
+            "api",
+        ),
+    )
+
+    # State 2: Worker timeout / inactivity in running
+    conn.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "t-timeout",
+            "Timeout Task",
+            "running",
+            "zf-builder",
+            None,
+            json.dumps({"worker_pid": 999999, "started_at": now - 7200}),
+            now - 7200,
+            now - 7200,
+            "default",
+            "api",
+        ),
+    )
+
+    # State 3: Stuck PR packaging
+    conn.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "t-packaging",
+            "Packaging Hang",
+            "running",
+            "zf-builder",
+            None,
+            json.dumps({"awaiting_pr": True, "started_at": now - 4000}),
+            now - 4000,
+            now - 4000,
+            "default",
+            "api",
+        ),
+    )
+
+    # State 4: Failure exhausted in blocked
+    conn.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "t-exhausted",
+            "Exhausted Task",
+            "blocked",
+            "human",
+            None,
+            json.dumps({
+                "blocked_reason_type": "stuck",
+                "blocked_reason": "Deterministic precommit failed after 3 attempts",
+                "precommit_retries": 3,
+                "orchestrator_recovery_count": 0,
+                "last_precommit_error": "SyntaxError on line 42",
+            }),
+            now - 1000,
+            now - 1000,
+            "default",
+            "api",
+        ),
+    )
+    conn.commit()
+
+    # 1. Calling with include_blocked=False returns only running stuck tasks
+    running_stuck = check_stuck_tasks(conn.cursor(), db_path=db_file, include_blocked=False)
+    stuck_ids = {t["id"]: t for t in running_stuck if t.get("is_stuck")}
+    assert "t-orphan" in stuck_ids
+    assert stuck_ids["t-orphan"]["stuck_state"] == "dead_worker"
+    assert "t-timeout" in stuck_ids
+    assert stuck_ids["t-timeout"]["stuck_state"] in ("dead_worker", "timeout_inactivity")
+    assert "t-packaging" in stuck_ids
+    assert stuck_ids["t-packaging"]["stuck_state"] == "stuck_packaging"
+    assert "t-exhausted" not in stuck_ids
+
+    # 2. Calling with include_blocked=True includes State 4
+    all_stuck = check_stuck_tasks(conn.cursor(), db_path=db_file, include_blocked=True)
+    all_stuck_map = {t["id"]: t for t in all_stuck if t.get("is_stuck")}
+    assert "t-exhausted" in all_stuck_map
+    assert all_stuck_map["t-exhausted"]["stuck_state"] == "failure_exhausted"
+
+    # 3. Test build_stuck_task_context
+    ctx = build_stuck_task_context("t-exhausted", db_path=db_file)
+    assert ctx["id"] == "t-exhausted"
+    assert ctx["precommit_retries"] == 3
+    assert "SyntaxError" in ctx["last_precommit_error"]
+
+    conn.close()
+

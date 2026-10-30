@@ -36,6 +36,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# --- Canonical repository metadata (source of truth) -----------------------
+ZEROFACTORY_REPO = "hotcode-dev/zerofactory"
+ZEROFACTORY_GITHUB_URL = f"https://github.com/{ZEROFACTORY_REPO}"
+ZEROFACTORY_ISSUES_URL = f"https://github.com/{ZEROFACTORY_REPO}/issues"
+
 # --- Canonical profile identity (source of truth) ---------------------------
 
 #: Recognized Zero Factory specialist profiles. This is the single source of

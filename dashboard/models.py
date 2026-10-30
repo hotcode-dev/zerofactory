@@ -257,6 +257,21 @@ class TaskSplitRequest(BaseModel):
     actor: str | None = None
 
 
+class TaskRecoverRequest(BaseModel):
+    guidance: str | None = Field(
+        default=None, description="Diagnostic guidance or instructions for zf-builder"
+    )
+    actor: str | None = Field(
+        default="user", description="Actor executing recovery (zf-orchestrator or user)"
+    )
+
+
+class TaskReportBugRequest(BaseModel):
+    title: str = Field(..., min_length=5, description="Issue title for hotcode-dev/zerofactory")
+    body: str | None = Field(default=None, description="Detailed defect description and trace")
+    actor: str | None = Field(default="user", description="Actor filing bug report")
+
+
 class CommentCreate(BaseModel):
     author: str | None = Field(default=None, max_length=64)
     body: str = Field(..., min_length=1)

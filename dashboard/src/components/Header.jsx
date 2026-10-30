@@ -1,5 +1,6 @@
 import React from "react";
 import { BoardSelector } from "./BoardSelector.jsx";
+import { ZEROFACTORY_GITHUB_URL } from "../constants.js";
 
 export function Header(props) {
   const {
@@ -196,6 +197,17 @@ export function Header(props) {
                   title: "Global Zero Factory configuration (WIP limits, worker caps)"
                 },
                 "⚙️ Settings"
+              ),
+              React.createElement(
+                "a",
+                {
+                  href: ZEROFACTORY_GITHUB_URL,
+                  target: "_blank",
+                  rel: "noopener noreferrer",
+                  className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer no-underline",
+                  title: "View Zero Factory source repository on GitHub"
+                },
+                "🐙 GitHub"
               ),
               React.createElement(
                 "button",

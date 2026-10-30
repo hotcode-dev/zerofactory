@@ -20,6 +20,8 @@ try:
         MemoryCreate,
         TaskCreate,
         TaskMove,
+        TaskRecoverRequest,
+        TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
         get_db_conn,
@@ -27,6 +29,10 @@ try:
     )
     from .dashboard.plugin_api import (
         MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH,
+    )
+    from .dashboard.plugin_api import (
+        recover_task as _recover_task,
+        report_task_bug as _report_task_bug,
     )
     from .dashboard.plugin_api import (
         split_task as _split_task,
@@ -97,6 +103,8 @@ except ImportError:
         MemoryCreate,
         TaskCreate,
         TaskMove,
+        TaskRecoverRequest,
+        TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
         get_db_conn,
@@ -104,6 +112,10 @@ except ImportError:
     )
     from plugin_api import (
         MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH,
+    )
+    from plugin_api import (
+        recover_task as _recover_task,
+        report_task_bug as _report_task_bug,
     )
     from plugin_api import (
         split_task as _split_task,
@@ -193,6 +205,16 @@ try:
     from .issues import GitHubIssueClient, JiraIssueClient, import_external_issue
 except ImportError:
     from issues import GitHubIssueClient, JiraIssueClient, import_external_issue  # type: ignore
+
+try:
+    from .paths import ZEROFACTORY_REPO, ZEROFACTORY_GITHUB_URL, ZEROFACTORY_ISSUES_URL
+except ImportError:
+    try:
+        from paths import ZEROFACTORY_REPO, ZEROFACTORY_GITHUB_URL, ZEROFACTORY_ISSUES_URL
+    except ImportError:
+        ZEROFACTORY_REPO = "hotcode-dev/zerofactory"
+        ZEROFACTORY_GITHUB_URL = f"https://github.com/{ZEROFACTORY_REPO}"
+        ZEROFACTORY_ISSUES_URL = f"https://github.com/{ZEROFACTORY_REPO}/issues"
 
 
 def register(ctx: Any):
@@ -584,6 +606,50 @@ def register(ctx: Any):
         )
         p_stuck.add_argument(
             "--task", default=None, help="Specific task ID to inspect or reap"
+        )
+
+        # recover
+        p_recover = subparsers.add_parser(
+            "recover",
+            help="Recover a stuck or blocked task back to todo",
+        )
+        p_recover.add_argument("task_id", help="Task ID to recover")
+        p_recover.add_argument(
+            "--guidance",
+            default=None,
+            help="Diagnostic guidance or instructions for zf-builder",
+        )
+        p_recover.add_argument(
+            "--actor",
+            default=None,
+            help="Actor executing recovery (defaults to HERMES_PROFILE or 'user')",
+        )
+
+        # report-bug
+        p_report_bug = subparsers.add_parser(
+            "report-bug",
+            help="Report an internal Zero Factory defect to GitHub issues (hotcode-dev/zerofactory)",
+        )
+        p_report_bug.add_argument(
+            "--task",
+            required=True,
+            dest="task_id",
+            help="Task ID where the internal defect occurred",
+        )
+        p_report_bug.add_argument(
+            "--title",
+            required=True,
+            help="Bug report issue title",
+        )
+        p_report_bug.add_argument(
+            "--body",
+            default=None,
+            help="Detailed defect description, logs, or error trace",
+        )
+        p_report_bug.add_argument(
+            "--actor",
+            default=None,
+            help="Actor filing the report (defaults to HERMES_PROFILE or 'user')",
         )
 
         # cron
@@ -1275,6 +1341,61 @@ def register(ctx: Any):
                 else:
                     print("✓ No stuck tasks needed reaping.")
                 print()
+
+        elif action == "recover":
+            task_id = args.task_id
+            guidance = getattr(args, "guidance", None)
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            try:
+                res = _recover_task(
+                    task_id=task_id,
+                    req=TaskRecoverRequest(guidance=guidance, actor=actor),
+                )
+                print(f"✓ Recovered task '{task_id}' back to todo for zf-builder.")
+                if guidance:
+                    print(f"  Guidance: {guidance}")
+                rec_cnt = res.get("orchestrator_recovery_count", 0)
+                print(f"  Orchestrator recovery attempts: {rec_cnt}/1")
+            except Exception as e:
+                err_msg = getattr(e, "detail", str(e))
+                print(f"✗ Failed to recover task '{task_id}': {err_msg}")
+                sys.exit(1)
+
+        elif action == "report-bug":
+            task_id = args.task_id
+            title = args.title
+            body = getattr(args, "body", None)
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            try:
+                res = _report_task_bug(
+                    task_id=task_id,
+                    req=TaskReportBugRequest(title=title, body=body, actor=actor),
+                )
+                if res.get("ok"):
+                    if res.get("duplicate"):
+                        print(
+                            f"⚠️ Duplicate open issue found on {ZEROFACTORY_REPO}: {res.get('issue_url')}"
+                        )
+                    else:
+                        print(
+                            f"✓ Zero Factory defect reported to {ZEROFACTORY_REPO}: {res.get('issue_url')}"
+                        )
+                    print(f"  Task '{task_id}' moved to blocked awaiting platform fix.")
+                else:
+                    print(f"✗ Failed to report bug: {res.get('error', 'unknown error')}")
+                    sys.exit(1)
+            except Exception as e:
+                err_msg = getattr(e, "detail", str(e))
+                print(f"✗ Error reporting Zero Factory bug: {err_msg}")
+                sys.exit(1)
 
         elif action == "cron":
             cron_act = getattr(args, "cron_action", "list") or "list"

@@ -149,7 +149,7 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         if match:
             git_url = match.group(0)
 
-    owner = ""
+    _owner = ""
     repo = ""
     if git_url:
         cleaned_url = re.sub(r"\.git$", "", git_url.strip().rstrip("/"))
@@ -157,10 +157,10 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         if len(parts) >= 1:
             repo = parts[-1]
         if len(parts) >= 2:
-            owner = parts[-2]
+            _owner = parts[-2]
     elif "-" in slug:
         parts = slug.split("-", 1)
-        owner, repo = parts[0], parts[1]
+        _owner, repo = parts[0], parts[1]
 
     candidate_names = set()
     for n in (slug, repo):
@@ -237,8 +237,35 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
     return None
 
 
-# Core cron jobs shared across all boards (can be added here in the future).
-CORE_CRON_JOBS: dict[str, dict[str, Any]] = {}
+# Core cron jobs shared across all boards.
+CORE_CRON_JOBS: dict[str, dict[str, Any]] = {
+    "zero-factory-task-queue-check": {
+        "id": "zero-factory-task-queue-check",
+        "name": "Zero Factory task queue check",
+        "prompt": TASK_QUEUE_CHECK_PROMPT,
+        "skills": [],
+        "skill": None,
+        "model": DEFAULT_CRON_MODEL,
+        "provider": DEFAULT_CRON_PROVIDER,
+        "base_url": DEFAULT_CRON_BASE_URL,
+        "script": "zf_queue_watchdog.py",
+        "no_agent": False,
+        "continuity": False,
+        "context_from": None,
+        "schedule": {"kind": "interval", "minutes": 15, "display": "every 15m"},
+        "schedule_display": "every 15m",
+        "enabled": True,
+        "state": "scheduled",
+        "paused_at": None,
+        "paused_reason": None,
+        "deliver": None,
+        "origin": "zerofactory",
+        "category": "core",
+        "enabled_toolsets": ["terminal", "file"],
+        "workdir": None,
+        "profile": "zf-orchestrator",
+    }
+}
 
 BUILTIN_CRON_JOBS: dict[str, dict[str, Any]] = {}
 

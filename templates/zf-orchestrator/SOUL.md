@@ -36,6 +36,22 @@ When reviewing external issues imported into `Triage` (`[Triage] [Bug]` or `[Tri
      `hermes zerofactory split <task-id> --repos <repo1,repo2,...>`
    - This automatically creates linked `Todo` tasks for each repository assigned to `zf-builder`, marks the parent triage task `Done`, and dispatches builder sessions.
 
+## Autonomous Stuck-Task Diagnosis & Recovery Protocol
+When awakened by the queue watchdog cron (`zero-factory-task-queue-check`) with pre-digested stuck tasks:
+1. **Inspect Pre-Digested Failure Logs**: Review the task's failure mode, worker log tail, precommit error output, and metadata.
+2. **Determine Action**:
+   - **Recoverable Code/Test Defect** (flaky test, minor syntax error, flawed test assertion, misconfigured prompt):
+     Formulate concise, actionable advice for `zf-builder` and run:
+     `hermes zerofactory recover <task-id> --guidance "<actionable diagnostic instruction for zf-builder>"`
+     *(Note: Each task has a strict limit of 1 autonomous recovery attempt. If it fails again, it will be permanently blocked for human review).*
+   - **Zero Factory Internal Platform Defect** (unhandled Python exception in `dispatcher/`, `dashboard/`, `scripts/`, or internal tooling):
+     File a deduplicated issue on the official Zero Factory repository and park the task in `Blocked`:
+     `hermes zerofactory report-bug --task <task-id> --title "<concise defect title>" --body "<stack trace & failure context>"`
+   - **Unrecoverable External Blocker** (missing API keys, unavailable dependencies, environment infrastructure failure):
+     Leave the task in `Blocked` and post a clear diagnosis for the human operator:
+     `hermes zerofactory block <task-id> --reason "<human-gate explanation>"`
+3. **Deliver Summary**: Report a concise summary of diagnostic findings and recovery actions taken.
+
 ## Communication & Style
 - Concise, action-oriented, and direct.
 - Always reference task IDs and kanban states (`Triage`, `Todo`, `Running`, `Blocked`, `Done`).

@@ -39,7 +39,12 @@ for candidate in candidate_roots:
         pass
 
 from dashboard.plugin_api import get_db_conn, get_stats
-from dispatcher import reap_stuck_tasks, run_dispatch_cycle
+from dispatcher import (
+    build_stuck_task_context,
+    check_stuck_tasks,
+    reap_stuck_tasks,
+    run_dispatch_cycle,
+)
 
 
 def sync_open_github_issues(cooldown_seconds: int = 900) -> list[dict]:
@@ -154,7 +159,7 @@ def run_watchdog() -> int:
     # 0. Auto-sync open GitHub issues labeled 'zerofactory'
     synced_issues = sync_open_github_issues()
 
-    # 1. Check and reap stuck tasks
+    # 1. Check and reap stuck tasks in running
     reap_res = reap_stuck_tasks()
     reaped_tasks = reap_res.get("reaped_tasks") or reap_res.get("reaped", [])
     reaped_count = len(reaped_tasks)
@@ -167,14 +172,23 @@ def run_watchdog() -> int:
     dispatch_res = run_dispatch_cycle()
     dispatched = dispatch_res.get("dispatched", 0)
 
-    # 3. Retrieve stats
+    # 3. Comprehensive 4-state audit including stuck blocked tasks
+    all_stuck = [
+        t
+        for t in check_stuck_tasks(include_blocked=True)
+        if t.get("is_stuck") and t.get("orchestrator_recovery_count", 0) < 1
+    ]
+
+    # 4. Retrieve stats
     stats = get_stats()
     cols = stats.get("columns", {})
 
-    has_bottleneck = reaped_count > 0 or cols.get("blocked", 0) > 10
+    has_bottleneck = (
+        reaped_count > 0 or len(all_stuck) > 0 or cols.get("blocked", 0) > 10
+    )
 
     if not has_bottleneck:
-        # Healthy: Output silent wake-gate signal
+        # Healthy: Output silent wake-gate signal (0 LLM tokens)
         gate = {
             "wakeAgent": False,
             "status": "healthy",
@@ -187,7 +201,7 @@ def run_watchdog() -> int:
         print(json.dumps(gate))
         return 0
 
-    # Bottleneck detected: Print report for operator
+    # Bottleneck detected: Print report for operator & zf-orchestrator recovery
     print("# ⚠ ZeroFactory Queue Watchdog Alert\n")
     if reaped_details:
         print("### Reaped Stuck Tasks:")
@@ -202,9 +216,49 @@ def run_watchdog() -> int:
     print(f"- **Blocked:** {cols.get('blocked', 0)}")
     print(f"- **Dispatched this tick:** {dispatched}")
     print()
-    print(
-        "Action taken: Timed-out workers were terminated and moved to `blocked` for triage."
-    )
+
+    if all_stuck:
+        print("### 🔍 Pre-Digested Stuck Task Diagnostic Context:")
+        for st in all_stuck:
+            st_id = st["id"]
+            ctx = build_stuck_task_context(st_id)
+            print(f"#### Task `{st_id}`: {st.get('title')}")
+            print(
+                f"- **Board / Repo:** `{st.get('board_slug', 'default')}` / `{ctx.get('repo_alias', 'default')}`"
+            )
+            print(
+                f"- **Status / Assignee:** `{st.get('status')}` / `{st.get('assignee')}`"
+            )
+            print(f"- **Stuck Reason:** {st.get('stuck_reason')}")
+            print(
+                f"- **Orchestrator Recovery Attempts:** {st.get('orchestrator_recovery_count', 0)}/1"
+            )
+            if ctx.get("last_precommit_error"):
+                snip = str(ctx["last_precommit_error"]).strip()
+                if len(snip) > 1000:
+                    snip = snip[-1000:]
+                print(f"- **Precommit Error Snippet:**\n```\n{snip}\n```")
+            if ctx.get("worker_log_tail"):
+                print(f"- **Worker Log Tail:**\n```\n{ctx['worker_log_tail']}\n```")
+            print()
+
+        print("### Instructions for zf-orchestrator:")
+        print("1. Diagnose each stuck task above.")
+        print(
+            "2. If recoverable code/test failure: `hermes zerofactory recover <task_id> --guidance '<advice>'`"
+        )
+        print(
+            "3. If internal Zero Factory platform defect: `hermes zerofactory report-bug --task <task_id> --title '<title>' --body '<body>'`"
+        )
+        print(
+            "4. If unrecoverable external blocker: `hermes zerofactory block <task_id> --reason '<reason>'`"
+        )
+        print("5. Summarize diagnosis and recovery actions taken.\n")
+    else:
+        print(
+            "Action taken: Timed-out workers were terminated and moved to `blocked` for triage."
+        )
+
     return 0
 
 

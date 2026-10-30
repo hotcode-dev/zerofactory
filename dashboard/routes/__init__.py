@@ -12,7 +12,7 @@ _DASHBOARD_ROOT = str(Path(__file__).resolve().parent.parent)
 if _DASHBOARD_ROOT not in sys.path:
     sys.path.insert(0, _DASHBOARD_ROOT)
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 try:
     from .agents import router as agents_router
@@ -52,6 +52,21 @@ router.include_router(dispatch_router)
 router.include_router(cron_router)
 router.include_router(memories_router)
 router.include_router(agents_router)
+
+
+@router.options("/")
+@router.options("/{full_path:path}")
+def global_options_handler(full_path: str = ""):
+    """Global OPTIONS handler for browser CORS preflight across all plugin routes."""
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+        },
+    )
 
 __all__ = [
     "agents_router",

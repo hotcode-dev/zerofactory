@@ -1316,6 +1316,12 @@
     background-color: color-mix(in oklab, var(--color-amber-950) 60%, transparent);
   }
 }
+.bg-amber-950\/70 {
+  background-color: color-mix(in srgb, oklch(27.9% 0.077 45.635) 70%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background-color: color-mix(in oklab, var(--color-amber-950) 70%, transparent);
+  }
+}
 .bg-amber-950\/80 {
   background-color: color-mix(in srgb, oklch(27.9% 0.077 45.635) 80%, transparent);
   @supports (color: color-mix(in lab, red, red)) {
@@ -2421,6 +2427,9 @@
 .italic {
   font-style: italic;
 }
+.no-underline {
+  text-decoration-line: none;
+}
 .underline {
   text-decoration-line: underline;
 }
@@ -2748,6 +2757,9 @@
     .hover\:border-slate-700\/80:hover {
       border-color: color-mix(in oklab, var(--color-slate-700) 80%, transparent);
     }
+  }
+  .hover\:bg-amber-900:hover {
+    background-color: var(--color-amber-900);
   }
   .hover\:bg-amber-900\/60:hover {
     background-color: color-mix(in srgb, oklch(41.4% 0.112 45.904) 60%, transparent);

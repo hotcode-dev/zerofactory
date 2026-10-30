@@ -180,6 +180,30 @@ export function TaskDetailModal(props) {
               },
               "🧭 Grill Triage"
             ),
+          (selectedTask.status === "blocked" || selectedTask.status === "running") &&
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-amber-300 hover:text-white bg-amber-950/70 hover:bg-amber-900 border border-amber-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+                title: "Reset failure counters and retry task in Todo",
+                onClick: async () => {
+                  try {
+                    await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/recover", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ actor: "user" })
+                    });
+                    showToast("🔄 Task recovered back to Todo", "success");
+                    loadTaskDetails(selectedTask.id);
+                    loadTasksAndStats();
+                  } catch (err) {
+                    showToast("Recovery failed: " + err.message, "error");
+                  }
+                }
+              },
+              "⚡ Recover Task"
+            ),
           React.createElement(
             "button",
             {

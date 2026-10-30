@@ -1,5 +1,9 @@
 export const API_BASE = "/api/plugins/zerofactory";
 
+export const ZEROFACTORY_REPO = "hotcode-dev/zerofactory";
+export const ZEROFACTORY_GITHUB_URL = `https://github.com/${ZEROFACTORY_REPO}`;
+export const ZEROFACTORY_ISSUES_URL = `https://github.com/${ZEROFACTORY_REPO}/issues`;
+
 export const COLUMNS = [
   { id: "triage", title: "Triage", icon: "📥", dotColor: "#818cf8", desc: "Raw backlog & epics" },
   { id: "todo", title: "Todo", icon: "📋", dotColor: "#38bdf8", desc: "Prioritized queue ready for pickup" },

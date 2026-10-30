@@ -44,6 +44,8 @@ try:
         InterviewReply,
         TaskCreate,
         TaskMove,
+        TaskRecoverRequest,
+        TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
         normalize_assignee,
@@ -74,12 +76,20 @@ except (ImportError, ValueError):
         InterviewReply,
         TaskCreate,
         TaskMove,
+        TaskRecoverRequest,
+        TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
         normalize_assignee,
         normalize_blocked_reason_type,
     )
     from session_service import resolve_task_session_progress  # type: ignore
+
+try:
+    from paths import ZEROFACTORY_REPO, ZEROFACTORY_ISSUES_URL
+except (ImportError, ValueError):
+    ZEROFACTORY_REPO = "hotcode-dev/zerofactory"
+    ZEROFACTORY_ISSUES_URL = f"https://github.com/{ZEROFACTORY_REPO}/issues"
 
 _log = logging.getLogger(__name__)
 
@@ -1507,4 +1517,297 @@ def reply_interview(task_id: str, req: InterviewReply):
         "comment_id": comment_id,
         "status": target_status,
         "message": "Interview response recorded. Triage resuming with zf-orchestrator.",
+    }
+
+
+@router.post("/tasks/{task_id}/recover")
+@router.put("/tasks/{task_id}/recover")
+def recover_task(task_id: str, req: TaskRecoverRequest | None = None):
+    """Recover a stuck or blocked task back to 'todo' with orchestrator or human guidance."""
+    if req is None:
+        req = TaskRecoverRequest()
+    init_db()
+    now = int(time.time())
+    actor = req.actor or os.environ.get("HERMES_PROFILE") or "user"
+    is_agent = actor.startswith("zf-")
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(task_row)
+
+        raw_meta = task.get("metadata") or "{}"
+        try:
+            meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta)
+        except Exception:
+            meta = {}
+
+        # Guardrail: Limit orchestrator autonomous recovery to 1 attempt
+        if is_agent:
+            recovery_count = int(meta.get("orchestrator_recovery_count", 0))
+            if recovery_count >= 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Task '{task_id}' has already reached the maximum orchestrator recovery limit (1 attempt). Human intervention is required.",
+                )
+            meta["orchestrator_recovery_count"] = recovery_count + 1
+
+        # Clear failure flags and counters
+        meta.pop("worker_failure_retries", None)
+        meta.pop("precommit_retries", None)
+        meta.pop("conflict_retries", None)
+        meta.pop("last_worker_failure", None)
+        meta.pop("last_precommit_error", None)
+        meta.pop("permanently_blocked", None)
+        meta.pop("blocked_reason", None)
+        meta.pop("blocked_reason_type", None)
+        meta.pop("awaiting_pr", None)
+        meta["last_recovered_at"] = now
+        meta["recovered_by"] = actor
+
+        if req.guidance and req.guidance.strip():
+            meta["orchestrator_guidance"] = req.guidance.strip()
+            comment_body = (
+                f"🔄 **[Task Recovery]** Task recovered to **Todo** by `{actor}`.\n\n"
+                f"**Guidance / Instructions for zf-builder:**\n{req.guidance.strip()}"
+            )
+        else:
+            comment_body = f"🔄 **[Task Recovery]** Task recovered to **Todo** by `{actor}`. Failure counters reset."
+
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+            (task_id, actor, comment_body, now),
+        )
+        comment_id = cursor.lastrowid
+        log_activity(
+            conn,
+            task_id,
+            actor,
+            "recover_task",
+            f"Task recovered to todo by {actor} (orchestrator_recovery_count={meta.get('orchestrator_recovery_count', 0)})",
+        )
+
+        target_status = "todo"
+        assignee = "zf-builder"
+        cursor.execute(
+            "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+            (target_status, assignee, json.dumps(meta), now, task_id),
+        )
+        conn.commit()
+
+        if (
+            not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
+            and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        ):
+            _trigger_async_dispatch("task_recovered")
+
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "status": target_status,
+        "assignee": assignee,
+        "comment_id": comment_id,
+        "orchestrator_recovery_count": meta.get("orchestrator_recovery_count", 0),
+        "message": f"Task '{task_id}' successfully recovered to todo.",
+    }
+
+
+@router.post("/tasks/{task_id}/report-bug")
+@router.put("/tasks/{task_id}/report-bug")
+def report_task_bug(task_id: str, req: TaskReportBugRequest):
+    """File a bug report on hotcode-dev/zerofactory/issues for an internal Zero Factory defect."""
+    import subprocess
+
+    init_db()
+    now = int(time.time())
+    actor = req.actor or os.environ.get("HERMES_PROFILE") or "user"
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(task_row)
+
+        raw_meta = task.get("metadata") or "{}"
+        try:
+            meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta)
+        except Exception:
+            meta = {}
+
+        task_title = task.get("title", "")
+        board_slug = task.get("board_slug", "default")
+        repo_alias = task.get("repo_alias", "default")
+
+        # Check existing issues in ZEROFACTORY_REPO to prevent duplicates
+        existing_url = None
+        try:
+            res = subprocess.run(
+                [
+                    "gh",
+                    "issue",
+                    "list",
+                    "--repo",
+                    ZEROFACTORY_REPO,
+                    "--state",
+                    "open",
+                    "--limit",
+                    "30",
+                    "--json",
+                    "number,title,url",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                issues = json.loads(res.stdout)
+                target_title_norm = req.title.strip().lower()
+                for iss in issues:
+                    iss_title = (iss.get("title") or "").strip().lower()
+                    if iss_title == target_title_norm or (
+                        len(target_title_norm) > 15 and target_title_norm in iss_title
+                    ):
+                        existing_url = iss.get("url")
+                        break
+        except Exception as e:
+            _log.debug("Failed checking existing issues on %s: %s", ZEROFACTORY_REPO, e)
+
+        if existing_url:
+            comment_body = (
+                f"⚠️ **[Zero Factory Defect Already Tracked]** Similar open issue detected on `{ZEROFACTORY_REPO}`: {existing_url}"
+            )
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (task_id, actor, comment_body, now),
+            )
+            meta["zf_bug_report"] = {
+                "issue_url": existing_url,
+                "duplicate": True,
+                "reported_at": now,
+            }
+            meta["blocked_reason"] = f"Waiting on Zero Factory bug fix: {existing_url}"
+            meta["blocked_reason_type"] = "human-gate"
+            cursor.execute(
+                "UPDATE tasks SET status = 'blocked', assignee = 'human', metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
+            )
+            conn.commit()
+            return {
+                "ok": True,
+                "duplicate": True,
+                "issue_url": existing_url,
+                "task_id": task_id,
+                "message": f"Matching issue already open on {ZEROFACTORY_REPO}: {existing_url}",
+            }
+
+        # Format issue body
+        body_lines = [
+            "### Zero Factory Internal Defect Report",
+            f"- **Task ID:** `{task_id}`",
+            f"- **Task Title:** {task_title}",
+            f"- **Board / Repo:** `{board_slug}` / `{repo_alias}`",
+            f"- **Reported By:** `{actor}`",
+            "",
+            "#### Defect Details & Context",
+            (req.body or "No additional description provided.").strip(),
+            "",
+        ]
+        if meta.get("last_worker_failure"):
+            body_lines.extend(
+                [
+                    "#### Last Worker Failure",
+                    f"```json\n{json.dumps(meta.get('last_worker_failure'), indent=2)}\n```",
+                    "",
+                ]
+            )
+        if meta.get("last_precommit_error"):
+            snippet = str(meta.get("last_precommit_error")).strip()
+            if len(snippet) > 1500:
+                snippet = snippet[-1500:]
+            body_lines.extend(
+                [
+                    "#### Precommit Error Log",
+                    f"```\n{snippet}\n```",
+                    "",
+                ]
+            )
+
+        full_body = "\n".join(body_lines)
+
+        # File issue using gh CLI
+        issue_url = None
+        try:
+            cmd = [
+                "gh",
+                "issue",
+                "create",
+                "--repo",
+                ZEROFACTORY_REPO,
+                "--title",
+                req.title.strip(),
+                "--body",
+                full_body,
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if res.returncode == 0:
+                for line in res.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith("http"):
+                        issue_url = line
+                        break
+                if not issue_url and res.stdout.strip():
+                    issue_url = res.stdout.strip()
+            else:
+                _log.warning("gh issue create failed: %s", res.stderr)
+        except Exception as e:
+            _log.warning("gh issue create raised exception: %s", e)
+
+        if not issue_url:
+            fallback_msg = f"Failed to auto-create GitHub issue on {ZEROFACTORY_REPO}. Ensure `gh` CLI is authenticated."
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (task_id, actor, f"⚠️ **[Zero Factory Defect Report Failed]** {fallback_msg}", now),
+            )
+            conn.commit()
+            return {
+                "ok": False,
+                "error": fallback_msg,
+                "task_id": task_id,
+            }
+
+        comment_body = f"🐛 **[Zero Factory Defect Filed]** Issue created on `{ZEROFACTORY_REPO}`: {issue_url}"
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+            (task_id, actor, comment_body, now),
+        )
+        meta["zf_bug_report"] = {
+            "issue_url": issue_url,
+            "title": req.title.strip(),
+            "reported_at": now,
+        }
+        meta["blocked_reason"] = f"Waiting on Zero Factory bug fix: {issue_url}"
+        meta["blocked_reason_type"] = "human-gate"
+        cursor.execute(
+            "UPDATE tasks SET status = 'blocked', assignee = 'human', metadata = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(meta), now, task_id),
+        )
+        log_activity(
+            conn,
+            task_id,
+            actor,
+            "zf_bug_reported",
+            f"Internal bug reported to {ZEROFACTORY_REPO}: {issue_url}",
+        )
+        conn.commit()
+
+    return {
+        "ok": True,
+        "issue_url": issue_url,
+        "task_id": task_id,
+        "message": f"Bug reported to {ZEROFACTORY_REPO}: {issue_url}",
     }

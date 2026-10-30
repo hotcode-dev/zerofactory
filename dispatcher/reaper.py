@@ -58,7 +58,11 @@ def _compute_stuck_state(
 
     if is_dead:
         is_stuck = True
-        stuck_reason = f"Worker process PID {pid} is dead/not found"
+        stuck_reason = (
+            f"Worker process PID {pid} is dead/not found"
+            if pid
+            else "Worker process not found / session lost"
+        )
     elif running_seconds > task_timeout:
         is_stuck = True
         stuck_reason = (
@@ -142,7 +146,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     t_check = cursor.fetchone()
                     curr_asgn = t_check["assignee"] if t_check else ""
                     curr_stat = t_check["status"] if t_check else ""
-                    curr_title = (
+                    _curr_title = (
                         t_check["title"]
                         if (t_check and "title" in t_check.keys())
                         else ""
@@ -463,9 +467,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
 
 
 def check_stuck_tasks(
-    cursor: sqlite3.Cursor | None = None, db_path: Path | None = None
+    cursor: sqlite3.Cursor | None = None,
+    db_path: Path | None = None,
+    include_blocked: bool = False,
 ) -> list[dict[str, Any]]:
-    """Inspect all running tasks and identify any that are stuck or inactive."""
+    """Inspect tasks and identify any that are stuck, inactive, or exhausted."""
     if db_path is None:
         db_path = _d().get_db_path()
 
@@ -488,7 +494,13 @@ def check_stuck_tasks(
         cursor.execute(
             "SELECT id, title, status, assignee, workspace_path, metadata, created_at, updated_at, board_slug FROM tasks WHERE status = 'running'"
         )
-        for row in cursor.fetchall():
+        col_names = [d[0] for d in cursor.description] if cursor.description else []
+        for raw_row in cursor.fetchall():
+            row = (
+                dict(zip(col_names, raw_row))
+                if not hasattr(raw_row, "keys")
+                else raw_row
+            )
             task_id = str(row["id"])
             meta = {}
             try:
@@ -511,6 +523,16 @@ def check_stuck_tasks(
             running_seconds = max(0, now - int(started_at))
 
             is_dead = (not is_alive) and bool(pid)
+            if proc is None and not pid and not meta.get("awaiting_pr"):
+                sessions = meta.get("sessions")
+                has_ongoing = isinstance(sessions, list) and any(
+                    isinstance(s, dict) and s.get("status") == "ongoing"
+                    for s in sessions
+                )
+                claim_age = max(0, now - int(row["updated_at"] or now))
+                if not has_ongoing and claim_age > _d().get_spawn_grace_seconds():
+                    is_dead = True
+
             is_stuck, stuck_reason, idle_seconds = _d()._compute_stuck_state(
                 now=now,
                 started_at=started_at,
@@ -521,6 +543,20 @@ def check_stuck_tasks(
                 pid=pid,
             )
 
+            stuck_state = None
+            if meta.get("awaiting_pr"):
+                # State 3: Stuck PR packaging
+                pack_age = max(0, now - int(row["updated_at"] or started_at))
+                if pack_age > task_timeout:
+                    is_stuck = True
+                    stuck_reason = f"PR packaging phase timed out after {pack_age}s (limit {task_timeout}s)"
+                    stuck_state = "stuck_packaging"
+            elif is_stuck:
+                if is_dead:
+                    stuck_state = "dead_worker"
+                else:
+                    stuck_state = "timeout_inactivity"
+
             results.append(
                 {
                     "id": task_id,
@@ -529,6 +565,7 @@ def check_stuck_tasks(
                     if "board_slug" in row.keys()
                     else None,
                     "assignee": row["assignee"] or "zf-builder",
+                    "status": "running",
                     "worker_pid": pid,
                     "is_alive": is_alive,
                     "started_at": started_at,
@@ -536,10 +573,73 @@ def check_stuck_tasks(
                     "idle_seconds": idle_seconds,
                     "is_stuck": is_stuck,
                     "stuck_reason": stuck_reason,
+                    "stuck_state": stuck_state,
+                    "orchestrator_recovery_count": int(
+                        meta.get("orchestrator_recovery_count", 0)
+                    ),
                     "timeout_limit": task_timeout,
                     "inactivity_limit": inactivity_timeout,
                 }
             )
+
+        if include_blocked:
+            cursor.execute(
+                "SELECT id, title, status, assignee, workspace_path, metadata, created_at, updated_at, board_slug FROM tasks WHERE status = 'blocked'"
+            )
+            b_col_names = (
+                [d[0] for d in cursor.description] if cursor.description else []
+            )
+            for raw_row in cursor.fetchall():
+                row = (
+                    dict(zip(b_col_names, raw_row))
+                    if not hasattr(raw_row, "keys")
+                    else raw_row
+                )
+                task_id = str(row["id"])
+                meta = {}
+                try:
+                    meta = json.loads(row["metadata"] or "{}")
+                except Exception:
+                    meta = {}
+
+                # State 4: Failure exhausted stuck tasks eligible for orchestrator recovery
+                b_type = str(meta.get("blocked_reason_type") or "").strip().lower()
+                is_perm = bool(meta.get("permanently_blocked"))
+                if b_type == "stuck" or is_perm:
+                    recovery_count = int(meta.get("orchestrator_recovery_count", 0))
+                    if recovery_count < 1:
+                        reason = (
+                            meta.get("blocked_reason")
+                            or "Failure retry budget exhausted; task permanently blocked"
+                        )
+                        results.append(
+                            {
+                                "id": task_id,
+                                "title": row["title"],
+                                "board_slug": row["board_slug"]
+                                if "board_slug" in row.keys()
+                                else None,
+                                "assignee": row["assignee"] or "human",
+                                "status": "blocked",
+                                "worker_pid": None,
+                                "is_alive": False,
+                                "started_at": row["updated_at"]
+                                or row["created_at"]
+                                or now,
+                                "running_seconds": max(
+                                    0, now - int(row["updated_at"] or now)
+                                ),
+                                "idle_seconds": max(
+                                    0, now - int(row["updated_at"] or now)
+                                ),
+                                "is_stuck": True,
+                                "stuck_reason": reason,
+                                "stuck_state": "failure_exhausted",
+                                "orchestrator_recovery_count": recovery_count,
+                                "timeout_limit": task_timeout,
+                                "inactivity_limit": inactivity_timeout,
+                            }
+                        )
 
         return results
     finally:
@@ -614,3 +714,87 @@ def reap_stuck_tasks(
         "reaped_tasks": reaped_tasks,
         "reaped": reaped_tasks,
     }
+
+
+def build_stuck_task_context(
+    task_id: str, db_path: Path | None = None
+) -> dict[str, Any]:
+    """Gather diagnostic logs, error snippets, and worktree info for a stuck task."""
+    if db_path is None:
+        db_path = _d().get_db_path()
+
+    result = {
+        "id": task_id,
+        "title": "",
+        "board_slug": "",
+        "repo_alias": "",
+        "status": "",
+        "assignee": "",
+        "stuck_reason": "",
+        "worker_failure_retries": 0,
+        "precommit_retries": 0,
+        "orchestrator_recovery_count": 0,
+        "last_worker_failure": None,
+        "last_precommit_error": None,
+        "worker_log_tail": None,
+        "comments": [],
+    }
+
+    if not db_path.exists():
+        return result
+
+    try:
+        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            t_row = cur.fetchone()
+            if not t_row:
+                return result
+
+            t = dict(t_row)
+            result["title"] = t.get("title", "")
+            result["board_slug"] = t.get("board_slug", "default")
+            result["repo_alias"] = t.get("repo_alias", "default")
+            result["status"] = t.get("status", "")
+            result["assignee"] = t.get("assignee", "")
+
+            meta = {}
+            try:
+                meta = json.loads(t.get("metadata") or "{}")
+            except Exception:
+                meta = {}
+
+            result["stuck_reason"] = meta.get("blocked_reason") or ""
+            result["worker_failure_retries"] = int(
+                meta.get("worker_failure_retries", 0)
+            )
+            result["precommit_retries"] = int(meta.get("precommit_retries", 0))
+            result["orchestrator_recovery_count"] = int(
+                meta.get("orchestrator_recovery_count", 0)
+            )
+            result["last_worker_failure"] = meta.get("last_worker_failure")
+            result["last_precommit_error"] = meta.get("last_precommit_error")
+
+            cur.execute(
+                "SELECT author, body, created_at FROM task_comments WHERE task_id = ? ORDER BY created_at DESC LIMIT 5",
+                (task_id,),
+            )
+            result["comments"] = [dict(c) for c in cur.fetchall()]
+    except Exception as e:
+        _log.warning(
+            "Failed querying db in build_stuck_task_context for %s: %s", task_id, e
+        )
+
+    # Tail worker log if available
+    log_path = _worker_log_path(task_id)
+    if log_path.exists():
+        try:
+            lines = log_path.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines()
+            result["worker_log_tail"] = "\n".join(lines[-40:])
+        except Exception as e:
+            _log.debug("Failed reading worker log for %s: %s", task_id, e)
+
+    return result
