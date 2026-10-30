@@ -45,8 +45,9 @@ When awakened by the queue watchdog cron (`zero-factory-task-queue-check`) with 
      `hermes zerofactory recover <task-id> --guidance "<actionable diagnostic instruction for zf-builder>"`
      *(Note: Each task has a strict limit of 1 autonomous recovery attempt. If it fails again, it will be permanently blocked for human review).*
    - **Zero Factory Internal Platform Defect** (unhandled Python exception in `dispatcher/`, `dashboard/`, `scripts/`, or internal tooling):
-     File a deduplicated issue on the official Zero Factory repository and park the task in `Blocked`:
+     Record the defect locally and park the task in `Blocked` (GitHub issue creation is optional):
      `hermes zerofactory report-bug --task <task-id> --title "<concise defect title>" --body "<stack trace & failure context>"`
+     *(Add `--create-issue` only if explicitly instructed to publish an issue on hotcode-dev/zerofactory)*.
    - **Unrecoverable External Blocker** (missing API keys, unavailable dependencies, environment infrastructure failure):
      Leave the task in `Blocked` and post a clear diagnosis for the human operator:
      `hermes zerofactory block <task-id> --reason "<human-gate explanation>"`

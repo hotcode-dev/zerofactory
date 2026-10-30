@@ -3302,6 +3302,14 @@ var ZeroFactoryDashboard = (function(exports) {
 				...settingsForm,
 				auto_record_memory: e.target.checked
 			})
+		})), React.createElement("div", { className: "flex items-center justify-between pt-1" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🐙"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Create GitHub Defect Issues")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically publish GitHub issues on hotcode-dev/zerofactory when internal platform defects are reported.")), React.createElement("input", {
+			type: "checkbox",
+			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+			checked: Boolean(settingsForm.auto_create_github_issues),
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				auto_create_github_issues: e.target.checked
+			})
 		})), React.createElement("div", { className: "flex items-center justify-between pt-1" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "⚡"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Mem0 Semantic Memory Engine")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Use Mem0 vector database for semantic retrieval of repository memories. Inherits Hermes agent model and base URL.")), React.createElement("input", {
 			type: "checkbox",
 			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
@@ -3881,7 +3889,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			mem0_api_key: "",
 			mem0_model: "",
 			mem0_embedder_provider: "fastembed",
-			mem0_embedder_model: ""
+			mem0_embedder_model: "",
+			auto_create_github_issues: false
 		});
 		const [isSavingSettings, setIsSavingSettings] = useState(false);
 		const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
@@ -4045,7 +4054,8 @@ var ZeroFactoryDashboard = (function(exports) {
 						mem0_api_key: data.settings.mem0_api_key ?? "",
 						mem0_model: data.settings.mem0_model ?? "",
 						mem0_embedder_provider: data.settings.mem0_embedder_provider ?? "fastembed",
-						mem0_embedder_model: data.settings.mem0_embedder_model ?? ""
+						mem0_embedder_model: data.settings.mem0_embedder_model ?? "",
+						auto_create_github_issues: Boolean(data.settings.auto_create_github_issues)
 					});
 					setCronSchedulerEnabled(isCronEnabled);
 				}
@@ -4074,7 +4084,8 @@ var ZeroFactoryDashboard = (function(exports) {
 					mem0_api_key: String(settingsForm.mem0_api_key || "").trim(),
 					mem0_model: String(settingsForm.mem0_model || "").trim(),
 					mem0_embedder_provider: String(settingsForm.mem0_embedder_provider || "fastembed").trim().toLowerCase(),
-					mem0_embedder_model: String(settingsForm.mem0_embedder_model || "").trim()
+					mem0_embedder_model: String(settingsForm.mem0_embedder_model || "").trim(),
+					auto_create_github_issues: Boolean(settingsForm.auto_create_github_issues)
 				};
 				const res = await fetchJSON(API_BASE + "/settings", {
 					method: "PATCH",
@@ -4100,7 +4111,8 @@ var ZeroFactoryDashboard = (function(exports) {
 						mem0_api_key: res.settings.mem0_api_key ?? "",
 						mem0_model: res.settings.mem0_model ?? "",
 						mem0_embedder_provider: res.settings.mem0_embedder_provider ?? "fastembed",
-						mem0_embedder_model: res.settings.mem0_embedder_model ?? ""
+						mem0_embedder_model: res.settings.mem0_embedder_model ?? "",
+						auto_create_github_issues: Boolean(res.settings.auto_create_github_issues)
 					});
 				}
 				showToast("Global settings saved successfully!", "success");

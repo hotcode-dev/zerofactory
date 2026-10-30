@@ -248,7 +248,7 @@ def run_watchdog() -> int:
             "2. If recoverable code/test failure: `hermes zerofactory recover <task_id> --guidance '<advice>'`"
         )
         print(
-            "3. If internal Zero Factory platform defect: `hermes zerofactory report-bug --task <task_id> --title '<title>' --body '<body>'`"
+            "3. If internal Zero Factory platform defect: `hermes zerofactory report-bug --task <task_id> --title '<title>' --body '<body>'` (add `--create-issue` to publish to GitHub)"
         )
         print(
             "4. If unrecoverable external blocker: `hermes zerofactory block <task_id> --reason '<reason>'`"

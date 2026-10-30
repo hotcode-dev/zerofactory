@@ -72,6 +72,9 @@ DEFAULT_ACTIVITY_RETENTION_DAYS = 30
 # Enable periodic background cron scheduler execution (dispatcher ticker & scheduled runs).
 DEFAULT_ENABLE_CRON_SCHEDULER = True
 
+# Automatically create a public GitHub issue on hotcode-dev/zerofactory when internal defects are reported.
+DEFAULT_AUTO_CREATE_GITHUB_ISSUES = False
+
 # Langfuse observability settings
 DEFAULT_LANGFUSE_ENABLED = False
 DEFAULT_LANGFUSE_BASE_URL = "https://cloud.langfuse.com"
@@ -122,6 +125,7 @@ SETTING_KEYS = (
     "mem0_model",
     "mem0_embedder_provider",
     "mem0_embedder_model",
+    "auto_create_github_issues",
 )
 
 # Seed values for the settings table, derived from the constants above (NOT
@@ -133,6 +137,7 @@ DEFAULT_SETTING_VALUES: dict[str, str] = {
     "task_timeout_seconds": str(DEFAULT_TASK_TIMEOUT_SECONDS),
     "inactivity_timeout_seconds": str(DEFAULT_INACTIVITY_TIMEOUT_SECONDS),
     "enable_cron_scheduler": "true" if DEFAULT_ENABLE_CRON_SCHEDULER else "false",
+    "auto_create_github_issues": "true" if DEFAULT_AUTO_CREATE_GITHUB_ISSUES else "false",
     "langfuse_enabled": "true" if DEFAULT_LANGFUSE_ENABLED else "false",
     "langfuse_base_url": DEFAULT_LANGFUSE_BASE_URL,
     "langfuse_public_key": DEFAULT_LANGFUSE_PUBLIC_KEY,
@@ -196,6 +201,7 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
         "mem0_model": DEFAULT_MEM0_MODEL,
         "mem0_embedder_provider": DEFAULT_MEM0_EMBEDDER_PROVIDER,
         "mem0_embedder_model": DEFAULT_MEM0_EMBEDDER_MODEL,
+        "auto_create_github_issues": DEFAULT_AUTO_CREATE_GITHUB_ISSUES,
     }
     try:
         rows = conn_or_cursor.execute("SELECT key, value FROM settings").fetchall()
@@ -275,5 +281,7 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
         elif k == "mem0_embedder_model":
             if v is not None and str(v).strip():
                 settings["mem0_embedder_model"] = str(v).strip()
+        elif k == "auto_create_github_issues":
+            settings["auto_create_github_issues"] = _parse_bool(v)
 
     return settings

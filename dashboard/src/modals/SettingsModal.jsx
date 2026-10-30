@@ -150,6 +150,30 @@ export function SettingsModal(props) {
                         React.createElement(
                           "div",
                           { className: "flex items-center gap-1.5" },
+                          React.createElement("span", { className: "text-sm" }, "🐙"),
+                          React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Create GitHub Defect Issues")
+                        ),
+                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically publish GitHub issues on hotcode-dev/zerofactory when internal platform defects are reported.")
+                      ),
+                      React.createElement(
+                        "input",
+                        {
+                          type: "checkbox",
+                          className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                          checked: Boolean(settingsForm.auto_create_github_issues),
+                          onChange: (e) => setSettingsForm({ ...settingsForm, auto_create_github_issues: e.target.checked })
+                        }
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between pt-1" },
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-1.5" },
                           React.createElement("span", { className: "text-sm" }, "⚡"),
                           React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Mem0 Semantic Memory Engine")
                         ),

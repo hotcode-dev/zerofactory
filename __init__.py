@@ -651,6 +651,20 @@ def register(ctx: Any):
             default=None,
             help="Actor filing the report (defaults to HERMES_PROFILE or 'user')",
         )
+        p_report_bug.add_argument(
+            "--create-issue",
+            dest="create_issue",
+            action="store_true",
+            default=None,
+            help="Explicitly create a public GitHub issue on hotcode-dev/zerofactory",
+        )
+        p_report_bug.add_argument(
+            "--no-issue",
+            "--no-create-issue",
+            dest="create_issue",
+            action="store_false",
+            help="Do not create a GitHub issue; record the defect locally in task comments and metadata only",
+        )
 
         # cron
         p_cron = subparsers.add_parser(
@@ -1374,19 +1388,26 @@ def register(ctx: Any):
                 or os.environ.get("HERMES_PROFILE")
                 or "user"
             )
+            create_issue = getattr(args, "create_issue", None)
             try:
                 res = _report_task_bug(
                     task_id=task_id,
-                    req=TaskReportBugRequest(title=title, body=body, actor=actor),
+                    req=TaskReportBugRequest(
+                        title=title, body=body, actor=actor, create_issue=create_issue
+                    ),
                 )
                 if res.get("ok"):
                     if res.get("duplicate"):
                         print(
                             f"⚠️ Duplicate open issue found on {ZEROFACTORY_REPO}: {res.get('issue_url')}"
                         )
-                    else:
+                    elif res.get("issue_url"):
                         print(
                             f"✓ Zero Factory defect reported to {ZEROFACTORY_REPO}: {res.get('issue_url')}"
+                        )
+                    else:
+                        print(
+                            f"✓ Zero Factory defect recorded locally for task '{task_id}' (GitHub issue creation skipped)."
                         )
                     print(f"  Task '{task_id}' moved to blocked awaiting platform fix.")
                 else:

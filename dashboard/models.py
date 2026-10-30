@@ -270,6 +270,10 @@ class TaskReportBugRequest(BaseModel):
     title: str = Field(..., min_length=5, description="Issue title for hotcode-dev/zerofactory")
     body: str | None = Field(default=None, description="Detailed defect description and trace")
     actor: str | None = Field(default="user", description="Actor filing bug report")
+    create_issue: bool | None = Field(
+        default=None,
+        description="Whether to create a GitHub issue on hotcode-dev/zerofactory (defaults to global setting if omitted)",
+    )
 
 
 class CommentCreate(BaseModel):
@@ -393,6 +397,10 @@ class SettingsUpdate(BaseModel):
     mem0_embedder_model: str | None = Field(
         default=None,
         description="Mem0 embedding model",
+    )
+    auto_create_github_issues: bool | None = Field(
+        default=None,
+        description="Automatically file GitHub issues on hotcode-dev/zerofactory when internal platform defects are reported",
     )
 
 

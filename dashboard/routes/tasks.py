@@ -86,6 +86,11 @@ except (ImportError, ValueError):
     from session_service import resolve_task_session_progress  # type: ignore
 
 try:
+    from ...settings import load_settings  # type: ignore
+except (ImportError, ValueError):
+    from settings import load_settings  # type: ignore
+
+try:
     from paths import ZEROFACTORY_REPO, ZEROFACTORY_ISSUES_URL
 except (ImportError, ValueError):
     ZEROFACTORY_REPO = "hotcode-dev/zerofactory"
@@ -1643,6 +1648,54 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
         board_slug = task.get("board_slug", "default")
         repo_alias = task.get("repo_alias", "default")
 
+        # Check whether GitHub issue creation is requested / enabled
+        settings = load_settings(conn)
+        should_create_issue = (
+            req.create_issue
+            if req.create_issue is not None
+            else settings.get("auto_create_github_issues", False)
+        )
+
+        if not should_create_issue:
+            comment_body = (
+                f"🛠️ **[Zero Factory Defect Recorded Locally]** Platform defect reported by `{actor}`: **{req.title.strip()}**\n\n"
+                f"{(req.body or 'No additional description provided.').strip()}\n\n"
+                f"*(GitHub issue creation skipped: optional auto-create disabled)*"
+            )
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (task_id, actor, comment_body, now),
+            )
+            meta["zf_bug_report"] = {
+                "title": req.title.strip(),
+                "body": req.body,
+                "reported_at": now,
+                "reported_by": actor,
+                "issue_created": False,
+            }
+            meta["blocked_reason"] = f"Internal Zero Factory defect: {req.title.strip()}"
+            meta["blocked_reason_type"] = "human-gate"
+            cursor.execute(
+                "UPDATE tasks SET status = 'blocked', assignee = 'human', metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
+            )
+            log_activity(
+                conn,
+                task_id,
+                actor,
+                "zf_bug_recorded",
+                f"Internal bug recorded locally: {req.title.strip()}",
+            )
+            conn.commit()
+            return {
+                "ok": True,
+                "duplicate": False,
+                "issue_created": False,
+                "issue_url": None,
+                "task_id": task_id,
+                "message": f"Zero Factory defect recorded locally for task '{task_id}' (GitHub issue creation skipped).",
+            }
+
         # Check existing issues in ZEROFACTORY_REPO to prevent duplicates
         existing_url = None
         try:
@@ -1700,6 +1753,7 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
             return {
                 "ok": True,
                 "duplicate": True,
+                "issue_created": False,
                 "issue_url": existing_url,
                 "task_id": task_id,
                 "message": f"Matching issue already open on {ZEROFACTORY_REPO}: {existing_url}",
@@ -1768,16 +1822,32 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
             _log.warning("gh issue create raised exception: %s", e)
 
         if not issue_url:
-            fallback_msg = f"Failed to auto-create GitHub issue on {ZEROFACTORY_REPO}. Ensure `gh` CLI is authenticated."
+            fallback_msg = f"Failed to auto-create GitHub issue on {ZEROFACTORY_REPO}. Defect recorded locally."
             cursor.execute(
                 "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                (task_id, actor, f"⚠️ **[Zero Factory Defect Report Failed]** {fallback_msg}", now),
+                (task_id, actor, f"⚠️ **[Zero Factory Defect Recorded Locally]** {fallback_msg}\n\n**{req.title.strip()}**\n{req.body or ''}", now),
+            )
+            meta["zf_bug_report"] = {
+                "title": req.title.strip(),
+                "body": req.body,
+                "reported_at": now,
+                "reported_by": actor,
+                "issue_created": False,
+                "error": fallback_msg,
+            }
+            meta["blocked_reason"] = f"Internal Zero Factory defect: {req.title.strip()}"
+            meta["blocked_reason_type"] = "human-gate"
+            cursor.execute(
+                "UPDATE tasks SET status = 'blocked', assignee = 'human', metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
             )
             conn.commit()
             return {
-                "ok": False,
-                "error": fallback_msg,
+                "ok": True,
+                "issue_created": False,
+                "issue_url": None,
                 "task_id": task_id,
+                "message": fallback_msg,
             }
 
         comment_body = f"🐛 **[Zero Factory Defect Filed]** Issue created on `{ZEROFACTORY_REPO}`: {issue_url}"
@@ -1789,6 +1859,7 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
             "issue_url": issue_url,
             "title": req.title.strip(),
             "reported_at": now,
+            "issue_created": True,
         }
         meta["blocked_reason"] = f"Waiting on Zero Factory bug fix: {issue_url}"
         meta["blocked_reason_type"] = "human-gate"
@@ -1807,6 +1878,8 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
 
     return {
         "ok": True,
+        "duplicate": False,
+        "issue_created": True,
         "issue_url": issue_url,
         "task_id": task_id,
         "message": f"Bug reported to {ZEROFACTORY_REPO}: {issue_url}",

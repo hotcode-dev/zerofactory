@@ -181,6 +181,12 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('mem0_embedder_model', ?, ?)",
                 (val, now),
             )
+        if req.auto_create_github_issues is not None:
+            val = "true" if req.auto_create_github_issues else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('auto_create_github_issues', ?, ?)",
+                (val, now),
+            )
         conn.commit()
 
     res = get_settings()

@@ -62,7 +62,8 @@ export function ZeroFactoryKanbanApp() {
       mem0_api_key: "",
       mem0_model: "",
       mem0_embedder_provider: "fastembed",
-      mem0_embedder_model: ""
+      mem0_embedder_model: "",
+      auto_create_github_issues: false
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
@@ -229,7 +230,8 @@ export function ZeroFactoryKanbanApp() {
             mem0_api_key: data.settings.mem0_api_key ?? "",
             mem0_model: data.settings.mem0_model ?? "",
             mem0_embedder_provider: data.settings.mem0_embedder_provider ?? "fastembed",
-            mem0_embedder_model: data.settings.mem0_embedder_model ?? ""
+            mem0_embedder_model: data.settings.mem0_embedder_model ?? "",
+            auto_create_github_issues: Boolean(data.settings.auto_create_github_issues)
           });
           setCronSchedulerEnabled(isCronEnabled);
         }
@@ -259,7 +261,8 @@ export function ZeroFactoryKanbanApp() {
           mem0_api_key: String(settingsForm.mem0_api_key || "").trim(),
           mem0_model: String(settingsForm.mem0_model || "").trim(),
           mem0_embedder_provider: String(settingsForm.mem0_embedder_provider || "fastembed").trim().toLowerCase(),
-          mem0_embedder_model: String(settingsForm.mem0_embedder_model || "").trim()
+          mem0_embedder_model: String(settingsForm.mem0_embedder_model || "").trim(),
+          auto_create_github_issues: Boolean(settingsForm.auto_create_github_issues)
         };
         const res = await fetchJSON(API_BASE + "/settings", {
           method: "PATCH",
@@ -285,7 +288,8 @@ export function ZeroFactoryKanbanApp() {
             mem0_api_key: res.settings.mem0_api_key ?? "",
             mem0_model: res.settings.mem0_model ?? "",
             mem0_embedder_provider: res.settings.mem0_embedder_provider ?? "fastembed",
-            mem0_embedder_model: res.settings.mem0_embedder_model ?? ""
+            mem0_embedder_model: res.settings.mem0_embedder_model ?? "",
+            auto_create_github_issues: Boolean(res.settings.auto_create_github_issues)
           });
         }
         showToast("Global settings saved successfully!", "success");

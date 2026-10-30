@@ -211,6 +211,7 @@ class TestTaskRecovery(unittest.TestCase):
                 title="SQLite operational error database is locked",
                 body="Database lock during concurrent dispatch tick",
                 actor="zf-orchestrator",
+                create_issue=True,
             ),
         )
 
@@ -251,6 +252,7 @@ class TestTaskRecovery(unittest.TestCase):
                 title="Git worktree add failed with exit code 128",
                 body="Fatal: cannot create worktree directory",
                 actor="zf-orchestrator",
+                create_issue=True,
             ),
         )
 
@@ -264,6 +266,70 @@ class TestTaskRecovery(unittest.TestCase):
             self.assertEqual(row["status"], "blocked")
             meta = json.loads(row["metadata"])
             self.assertEqual(meta["zf_bug_report"]["issue_url"], "https://github.com/hotcode-dev/zerofactory/issues/120")
+
+    @patch("subprocess.run")
+    def test_report_task_bug_optional_local_recording_default(self, mock_run):
+        """When issue creation is not requested (default False), records defect locally without calling gh."""
+        req = TaskCreate(
+            title="Internal deadlock error",
+            board_slug="test-board",
+            status="running",
+        )
+        task_id = create_task(req)["id"]
+
+        res = report_task_bug(
+            task_id,
+            TaskReportBugRequest(
+                title="Internal dispatcher threading exception",
+                body="Thread deadlocked on lock acquisition",
+                actor="zf-orchestrator",
+            ),
+        )
+
+        mock_run.assert_not_called()
+        self.assertTrue(res["ok"])
+        self.assertFalse(res.get("issue_created", True))
+        self.assertIsNone(res.get("issue_url"))
+        self.assertIn("skipped", res["message"])
+
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            self.assertEqual(row["status"], "blocked")
+            meta = json.loads(row["metadata"])
+            self.assertFalse(meta["zf_bug_report"]["issue_created"])
+            self.assertEqual(meta["zf_bug_report"]["title"], "Internal dispatcher threading exception")
+            self.assertIn("Internal dispatcher threading exception", meta["blocked_reason"])
+
+    @patch("subprocess.run")
+    def test_report_task_bug_explicit_no_issue(self, mock_run):
+        """When create_issue=False is passed explicitly, skips gh even if global setting is enabled."""
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('auto_create_github_issues', 'true', 100)"
+            )
+            conn.commit()
+
+        req = TaskCreate(
+            title="Internal hook error",
+            board_slug="test-board",
+            status="running",
+        )
+        task_id = create_task(req)["id"]
+
+        res = report_task_bug(
+            task_id,
+            TaskReportBugRequest(
+                title="Hook callback raised exception",
+                body="Error in on_dispatch_tick",
+                actor="user",
+                create_issue=False,
+            ),
+        )
+
+        mock_run.assert_not_called()
+        self.assertTrue(res["ok"])
+        self.assertFalse(res.get("issue_created", True))
 
     def test_cli_recover_command(self):
         """CLI recover subcommand invokes _recover_task and prints confirmation."""
@@ -333,6 +399,7 @@ class TestTaskRecovery(unittest.TestCase):
             title="Subprocess deadlock in git worktree add",
             body="Deadlock trace in git_ops.py",
             actor="zf-orchestrator",
+            create_issue=True,
         )
 
         buf = io.StringIO()
@@ -342,3 +409,42 @@ class TestTaskRecovery(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("Zero Factory defect reported to hotcode-dev/zerofactory", out)
         self.assertIn("issues/130", out)
+
+    @patch("subprocess.run")
+    def test_cli_report_bug_no_issue_command(self, mock_run):
+        """CLI report-bug with --no-issue records defect locally without calling gh."""
+        import io
+        import contextlib
+        import argparse
+        import __init__ as zf_cli
+
+        fake_ctx = MagicMock()
+        zf_cli.register(fake_ctx)
+        cmd_runner = fake_ctx.register_cli_command.call_args[1]["handler_fn"]
+
+        req = TaskCreate(
+            title="CLI Report Bug No Issue Task",
+            board_slug="test-board",
+            status="running",
+            priority="P1",
+        )
+        task_id = create_task(req)["id"]
+
+        args = argparse.Namespace(
+            action="report-bug",
+            task_id=task_id,
+            title="Worker crash on invalid json",
+            body="Syntax error trace",
+            actor="user",
+            create_issue=False,
+        )
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cmd_runner(args)
+
+        gh_calls = [c for c in mock_run.call_args_list if c.args and c.args[0] and c.args[0][0] == "gh"]
+        self.assertEqual(len(gh_calls), 0)
+        out = buf.getvalue()
+        self.assertIn("Zero Factory defect recorded locally", out)
+        self.assertIn("GitHub issue creation skipped", out)
