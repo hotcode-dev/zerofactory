@@ -1620,6 +1620,18 @@ def recover_task(task_id: str, req: TaskRecoverRequest | None = None):
     }
 
 
+def _sanitize_defect_body(text: str) -> str:
+    """Sanitize issue text before filing upstream: redacts home directory, API keys, tokens."""
+    import re
+    home_dir = str(Path.home())
+    text = text.replace(home_dir, "~")
+    text = re.sub(r"(sk-[a-zA-Z0-9_\-]{20,})", r"sk-***REDACTED***", text)
+    text = re.sub(r"(ghp_[a-zA-Z0-9]{20,})", r"ghp_***REDACTED***", text)
+    text = re.sub(r"(Bearer\s+[a-zA-Z0-9\-_\.]{20,})", r"Bearer ***REDACTED***", text, flags=re.IGNORECASE)
+    text = re.sub(r"(X-Hermes-Session-Token:\s*)([^\s]+)", r"\1***REDACTED***", text)
+    return text
+
+
 @router.post("/tasks/{task_id}/report-bug")
 @router.put("/tasks/{task_id}/report-bug")
 def report_task_bug(task_id: str, req: TaskReportBugRequest):
@@ -1791,7 +1803,7 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
                 ]
             )
 
-        full_body = "\n".join(body_lines)
+        full_body = _sanitize_defect_body("\n".join(body_lines))
 
         # File issue using gh CLI
         issue_url = None

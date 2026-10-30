@@ -2395,7 +2395,48 @@ var ZeroFactoryDashboard = (function(exports) {
 				className: "px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors cursor-pointer shadow-xs shadow-indigo-600/30",
 				onClick: () => handleAdvanceTask(selectedTask)
 			}, "Advance Stage →")))
-		}, React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"), React.createElement("select", {
+		}, (() => {
+			const taskMeta = typeof selectedTask.metadata === "string" ? (() => {
+				try {
+					return JSON.parse(selectedTask.metadata);
+				} catch (e) {
+					return {};
+				}
+			})() : selectedTask.metadata || {};
+			const bugReport = taskMeta && taskMeta.zf_bug_report;
+			if (!bugReport) return null;
+			if (bugReport.issue_url) return React.createElement("div", { className: "mb-3 px-3.5 py-2.5 rounded-xl border border-purple-500/30 bg-purple-950/20 backdrop-blur-md flex items-center justify-between gap-3 text-xs" }, React.createElement("div", { className: "flex items-center gap-2 text-purple-200 min-w-0" }, React.createElement("span", { className: "text-base" }, "🐛"), React.createElement("div", { className: "truncate" }, React.createElement("div", { className: "font-semibold text-slate-100 flex items-center gap-1.5" }, "Zero Factory Defect Tracked on GitHub", React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, "Upstream")), React.createElement("div", { className: "text-slate-400 text-[11px] truncate" }, bugReport.title || selectedTask.title))), React.createElement("a", {
+				href: bugReport.issue_url,
+				target: "_blank",
+				rel: "noopener noreferrer",
+				className: "px-2.5 py-1 rounded bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-500/30 font-medium text-[11px] shrink-0 transition-colors inline-flex items-center gap-1"
+			}, "View Issue ↗"));
+			return React.createElement("div", { className: "mb-3 px-3.5 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 backdrop-blur-md flex items-center justify-between gap-3 text-xs" }, React.createElement("div", { className: "flex items-center gap-2 text-amber-200 min-w-0" }, React.createElement("span", { className: "text-base" }, "🛠️"), React.createElement("div", { className: "truncate" }, React.createElement("div", { className: "font-semibold text-slate-100 flex items-center gap-1.5" }, "Internal Zero Factory Defect (Recorded Locally)", React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60" }, "Local Only")), React.createElement("div", { className: "text-slate-400 text-[11px] truncate" }, bugReport.title || selectedTask.title))), React.createElement("button", {
+				type: "button",
+				className: "px-2.5 py-1 rounded bg-amber-600/80 hover:bg-amber-600 text-white font-medium text-[11px] shrink-0 transition-colors inline-flex items-center gap-1 cursor-pointer shadow-xs",
+				title: "Sanitize and publish this defect report to hotcode-dev/zerofactory",
+				onClick: async () => {
+					try {
+						const res = await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/report-bug", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								title: bugReport.title || selectedTask.title,
+								body: bugReport.body || "Internal platform defect recorded locally.",
+								actor: "user",
+								create_issue: true
+							})
+						});
+						if (res && res.issue_url) showToast("🐙 Published issue to GitHub: " + res.issue_url, "success");
+						else if (res && res.ok) showToast(res.message || "Defect updated", "info");
+						loadTaskDetails(selectedTask.id);
+						loadTasksAndStats();
+					} catch (err) {
+						showToast("Publish failed: " + err.message, "error");
+					}
+				}
+			}, "🐙 Publish to GitHub"));
+		})(), React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-4" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"), React.createElement("select", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
 			value: selectedTask.status,
 			onChange: async (e) => {

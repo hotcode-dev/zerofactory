@@ -448,3 +448,19 @@ class TestTaskRecovery(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("Zero Factory defect recorded locally", out)
         self.assertIn("GitHub issue creation skipped", out)
+
+    def test_sanitize_defect_body(self):
+        """Sanitizer redacts home dir, API keys, and session tokens."""
+        from dashboard.routes.tasks import _sanitize_defect_body
+        from pathlib import Path
+
+        home = str(Path.home())
+        raw_text = f"Crash at {home}/git/myrepo with key sk-12345678901234567890 and token ghp_abcdefghijklmnopqrstu"
+        sanitized = _sanitize_defect_body(raw_text)
+
+        self.assertNotIn(home, sanitized)
+        self.assertIn("~/git/myrepo", sanitized)
+        self.assertNotIn("sk-12345678901234567890", sanitized)
+        self.assertIn("sk-***REDACTED***", sanitized)
+        self.assertNotIn("ghp_abcdefghijklmnopqrstu", sanitized)
+        self.assertIn("ghp_***REDACTED***", sanitized)

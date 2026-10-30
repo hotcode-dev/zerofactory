@@ -1409,6 +1409,7 @@ def register(ctx: Any):
                         print(
                             f"✓ Zero Factory defect recorded locally for task '{task_id}' (GitHub issue creation skipped)."
                         )
+                        print("  Tip: pass --create-issue to publish this defect to hotcode-dev/zerofactory.")
                     print(f"  Task '{task_id}' moved to blocked awaiting platform fix.")
                 else:
                     print(f"✗ Failed to report bug: {res.get('error', 'unknown error')}")

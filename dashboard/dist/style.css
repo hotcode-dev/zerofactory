@@ -1298,6 +1298,12 @@
     background-color: color-mix(in oklab, var(--color-amber-500) 15%, transparent);
   }
 }
+.bg-amber-600\/80 {
+  background-color: color-mix(in srgb, oklch(66.6% 0.179 58.318) 80%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background-color: color-mix(in oklab, var(--color-amber-600) 80%, transparent);
+  }
+}
 .bg-amber-950\/20 {
   background-color: color-mix(in srgb, oklch(27.9% 0.077 45.635) 20%, transparent);
   @supports (color: color-mix(in lab, red, red)) {
@@ -1561,6 +1567,12 @@
 }
 .bg-purple-600 {
   background-color: var(--color-purple-600);
+}
+.bg-purple-900\/60 {
+  background-color: color-mix(in srgb, oklch(38.1% 0.176 304.987) 60%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background-color: color-mix(in oklab, var(--color-purple-900) 60%, transparent);
+  }
 }
 .bg-purple-900\/80 {
   background-color: color-mix(in srgb, oklch(38.1% 0.176 304.987) 80%, transparent);
@@ -2758,6 +2770,9 @@
       border-color: color-mix(in oklab, var(--color-slate-700) 80%, transparent);
     }
   }
+  .hover\:bg-amber-600:hover {
+    background-color: var(--color-amber-600);
+  }
   .hover\:bg-amber-900:hover {
     background-color: var(--color-amber-900);
   }
@@ -2805,6 +2820,9 @@
     .hover\:bg-purple-500\/30:hover {
       background-color: color-mix(in oklab, var(--color-purple-500) 30%, transparent);
     }
+  }
+  .hover\:bg-purple-800:hover {
+    background-color: var(--color-purple-800);
   }
   .hover\:bg-rose-500\/20:hover {
     background-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 20%, transparent);
