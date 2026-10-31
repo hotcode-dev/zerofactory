@@ -22,6 +22,21 @@ def _worker_log_path(task_id: str) -> Path:
     return Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
 
 
+# Ad-hoc reaper DB connections match the dispatcher convention
+# (dispatcher/scheduler.py run_dispatch_cycle uses busy_timeout=15000): a WAL
+# database can be briefly held by the dashboard process (many open connections
+# plus an active writer), and a plain connect() with no busy window aborts the
+# watchdog tick with sqlite3.OperationalError "database is locked".
+_BUSY_TIMEOUT_MS = 15000
+
+
+def _open_reaper_conn(db_path: Path) -> sqlite3.Connection:
+    """Open a reaper DB connection with a WAL-tolerant busy timeout."""
+    conn = sqlite3.connect(str(db_path), timeout=15.0)
+    conn.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS};")
+    return conn
+
+
 def _compute_stuck_state(
     now: int,
     started_at: Any,
@@ -155,6 +170,13 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta = _d()._mark_task_session_ended(meta, now, "finished")
                     meta.pop("worker_failure_retries", None)
                     meta.pop("last_worker_failure", None)
+                    # The LLM worker is finished; clear its live identity so the
+                    # next reaper pass cannot misfire the dead-PID branch on the
+                    # stale PID and loop the task into a fresh respawn. Packaging
+                    # is deterministic (dispatcher step 3), not a live worker.
+                    meta.pop("worker_pid", None)
+                    meta.pop("session_id", None)
+                    meta.pop("started_at", None)
 
                     is_triage_task = (
                         curr_stat == "triage" or curr_asgn == "zf-orchestrator"
@@ -289,6 +311,12 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 reaped += 1
                 continue
         elif pid:
+            if row_status == "running" and meta.get("awaiting_pr"):
+                # Deterministic packaging phase that still carries a stale
+                # worker_pid in metadata: the LLM worker is done and the
+                # dispatcher's step-3 owns precommit->commit->push->PR. Never
+                # treat this as a lost worker or bump the failure budget.
+                continue
             if not _d().is_pid_alive(int(pid)):
                 meta = _d()._mark_task_session_ended(meta, now, "lost")
                 fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
@@ -479,7 +507,7 @@ def check_stuck_tasks(
 
     close_conn = False
     if cursor is None:
-        conn = sqlite3.connect(str(db_path), timeout=10.0)
+        conn = _open_reaper_conn(db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         close_conn = True
@@ -652,60 +680,96 @@ def check_stuck_tasks(
 def reap_stuck_tasks(
     task_id: str | None = None, db_path: Path | None = None
 ) -> dict[str, Any]:
-    """Manually or programmatically reap stuck tasks or a specific running task."""
-    if db_path is None:
-        db_path = _d().get_db_path()
+    """Manually or programmatically reap stuck tasks or a specific running task.
+
+    Tolerates a WAL database that is briefly locked by another process (the
+    dashboard holds many connections plus an active writer). The connection
+    sets ``busy_timeout`` (matching the dispatcher convention) and the write
+    section retries on ``sqlite3.OperationalError`` "database is locked" with
+    exponential backoff, capped at ~30s total. On final failure it logs a
+    warning and returns a clean failure dict instead of raising, so a busy DB
+    can never abort the watchdog tick again.
+    """
+    db: Path = db_path if db_path is not None else _d().get_db_path()
 
     now = int(time.time())
-    reaped_tasks = []
+    max_wait = 30.0
+    deadline = time.monotonic() + max_wait
+    attempt = 0
+    base_delay = 0.5
 
     with _dispatcher_lock:
-        with sqlite3.connect(str(db_path), timeout=10.0) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+        while True:
+            attempt += 1
+            reaped_tasks = []
+            try:
+                with _open_reaper_conn(db) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
 
-            stuck_list = _d().check_stuck_tasks(cursor=cursor)
-            for item in stuck_list:
-                t_id = item["id"]
-                if task_id and t_id != task_id:
-                    continue
-                if task_id or item["is_stuck"]:
-                    proc = _active_workers.pop(t_id, None)
-                    pid = item["worker_pid"]
-                    _d().terminate_worker_process(proc, pid)
+                    stuck_list = _d().check_stuck_tasks(cursor=cursor)
+                    for item in stuck_list:
+                        t_id = item["id"]
+                        if task_id and t_id != task_id:
+                            continue
+                        if task_id or item["is_stuck"]:
+                            proc = _active_workers.pop(t_id, None)
+                            pid = item["worker_pid"]
+                            _d().terminate_worker_process(proc, pid)
 
-                    reason = (
-                        item["stuck_reason"]
-                        or f"Manually reaped after running {item['running_seconds']}s"
-                    )
-                    _meta = {}
-                    _row = cursor.execute(
-                        "SELECT metadata FROM tasks WHERE id = ?", (t_id,)
-                    ).fetchone()
-                    if _row is not None:
-                        try:
-                            _meta = json.loads(_row["metadata"] or "{}")
-                        except Exception:
+                            reason = (
+                                item["stuck_reason"]
+                                or f"Manually reaped after running {item['running_seconds']}s"
+                            )
                             _meta = {}
-                    _meta["blocked_reason"] = reason
-                    _meta["blocked_reason_type"] = "stuck"
-                    _meta = _d()._mark_task_session_ended(
-                        _meta, now, "aborted" if task_id else "timed_out"
-                    )
-                    _meta.pop("worker_pid", None)
-                    cursor.execute(
-                        "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-                        (json.dumps(_meta), now, t_id),
-                    )
-                    cursor.execute(
-                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
-                        (t_id, reason, now),
-                    )
-                    reaped_tasks.append(
-                        {"id": t_id, "title": item["title"], "reason": reason}
-                    )
+                            _row = cursor.execute(
+                                "SELECT metadata FROM tasks WHERE id = ?", (t_id,)
+                            ).fetchone()
+                            if _row is not None:
+                                try:
+                                    _meta = json.loads(_row["metadata"] or "{}")
+                                except Exception:
+                                    _meta = {}
+                            _meta["blocked_reason"] = reason
+                            _meta["blocked_reason_type"] = "stuck"
+                            _meta = _d()._mark_task_session_ended(
+                                _meta, now, "aborted" if task_id else "timed_out"
+                            )
+                            _meta.pop("worker_pid", None)
+                            cursor.execute(
+                                "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+                                (json.dumps(_meta), now, t_id),
+                            )
+                            cursor.execute(
+                                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
+                                (t_id, reason, now),
+                            )
+                            reaped_tasks.append(
+                                {"id": t_id, "title": item["title"], "reason": reason}
+                            )
 
-            conn.commit()
+                    conn.commit()
+                break
+            except sqlite3.OperationalError as e:
+                if "database is locked" not in str(e).lower():
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    _log.warning(
+                        "reap_stuck_tasks: database locked after %d attempts "
+                        "(~%ds total); leaving reaping to the next watchdog tick",
+                        attempt,
+                        int(max_wait),
+                    )
+                    return {
+                        "ok": False,
+                        "reason": "database locked",
+                        "reaped_count": 0,
+                        "reaped_tasks": [],
+                        "reaped": [],
+                    }
+                delay = min(base_delay * (2 ** (attempt - 1)), 5.0, remaining)
+                time.sleep(delay)
 
     return {
         "ok": True,
@@ -743,7 +807,7 @@ def build_stuck_task_context(
         return result
 
     try:
-        with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+        with _open_reaper_conn(db_path) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
