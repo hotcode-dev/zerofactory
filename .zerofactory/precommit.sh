@@ -7,6 +7,16 @@
 # Usage:
 #   .zerofactory/precommit.sh [all|format|build|test|install-hook]
 #
+# Timing / slow hosts:
+#   - The dispatcher enforces an overall wall-clock timeout on this script via
+#     the ZEROFACTORY_PRECOMMIT_TIMEOUT_SECONDS env knob (default 300s). On
+#     slow hosts (e.g. a Pi, or a Node v26 first-build) raise it so the
+#     format/build/test phases are not killed mid-run:
+#       ZEROFACTORY_PRECOMMIT_TIMEOUT_SECONDS=900
+#   - A timeout is surfaced to the dispatcher as exit code -1, which clears any
+#     stale build output (e.g. a half-written astro build/ dir) before the next
+#     retry, so a transient renderers.mjs error does not recur.
+#
 # Tooling precedence:
 #   - Python (primary language): ruff is MANDATORY for the format/lint
 #     phase — when missing, a pinned version (see RUFF_VERSION) is
