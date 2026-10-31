@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -332,7 +333,7 @@ def create_board(req: BoardCreate):
     if resolver:
         for r in repos_to_add:
             try:
-                resolver({"slug": r["repo_alias"], "git_url": r["git_url"], "description": desc})
+                resolver({"slug": slug, "repo_alias": r["repo_alias"], "git_url": r["git_url"], "description": desc})
             except Exception as e:
                 _log.warning(
                     "Failed to auto-clone repo %s for board %s: %s", r["repo_alias"], slug, e
@@ -397,6 +398,7 @@ def test_clone_board(req: BoardTestClone):
 
     owner, repo, auto_slug = parse_git_url(git_url)
     slug = (req.slug or "").strip() or auto_slug or "repo"
+    repo_alias = (getattr(req, "repo_alias", None) or "").strip() or repo or slug
 
     # If git operations disabled in test environment
     if os.environ.get("ZEROFACTORY_SKIP_GIT"):
@@ -408,12 +410,29 @@ def test_clone_board(req: BoardTestClone):
         }
 
     try:
+        from paths import get_board_repos_dir  # type: ignore
+    except Exception:
+        try:
+            from ..paths import get_board_repos_dir  # type: ignore
+        except Exception:
+            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+
+    try:
         resolve_board_repo_path = get_repo_resolver()
         if resolve_board_repo_path is None:
             raise RuntimeError("resolve_board_repo_path could not be imported")
 
-        # 1. First check if it's already resolved / cloned locally
-        existing_path = resolve_board_repo_path({"slug": slug, "git_url": git_url})
+        # 1. First check if it's already resolved / cloned locally without triggering auto-clone
+        orig_auto_clone = os.environ.get("ZEROFACTORY_AUTO_CLONE")
+        os.environ["ZEROFACTORY_AUTO_CLONE"] = "0"
+        try:
+            existing_path = resolve_board_repo_path({"slug": slug, "repo_alias": repo_alias, "git_url": git_url})
+        finally:
+            if orig_auto_clone is None:
+                os.environ.pop("ZEROFACTORY_AUTO_CLONE", None)
+            else:
+                os.environ["ZEROFACTORY_AUTO_CLONE"] = orig_auto_clone
+
         if (
             existing_path
             and existing_path.is_dir()
@@ -443,19 +462,39 @@ def test_clone_board(req: BoardTestClone):
                 status_code=400, detail=f"Git remote check failed: {err_msg}"
             )
 
-        # 3. Attempt clone via resolve_board_repo_path
-        cloned_path = resolve_board_repo_path({"slug": slug, "git_url": git_url})
-        if cloned_path and cloned_path.is_dir() and (cloned_path / ".git").exists():
+        # 3. Attempt clone directly with proper cleanup and descriptive error reporting
+        target_clone = get_board_repos_dir(slug) / (repo_alias or repo or slug)
+        if target_clone.exists() and not (target_clone / ".git").exists():
+            shutil.rmtree(target_clone, ignore_errors=True)
+
+        target_clone.parent.mkdir(parents=True, exist_ok=True)
+        clone_res = subprocess.run(
+            ["git", "clone", git_url, str(target_clone)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            stdin=subprocess.DEVNULL,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+
+        if (
+            clone_res.returncode == 0
+            and target_clone.is_dir()
+            and (target_clone / ".git").exists()
+        ):
             return {
                 "ok": True,
-                "message": f"Successfully cloned repository to {cloned_path}!",
+                "message": f"Successfully cloned repository to {target_clone}!",
                 "cloned": True,
-                "path": str(cloned_path),
+                "path": str(target_clone.resolve()),
             }
         else:
+            if target_clone.exists() and not (target_clone / ".git").exists():
+                shutil.rmtree(target_clone, ignore_errors=True)
+            err_msg = clone_res.stderr.strip() or "Git clone returned non-zero exit code"
             raise HTTPException(
                 status_code=500,
-                detail="Git clone failed to create a valid repository directory",
+                detail=f"Git clone failed: {err_msg}",
             )
 
     except HTTPException:
@@ -960,7 +999,6 @@ def sync_board_gh_issues_endpoint(
         board = conn.execute("SELECT * FROM boards WHERE slug = ?", (slug,)).fetchone()
         if not board:
             raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
-        board_dict = dict(board)
 
         if repo_alias:
             repo_row = conn.execute(

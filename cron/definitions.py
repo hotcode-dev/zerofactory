@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -142,8 +143,11 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
     """Resolve the local repository path for a given Kanban board."""
     slug = (board.get("slug") or "").strip()
     git_url = (board.get("git_url") or "").strip()
+    repo_alias = (board.get("repo_alias") or "").strip()
     if not git_url and board.get("repositories"):
         git_url = (board["repositories"][0].get("git_url") or "").strip()
+        if not repo_alias and board["repositories"][0].get("repo_alias"):
+            repo_alias = (board["repositories"][0].get("repo_alias") or "").strip()
     if not git_url and board.get("description"):
         match = re.search(r"(?:https?://|git@)[^\s)]+", board["description"])
         if match:
@@ -163,7 +167,7 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         _owner, repo = parts[0], parts[1]
 
     candidate_names = set()
-    for n in (slug, repo):
+    for n in (repo_alias, slug, repo):
         if n:
             candidate_names.add(n)
             candidate_names.add(n.lower())
@@ -210,13 +214,17 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         and not os.environ.get("ZEROFACTORY_SKIP_GIT")
         and not os.environ.get("ZEROFACTORY_SKIP_CLONE")
     ):
-        target_name = repo or slug
+        target_name = repo_alias or repo or slug
         if slug:
             target_clone = get_board_repos_dir(slug) / target_name
         else:
             target_clone = home / ".zerofactory" / "workspaces" / "default" / "repos" / target_name
 
         try:
+            # Clean up corrupted or partial non-git directory if present
+            if target_clone.exists() and not (target_clone / ".git").exists():
+                shutil.rmtree(target_clone, ignore_errors=True)
+
             target_clone.parent.mkdir(parents=True, exist_ok=True)
             res = subprocess.run(
                 ["git", "clone", git_url, str(target_clone)],
@@ -231,8 +239,20 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
                 and (target_clone / ".git").exists()
             ):
                 return target_clone.resolve()
+            else:
+                if target_clone.exists() and not (target_clone / ".git").exists():
+                    shutil.rmtree(target_clone, ignore_errors=True)
+                err_detail = (res.stderr or b"").decode("utf-8", errors="replace").strip()
+                _log.warning(
+                    "Auto-clone failed for %s (exit code %s): %s",
+                    git_url,
+                    res.returncode,
+                    err_detail,
+                )
         except Exception as e:
-            _log.debug("Auto-clone skipped or failed for %s: %s", git_url, e)
+            if target_clone.exists() and not (target_clone / ".git").exists():
+                shutil.rmtree(target_clone, ignore_errors=True)
+            _log.warning("Auto-clone error for %s: %s", git_url, e)
 
     return None
 

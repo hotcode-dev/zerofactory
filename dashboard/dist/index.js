@@ -2962,7 +2962,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, "✕ Remove")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-[11px] font-semibold text-slate-300" }, "Remote Git URL *"), React.createElement("button", {
 			type: "button",
 			disabled: isTestingClone || !repo.git_url,
-			onClick: () => handleTestClone(repo.git_url, repo.repo_alias || computeGitSlug(repo.git_url)),
+			onClick: () => handleTestClone(repo.git_url, effectiveSlug, repo.repo_alias || computeGitSlug(repo.git_url)),
 			className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
 		}, isTestingClone ? "Testing..." : "🧪 Test Clone")), React.createElement("input", {
 			className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono outline-none focus:border-indigo-500",
@@ -3128,7 +3128,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			}, "✕ Remove Repo")), React.createElement("div", { className: "space-y-1" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-[11px] font-semibold text-slate-300" }, "Remote Git URL"), React.createElement("button", {
 				type: "button",
 				disabled: isTestingClone || !r.git_url,
-				onClick: () => handleTestClone(r.git_url, r.repo_alias),
+				onClick: () => handleTestClone(r.git_url, editBoardForm.slug, r.repo_alias),
 				className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
 			}, isTestingClone ? "Testing..." : "🧪 Test Clone")), React.createElement("input", {
 				className: "w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono outline-none focus:border-indigo-500",
@@ -5345,7 +5345,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				setIsSubmittingBoard(false);
 			}
 		};
-		const handleTestClone = async (gitUrl, slug) => {
+		const handleTestClone = async (gitUrl, slug, repoAlias) => {
 			const url = (gitUrl || "").trim();
 			if (!url) {
 				setCloneTestResult({
@@ -5362,7 +5362,8 @@ var ZeroFactoryDashboard = (function(exports) {
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
 						git_url: url,
-						slug: slug || void 0
+						slug: slug || void 0,
+						repo_alias: repoAlias || void 0
 					})
 				});
 				if (res && res.ok) setCloneTestResult({

@@ -1562,7 +1562,7 @@ export function ZeroFactoryKanbanApp() {
     };
 
     // Test Git Clone
-    const handleTestClone = async (gitUrl, slug) => {
+    const handleTestClone = async (gitUrl, slug, repoAlias) => {
       const url = (gitUrl || "").trim();
       if (!url) {
         setCloneTestResult({ ok: false, message: "Please enter a Remote Git URL to test" });
@@ -1574,7 +1574,7 @@ export function ZeroFactoryKanbanApp() {
         const res = await fetchJSON(API_BASE + "/boards/test-clone", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ git_url: url, slug: slug || undefined })
+          body: JSON.stringify({ git_url: url, slug: slug || undefined, repo_alias: repoAlias || undefined })
         });
         if (res && res.ok) {
           setCloneTestResult({ ok: true, message: res.message || "Git clone verified successfully!" });

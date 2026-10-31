@@ -193,6 +193,7 @@ class BoardTestClone(BaseModel):
         ..., min_length=1, description="Remote Git URL to test cloning"
     )
     slug: str | None = Field(default=None, description="Optional board slug")
+    repo_alias: str | None = Field(default=None, description="Optional repository alias")
 
 
 class JiraSetupRequest(BaseModel):

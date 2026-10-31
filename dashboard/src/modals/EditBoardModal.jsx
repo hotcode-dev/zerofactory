@@ -183,7 +183,7 @@ export function EditBoardModal(props) {
                       {
                         type: "button",
                         disabled: isTestingClone || !r.git_url,
-                        onClick: () => handleTestClone(r.git_url, r.repo_alias),
+                        onClick: () => handleTestClone(r.git_url, editBoardForm.slug, r.repo_alias),
                         className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
                       },
                       isTestingClone ? "Testing..." : "🧪 Test Clone"

@@ -278,7 +278,7 @@ export function NewBoardModal(props) {
                       {
                         type: "button",
                         disabled: isTestingClone || !repo.git_url,
-                        onClick: () => handleTestClone(repo.git_url, repo.repo_alias || computeGitSlug(repo.git_url)),
+                        onClick: () => handleTestClone(repo.git_url, effectiveSlug, repo.repo_alias || computeGitSlug(repo.git_url)),
                         className: "text-[11px] font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 transition-colors"
                       },
                       isTestingClone ? "Testing..." : "🧪 Test Clone"
