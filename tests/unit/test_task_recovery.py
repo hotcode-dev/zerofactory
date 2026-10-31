@@ -260,6 +260,18 @@ class TestTaskRecovery(unittest.TestCase):
         self.assertFalse(res.get("duplicate", False))
         self.assertEqual(res["issue_url"], "https://github.com/hotcode-dev/zerofactory/issues/120")
 
+        # Verify ISSUE_TEMPLATE compliance: title [Bug]: prefix, bug/zerofactory labels, template markdown headers
+        gh_create_cmd = mock_run.call_args_list[1][0][0]
+        self.assertIn("--label", gh_create_cmd)
+        self.assertIn("bug,zerofactory", gh_create_cmd)
+        self.assertIn("[Bug]: Git worktree add failed with exit code 128", gh_create_cmd)
+        body_arg = gh_create_cmd[gh_create_cmd.index("--body") + 1]
+        self.assertIn("### Problem Description", body_arg)
+        self.assertIn("### Steps to Reproduce", body_arg)
+        self.assertIn("### Expected vs Actual Behavior", body_arg)
+        self.assertIn("### Zero Factory AI Investigation", body_arg)
+        self.assertIn("- [x] Request Zero Factory AI to investigate, reproduce, and prepare triage task", body_arg)
+
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()

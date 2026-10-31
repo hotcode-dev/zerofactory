@@ -1732,8 +1732,12 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
             if res.returncode == 0 and res.stdout.strip():
                 issues = json.loads(res.stdout)
                 target_title_norm = req.title.strip().lower()
+                if target_title_norm.startswith("[bug]:"):
+                    target_title_norm = target_title_norm[6:].strip()
                 for iss in issues:
                     iss_title = (iss.get("title") or "").strip().lower()
+                    if iss_title.startswith("[bug]:"):
+                        iss_title = iss_title[6:].strip()
                     if iss_title == target_title_norm or (
                         len(target_title_norm) > 15 and target_title_norm in iss_title
                     ):
@@ -1771,9 +1775,24 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
                 "message": f"Matching issue already open on {ZEROFACTORY_REPO}: {existing_url}",
             }
 
-        # Format issue body
+        # Format issue title with [Bug]: prefix matching .github/ISSUE_TEMPLATE/bug_report.yml
+        raw_title = req.title.strip()
+        issue_title = (
+            raw_title
+            if raw_title.lower().startswith("[bug]:")
+            else f"[Bug]: {raw_title}"
+        )
+
+        # Format issue body matching .github/ISSUE_TEMPLATE/bug_report.yml sections:
+        # 1. Problem Description
+        # 2. Steps to Reproduce
+        # 3. Expected vs Actual Behavior
+        # 4. Zero Factory AI Investigation
         body_lines = [
-            "### Zero Factory Internal Defect Report",
+            "### Problem Description",
+            "",
+            f"Zero Factory encountered an internal platform defect while servicing task `{task_id}` on board `{board_slug}` (`{repo_alias}`).",
+            "",
             f"- **Task ID:** `{task_id}`",
             f"- **Task Title:** {task_title}",
             f"- **Board / Repo:** `{board_slug}` / `{repo_alias}`",
@@ -1782,13 +1801,25 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
             "#### Defect Details & Context",
             (req.body or "No additional description provided.").strip(),
             "",
+            "### Steps to Reproduce",
+            "",
+            f"1. Run or dispatch task `{task_id}` on board `{board_slug}`.",
+            "2. Observe worker execution, precommit gate verification, or dispatch reaper cycle.",
+            "3. Internal platform error occurs (see actual behavior / stack trace below).",
+            "",
+            "### Expected vs Actual Behavior",
+            "",
+            "**Expected Behavior:**",
+            f"Task `{task_id}` executes cleanly through worker sessions, precommit validation, and PR packaging without unhandled exceptions or hangs.",
+            "",
+            "**Actual Behavior:**",
         ]
         if meta.get("last_worker_failure"):
             body_lines.extend(
                 [
+                    "",
                     "#### Last Worker Failure",
                     f"```json\n{json.dumps(meta.get('last_worker_failure'), indent=2)}\n```",
-                    "",
                 ]
             )
         if meta.get("last_precommit_error"):
@@ -1797,15 +1828,27 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
                 snippet = snippet[-1500:]
             body_lines.extend(
                 [
+                    "",
                     "#### Precommit Error Log",
                     f"```\n{snippet}\n```",
-                    "",
                 ]
             )
+        if not meta.get("last_worker_failure") and not meta.get("last_precommit_error"):
+            body_lines.append(f"Internal defect observed: {raw_title}")
+
+        body_lines.extend(
+            [
+                "",
+                "### Zero Factory AI Investigation",
+                "",
+                "- [x] Request Zero Factory AI to investigate, reproduce, and prepare triage task",
+                "",
+            ]
+        )
 
         full_body = _sanitize_defect_body("\n".join(body_lines))
 
-        # File issue using gh CLI
+        # File issue using gh CLI matching ISSUE_TEMPLATE labels and title
         issue_url = None
         try:
             cmd = [
@@ -1815,7 +1858,9 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
                 "--repo",
                 ZEROFACTORY_REPO,
                 "--title",
-                req.title.strip(),
+                issue_title,
+                "--label",
+                "bug,zerofactory",
                 "--body",
                 full_body,
             ]
