@@ -63,7 +63,6 @@ def test_build_openwiki_setup_task_prompt_multi_repo():
     assert "wiki-workspaces.json" not in prompt  # internal detail kept clean
 
 
-
 def test_openwiki_status_missing_board(initialized_db: Path):
     res = check_board_openwiki_status("nonexistent-board")
     assert res["ok"] is False

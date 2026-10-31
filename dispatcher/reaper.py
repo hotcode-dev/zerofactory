@@ -157,8 +157,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta.pop("last_worker_failure", None)
 
                     is_triage_task = (
-                        curr_stat == "triage"
-                        or curr_asgn == "zf-orchestrator"
+                        curr_stat == "triage" or curr_asgn == "zf-orchestrator"
                     )
                     blocked_reason = str(meta.get("blocked_reason") or "").lower()
                     if is_triage_task and (
@@ -790,9 +789,7 @@ def build_stuck_task_context(
     log_path = _worker_log_path(task_id)
     if log_path.exists():
         try:
-            lines = log_path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines()
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
             result["worker_log_tail"] = "\n".join(lines[-40:])
         except Exception as e:
             _log.debug("Failed reading worker log for %s: %s", task_id, e)

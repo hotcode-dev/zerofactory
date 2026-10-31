@@ -321,7 +321,9 @@ class TestAutomationScriptsE2E(unittest.TestCase):
 
         slug = board_slug
         with sqlite3.connect(str(self.db_path)) as conn:
-            conn.execute("UPDATE tasks SET status = 'done' WHERE board_slug = ?", (slug,))
+            conn.execute(
+                "UPDATE tasks SET status = 'done' WHERE board_slug = ?", (slug,)
+            )
             conn.commit()
 
         t = create_task(
@@ -360,7 +362,9 @@ class TestAutomationScriptsE2E(unittest.TestCase):
 
         # Move all tasks for board to 'done': now unblocked, automatically creates the new task on board for zf-builder!
         with sqlite3.connect(str(self.db_path)) as conn:
-            conn.execute("UPDATE tasks SET status = 'done' WHERE board_slug = ?", (slug,))
+            conn.execute(
+                "UPDATE tasks SET status = 'done' WHERE board_slug = ?", (slug,)
+            )
             conn.commit()
         rc9, out9 = self._run_script("zf_openwiki_gate.py", cwd=wiki_repo)
         self.assertEqual(rc9, 0)

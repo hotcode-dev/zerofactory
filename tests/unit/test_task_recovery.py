@@ -44,8 +44,12 @@ class TestTaskRecovery(unittest.TestCase):
     def test_constants_defined(self):
         """Verify repository constants are canonical."""
         self.assertEqual(ZEROFACTORY_REPO, "hotcode-dev/zerofactory")
-        self.assertEqual(ZEROFACTORY_GITHUB_URL, "https://github.com/hotcode-dev/zerofactory")
-        self.assertEqual(ZEROFACTORY_ISSUES_URL, "https://github.com/hotcode-dev/zerofactory/issues")
+        self.assertEqual(
+            ZEROFACTORY_GITHUB_URL, "https://github.com/hotcode-dev/zerofactory"
+        )
+        self.assertEqual(
+            ZEROFACTORY_ISSUES_URL, "https://github.com/hotcode-dev/zerofactory/issues"
+        )
 
     def test_cron_definition_has_queue_watchdog(self):
         """Verify zero-factory-task-queue-check is registered in CORE_CRON_JOBS."""
@@ -102,7 +106,9 @@ class TestTaskRecovery(unittest.TestCase):
         # 3. Verify DB state
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             self.assertEqual(row["status"], "todo")
             self.assertEqual(row["assignee"], "zf-builder")
             saved_meta = json.loads(row["metadata"])
@@ -114,7 +120,9 @@ class TestTaskRecovery(unittest.TestCase):
             self.assertEqual(saved_meta.get("recovered_by"), "zf-orchestrator")
 
             # Verify guidance comment was posted
-            comments = conn.execute("SELECT * FROM task_comments WHERE task_id = ?", (task_id,)).fetchall()
+            comments = conn.execute(
+                "SELECT * FROM task_comments WHERE task_id = ?", (task_id,)
+            ).fetchall()
             self.assertEqual(len(comments), 1)
             self.assertIn("Task Recovery", comments[0]["body"])
             self.assertIn("test_auth.py", comments[0]["body"])
@@ -189,13 +197,15 @@ class TestTaskRecovery(unittest.TestCase):
         """Detects existing open issue on hotcode-dev/zerofactory and avoids duplicate creation."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout=json.dumps([
-                {
-                    "number": 105,
-                    "title": "SQLite operational error database is locked",
-                    "url": "https://github.com/hotcode-dev/zerofactory/issues/105",
-                }
-            ]),
+            stdout=json.dumps(
+                [
+                    {
+                        "number": 105,
+                        "title": "SQLite operational error database is locked",
+                        "url": "https://github.com/hotcode-dev/zerofactory/issues/105",
+                    }
+                ]
+            ),
         )
 
         req = TaskCreate(
@@ -217,11 +227,15 @@ class TestTaskRecovery(unittest.TestCase):
 
         self.assertTrue(res["ok"])
         self.assertTrue(res.get("duplicate"))
-        self.assertEqual(res["issue_url"], "https://github.com/hotcode-dev/zerofactory/issues/105")
+        self.assertEqual(
+            res["issue_url"], "https://github.com/hotcode-dev/zerofactory/issues/105"
+        )
 
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             self.assertEqual(row["status"], "blocked")
             meta = json.loads(row["metadata"])
             self.assertEqual(meta["blocked_reason_type"], "human-gate")
@@ -258,26 +272,38 @@ class TestTaskRecovery(unittest.TestCase):
 
         self.assertTrue(res["ok"])
         self.assertFalse(res.get("duplicate", False))
-        self.assertEqual(res["issue_url"], "https://github.com/hotcode-dev/zerofactory/issues/120")
+        self.assertEqual(
+            res["issue_url"], "https://github.com/hotcode-dev/zerofactory/issues/120"
+        )
 
         # Verify ISSUE_TEMPLATE compliance: title [Bug]: prefix, bug/zerofactory labels, template markdown headers
         gh_create_cmd = mock_run.call_args_list[1][0][0]
         self.assertIn("--label", gh_create_cmd)
         self.assertIn("bug,zerofactory", gh_create_cmd)
-        self.assertIn("[Bug]: Git worktree add failed with exit code 128", gh_create_cmd)
+        self.assertIn(
+            "[Bug]: Git worktree add failed with exit code 128", gh_create_cmd
+        )
         body_arg = gh_create_cmd[gh_create_cmd.index("--body") + 1]
         self.assertIn("### Problem Description", body_arg)
         self.assertIn("### Steps to Reproduce", body_arg)
         self.assertIn("### Expected vs Actual Behavior", body_arg)
         self.assertIn("### Zero Factory AI Investigation", body_arg)
-        self.assertIn("- [x] Request Zero Factory AI to investigate, reproduce, and prepare triage task", body_arg)
+        self.assertIn(
+            "- [x] Request Zero Factory AI to investigate, reproduce, and prepare triage task",
+            body_arg,
+        )
 
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             self.assertEqual(row["status"], "blocked")
             meta = json.loads(row["metadata"])
-            self.assertEqual(meta["zf_bug_report"]["issue_url"], "https://github.com/hotcode-dev/zerofactory/issues/120")
+            self.assertEqual(
+                meta["zf_bug_report"]["issue_url"],
+                "https://github.com/hotcode-dev/zerofactory/issues/120",
+            )
 
     @patch("subprocess.run")
     def test_report_task_bug_optional_local_recording_default(self, mock_run):
@@ -306,12 +332,19 @@ class TestTaskRecovery(unittest.TestCase):
 
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             self.assertEqual(row["status"], "blocked")
             meta = json.loads(row["metadata"])
             self.assertFalse(meta["zf_bug_report"]["issue_created"])
-            self.assertEqual(meta["zf_bug_report"]["title"], "Internal dispatcher threading exception")
-            self.assertIn("Internal dispatcher threading exception", meta["blocked_reason"])
+            self.assertEqual(
+                meta["zf_bug_report"]["title"],
+                "Internal dispatcher threading exception",
+            )
+            self.assertIn(
+                "Internal dispatcher threading exception", meta["blocked_reason"]
+            )
 
     @patch("subprocess.run")
     def test_report_task_bug_explicit_no_issue(self, mock_run):
@@ -455,7 +488,11 @@ class TestTaskRecovery(unittest.TestCase):
         with contextlib.redirect_stdout(buf):
             cmd_runner(args)
 
-        gh_calls = [c for c in mock_run.call_args_list if c.args and c.args[0] and c.args[0][0] == "gh"]
+        gh_calls = [
+            c
+            for c in mock_run.call_args_list
+            if c.args and c.args[0] and c.args[0][0] == "gh"
+        ]
         self.assertEqual(len(gh_calls), 0)
         out = buf.getvalue()
         self.assertIn("Zero Factory defect recorded locally", out)

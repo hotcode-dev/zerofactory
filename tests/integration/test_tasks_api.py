@@ -75,11 +75,19 @@ def test_task_dependencies(api_client: TestClient, default_board: str):
     """Verify linking and unlinking task dependencies with repo_alias and link_type."""
     t1_id = api_client.post(
         "/api/plugins/zerofactory/tasks",
-        json={"title": "Parent Task", "board_slug": default_board, "repo_alias": "common-lib"},
+        json={
+            "title": "Parent Task",
+            "board_slug": default_board,
+            "repo_alias": "common-lib",
+        },
     ).json()["id"]
     t2_id = api_client.post(
         "/api/plugins/zerofactory/tasks",
-        json={"title": "Child Task", "board_slug": default_board, "repo_alias": "order-service"},
+        json={
+            "title": "Child Task",
+            "board_slug": default_board,
+            "repo_alias": "order-service",
+        },
     ).json()["id"]
 
     # Verify repo_alias was set
@@ -99,7 +107,9 @@ def test_task_dependencies(api_client: TestClient, default_board: str):
     child_details = api_client.get(f"/api/plugins/zerofactory/tasks/{t2_id}").json()[
         "task"
     ]
-    matching_parent = next((p for p in child_details.get("parents", []) if p["id"] == t1_id), None)
+    matching_parent = next(
+        (p for p in child_details.get("parents", []) if p["id"] == t1_id), None
+    )
     assert matching_parent is not None
     assert matching_parent["link_type"] == "blocks"
     assert matching_parent["repo_alias"] == "common-lib"
@@ -107,7 +117,11 @@ def test_task_dependencies(api_client: TestClient, default_board: str):
     # Test peer link relates_to
     t3_id = api_client.post(
         "/api/plugins/zerofactory/tasks",
-        json={"title": "Peer Task", "board_slug": default_board, "repo_alias": "api-gateway"},
+        json={
+            "title": "Peer Task",
+            "board_slug": default_board,
+            "repo_alias": "api-gateway",
+        },
     ).json()["id"]
     peer_link_res = api_client.post(
         f"/api/plugins/zerofactory/tasks/{t3_id}/dependencies",
@@ -459,7 +473,10 @@ def test_triage_task_split_multi_repo(api_client: TestClient):
             "slug": "split-test-board",
             "description": "Multi-repo Split Board",
             "repositories": [
-                {"repo_alias": "frontend", "git_url": "https://github.com/org/front.git"},
+                {
+                    "repo_alias": "frontend",
+                    "git_url": "https://github.com/org/front.git",
+                },
                 {"repo_alias": "backend", "git_url": "https://github.com/org/back.git"},
             ],
         },
@@ -506,7 +523,9 @@ def test_triage_task_split_multi_repo(api_client: TestClient):
     assert back_task["assignee"] == "zf-builder"
 
     # 4. Verify parent task moved to done and has task_links and summary comments
-    parent_after = api_client.get(f"/api/plugins/zerofactory/tasks/{parent_id}").json()["task"]
+    parent_after = api_client.get(f"/api/plugins/zerofactory/tasks/{parent_id}").json()[
+        "task"
+    ]
     assert parent_after["status"] == "done"
     assert parent_after["assignee"] == "zf-orchestrator"
     children = parent_after.get("children", [])
@@ -548,5 +567,3 @@ def test_move_task_preserves_title_without_mutating(
     assert task["status"] == "todo"
     assert task["assignee"] == "zf-builder"
     assert task["title"] == raw_title
-
-

@@ -250,7 +250,9 @@ def resolve_repo_path(
         try:
             from ..paths import get_board_repos_dir  # type: ignore
         except Exception:
-            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+            get_board_repos_dir = lambda b: (
+                Path.home() / ".zerofactory" / "workspaces" / b / "repos"
+            )  # type: ignore
 
     b_repos = get_board_repos_dir(board_slug)
     candidates: list[Path] = [
@@ -269,7 +271,6 @@ def resolve_repo_path(
             return cand.resolve()
 
     return None
-
 
 
 def has_active_openwiki_task(
@@ -332,7 +333,9 @@ def evaluate_single_repo_openwiki(
 
     # 3. Check if active OpenWiki task already exists
     if not force_update:
-        has_active, active_reason = has_active_openwiki_task(slug, repo_alias=repo_alias)
+        has_active, active_reason = has_active_openwiki_task(
+            slug, repo_alias=repo_alias
+        )
         if has_active:
             return False, active_reason
 
@@ -393,7 +396,10 @@ def evaluate_single_repo_openwiki(
     if not base_commit:
         if auto_create_task:
             task = create_openwiki_task(
-                slug, "Initial OpenWiki documentation sync", repo_dir, repo_alias=repo_alias
+                slug,
+                "Initial OpenWiki documentation sync",
+                repo_dir,
+                repo_alias=repo_alias,
             )
             if task and task.get("id"):
                 return (
@@ -499,7 +505,11 @@ def check_openwiki_gate(
                 continue
 
             wake, reason = evaluate_single_repo_openwiki(
-                r_path, slug, repo_alias=alias, force_update=force_update, auto_create_task=auto_create_task
+                r_path,
+                slug,
+                repo_alias=alias,
+                force_update=force_update,
+                auto_create_task=auto_create_task,
             )
             reasons.append(f"[{alias}] {reason}")
             if wake:
@@ -507,13 +517,21 @@ def check_openwiki_gate(
             if "created task" in reason:
                 tasks_created += 1
 
-        summary = "\n".join(reasons) if reasons else f"No initialized openwiki/ repositories found on board '{slug}'."
+        summary = (
+            "\n".join(reasons)
+            if reasons
+            else f"No initialized openwiki/ repositories found on board '{slug}'."
+        )
         return any_wake, summary
 
     # Single-repo or test fallback
     first_alias = board_repos[0]["repo_alias"] if board_repos else None
     return evaluate_single_repo_openwiki(
-        repo_dir, slug, repo_alias=first_alias, force_update=force_update, auto_create_task=auto_create_task
+        repo_dir,
+        slug,
+        repo_alias=first_alias,
+        force_update=force_update,
+        auto_create_task=auto_create_task,
     )
 
 

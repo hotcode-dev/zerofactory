@@ -161,6 +161,7 @@ class TestPathsResolution(unittest.TestCase):
             {"zf-builder", "zf-reviewer", "zf-orchestrator"},
         )
         self.assertNotIn("unassigned", D.VALID_PROFILES)
+
     def test_workspace_paths(self):
         """Test default and overridden workspace directories."""
         import os
@@ -175,11 +176,19 @@ class TestPathsResolution(unittest.TestCase):
                     )
                     self.assertEqual(
                         P.get_board_repos_dir("my-board"),
-                        home_root / ".zerofactory" / "workspaces" / "my-board" / "repos",
+                        home_root
+                        / ".zerofactory"
+                        / "workspaces"
+                        / "my-board"
+                        / "repos",
                     )
                     self.assertEqual(
                         P.get_board_worktrees_dir("my-board"),
-                        home_root / ".zerofactory" / "workspaces" / "my-board" / "worktrees",
+                        home_root
+                        / ".zerofactory"
+                        / "workspaces"
+                        / "my-board"
+                        / "worktrees",
                     )
 
                 custom_ws = Path(td) / "custom_workspaces"

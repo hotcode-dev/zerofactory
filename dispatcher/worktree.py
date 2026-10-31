@@ -50,10 +50,15 @@ def resolve_task_repo_path(
                     pass
             if not repo_row:
                 try:
-                    cursor.execute("SELECT slug, git_url FROM boards WHERE slug = ?", (board_slug,))
+                    cursor.execute(
+                        "SELECT slug, git_url FROM boards WHERE slug = ?", (board_slug,)
+                    )
                     b_row = cursor.fetchone()
                     if b_row and dict(b_row).get("git_url"):
-                        repo_row = {"repo_alias": dict(b_row)["slug"], "git_url": dict(b_row)["git_url"]}
+                        repo_row = {
+                            "repo_alias": dict(b_row)["slug"],
+                            "git_url": dict(b_row)["git_url"],
+                        }
                 except Exception:
                     pass
 
@@ -76,8 +81,14 @@ def resolve_task_repo_path(
                 except Exception:
                     from builtin_cron import resolve_board_repo_path  # type: ignore
 
-                resolved_r = resolve_board_repo_path({"git_url": url, "slug": board_slug or alias, "repo_alias": alias})
-                if resolved_r and resolved_r.exists() and (resolved_r / ".git").exists():
+                resolved_r = resolve_board_repo_path(
+                    {"git_url": url, "slug": board_slug or alias, "repo_alias": alias}
+                )
+                if (
+                    resolved_r
+                    and resolved_r.exists()
+                    and (resolved_r / ".git").exists()
+                ):
                     return resolved_r
 
                 try:
@@ -86,7 +97,9 @@ def resolve_task_repo_path(
                     try:
                         from ..paths import get_board_repos_dir  # type: ignore
                     except Exception:
-                        get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+                        get_board_repos_dir = lambda b: (
+                            Path.home() / ".zerofactory" / "workspaces" / b / "repos"
+                        )  # type: ignore
 
                 if board_slug and alias:
                     w_repo = get_board_repos_dir(board_slug) / alias
@@ -109,7 +122,9 @@ def resolve_task_repo_path(
             try:
                 from ..paths import get_board_repos_dir  # type: ignore
             except Exception:
-                get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+                get_board_repos_dir = lambda b: (
+                    Path.home() / ".zerofactory" / "workspaces" / b / "repos"
+                )  # type: ignore
         b_repos = get_board_repos_dir(board_slug)
         if repo_alias:
             w_repo = b_repos / repo_alias
@@ -183,7 +198,9 @@ def setup_worktree(
             try:
                 from ..paths import get_board_worktrees_dir  # type: ignore
             except Exception:
-                get_board_worktrees_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "worktrees"  # type: ignore
+                get_board_worktrees_dir = lambda b: (
+                    Path.home() / ".zerofactory" / "workspaces" / b / "worktrees"
+                )  # type: ignore
         worktree_base = get_board_worktrees_dir(board_slug)
     else:
         worktree_base = repo_path.parent / f"{repo_path.name}-worktrees"
@@ -583,13 +600,20 @@ def _remove_worktree(workspace_path: str | None, repo_path: Path) -> None:
 
     # 1. Clean up any sibling worktrees in task_root if under a -worktrees or workspaces/.../worktrees directory
     try:
-        is_managed_worktree = "-worktrees" in str(task_root) or "worktrees" in task_root.parts
+        is_managed_worktree = (
+            "-worktrees" in str(task_root) or "worktrees" in task_root.parts
+        )
         if task_root.exists() and is_managed_worktree:
             for item in task_root.iterdir():
                 if item.is_dir() and item != ws_path and (item / ".git").is_file():
                     try:
                         rev_res = subprocess.run(
-                            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            [
+                                "git",
+                                "rev-parse",
+                                "--path-format=absolute",
+                                "--git-common-dir",
+                            ],
                             cwd=str(item),
                             capture_output=True,
                             text=True,
@@ -613,7 +637,9 @@ def _remove_worktree(workspace_path: str | None, repo_path: Path) -> None:
                                 timeout=_WORKTREE_REMOVE_TIMEOUT,
                             )
                     except Exception as e:
-                        _log.debug("Could not cleanly remove sibling worktree %s: %s", item, e)
+                        _log.debug(
+                            "Could not cleanly remove sibling worktree %s: %s", item, e
+                        )
     except Exception as e:
         _log.debug("Could not inspect siblings in task_root %s: %s", task_root, e)
 
@@ -677,9 +703,9 @@ def _remove_worktree(workspace_path: str | None, repo_path: Path) -> None:
     try:
         import shutil
 
-        is_managed_task_root = (
-            "-worktrees" in str(task_root)
-            or ("worktrees" in task_root.parts and task_root.name == str(ws_path.parent.name))
+        is_managed_task_root = "-worktrees" in str(task_root) or (
+            "worktrees" in task_root.parts
+            and task_root.name == str(ws_path.parent.name)
         )
         if (
             task_root.exists()

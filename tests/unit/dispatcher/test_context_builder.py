@@ -175,7 +175,9 @@ def test_digest_board_architecture_context(tmp_path: Path):
         )
         conn.commit()
 
-    ctx = digest_board_architecture_context("b-multi", current_repo_alias="gateway", db_path=str(db_file))
+    ctx = digest_board_architecture_context(
+        "b-multi", current_repo_alias="gateway", db_path=str(db_file)
+    )
     assert "SYSTEM ARCHITECTURE & MULTI-REPO TOPOLOGY" in ctx
     assert "Active Target Repository: `gateway`" in ctx
     assert "auth-service" in ctx
@@ -221,8 +223,12 @@ def test_digest_parent_and_peer_tasks_context(tmp_path: Path):
         )
 
         # t-2 is blocked by t-1 (blocks) and relates to t-3 (relates_to)
-        conn.execute("INSERT INTO task_links (parent_id, child_id, link_type) VALUES ('t-1', 't-2', 'blocks')")
-        conn.execute("INSERT INTO task_links (parent_id, child_id, link_type) VALUES ('t-2', 't-3', 'relates_to')")
+        conn.execute(
+            "INSERT INTO task_links (parent_id, child_id, link_type) VALUES ('t-1', 't-2', 'blocks')"
+        )
+        conn.execute(
+            "INSERT INTO task_links (parent_id, child_id, link_type) VALUES ('t-2', 't-3', 'relates_to')"
+        )
         conn.commit()
 
     ctx = digest_parent_and_peer_tasks_context("t-2", db_path=str(db_file))
@@ -232,4 +238,3 @@ def test_digest_parent_and_peer_tasks_context(tmp_path: Path):
     assert "(PR: https://github.com/org/common/pull/1)" in ctx
     assert "Related Peer Tasks in this Feature:" in ctx
     assert "#t-3 [gateway]: Update gateway" in ctx
-

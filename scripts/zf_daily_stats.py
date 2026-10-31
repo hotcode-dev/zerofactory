@@ -112,10 +112,10 @@ def run_daily_stats() -> int:
                     )
                     boards = [dict(r) for r in cursor.fetchall()]
                 except Exception:
-                    cursor.execute(
-                        "SELECT slug FROM boards ORDER BY created_at ASC"
-                    )
-                    boards = [{"slug": r["slug"], "git_url": ""} for r in cursor.fetchall()]
+                    cursor.execute("SELECT slug FROM boards ORDER BY created_at ASC")
+                    boards = [
+                        {"slug": r["slug"], "git_url": ""} for r in cursor.fetchall()
+                    ]
 
     except Exception as e:
         print(f"Failed to query database metrics: {e}")

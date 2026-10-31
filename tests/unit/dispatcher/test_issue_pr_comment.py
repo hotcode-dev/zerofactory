@@ -114,10 +114,7 @@ def _seed_task(db_path: Path, metadata: dict, workspace_dir: Path):
     metadata.setdefault("awaiting_pr", True)
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
-        conn.execute(
-            "INSERT INTO boards (slug, name) "
-            "VALUES ('b1', 'Board')"
-        )
+        conn.execute("INSERT INTO boards (slug, name) VALUES ('b1', 'Board')")
         conn.execute(
             "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) "
             "VALUES ('b1', 'main', 'https://github.com/foo/bar.git', 'main')"

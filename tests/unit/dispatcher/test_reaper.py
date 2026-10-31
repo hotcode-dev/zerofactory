@@ -393,7 +393,10 @@ def test_reaper_spawn_grace_env_override(monkeypatch):
 
 def test_get_task_timeout_seconds_db_fallback(tmp_path: Path, monkeypatch):
     """get_task_timeout_seconds reads settings table from DB even without explicit conn."""
-    from dispatcher.config import get_task_timeout_seconds, get_inactivity_timeout_seconds
+    from dispatcher.config import (
+        get_task_timeout_seconds,
+        get_inactivity_timeout_seconds,
+    )
     import sqlite3
 
     db_file = tmp_path / "test_zerofactory.db"
@@ -517,13 +520,15 @@ def test_check_stuck_tasks_all_4_states(tmp_path: Path, monkeypatch):
             "blocked",
             "human",
             None,
-            json.dumps({
-                "blocked_reason_type": "stuck",
-                "blocked_reason": "Deterministic precommit failed after 3 attempts",
-                "precommit_retries": 3,
-                "orchestrator_recovery_count": 0,
-                "last_precommit_error": "SyntaxError on line 42",
-            }),
+            json.dumps(
+                {
+                    "blocked_reason_type": "stuck",
+                    "blocked_reason": "Deterministic precommit failed after 3 attempts",
+                    "precommit_retries": 3,
+                    "orchestrator_recovery_count": 0,
+                    "last_precommit_error": "SyntaxError on line 42",
+                }
+            ),
             now - 1000,
             now - 1000,
             "default",
@@ -533,12 +538,17 @@ def test_check_stuck_tasks_all_4_states(tmp_path: Path, monkeypatch):
     conn.commit()
 
     # 1. Calling with include_blocked=False returns only running stuck tasks
-    running_stuck = check_stuck_tasks(conn.cursor(), db_path=db_file, include_blocked=False)
+    running_stuck = check_stuck_tasks(
+        conn.cursor(), db_path=db_file, include_blocked=False
+    )
     stuck_ids = {t["id"]: t for t in running_stuck if t.get("is_stuck")}
     assert "t-orphan" in stuck_ids
     assert stuck_ids["t-orphan"]["stuck_state"] == "dead_worker"
     assert "t-timeout" in stuck_ids
-    assert stuck_ids["t-timeout"]["stuck_state"] in ("dead_worker", "timeout_inactivity")
+    assert stuck_ids["t-timeout"]["stuck_state"] in (
+        "dead_worker",
+        "timeout_inactivity",
+    )
     assert "t-packaging" in stuck_ids
     assert stuck_ids["t-packaging"]["stuck_state"] == "stuck_packaging"
     assert "t-exhausted" not in stuck_ids
@@ -556,4 +566,3 @@ def test_check_stuck_tasks_all_4_states(tmp_path: Path, monkeypatch):
     assert "SyntaxError" in ctx["last_precommit_error"]
 
     conn.close()
-

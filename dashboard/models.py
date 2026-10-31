@@ -61,14 +61,22 @@ VALID_REPO_ROLES = {"library", "gateway", "service", "worker", "docs", "other"}
 
 
 class BoardRepoCreate(BaseModel):
-    repo_alias: str = Field(..., min_length=1, max_length=128, description="Friendly alias (e.g. common-lib, order-service)")
+    repo_alias: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        description="Friendly alias (e.g. common-lib, order-service)",
+    )
     git_url: str = Field(..., min_length=1, description="Remote Git URL")
     target_branch: str | None = Field(default="main", description="Target base branch")
     additional_reviewer_usernames: list[str] | None = Field(
         default_factory=list,
         description="Additional GitHub usernames whose PR feedback is trusted",
     )
-    role: str | None = Field(default=None, description="Optional classification (service, library, worker, etc.)")
+    role: str | None = Field(
+        default=None,
+        description="Optional classification (service, library, worker, etc.)",
+    )
     is_primary: bool | None = Field(default=None, description="Legacy/optional flag")
 
 
@@ -92,7 +100,10 @@ class BoardRepoResponse(BaseModel):
 
 
 class BoardArchitectureUpdate(BaseModel):
-    architecture: str = Field(..., description="Hybrid YAML frontmatter + Markdown body describing architecture")
+    architecture: str = Field(
+        ...,
+        description="Hybrid YAML frontmatter + Markdown body describing architecture",
+    )
 
 
 class BoardCreate(BaseModel):
@@ -148,7 +159,9 @@ class BoardCreate(BaseModel):
         has_git_url = bool(self.git_url and self.git_url.strip())
         has_repos = bool(self.repositories and len(self.repositories) > 0)
         if not has_git_url and not has_repos:
-            raise ValueError("Either git_url or repositories must be provided and non-empty")
+            raise ValueError(
+                "Either git_url or repositories must be provided and non-empty"
+            )
         return self
 
 
@@ -193,7 +206,9 @@ class BoardTestClone(BaseModel):
         ..., min_length=1, description="Remote Git URL to test cloning"
     )
     slug: str | None = Field(default=None, description="Optional board slug")
-    repo_alias: str | None = Field(default=None, description="Optional repository alias")
+    repo_alias: str | None = Field(
+        default=None, description="Optional repository alias"
+    )
 
 
 class JiraSetupRequest(BaseModel):
@@ -268,8 +283,12 @@ class TaskRecoverRequest(BaseModel):
 
 
 class TaskReportBugRequest(BaseModel):
-    title: str = Field(..., min_length=5, description="Issue title for hotcode-dev/zerofactory")
-    body: str | None = Field(default=None, description="Detailed defect description and trace")
+    title: str = Field(
+        ..., min_length=5, description="Issue title for hotcode-dev/zerofactory"
+    )
+    body: str | None = Field(
+        default=None, description="Detailed defect description and trace"
+    )
     actor: str | None = Field(default="user", description="Actor filing bug report")
     create_issue: bool | None = Field(
         default=None,

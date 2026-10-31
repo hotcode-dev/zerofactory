@@ -96,7 +96,9 @@ def test_attempt_pr_automerge_fallback_to_auto(mock_run, monkeypatch):
     monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
     # First call fails because checks are required; second call with --auto succeeds
     mock_run.side_effect = [
-        MagicMock(returncode=1, stdout="", stderr="required status checks are in progress"),
+        MagicMock(
+            returncode=1, stdout="", stderr="required status checks are in progress"
+        ),
         MagicMock(returncode=0, stdout="Auto-merge enabled\n", stderr=""),
     ]
 
@@ -111,7 +113,9 @@ def test_worker_prompt_automerge_injection(tmp_path, monkeypatch):
     db_file = tmp_path / "test.db"
     conn = sqlite3.connect(str(db_file))
     conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, automerge INTEGER)")
-    conn.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, tags TEXT, metadata TEXT, repo_alias TEXT)")
+    conn.execute(
+        "CREATE TABLE tasks (id TEXT PRIMARY KEY, tags TEXT, metadata TEXT, repo_alias TEXT)"
+    )
     conn.execute("INSERT INTO boards VALUES ('test-board', 1)")
     conn.execute("INSERT INTO tasks VALUES ('t1', '[]', '{}', 'main-repo')")
     conn.commit()
@@ -124,7 +128,9 @@ def test_worker_prompt_automerge_injection(tmp_path, monkeypatch):
     with (
         patch("subprocess.Popen") as mock_popen,
         patch("dispatcher.worker_spawner.resolve_profile_state_db", return_value=None),
-        patch("dispatcher.check_unresolved_conflicts_safe", return_value=(True, [], "")),
+        patch(
+            "dispatcher.check_unresolved_conflicts_safe", return_value=(True, [], "")
+        ),
     ):
         mock_proc = MagicMock()
         mock_proc.pid = 1234
@@ -161,7 +167,10 @@ def test_worker_prompt_automerge_injection(tmp_path, monkeypatch):
         cmd_reviewer = mock_popen.call_args[0][0]
         prompt_reviewer = cmd_reviewer[cmd_reviewer.index("-q") + 1]
         assert "🚨 CRITICAL: AUTO-MERGE ACTIVE" in prompt_reviewer
-        assert "This PR will be automatically merged into the target branch" in prompt_reviewer
+        assert (
+            "This PR will be automatically merged into the target branch"
+            in prompt_reviewer
+        )
 
         # 3. Disable automerge on board
         conn = sqlite3.connect(str(db_file))
@@ -207,9 +216,15 @@ def test_scheduler_automerge_on_approval(tmp_path, monkeypatch):
             updated_at INTEGER
         )"""
     )
-    conn.execute("CREATE TABLE board_repositories (board_slug TEXT, repo_alias TEXT, additional_reviewer_usernames TEXT)")
-    conn.execute("CREATE TABLE task_comments (id INTEGER PRIMARY KEY, task_id TEXT, author TEXT, body TEXT, created_at INTEGER)")
-    conn.execute("CREATE TABLE task_activity (id INTEGER PRIMARY KEY, task_id TEXT, actor TEXT, action TEXT, details TEXT, created_at INTEGER)")
+    conn.execute(
+        "CREATE TABLE board_repositories (board_slug TEXT, repo_alias TEXT, additional_reviewer_usernames TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE task_comments (id INTEGER PRIMARY KEY, task_id TEXT, author TEXT, body TEXT, created_at INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE task_activity (id INTEGER PRIMARY KEY, task_id TEXT, actor TEXT, action TEXT, details TEXT, created_at INTEGER)"
+    )
 
     conn.execute("INSERT INTO boards VALUES ('test-board', 1)")
     conn.execute("INSERT INTO board_repositories VALUES ('test-board', 'repo-1', '[]')")
@@ -271,11 +286,12 @@ def test_scheduler_automerge_on_approval(tmp_path, monkeypatch):
         assert updated_task["status"] == "done"
 
         # Activity row should record 'automerged'
-        cursor.execute("SELECT action, details FROM task_activity WHERE task_id = 'task-100'")
+        cursor.execute(
+            "SELECT action, details FROM task_activity WHERE task_id = 'task-100'"
+        )
         act = cursor.fetchone()
         assert act is not None
         assert act["action"] == "automerged"
         assert "Auto-Merge mode" in act["details"]
 
     conn.close()
-

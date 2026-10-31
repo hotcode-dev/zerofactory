@@ -293,9 +293,7 @@ class TestOpenWikiGate(unittest.TestCase):
 
         db_file = self.tmp / "zerofactory.db"
         with sqlite3.connect(str(db_file)) as conn:
-            conn.execute(
-                "CREATE TABLE boards (slug TEXT PRIMARY KEY)"
-            )
+            conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY)")
             conn.execute(
                 "CREATE TABLE board_repositories (id INTEGER PRIMARY KEY AUTOINCREMENT, board_slug TEXT, repo_alias TEXT, git_url TEXT, target_branch TEXT)"
             )
@@ -362,15 +360,27 @@ class TestOpenWikiGate(unittest.TestCase):
 
             with patch("paths.get_board_repos_dir", return_value=temp_repos):
                 # 1. Standard https url
-                res = self.gate.resolve_repo_path("test-board", "zerohub", "https://github.com/hotcode-dev/zerohub.git", self.tmp)
+                res = self.gate.resolve_repo_path(
+                    "test-board",
+                    "zerohub",
+                    "https://github.com/hotcode-dev/zerohub.git",
+                    self.tmp,
+                )
                 self.assertEqual(res, repo_dir.resolve())
 
                 # 2. SSH url
-                res_ssh = self.gate.resolve_repo_path("test-board", "zerohub", "git@github.com:hotcode-dev/zerohub.git", self.tmp)
+                res_ssh = self.gate.resolve_repo_path(
+                    "test-board",
+                    "zerohub",
+                    "git@github.com:hotcode-dev/zerohub.git",
+                    self.tmp,
+                )
                 self.assertEqual(res_ssh, repo_dir.resolve())
 
                 # 3. Clean fallback when git_url is empty
-                res_empty = self.gate.resolve_repo_path("test-board", "zerohub", "", self.tmp)
+                res_empty = self.gate.resolve_repo_path(
+                    "test-board", "zerohub", "", self.tmp
+                )
                 self.assertEqual(res_empty, repo_dir.resolve())
 
                 # 4. Returns None when repo is missing and current_dir is an unrelated repo
@@ -381,4 +391,3 @@ class TestOpenWikiGate(unittest.TestCase):
                     self.tmp,
                 )
                 self.assertIsNone(res_missing)
-

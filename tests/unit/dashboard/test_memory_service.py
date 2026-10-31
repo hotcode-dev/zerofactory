@@ -135,11 +135,8 @@ def test_mem0_disabled_setting():
     from dashboard.memory_service import get_mem0_client
 
     conn = _init_memory_db()
-    conn.execute(
-        "INSERT INTO settings (key, value) VALUES ('mem0_enabled', 'false')"
-    )
+    conn.execute("INSERT INTO settings (key, value) VALUES ('mem0_enabled', 'false')")
     conn.commit()
 
     client = get_mem0_client(conn)
     assert client is None
-

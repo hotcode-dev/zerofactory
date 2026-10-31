@@ -282,7 +282,9 @@ Shared protobufs in common-lib.
     assert add_repo_res.json()["repository"]["repo_alias"] == "event-worker"
 
     # 4. List repositories
-    list_repos_res = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/repositories")
+    list_repos_res = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/repositories"
+    )
     assert list_repos_res.status_code == 200
     repo_aliases = [r["repo_alias"] for r in list_repos_res.json()["repositories"]]
     assert "event-worker" in repo_aliases
@@ -291,11 +293,16 @@ Shared protobufs in common-lib.
     # 5. Update repository
     put_repo_res = api_client.put(
         f"/api/plugins/zerofactory/boards/{slug}/repositories/event-worker",
-        json={"target_branch": "develop", "additional_reviewer_usernames": ["worker-lead", "qa-eng"]},
+        json={
+            "target_branch": "develop",
+            "additional_reviewer_usernames": ["worker-lead", "qa-eng"],
+        },
     )
     assert put_repo_res.status_code == 200
     assert put_repo_res.json()["repository"]["target_branch"] == "develop"
-    assert "qa-eng" in put_repo_res.json()["repository"]["additional_reviewer_usernames"]
+    assert (
+        "qa-eng" in put_repo_res.json()["repository"]["additional_reviewer_usernames"]
+    )
 
     # 6. Update architecture via PUT /architecture
     new_arch = "### Updated Architecture\nAll services ready."
@@ -306,27 +313,37 @@ Shared protobufs in common-lib.
     assert arch_res.status_code == 200
     assert arch_res.json()["architecture"] == new_arch
 
-    get_arch_res = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/architecture")
+    get_arch_res = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/architecture"
+    )
     assert get_arch_res.status_code == 200
     assert get_arch_res.json()["architecture"] == new_arch
 
     # 7. Delete repository
-    del_repo_res = api_client.delete(f"/api/plugins/zerofactory/boards/{slug}/repositories/event-worker")
+    del_repo_res = api_client.delete(
+        f"/api/plugins/zerofactory/boards/{slug}/repositories/event-worker"
+    )
     assert del_repo_res.status_code == 200
 
-    list_after_del = api_client.get(f"/api/plugins/zerofactory/boards/{slug}/repositories")
+    list_after_del = api_client.get(
+        f"/api/plugins/zerofactory/boards/{slug}/repositories"
+    )
     aliases_after = [r["repo_alias"] for r in list_after_del.json()["repositories"]]
     assert "event-worker" not in aliases_after
     assert len(aliases_after) == 3
 
 
-def test_test_clone_board_already_existing(api_client: TestClient, tmp_path, monkeypatch):
+def test_test_clone_board_already_existing(
+    api_client: TestClient, tmp_path, monkeypatch
+):
     """When repo already exists locally, test-clone returns ok without calling git clone."""
     target_repo = tmp_path / "workspaces" / "my-board" / "repos" / "my-repo"
     target_repo.mkdir(parents=True)
     (target_repo / ".git").mkdir()
 
-    monkeypatch.setattr("paths.get_board_repos_dir", lambda b: tmp_path / "workspaces" / b / "repos")
+    monkeypatch.setattr(
+        "paths.get_board_repos_dir", lambda b: tmp_path / "workspaces" / b / "repos"
+    )
     monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
 
     res = api_client.post(
@@ -346,7 +363,9 @@ def test_test_clone_board_already_existing(api_client: TestClient, tmp_path, mon
 
 def test_test_clone_board_remote_failure(api_client: TestClient, tmp_path, monkeypatch):
     """When remote check fails (ls-remote error), test-clone returns 400 with exact error."""
-    monkeypatch.setattr("paths.get_board_repos_dir", lambda b: tmp_path / "workspaces" / b / "repos")
+    monkeypatch.setattr(
+        "paths.get_board_repos_dir", lambda b: tmp_path / "workspaces" / b / "repos"
+    )
     monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
 
     class FakeLsRemoteFail:
@@ -364,32 +383,43 @@ def test_test_clone_board_remote_failure(api_client: TestClient, tmp_path, monke
         },
     )
     assert res.status_code == 400
-    assert "fatal: Repository 'https://github.com/nonexistent/fake.git' not found" in res.json()["detail"]
+    assert (
+        "fatal: Repository 'https://github.com/nonexistent/fake.git' not found"
+        in res.json()["detail"]
+    )
 
 
-def test_test_clone_board_clone_failure_cleaned_up(api_client: TestClient, tmp_path, monkeypatch):
+def test_test_clone_board_clone_failure_cleaned_up(
+    api_client: TestClient, tmp_path, monkeypatch
+):
     """When git clone fails, corrupted dir is cleaned up and exact error is returned."""
     board_repos_dir = tmp_path / "workspaces" / "my-board" / "repos"
-    monkeypatch.setattr("paths.get_board_repos_dir", lambda b: tmp_path / "workspaces" / b / "repos")
+    monkeypatch.setattr(
+        "paths.get_board_repos_dir", lambda b: tmp_path / "workspaces" / b / "repos"
+    )
     monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
 
     target_dir = board_repos_dir / "my-repo"
 
     def fake_subprocess_run(cmd, *args, **kwargs):
         if cmd[1] == "ls-remote":
+
             class LsRes:
                 returncode = 0
                 stdout = "hash\trefs/heads/main"
                 stderr = ""
+
             return LsRes()
         if cmd[1] == "clone":
             # Simulate clone starting and creating partial folder before failing
             target_dir.mkdir(parents=True, exist_ok=True)
             (target_dir / "partial.tmp").write_text("broken")
+
             class CloneRes:
                 returncode = 128
                 stdout = ""
                 stderr = "fatal: unable to access 'https://github.com/broken/repo.git/': Connection reset by peer"
+
             return CloneRes()
         raise NotImplementedError(cmd)
 
@@ -413,25 +443,31 @@ def test_test_clone_board_clone_failure_cleaned_up(api_client: TestClient, tmp_p
 def test_test_clone_board_success(api_client: TestClient, tmp_path, monkeypatch):
     """When git clone succeeds, returns 200 with path."""
     board_repos_dir = tmp_path / "workspaces" / "my-board" / "repos"
-    monkeypatch.setattr("paths.get_board_repos_dir", lambda b: tmp_path / "workspaces" / b / "repos")
+    monkeypatch.setattr(
+        "paths.get_board_repos_dir", lambda b: tmp_path / "workspaces" / b / "repos"
+    )
     monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
 
     target_dir = board_repos_dir / "my-repo"
 
     def fake_subprocess_run(cmd, *args, **kwargs):
         if cmd[1] == "ls-remote":
+
             class LsRes:
                 returncode = 0
                 stdout = "hash\trefs/heads/main"
                 stderr = ""
+
             return LsRes()
         if cmd[1] == "clone":
             target_dir.mkdir(parents=True, exist_ok=True)
             (target_dir / ".git").mkdir()
+
             class CloneRes:
                 returncode = 0
                 stdout = ""
                 stderr = "Cloning into..."
+
             return CloneRes()
         raise NotImplementedError(cmd)
 
@@ -450,4 +486,3 @@ def test_test_clone_board_success(api_client: TestClient, tmp_path, monkeypatch)
     assert data["ok"] is True
     assert data["cloned"] is True
     assert "Successfully cloned repository" in data["message"]
-

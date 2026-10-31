@@ -191,7 +191,9 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         try:
             from ..paths import get_board_repos_dir  # type: ignore
         except Exception:
-            get_board_repos_dir = lambda b: home / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+            get_board_repos_dir = lambda b: (
+                home / ".zerofactory" / "workspaces" / b / "repos"
+            )  # type: ignore
 
     if slug:
         board_repos_dir = get_board_repos_dir(slug)
@@ -218,7 +220,9 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
         if slug:
             target_clone = get_board_repos_dir(slug) / target_name
         else:
-            target_clone = home / ".zerofactory" / "workspaces" / "default" / "repos" / target_name
+            target_clone = (
+                home / ".zerofactory" / "workspaces" / "default" / "repos" / target_name
+            )
 
         try:
             # Clean up corrupted or partial non-git directory if present
@@ -242,7 +246,9 @@ def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
             else:
                 if target_clone.exists() and not (target_clone / ".git").exists():
                     shutil.rmtree(target_clone, ignore_errors=True)
-                err_detail = (res.stderr or b"").decode("utf-8", errors="replace").strip()
+                err_detail = (
+                    (res.stderr or b"").decode("utf-8", errors="replace").strip()
+                )
                 _log.warning(
                     "Auto-clone failed for %s (exit code %s): %s",
                     git_url,
@@ -486,7 +492,10 @@ def get_scanner_cron_config(board_slug: str) -> dict[str, Any]:
                     is_paused = j.get("state") == "paused" or bool(j.get("paused_at"))
                     enabled = (
                         not is_paused
-                        if (j.get("scan_on_idle") or j.get("schedule", {}).get("kind") == "idle")
+                        if (
+                            j.get("scan_on_idle")
+                            or j.get("schedule", {}).get("kind") == "idle"
+                        )
                         else (bool(j.get("enabled", True)) and not is_paused)
                     )
                     sched = j.get("schedule") or {}

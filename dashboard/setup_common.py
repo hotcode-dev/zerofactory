@@ -199,7 +199,12 @@ def check_board_setup_status(
                             except Exception:
                                 pass
         except Exception as e:
-            _log.debug("Failed checking repo path for board %s (%s): %s", board_slug, effective_alias, e)
+            _log.debug(
+                "Failed checking repo path for board %s (%s): %s",
+                board_slug,
+                effective_alias,
+                e,
+            )
 
     return {
         "ok": True,
@@ -293,7 +298,9 @@ def create_setup_task(
 
     # Create the P0 task
     try:
-        task_desc = prompt_builder(board_slug, repo_path=repo_path, repo_alias=effective_alias)
+        task_desc = prompt_builder(
+            board_slug, repo_path=repo_path, repo_alias=effective_alias
+        )
     except TypeError:
         task_desc = prompt_builder(board_slug, repo_path=repo_path)
 

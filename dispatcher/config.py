@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 try:
     from ..settings import (  # type: ignore
@@ -163,7 +164,9 @@ def get_task_timeout_seconds(conn_or_cursor: Any = None) -> int:
     if conn_or_cursor is not None:
         try:
             settings = load_settings(conn_or_cursor)
-            return int(settings.get("task_timeout_seconds", DEFAULT_TASK_TIMEOUT_SECONDS))
+            return int(
+                settings.get("task_timeout_seconds", DEFAULT_TASK_TIMEOUT_SECONDS)
+            )
         except Exception:
             pass
     else:
@@ -171,9 +174,14 @@ def get_task_timeout_seconds(conn_or_cursor: Any = None) -> int:
             db_p = get_db_path()
             if db_p.exists():
                 import sqlite3
+
                 with sqlite3.connect(str(db_p), timeout=2.0) as conn:
                     settings = load_settings(conn)
-                    return int(settings.get("task_timeout_seconds", DEFAULT_TASK_TIMEOUT_SECONDS))
+                    return int(
+                        settings.get(
+                            "task_timeout_seconds", DEFAULT_TASK_TIMEOUT_SECONDS
+                        )
+                    )
         except Exception:
             pass
     return DEFAULT_TASK_TIMEOUT_SECONDS
@@ -190,7 +198,11 @@ def get_inactivity_timeout_seconds(conn_or_cursor: Any = None) -> int:
     if conn_or_cursor is not None:
         try:
             settings = load_settings(conn_or_cursor)
-            return int(settings.get("inactivity_timeout_seconds", DEFAULT_INACTIVITY_TIMEOUT_SECONDS))
+            return int(
+                settings.get(
+                    "inactivity_timeout_seconds", DEFAULT_INACTIVITY_TIMEOUT_SECONDS
+                )
+            )
         except Exception:
             pass
     else:
@@ -198,13 +210,18 @@ def get_inactivity_timeout_seconds(conn_or_cursor: Any = None) -> int:
             db_p = get_db_path()
             if db_p.exists():
                 import sqlite3
+
                 with sqlite3.connect(str(db_p), timeout=2.0) as conn:
                     settings = load_settings(conn)
-                    return int(settings.get("inactivity_timeout_seconds", DEFAULT_INACTIVITY_TIMEOUT_SECONDS))
+                    return int(
+                        settings.get(
+                            "inactivity_timeout_seconds",
+                            DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
+                        )
+                    )
         except Exception:
             pass
     return DEFAULT_INACTIVITY_TIMEOUT_SECONDS
-
 
 
 def get_db_path() -> Path:

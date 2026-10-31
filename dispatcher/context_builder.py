@@ -8,6 +8,7 @@ import re
 import sqlite3
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from .config import _d, _log, get_db_path
 
@@ -333,18 +334,28 @@ def digest_board_architecture_context(
 
             lines = ["🌐 SYSTEM ARCHITECTURE & MULTI-REPO TOPOLOGY:"]
             if current_repo_alias:
-                lines.append(f"- Active Target Repository: `{current_repo_alias}` (workspace at `./`)")
+                lines.append(
+                    f"- Active Target Repository: `{current_repo_alias}` (workspace at `./`)"
+                )
 
             siblings = [r for r in repos if r["repo_alias"] != current_repo_alias]
             if siblings:
-                lines.append("- Sibling Repositories Available (side-by-side for read-only inspection):")
+                lines.append(
+                    "- Sibling Repositories Available (side-by-side for read-only inspection):"
+                )
                 for s in siblings:
                     s_branch = s.get("target_branch") or "main"
-                    lines.append(f"  * `{s['repo_alias']}` (branch: `{s_branch}`) -> path: `../{s['repo_alias']}/`")
+                    lines.append(
+                        f"  * `{s['repo_alias']}` (branch: `{s_branch}`) -> path: `../{s['repo_alias']}/`"
+                    )
 
             if len(repos) > 1:
-                lines.append(f"- OpenWiki Workspace: `{board_slug}` (Unified cross-service documentation)")
-                lines.append("  * Repositories on this board are linked in this workspace. Use `openwiki_search` to query contracts and schemas across all sibling repositories.")
+                lines.append(
+                    f"- OpenWiki Workspace: `{board_slug}` (Unified cross-service documentation)"
+                )
+                lines.append(
+                    "  * Repositories on this board are linked in this workspace. Use `openwiki_search` to query contracts and schemas across all sibling repositories."
+                )
 
             if arch_notes:
                 lines.append("\nInter-Service Architecture & Dependency Notes:")
@@ -412,12 +423,18 @@ def digest_parent_and_peer_tasks_context(
                 for p in parents:
                     p_repo = f" [{p['repo_alias']}]" if p.get("repo_alias") else ""
                     p_pr = f" (PR: {p['pr_url']})" if p.get("pr_url") else ""
-                    lines.append(f"  * #{p['id']}{p_repo}: {p['title']} [status: {p['status']}]{p_pr}")
+                    lines.append(
+                        f"  * #{p['id']}{p_repo}: {p['title']} [status: {p['status']}]{p_pr}"
+                    )
             if peers:
                 lines.append("- Related Peer Tasks in this Feature:")
                 for peer in peers:
-                    peer_repo = f" [{peer['repo_alias']}]" if peer.get("repo_alias") else ""
-                    lines.append(f"  * #{peer['id']}{peer_repo}: {peer['title']} (status: {peer['status']})")
+                    peer_repo = (
+                        f" [{peer['repo_alias']}]" if peer.get("repo_alias") else ""
+                    )
+                    lines.append(
+                        f"  * #{peer['id']}{peer_repo}: {peer['title']} (status: {peer['status']})"
+                    )
 
             return "\n".join(lines)
     except Exception as e:
