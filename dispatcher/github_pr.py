@@ -541,7 +541,11 @@ def is_task_automerge_enabled(
     if isinstance(raw_tags, str):
         try:
             parsed = json.loads(raw_tags)
-            tags = [str(t).strip().lower() for t in parsed] if isinstance(parsed, list) else []
+            tags = (
+                [str(t).strip().lower() for t in parsed]
+                if isinstance(parsed, list)
+                else []
+            )
         except Exception:
             tags = [t.strip().lower() for t in raw_tags.split(",") if t.strip()]
     elif isinstance(raw_tags, list):
@@ -567,7 +571,9 @@ def is_task_automerge_enabled(
         except Exception:
             meta = {}
     ext_issue = meta.get("external_issue") or {}
-    issue_labels = [str(l).strip().lower() for l in ext_issue.get("labels", []) if str(l).strip()]
+    issue_labels = [
+        str(l).strip().lower() for l in ext_issue.get("labels", []) if str(l).strip()
+    ]
     if any(l in ("hitl", "manual-review") for l in issue_labels):
         return False
     if any(l in ("automerge", "yolo") for l in issue_labels):
@@ -611,7 +617,10 @@ def attempt_pr_automerge(
 
     # 2. If status checks / branch protections are required, try --auto
     err_lower = err.lower()
-    if any(kw in err_lower for kw in ("status check", "required", "behind", "in progress", "pending")):
+    if any(
+        kw in err_lower
+        for kw in ("status check", "required", "behind", "in progress", "pending")
+    ):
         res_auto = subprocess.run(
             ["gh", "pr", "merge", pr_url, "--auto", "--squash", "--delete-branch"],
             cwd=str(repo_path),
@@ -624,4 +633,3 @@ def attempt_pr_automerge(
         err = (res_auto.stderr or "").strip() or err
 
     return False, err or "gh pr merge returned non-zero exit code"
-

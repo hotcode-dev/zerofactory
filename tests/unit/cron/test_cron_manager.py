@@ -136,10 +136,15 @@ class TestCronManagerUnit(unittest.TestCase):
             orig_override = os.environ.get("ZEROFACTORY_CRON_JOBS_FILE")
             os.environ["ZEROFACTORY_CRON_JOBS_FILE"] = str(jobs_file)
             from cron.definitions import CORE_CRON_JOBS
+
             test_core_def = {
                 "id": job_id,
                 "name": "Zero Factory task queue check",
-                "schedule": {"kind": "interval", "minutes": 120, "display": "every 120m"},
+                "schedule": {
+                    "kind": "interval",
+                    "minutes": 120,
+                    "display": "every 120m",
+                },
                 "enabled": True,
                 "state": "scheduled",
                 "origin": "zerofactory",
@@ -280,7 +285,9 @@ class TestCronManagerUnit(unittest.TestCase):
             self.assertFalse(scanner_job.get("scan_on_idle"))
             self.assertEqual(scanner_job.get("idle_scan_cooldown_minutes"), 25)
 
-    def test_ensure_builtin_cron_jobs_reactivates_completed_scanner_with_custom_config(self):
+    def test_ensure_builtin_cron_jobs_reactivates_completed_scanner_with_custom_config(
+        self,
+    ):
         """Hermes marks completed on one-shot/idle jobs. ensure_builtin_cron_jobs must reactivate it even if custom_config=True."""
         with tempfile.TemporaryDirectory() as td:
             jobs_file = Path(td) / "jobs.json"
@@ -331,4 +338,3 @@ class TestCronManagerUnit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

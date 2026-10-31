@@ -149,7 +149,9 @@ def list_boards():
             if repos:
                 b["git_url"] = repos[0]["git_url"]
                 b["target_branch"] = repos[0]["target_branch"]
-                b["additional_reviewer_usernames"] = repos[0]["additional_reviewer_usernames"]
+                b["additional_reviewer_usernames"] = repos[0][
+                    "additional_reviewer_usernames"
+                ]
             else:
                 b["git_url"] = ""
                 b["target_branch"] = "main"
@@ -199,7 +201,9 @@ def get_board(slug: str):
         if repos:
             b["git_url"] = repos[0]["git_url"]
             b["target_branch"] = repos[0]["target_branch"]
-            b["additional_reviewer_usernames"] = repos[0]["additional_reviewer_usernames"]
+            b["additional_reviewer_usernames"] = repos[0][
+                "additional_reviewer_usernames"
+            ]
         else:
             b["git_url"] = ""
             b["target_branch"] = "main"
@@ -231,17 +235,21 @@ def create_board(req: BoardCreate):
         _, repo, auto_slug = parse_git_url(top_git_url)
         top_alias = repo or auto_slug or "main"
         top_branch = (req.target_branch or "main").strip()
-        top_reviewers = sorted({
-            u.strip().lstrip("@").lower()
-            for u in (req.additional_reviewer_usernames or [])
-            if u and u.strip()
-        })
-        repos_to_add.append({
-            "repo_alias": top_alias,
-            "git_url": top_git_url,
-            "target_branch": top_branch,
-            "additional_reviewer_usernames": top_reviewers,
-        })
+        top_reviewers = sorted(
+            {
+                u.strip().lstrip("@").lower()
+                for u in (req.additional_reviewer_usernames or [])
+                if u and u.strip()
+            }
+        )
+        repos_to_add.append(
+            {
+                "repo_alias": top_alias,
+                "git_url": top_git_url,
+                "target_branch": top_branch,
+                "additional_reviewer_usernames": top_reviewers,
+            }
+        )
 
     if req.repositories:
         for r in req.repositories:
@@ -252,17 +260,21 @@ def create_board(req: BoardCreate):
             if any(existing["repo_alias"] == alias for existing in repos_to_add):
                 continue
             branch = (r.target_branch or "main").strip()
-            reviewers = sorted({
-                u.strip().lstrip("@").lower()
-                for u in (r.additional_reviewer_usernames or [])
-                if u and u.strip()
-            })
-            repos_to_add.append({
-                "repo_alias": alias,
-                "git_url": url,
-                "target_branch": branch,
-                "additional_reviewer_usernames": reviewers,
-            })
+            reviewers = sorted(
+                {
+                    u.strip().lstrip("@").lower()
+                    for u in (r.additional_reviewer_usernames or [])
+                    if u and u.strip()
+                }
+            )
+            repos_to_add.append(
+                {
+                    "repo_alias": alias,
+                    "git_url": url,
+                    "target_branch": branch,
+                    "additional_reviewer_usernames": reviewers,
+                }
+            )
 
     if not repos_to_add:
         raise HTTPException(
@@ -333,10 +345,20 @@ def create_board(req: BoardCreate):
     if resolver:
         for r in repos_to_add:
             try:
-                resolver({"slug": slug, "repo_alias": r["repo_alias"], "git_url": r["git_url"], "description": desc})
+                resolver(
+                    {
+                        "slug": slug,
+                        "repo_alias": r["repo_alias"],
+                        "git_url": r["git_url"],
+                        "description": desc,
+                    }
+                )
             except Exception as e:
                 _log.warning(
-                    "Failed to auto-clone repo %s for board %s: %s", r["repo_alias"], slug, e
+                    "Failed to auto-clone repo %s for board %s: %s",
+                    r["repo_alias"],
+                    slug,
+                    e,
                 )
 
     try:
@@ -373,9 +395,13 @@ def create_board(req: BoardCreate):
                     check_board_precommit_status,
                     create_precommit_setup_task,
                 )  # type: ignore
-            status_info = check_board_precommit_status(slug, repo_alias=repos_to_add[0]["repo_alias"])
+            status_info = check_board_precommit_status(
+                slug, repo_alias=repos_to_add[0]["repo_alias"]
+            )
             if not status_info.get("has_precommit"):
-                res = create_precommit_setup_task(slug, repo_alias=repos_to_add[0]["repo_alias"])
+                res = create_precommit_setup_task(
+                    slug, repo_alias=repos_to_add[0]["repo_alias"]
+                )
                 if res.get("ok"):
                     setup_task_id = res.get("task_id")
         except Exception as e:
@@ -415,7 +441,9 @@ def test_clone_board(req: BoardTestClone):
         try:
             from ..paths import get_board_repos_dir  # type: ignore
         except Exception:
-            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+            get_board_repos_dir = lambda b: (
+                Path.home() / ".zerofactory" / "workspaces" / b / "repos"
+            )  # type: ignore
 
     try:
         resolve_board_repo_path = get_repo_resolver()
@@ -426,7 +454,9 @@ def test_clone_board(req: BoardTestClone):
         orig_auto_clone = os.environ.get("ZEROFACTORY_AUTO_CLONE")
         os.environ["ZEROFACTORY_AUTO_CLONE"] = "0"
         try:
-            existing_path = resolve_board_repo_path({"slug": slug, "repo_alias": repo_alias, "git_url": git_url})
+            existing_path = resolve_board_repo_path(
+                {"slug": slug, "repo_alias": repo_alias, "git_url": git_url}
+            )
         finally:
             if orig_auto_clone is None:
                 os.environ.pop("ZEROFACTORY_AUTO_CLONE", None)
@@ -491,7 +521,9 @@ def test_clone_board(req: BoardTestClone):
         else:
             if target_clone.exists() and not (target_clone / ".git").exists():
                 shutil.rmtree(target_clone, ignore_errors=True)
-            err_msg = clone_res.stderr.strip() or "Git clone returned non-zero exit code"
+            err_msg = (
+                clone_res.stderr.strip() or "Git clone returned non-zero exit code"
+            )
             raise HTTPException(
                 status_code=500,
                 detail=f"Git clone failed: {err_msg}",
@@ -554,11 +586,13 @@ def update_board(slug: str, req: BoardUpdate):
                     continue
                 r_url = r.git_url.strip()
                 r_branch = (r.target_branch or "main").strip()
-                reviewers = sorted({
-                    u.strip().lstrip("@").lower()
-                    for u in (r.additional_reviewer_usernames or [])
-                    if u and u.strip()
-                })
+                reviewers = sorted(
+                    {
+                        u.strip().lstrip("@").lower()
+                        for u in (r.additional_reviewer_usernames or [])
+                        if u and u.strip()
+                    }
+                )
                 cursor.execute(
                     """INSERT INTO board_repositories 
                        (board_slug, repo_alias, git_url, target_branch, additional_reviewer_usernames, created_at, updated_at)
@@ -590,11 +624,13 @@ def update_board(slug: str, req: BoardUpdate):
                     r_updates.append("target_branch = ?")
                     r_params.append(req.target_branch.strip())
                 if req.additional_reviewer_usernames is not None:
-                    reviewers = sorted({
-                        u.strip().lstrip("@").lower()
-                        for u in req.additional_reviewer_usernames
-                        if u and u.strip()
-                    })
+                    reviewers = sorted(
+                        {
+                            u.strip().lstrip("@").lower()
+                            for u in req.additional_reviewer_usernames
+                            if u and u.strip()
+                        }
+                    )
                     r_updates.append("additional_reviewer_usernames = ?")
                     r_params.append(json.dumps(reviewers))
                 if r_updates:
@@ -633,7 +669,9 @@ def update_board(slug: str, req: BoardUpdate):
         if repos:
             board_data["git_url"] = repos[0]["git_url"]
             board_data["target_branch"] = repos[0]["target_branch"]
-            board_data["additional_reviewer_usernames"] = repos[0]["additional_reviewer_usernames"]
+            board_data["additional_reviewer_usernames"] = repos[0][
+                "additional_reviewer_usernames"
+            ]
         else:
             board_data["git_url"] = ""
             board_data["target_branch"] = "main"
@@ -700,11 +738,13 @@ def add_board_repository(slug: str, req: BoardRepoCreate):
         r_alias = req.repo_alias.strip()
         r_url = req.git_url.strip()
         r_branch = (req.target_branch or "main").strip()
-        reviewers = sorted({
-            u.strip().lstrip("@").lower()
-            for u in (req.additional_reviewer_usernames or [])
-            if u and u.strip()
-        })
+        reviewers = sorted(
+            {
+                u.strip().lstrip("@").lower()
+                for u in (req.additional_reviewer_usernames or [])
+                if u and u.strip()
+            }
+        )
 
         cursor.execute(
             "SELECT id FROM board_repositories WHERE board_slug = ? AND repo_alias = ?",
@@ -765,11 +805,13 @@ def update_board_repository(slug: str, repo_alias: str, req: BoardRepoUpdate):
             updates.append("target_branch = ?")
             params.append(req.target_branch.strip())
         if req.additional_reviewer_usernames is not None:
-            reviewers = sorted({
-                u.strip().lstrip("@").lower()
-                for u in req.additional_reviewer_usernames
-                if u and u.strip()
-            })
+            reviewers = sorted(
+                {
+                    u.strip().lstrip("@").lower()
+                    for u in req.additional_reviewer_usernames
+                    if u and u.strip()
+                }
+            )
             updates.append("additional_reviewer_usernames = ?")
             params.append(json.dumps(reviewers))
 
@@ -991,7 +1033,10 @@ def setup_board_gh_issues_endpoint(slug: str, repo_alias: str | None = None):
 @router.post("/boards/{slug}/sync-gh-issues")
 @router.post("/boards/{slug}/repositories/{repo_alias}/sync-gh-issues")
 def sync_board_gh_issues_endpoint(
-    slug: str, repo_alias: str | None = None, label: str = "zerofactory", force: bool = False
+    slug: str,
+    repo_alias: str | None = None,
+    label: str = "zerofactory",
+    force: bool = False,
 ):
     """Scan and import open GitHub issues requested for AI investigation into human-gated Triage tasks."""
     init_db()
@@ -1100,9 +1145,12 @@ def import_board_gh_issue_endpoint(slug: str, req: dict[str, Any]):
         board = conn.execute("SELECT * FROM boards WHERE slug = ?", (slug,)).fetchone()
         if not board:
             raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
-        board_dict = dict(board)
+        repo_row = conn.execute(
+            "SELECT git_url FROM board_repositories WHERE board_slug = ? ORDER BY id ASC LIMIT 1",
+            (slug,),
+        ).fetchone()
 
-    git_url = board_dict.get("git_url") or ""
+    git_url = repo_row[0] if repo_row else ""
 
     owner, repo_name, _slug = parse_git_url(git_url)
     repo = f"{owner}/{repo_name}" if owner and repo_name else None

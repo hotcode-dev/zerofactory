@@ -372,7 +372,9 @@ def create_task(req: TaskCreate):
                 tags.append(t)
 
         if req.target_repos:
-            cleaned_target_repos = [str(r).strip() for r in req.target_repos if str(r).strip()]
+            cleaned_target_repos = [
+                str(r).strip() for r in req.target_repos if str(r).strip()
+            ]
             if cleaned_target_repos:
                 meta["target_repos"] = cleaned_target_repos
 
@@ -740,7 +742,9 @@ def update_task(task_id: str, req: TaskUpdate):
         updates.append("tags = ?")
         params.append(json.dumps(req.tags))
     if req.target_repos is not None:
-        cleaned_target_repos = [str(r).strip() for r in req.target_repos if str(r).strip()]
+        cleaned_target_repos = [
+            str(r).strip() for r in req.target_repos if str(r).strip()
+        ]
         if req.metadata is not None:
             req.metadata["target_repos"] = cleaned_target_repos
         else:
@@ -761,7 +765,9 @@ def update_task(task_id: str, req: TaskUpdate):
                 existing_meta["target_repos"] = cleaned_target_repos
                 updates.append("metadata = ?")
                 params.append(json.dumps(existing_meta))
-                changes.append(f"target_repos updated ({len(cleaned_target_repos)} repos)")
+                changes.append(
+                    f"target_repos updated ({len(cleaned_target_repos)} repos)"
+                )
     if req.metadata is not None and req.target_repos is None:
         updates.append("metadata = ?")
         params.append(json.dumps(req.metadata))
@@ -1186,11 +1192,20 @@ def add_dependency(task_id: str, link: DependencyLink):
             (parent_id, child_id, link_type_val, now),
         )
         log_activity(
-            conn, child_id, "user", "link", f"Added {link_type_val} dependency #{parent_id}"
+            conn,
+            child_id,
+            "user",
+            "link",
+            f"Added {link_type_val} dependency #{parent_id}",
         )
         conn.commit()
 
-        return {"ok": True, "parent_id": parent_id, "child_id": child_id, "link_type": link_type_val}
+        return {
+            "ok": True,
+            "parent_id": parent_id,
+            "child_id": child_id,
+            "link_type": link_type_val,
+        }
 
 
 @router.delete("/tasks/{task_id}/dependencies/{parent_id}")
@@ -1293,7 +1308,9 @@ def split_task(task_id: str, req: TaskSplitRequest | None = None):
                 if (t.get("repo_alias") or "").strip()
             ]
         elif meta.get("target_repos") and isinstance(meta["target_repos"], list):
-            target_repos = [str(r).strip() for r in meta["target_repos"] if str(r).strip()]
+            target_repos = [
+                str(r).strip() for r in meta["target_repos"] if str(r).strip()
+            ]
         else:
             # Fallback to all repositories on the board
             cursor.execute(
@@ -1315,7 +1332,9 @@ def split_task(task_id: str, req: TaskSplitRequest | None = None):
         # 2. Build child tasks per repo
         created_tasks: list[dict[str, Any]] = []
         raw_title = task.get("title") or "Task"
-        clean_title = re.sub(r"^\[Triage\]\s*", "", raw_title, flags=re.IGNORECASE).strip()
+        clean_title = re.sub(
+            r"^\[Triage\]\s*", "", raw_title, flags=re.IGNORECASE
+        ).strip()
         parent_desc = task.get("description") or ""
         priority_val = task.get("priority") or "P2"
         parent_tags = task.get("tags") or []
@@ -1398,13 +1417,15 @@ def split_task(task_id: str, req: TaskSplitRequest | None = None):
                 "create",
                 f"Created from Triage split of {task_id} (target repo: {repo})",
             )
-            created_tasks.append({
-                "id": child_id,
-                "repo_alias": repo,
-                "title": child_title,
-                "status": "todo",
-                "assignee": "zf-builder",
-            })
+            created_tasks.append(
+                {
+                    "id": child_id,
+                    "repo_alias": repo,
+                    "title": child_title,
+                    "status": "todo",
+                    "assignee": "zf-builder",
+                }
+            )
 
         # 3. Transition parent Triage task to done (completed decomposition)
         child_ids = [c["id"] for c in created_tasks]
@@ -1603,9 +1624,8 @@ def recover_task(task_id: str, req: TaskRecoverRequest | None = None):
         )
         conn.commit()
 
-        if (
-            not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER")
-            and not os.environ.get("ZEROFACTORY_DISABLE_DISPATCHER")
+        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get(
+            "ZEROFACTORY_DISABLE_DISPATCHER"
         ):
             _trigger_async_dispatch("task_recovered")
 
@@ -1623,11 +1643,17 @@ def recover_task(task_id: str, req: TaskRecoverRequest | None = None):
 def _sanitize_defect_body(text: str) -> str:
     """Sanitize issue text before filing upstream: redacts home directory, API keys, tokens."""
     import re
+
     home_dir = str(Path.home())
     text = text.replace(home_dir, "~")
     text = re.sub(r"(sk-[a-zA-Z0-9_\-]{20,})", r"sk-***REDACTED***", text)
     text = re.sub(r"(ghp_[a-zA-Z0-9]{20,})", r"ghp_***REDACTED***", text)
-    text = re.sub(r"(Bearer\s+[a-zA-Z0-9\-_\.]{20,})", r"Bearer ***REDACTED***", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(Bearer\s+[a-zA-Z0-9\-_\.]{20,})",
+        r"Bearer ***REDACTED***",
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"(X-Hermes-Session-Token:\s*)([^\s]+)", r"\1***REDACTED***", text)
     return text
 
@@ -1685,7 +1711,9 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
                 "reported_by": actor,
                 "issue_created": False,
             }
-            meta["blocked_reason"] = f"Internal Zero Factory defect: {req.title.strip()}"
+            meta["blocked_reason"] = (
+                f"Internal Zero Factory defect: {req.title.strip()}"
+            )
             meta["blocked_reason_type"] = "human-gate"
             cursor.execute(
                 "UPDATE tasks SET status = 'blocked', assignee = 'human', metadata = ?, updated_at = ? WHERE id = ?",
@@ -1747,9 +1775,7 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
             _log.debug("Failed checking existing issues on %s: %s", ZEROFACTORY_REPO, e)
 
         if existing_url:
-            comment_body = (
-                f"⚠️ **[Zero Factory Defect Already Tracked]** Similar open issue detected on `{ZEROFACTORY_REPO}`: {existing_url}"
-            )
+            comment_body = f"⚠️ **[Zero Factory Defect Already Tracked]** Similar open issue detected on `{ZEROFACTORY_REPO}`: {existing_url}"
             cursor.execute(
                 "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
                 (task_id, actor, comment_body, now),
@@ -1882,7 +1908,12 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
             fallback_msg = f"Failed to auto-create GitHub issue on {ZEROFACTORY_REPO}. Defect recorded locally."
             cursor.execute(
                 "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
-                (task_id, actor, f"⚠️ **[Zero Factory Defect Recorded Locally]** {fallback_msg}\n\n**{req.title.strip()}**\n{req.body or ''}", now),
+                (
+                    task_id,
+                    actor,
+                    f"⚠️ **[Zero Factory Defect Recorded Locally]** {fallback_msg}\n\n**{req.title.strip()}**\n{req.body or ''}",
+                    now,
+                ),
             )
             meta["zf_bug_report"] = {
                 "title": req.title.strip(),
@@ -1892,7 +1923,9 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
                 "issue_created": False,
                 "error": fallback_msg,
             }
-            meta["blocked_reason"] = f"Internal Zero Factory defect: {req.title.strip()}"
+            meta["blocked_reason"] = (
+                f"Internal Zero Factory defect: {req.title.strip()}"
+            )
             meta["blocked_reason_type"] = "human-gate"
             cursor.execute(
                 "UPDATE tasks SET status = 'blocked', assignee = 'human', metadata = ?, updated_at = ? WHERE id = ?",

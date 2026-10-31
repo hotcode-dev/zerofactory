@@ -267,4 +267,3 @@ def test_spawn_agent_worker_with_repo_alias_and_architecture():
         assert "Repository: api-gw" in prompt
         assert "SYSTEM ARCHITECTURE & MULTI-REPO TOPOLOGY" in prompt
         assert "TASK DEPENDENCIES & RELATED FEATURES" in prompt
-

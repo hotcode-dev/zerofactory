@@ -3,6 +3,8 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from dashboard.gh_issues_service import (
     GH_ISSUES_RELATIVE_DIR,
     BUG_REPORT_RELPATH,
@@ -159,6 +161,62 @@ def test_sync_and_import_gh_issues_endpoints(
     import_res = import_board_gh_issue_endpoint(slug, {"issue": "42"})
     assert import_res["ok"] is True
     assert import_res["duplicate"] is True
+
+
+def test_import_gh_issue_resolves_repo_from_board_repositories(
+    initialized_db: Path, monkeypatch
+):
+    """Regression: the boards table has no git_url column; the endpoint must
+    resolve owner/repo from board_repositories, not boards."""
+    from issues.base import ExternalIssue
+
+    import issues.github
+
+    board_res = create_board(
+        BoardCreate(git_url="https://github.com/testowner/testrepo.git")
+    )
+    slug = board_res["slug"]
+
+    mock_issue = ExternalIssue(
+        source="github",
+        id="42",
+        key="#42",
+        title="Test issue for AI investigation",
+        issue_type="bug",
+        body="Reproduction steps here",
+        url="https://github.com/testowner/testrepo/issues/42",
+        author="alice",
+        state="open",
+        labels=["bug", "zerofactory"],
+        repo_or_project="testowner/testrepo",
+    )
+
+    recorded = {"repo": None, "default_repo": None}
+
+    class RecordingClient:
+        def __init__(self, default_repo=None):
+            recorded["default_repo"] = default_repo
+
+        def fetch_issue(self, issue_ref, repo=None):
+            # Must NOT ignore the repo kwarg — that's how the original
+            # bug slipped past this test suite.
+            recorded["repo"] = repo
+            return mock_issue
+
+    monkeypatch.setattr(issues.github, "GitHubIssueClient", RecordingClient)
+
+    res = import_board_gh_issue_endpoint(slug, {"issue": "42"})
+    assert res["ok"] is True
+    assert recorded["repo"] == "testowner/testrepo"
+    assert recorded["default_repo"] == "testowner/testrepo"
+
+
+def test_import_gh_issue_missing_board_returns_404(initialized_db: Path):
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        import_board_gh_issue_endpoint("nonexistent-board", {"issue": "42"})
+    assert exc.value.status_code == 404
 
 
 def test_setup_gh_issues_align(tmp_path: Path):

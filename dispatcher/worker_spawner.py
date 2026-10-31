@@ -139,7 +139,8 @@ def spawn_agent_worker(
                 ).fetchone()
                 _board_r = (
                     _c.execute(
-                        "SELECT automerge FROM boards WHERE slug = ?", (board_slug or "",)
+                        "SELECT automerge FROM boards WHERE slug = ?",
+                        (board_slug or "",),
                     ).fetchone()
                     if board_slug
                     else None
@@ -180,12 +181,16 @@ def spawn_agent_worker(
         )
         pre_digested_block = f"\n{pre_digested_git}\n\n" if pre_digested_git else "\n"
         automerge_reviewer_block = (
-            "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
-            "This PR will be automatically merged into the target branch immediately upon your approval without human review.\n"
-            "- Strictly scrutinize test coverage: Ensure comprehensive unit/integration tests are included in the diff.\n"
-            "- Do NOT approve (`--reason 'approved'`) if test coverage is insufficient or if edge cases are untested.\n"
-            "- If tests are inadequate or broken, issue `--reason 'changes-requested'` with specific testing requirements.\n\n"
-        ) if automerge_enabled else ""
+            (
+                "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
+                "This PR will be automatically merged into the target branch immediately upon your approval without human review.\n"
+                "- Strictly scrutinize test coverage: Ensure comprehensive unit/integration tests are included in the diff.\n"
+                "- Do NOT approve (`--reason 'approved'`) if test coverage is insufficient or if edge cases are untested.\n"
+                "- If tests are inadequate or broken, issue `--reason 'changes-requested'` with specific testing requirements.\n\n"
+            )
+            if automerge_enabled
+            else ""
+        )
         reviewer_approved_action = (
             "run `hermes zerofactory block {task_id} --reason 'approved'` (Auto-Merge is ACTIVE: the dispatcher will automatically merge this PR into the target branch upon your approval; DO NOT mark done yourself)."
             if automerge_enabled
@@ -339,12 +344,16 @@ def spawn_agent_worker(
             or (conflict_check_verified and Path(workdir).exists() and bool(_files))
         )
         automerge_builder_block = (
-            "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
-            "This task is operating in Auto-Merge mode. Upon approval by `zf-reviewer`, this PR will be merged directly into the base branch WITHOUT human review.\n"
-            "- You MUST write comprehensive, robust automated tests covering all new logic and edge cases.\n"
-            "- You MUST verify that `./.zerofactory/precommit.sh` executes and passes cleanly before completing the task.\n"
-            "- Missing tests or unverified changes will be rejected by the reviewer.\n\n"
-        ) if automerge_enabled else ""
+            (
+                "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
+                "This task is operating in Auto-Merge mode. Upon approval by `zf-reviewer`, this PR will be merged directly into the base branch WITHOUT human review.\n"
+                "- You MUST write comprehensive, robust automated tests covering all new logic and edge cases.\n"
+                "- You MUST verify that `./.zerofactory/precommit.sh` executes and passes cleanly before completing the task.\n"
+                "- Missing tests or unverified changes will be rejected by the reviewer.\n\n"
+            )
+            if automerge_enabled
+            else ""
+        )
 
         if has_conflict:
             if conflict_check_verified and Path(workdir).exists():
@@ -477,12 +486,16 @@ def spawn_agent_worker(
                 )
 
             automerge_builder_block = (
-                "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
-                "This task is operating in Auto-Merge mode. Upon approval by `zf-reviewer`, this PR will be merged directly into the base branch WITHOUT human review.\n"
-                "- You MUST write comprehensive, robust automated tests covering all new logic and edge cases.\n"
-                "- You MUST verify that `./.zerofactory/precommit.sh` executes and passes cleanly before completing the task.\n"
-                "- Missing tests or unverified changes will be rejected by the reviewer.\n\n"
-            ) if automerge_enabled else ""
+                (
+                    "🚨 CRITICAL: AUTO-MERGE ACTIVE\n"
+                    "This task is operating in Auto-Merge mode. Upon approval by `zf-reviewer`, this PR will be merged directly into the base branch WITHOUT human review.\n"
+                    "- You MUST write comprehensive, robust automated tests covering all new logic and edge cases.\n"
+                    "- You MUST verify that `./.zerofactory/precommit.sh` executes and passes cleanly before completing the task.\n"
+                    "- Missing tests or unverified changes will be rejected by the reviewer.\n\n"
+                )
+                if automerge_enabled
+                else ""
+            )
 
             prompt = (
                 f"Task ID: {task_id}\n"

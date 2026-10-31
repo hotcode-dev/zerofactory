@@ -61,9 +61,7 @@ class TestSettingsUnit(unittest.TestCase):
         self.assertEqual(
             res["activity_retention_days"], S.DEFAULT_ACTIVITY_RETENTION_DAYS
         )
-        self.assertEqual(
-            res["task_timeout_seconds"], S.DEFAULT_TASK_TIMEOUT_SECONDS
-        )
+        self.assertEqual(res["task_timeout_seconds"], S.DEFAULT_TASK_TIMEOUT_SECONDS)
         self.assertEqual(
             res["inactivity_timeout_seconds"], S.DEFAULT_INACTIVITY_TIMEOUT_SECONDS
         )

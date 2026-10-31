@@ -210,7 +210,11 @@ try:
     from .paths import ZEROFACTORY_REPO, ZEROFACTORY_GITHUB_URL, ZEROFACTORY_ISSUES_URL
 except ImportError:
     try:
-        from paths import ZEROFACTORY_REPO, ZEROFACTORY_GITHUB_URL, ZEROFACTORY_ISSUES_URL
+        from paths import (
+            ZEROFACTORY_REPO,
+            ZEROFACTORY_GITHUB_URL,
+            ZEROFACTORY_ISSUES_URL,
+        )
     except ImportError:
         ZEROFACTORY_REPO = "hotcode-dev/zerofactory"
         ZEROFACTORY_GITHUB_URL = f"https://github.com/{ZEROFACTORY_REPO}"
@@ -738,7 +742,9 @@ def register(ctx: Any):
             "--jira-url", default=None, help="Jira Cloud instance URL"
         )
         p_bupdate.add_argument(
-            "--architecture", default=None, help="Inter-service architecture and contracts"
+            "--architecture",
+            default=None,
+            help="Inter-service architecture and contracts",
         )
 
         p_bdelete = board_subs.add_parser(
@@ -1409,10 +1415,14 @@ def register(ctx: Any):
                         print(
                             f"✓ Zero Factory defect recorded locally for task '{task_id}' (GitHub issue creation skipped)."
                         )
-                        print("  Tip: pass --create-issue to publish this defect to hotcode-dev/zerofactory.")
+                        print(
+                            "  Tip: pass --create-issue to publish this defect to hotcode-dev/zerofactory."
+                        )
                     print(f"  Task '{task_id}' moved to blocked awaiting platform fix.")
                 else:
-                    print(f"✗ Failed to report bug: {res.get('error', 'unknown error')}")
+                    print(
+                        f"✗ Failed to report bug: {res.get('error', 'unknown error')}"
+                    )
                     sys.exit(1)
             except Exception as e:
                 err_msg = getattr(e, "detail", str(e))

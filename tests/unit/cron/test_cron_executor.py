@@ -64,6 +64,7 @@ class TestCronExecutorUnit(unittest.TestCase):
         fake_hermes = str(Path(fake_dir) / "hermes")
         path_was_prepended = False
         from cron.definitions import CORE_CRON_JOBS
+
         test_job_def = {
             "id": job_id,
             "name": "Test Core Job",
@@ -86,20 +87,34 @@ class TestCronExecutorUnit(unittest.TestCase):
                 os.chmod(fake_hermes, 0o755)
 
                 real = shutil.which("hermes")
-                if real is None or Path(real).parent.resolve() != Path(fake_dir).resolve():
-                    os.environ["PATH"] = fake_dir + os.pathsep + os.environ.get("PATH", "")
+                if (
+                    real is None
+                    or Path(real).parent.resolve() != Path(fake_dir).resolve()
+                ):
+                    os.environ["PATH"] = (
+                        fake_dir + os.pathsep + os.environ.get("PATH", "")
+                    )
                     path_was_prepended = True
 
                 start = time.monotonic()
-                res = trigger_builtin_job(job_id)
-                elapsed = time.monotonic() - start
+                # Hermetic: bypass the global LLM capacity gate (which reads
+                # the operator's live kanban.db) so this unit test does not
+                # depend on how many factory tasks are running right now.
+                import dispatcher as _dispatcher_pkg
 
-                self.assertLess(elapsed, 120)
-                self.assertNotIn(job_id, executor._active_cron_runs)
-                self.assertFalse(res.get("ok"))
-                self.assertEqual(res.get("returncode"), 3)
-                self.assertIn("exited with code 3", res.get("message", ""))
-                self.assertIn("BOOM-SENTINEL", res.get("output_tail", ""))
+                with (
+                    patch.dict(CORE_CRON_JOBS, {job_id: test_job_def}),
+                    patch.object(_dispatcher_pkg, "_global_llm_occupancy", lambda n: 0),
+                ):
+                    res = trigger_builtin_job(job_id)
+                    elapsed = time.monotonic() - start
+
+                    self.assertLess(elapsed, 120)
+                    self.assertNotIn(job_id, executor._active_cron_runs)
+                    self.assertFalse(res.get("ok"))
+                    self.assertEqual(res.get("returncode"), 3)
+                    self.assertIn("exited with code 3", res.get("message", ""))
+                    self.assertIn("BOOM-SENTINEL", res.get("output_tail", ""))
             finally:
                 shutil.rmtree(fake_dir, ignore_errors=True)
                 if path_was_prepended:

@@ -131,14 +131,24 @@ def get_mem0_client(conn: sqlite3.Connection | None = None):
 
     def_model, def_base_url, def_api_key = get_hermes_model_defaults()
 
-    api_key = settings.get("mem0_api_key") or os.environ.get("MEM0_API_KEY") or def_api_key
-    base_url = settings.get("mem0_base_url") or os.environ.get("MEM0_BASE_URL") or def_base_url
-    llm_model = settings.get("mem0_model") or os.environ.get("MEM0_LLM_MODEL") or def_model
+    api_key = (
+        settings.get("mem0_api_key") or os.environ.get("MEM0_API_KEY") or def_api_key
+    )
+    base_url = (
+        settings.get("mem0_base_url") or os.environ.get("MEM0_BASE_URL") or def_base_url
+    )
+    llm_model = (
+        settings.get("mem0_model") or os.environ.get("MEM0_LLM_MODEL") or def_model
+    )
     embedder_provider = (
-        settings.get("mem0_embedder_provider")
-        or os.environ.get("MEM0_EMBEDDER_PROVIDER")
-        or "fastembed"
-    ).strip().lower()
+        (
+            settings.get("mem0_embedder_provider")
+            or os.environ.get("MEM0_EMBEDDER_PROVIDER")
+            or "fastembed"
+        )
+        .strip()
+        .lower()
+    )
 
     if embedder_provider == "openai":
         embedder_model = (
@@ -332,7 +342,9 @@ def search_board_memories(
             if client:
                 try:
                     m_res = client.search(
-                        query=query.strip(), filters={"user_id": board_slug}, limit=limit
+                        query=query.strip(),
+                        filters={"user_id": board_slug},
+                        limit=limit,
                     )
                 except Exception:
                     m_res = client.search(
@@ -407,9 +419,7 @@ def search_board_memories(
     return results
 
 
-def mem0_delete_memory(
-    memory_id: str, board_slug: str | None = None
-) -> bool:
+def mem0_delete_memory(memory_id: str, board_slug: str | None = None) -> bool:
     """Delete memory from Mem0 vector index and SQLite board_memories table."""
     try:
         client = get_mem0_client()

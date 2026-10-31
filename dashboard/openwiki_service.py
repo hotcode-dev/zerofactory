@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -46,10 +47,11 @@ def get_board_linked_repos(
         return []
     import os
     import sqlite3
+
     try:
-        from .db import DEFAULT_DB_PATH, get_db_path
+        from .db import get_db_path
     except (ImportError, ValueError):
-        from db import DEFAULT_DB_PATH, get_db_path  # type: ignore
+        from db import get_db_path  # type: ignore
 
     eff_db = Path(db_path or os.environ.get("ZEROFACTORY_DB") or get_db_path())
     if not eff_db.exists():
@@ -74,7 +76,11 @@ def get_board_linked_repos(
                 if resolver:
                     try:
                         resolved = resolver({"git_url": url, "slug": alias})
-                        if resolved and resolved.is_dir() and (resolved / ".git").exists():
+                        if (
+                            resolved
+                            and resolved.is_dir()
+                            and (resolved / ".git").exists()
+                        ):
                             repo_path = resolved.resolve()
                     except Exception:
                         pass
@@ -85,7 +91,13 @@ def get_board_linked_repos(
                         try:
                             from ..paths import get_board_repos_dir  # type: ignore
                         except Exception:
-                            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+                            get_board_repos_dir = lambda b: (
+                                Path.home()
+                                / ".zerofactory"
+                                / "workspaces"
+                                / b
+                                / "repos"
+                            )  # type: ignore
                     b_repo = get_board_repos_dir(board_slug) / alias
                     if b_repo.is_dir() and (b_repo / ".git").exists():
                         repo_path = b_repo.resolve()

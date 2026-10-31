@@ -464,14 +464,16 @@ def resolve_repo_path(
         try:
             from ..paths import get_board_repos_dir  # type: ignore
         except Exception:
-            get_board_repos_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "repos"  # type: ignore
+            get_board_repos_dir = lambda b: (
+                Path.home() / ".zerofactory" / "workspaces" / b / "repos"
+            )  # type: ignore
 
     b_repos = get_board_repos_dir(board_slug)
     candidates: list[Path] = [
         b_repos / repo_alias,
     ]
 
-    owner, repo_name = "", ""
+    repo_name = ""
     if git_url:
         cleaned_url = re.sub(r"\.git$", "", git_url.strip().rstrip("/"))
         parts = cleaned_url.replace(":", "/").split("/")
@@ -484,7 +486,6 @@ def resolve_repo_path(
             return cand.resolve()
 
     return None
-
 
 
 def resolve_board_slug(repo_dir: Path) -> str:
@@ -607,19 +608,13 @@ def run_scanner_gate() -> int:
             r_state["last_scanned_sha"]
             if "last_scanned_sha" in r_state
             else (
-                board_state.get("last_scanned_sha")
-                if len(repo_entries) == 1
-                else None
+                board_state.get("last_scanned_sha") if len(repo_entries) == 1 else None
             )
         )
         last_status = (
             r_state["last_status"]
             if "last_status" in r_state
-            else (
-                board_state.get("last_status")
-                if len(repo_entries) == 1
-                else None
-            )
+            else (board_state.get("last_status") if len(repo_entries) == 1 else None)
         )
 
         is_same_commit = head_sha == last_sha
@@ -818,7 +813,9 @@ def run_scanner_gate() -> int:
     t_status = target_repo["status_porcelain"]
     t_is_same = target_repo["is_same_commit"]
 
-    new_attempts = (int(target_repo["r_state"].get("scan_attempts", 0)) + 1) if t_is_same else 1
+    new_attempts = (
+        (int(target_repo["r_state"].get("scan_attempts", 0)) + 1) if t_is_same else 1
+    )
     target_r_state = repos_state.setdefault(t_alias, {})
     target_r_state["last_scanned_sha"] = t_head
     target_r_state["last_status"] = t_status
@@ -867,9 +864,7 @@ def run_scanner_gate() -> int:
     is_worktree_clean = len(t_status.strip()) == 0
     uncommitted_summary = ""
     if not is_worktree_clean:
-        uncommitted_summary = (
-            f"### Uncommitted Changes:\n```\n{t_status[:1000]}\n```\n"
-        )
+        uncommitted_summary = f"### Uncommitted Changes:\n```\n{t_status[:1000]}\n```\n"
 
     # Search for new TODO / FIXME in tracked files
     todo_matches = scan_code_markers(t_path)
@@ -884,7 +879,9 @@ def run_scanner_gate() -> int:
     if trigger_reason:
         print(f"[{trigger_reason}]")
     print("### 🔍 Pre-Screen Intelligence Package (Zero-Token Ingested)")
-    print(f"**Board:** `{board_slug}` | **Target Repository:** `{t_alias}` (`{t_path.name}`) (Commit: `{t_head[:8]}`)")
+    print(
+        f"**Board:** `{board_slug}` | **Target Repository:** `{t_alias}` (`{t_path.name}`) (Commit: `{t_head[:8]}`)"
+    )
     print()
     print("#### Recent Commits:")
     print(f"```\n{log_summary}\n```")

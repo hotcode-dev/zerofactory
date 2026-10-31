@@ -59,9 +59,7 @@ def _load_scanner_gate_module():
 _scanner_gate_mod = _load_scanner_gate_module()
 
 
-def _mark_scanner_task_created(
-    board_slug: str, repo_alias: str | None = None
-) -> bool:
+def _mark_scanner_task_created(board_slug: str, repo_alias: str | None = None) -> bool:
     """Atomically flag that a task was created for ``board_slug`` in the shared
     scanner state file (flock-guarded read-modify-write + atomic os.replace).
 
@@ -73,7 +71,9 @@ def _mark_scanner_task_created(
     if _scanner_gate_mod is not None and hasattr(
         _scanner_gate_mod, "mark_task_created"
     ):
-        return bool(_scanner_gate_mod.mark_task_created(board_slug, repo_alias=repo_alias))
+        return bool(
+            _scanner_gate_mod.mark_task_created(board_slug, repo_alias=repo_alias)
+        )
 
     state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
     state_file = (
@@ -294,7 +294,9 @@ def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         except Exception:
             d["metadata"] = {}
     if "metadata" in d and isinstance(d["metadata"], dict):
-        if "target_repos" in d["metadata"] and isinstance(d["metadata"]["target_repos"], list):
+        if "target_repos" in d["metadata"] and isinstance(
+            d["metadata"]["target_repos"], list
+        ):
             d["target_repos"] = d["metadata"]["target_repos"]
         elif d.get("repo_alias"):
             d["target_repos"] = [d["repo_alias"]]

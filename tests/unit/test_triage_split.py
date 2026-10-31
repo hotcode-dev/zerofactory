@@ -52,7 +52,9 @@ class TestTriageSplit(unittest.TestCase):
 
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
             self.assertEqual(row["status"], "triage")
             meta = json.loads(row["metadata"])
             self.assertEqual(meta.get("target_repos"), ["frontend", "backend"])
@@ -91,7 +93,9 @@ class TestTriageSplit(unittest.TestCase):
         # 3. Verify parent transitioned to done with metadata and comment
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            p_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (parent_id,)).fetchone()
+            p_row = conn.execute(
+                "SELECT * FROM tasks WHERE id = ?", (parent_id,)
+            ).fetchone()
             self.assertEqual(p_row["status"], "done")
             self.assertEqual(p_row["assignee"], "zf-orchestrator")
             p_meta = json.loads(p_row["metadata"])
@@ -106,7 +110,9 @@ class TestTriageSplit(unittest.TestCase):
             self.assertEqual(links[0]["link_type"], "relates_to")
 
             # Check comments recorded
-            cmts = conn.execute("SELECT * FROM task_comments WHERE task_id = ?", (parent_id,)).fetchall()
+            cmts = conn.execute(
+                "SELECT * FROM task_comments WHERE task_id = ?", (parent_id,)
+            ).fetchall()
             self.assertGreaterEqual(len(cmts), 1)
             self.assertIn("Triage Decomposition Complete", cmts[0]["body"])
 
@@ -119,7 +125,9 @@ class TestTriageSplit(unittest.TestCase):
         res = create_task(req)
 
         # Split with explicit repos
-        split_res = split_task(res["id"], TaskSplitRequest(repos=["backend", "frontend"]))
+        split_res = split_task(
+            res["id"], TaskSplitRequest(repos=["backend", "frontend"])
+        )
         self.assertTrue(split_res["ok"])
         self.assertEqual(len(split_res["created_tasks"]), 2)
 

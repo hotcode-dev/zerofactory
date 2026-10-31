@@ -247,10 +247,9 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         except Exception:
                             pass
 
-                        is_conflict_resolution = (
-                            int(meta.get("conflict_retries", 0)) > 0
-                            or bool(meta.get("is_conflict_resolution"))
-                        )
+                        is_conflict_resolution = int(
+                            meta.get("conflict_retries", 0)
+                        ) > 0 or bool(meta.get("is_conflict_resolution"))
 
                         # Guardrail: Always pull git to latest before implement
                         if (
@@ -466,7 +465,13 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                         try:
                                             from ..paths import get_board_worktrees_dir  # type: ignore
                                         except Exception:
-                                            get_board_worktrees_dir = lambda b: Path.home() / ".zerofactory" / "workspaces" / b / "worktrees"  # type: ignore
+                                            get_board_worktrees_dir = lambda b: (
+                                                Path.home()
+                                                / ".zerofactory"
+                                                / "workspaces"
+                                                / b
+                                                / "worktrees"
+                                            )  # type: ignore
                                     cand_wt = (
                                         get_board_worktrees_dir(board_slug)
                                         / task_id
@@ -1028,9 +1033,7 @@ def _poll_pr_and_route_review(
                         else ""
                     )
                     title_text = (
-                        row["title"]
-                        if ("title" in row.keys() and row["title"])
-                        else ""
+                        row["title"] if ("title" in row.keys() and row["title"]) else ""
                     )
                     task_text = f"{title_text}\n{desc_text}".strip()
                     if task_text:
@@ -1453,7 +1456,9 @@ def _poll_pr_and_route_review(
             automerge_active = _disp.is_task_automerge_enabled(task_dict, board_dict)
 
             if automerge_active:
-                merged, merge_msg = _disp.attempt_pr_automerge(current_pr_url, repo_path)
+                merged, merge_msg = _disp.attempt_pr_automerge(
+                    current_pr_url, repo_path
+                )
                 if merged:
                     log_step_state(
                         "pr_poll",
@@ -1490,7 +1495,9 @@ def _poll_pr_and_route_review(
                         "automerge_failed",
                         f"Auto-merge failed: {merge_msg}; parking for human",
                     )
-                    task_meta["blocked_reason"] = f"Reviewer approved; auto-merge failed ({merge_msg[:80]}); awaiting human merge"
+                    task_meta["blocked_reason"] = (
+                        f"Reviewer approved; auto-merge failed ({merge_msg[:80]}); awaiting human merge"
+                    )
                     task_meta["blocked_reason_type"] = "approved"
 
                     _disp.stop_task_worker(task_id, cursor)

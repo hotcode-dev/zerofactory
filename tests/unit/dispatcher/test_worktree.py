@@ -239,7 +239,9 @@ def test_resolve_task_repo_path_multi_repo(tmp_path: Path):
         )
         """
     )
-    conn.execute("INSERT INTO boards (slug, git_url) VALUES ('b-multi', ?)", (str(repo_primary),))
+    conn.execute(
+        "INSERT INTO boards (slug, git_url) VALUES ('b-multi', ?)", (str(repo_primary),)
+    )
     conn.execute(
         "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('b-multi', 'primary', ?, 'main')",
         (str(repo_primary),),
@@ -264,21 +266,53 @@ def test_setup_worktree_multi_repo_side_by_side(tmp_path: Path):
     """setup_worktree provisions primary writable worktree and sibling read-only detached worktree side-by-side."""
     primary_repo = tmp_path / "prim_repo"
     primary_repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=str(primary_repo), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "ZeroFactory"], cwd=str(primary_repo), check=True)
-    subprocess.run(["git", "config", "user.email", "zf@example.com"], cwd=str(primary_repo), check=True)
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=str(primary_repo),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "ZeroFactory"], cwd=str(primary_repo), check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "zf@example.com"],
+        cwd=str(primary_repo),
+        check=True,
+    )
     (primary_repo / "main.txt").write_text("prim init\n")
     subprocess.run(["git", "add", "."], cwd=str(primary_repo), check=True)
-    subprocess.run(["git", "commit", "-m", "init prim"], cwd=str(primary_repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init prim"],
+        cwd=str(primary_repo),
+        check=True,
+        capture_output=True,
+    )
 
     sibling_repo = tmp_path / "sib_repo"
     sibling_repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=str(sibling_repo), check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "ZeroFactory"], cwd=str(sibling_repo), check=True)
-    subprocess.run(["git", "config", "user.email", "zf@example.com"], cwd=str(sibling_repo), check=True)
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=str(sibling_repo),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "ZeroFactory"], cwd=str(sibling_repo), check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "zf@example.com"],
+        cwd=str(sibling_repo),
+        check=True,
+    )
     (sibling_repo / "lib.txt").write_text("sib init\n")
     subprocess.run(["git", "add", "."], cwd=str(sibling_repo), check=True)
-    subprocess.run(["git", "commit", "-m", "init sib"], cwd=str(sibling_repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init sib"],
+        cwd=str(sibling_repo),
+        check=True,
+        capture_output=True,
+    )
 
     db_path = tmp_path / "tasks.db"
     conn = sqlite3.connect(str(db_path))
@@ -296,7 +330,10 @@ def test_setup_worktree_multi_repo_side_by_side(tmp_path: Path):
         )
         """
     )
-    conn.execute("INSERT INTO boards (slug, git_url, target_branch) VALUES ('test-board', ?, 'main')", (str(primary_repo),))
+    conn.execute(
+        "INSERT INTO boards (slug, git_url, target_branch) VALUES ('test-board', ?, 'main')",
+        (str(primary_repo),),
+    )
     conn.execute(
         "INSERT INTO board_repositories (board_slug, repo_alias, git_url, target_branch) VALUES ('test-board', 'prim', ?, 'main')",
         (str(primary_repo),),
@@ -346,4 +383,3 @@ def test_setup_worktree_multi_repo_side_by_side(tmp_path: Path):
         _remove_worktree(ws_path, primary_repo)
         assert not prim_dir.exists()
         assert not sib_dir.exists()
-

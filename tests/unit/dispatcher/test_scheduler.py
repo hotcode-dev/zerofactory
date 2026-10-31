@@ -730,10 +730,14 @@ def test_run_dispatch_cycle_relates_to_does_not_block_task(tmp_path: Path):
 
     with sqlite3.connect(str(db_path)) as conn:
         conn.row_factory = sqlite3.Row
-        c_blocked = conn.execute("SELECT status FROM tasks WHERE id = 'c-blocked'").fetchone()
+        c_blocked = conn.execute(
+            "SELECT status FROM tasks WHERE id = 'c-blocked'"
+        ).fetchone()
         assert c_blocked["status"] == "blocked"
 
-        c_relates = conn.execute("SELECT status FROM tasks WHERE id = 'c-relates'").fetchone()
+        c_relates = conn.execute(
+            "SELECT status FROM tasks WHERE id = 'c-relates'"
+        ).fetchone()
         assert c_relates["status"] in ("todo", "running")
 
 
@@ -761,7 +765,9 @@ def test_run_dispatch_cycle_respects_scanner_last_run_cooldown(tmp_path: Path):
     lock_file = tmp_path / "dispatcher.lock"
 
     with sqlite3.connect(str(db_path)) as conn:
-        conn.execute("INSERT INTO boards (slug, name) VALUES ('recent-board', 'Recent')")
+        conn.execute(
+            "INSERT INTO boards (slug, name) VALUES ('recent-board', 'Recent')"
+        )
         conn.commit()
 
     import time
@@ -795,5 +801,3 @@ def test_run_dispatch_cycle_respects_scanner_last_run_cooldown(tmp_path: Path):
         assert res["ok"] is True
         assert res["scans_triggered"] == 0
         assert "recent-board" not in spawned
-
-

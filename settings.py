@@ -137,7 +137,9 @@ DEFAULT_SETTING_VALUES: dict[str, str] = {
     "task_timeout_seconds": str(DEFAULT_TASK_TIMEOUT_SECONDS),
     "inactivity_timeout_seconds": str(DEFAULT_INACTIVITY_TIMEOUT_SECONDS),
     "enable_cron_scheduler": "true" if DEFAULT_ENABLE_CRON_SCHEDULER else "false",
-    "auto_create_github_issues": "true" if DEFAULT_AUTO_CREATE_GITHUB_ISSUES else "false",
+    "auto_create_github_issues": "true"
+    if DEFAULT_AUTO_CREATE_GITHUB_ISSUES
+    else "false",
     "langfuse_enabled": "true" if DEFAULT_LANGFUSE_ENABLED else "false",
     "langfuse_base_url": DEFAULT_LANGFUSE_BASE_URL,
     "langfuse_public_key": DEFAULT_LANGFUSE_PUBLIC_KEY,

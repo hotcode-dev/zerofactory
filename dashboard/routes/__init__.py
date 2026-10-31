@@ -68,6 +68,7 @@ def global_options_handler(full_path: str = ""):
         },
     )
 
+
 __all__ = [
     "agents_router",
     "boards_router",

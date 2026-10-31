@@ -485,9 +485,10 @@ class TestZfScannerGateMultiRepo(unittest.TestCase):
                 "ZEROFACTORY_SKIP_LLM_PROBE": "1",
             },
         ):
-            with patch.object(self.mod, "_run_cmd") as mock_cmd, patch.object(
-                self.mod, "resolve_repo_path"
-            ) as mock_resolve:
+            with (
+                patch.object(self.mod, "_run_cmd") as mock_cmd,
+                patch.object(self.mod, "resolve_repo_path") as mock_resolve,
+            ):
 
                 def _fake_resolve(board_slug, alias, git_url, curr_dir):
                     return repo_be if alias == "backend" else repo_fe
@@ -544,10 +545,10 @@ class TestZfScannerGateMultiRepo(unittest.TestCase):
                 "ZEROFACTORY_SKIP_LLM_PROBE": "1",
             },
         ):
-            with patch.object(self.mod, "_run_cmd") as mock_cmd, patch.object(
-                self.mod, "resolve_repo_path"
-            ) as mock_resolve, patch.object(
-                self.mod, "scan_code_markers", return_value=""
+            with (
+                patch.object(self.mod, "_run_cmd") as mock_cmd,
+                patch.object(self.mod, "resolve_repo_path") as mock_resolve,
+                patch.object(self.mod, "scan_code_markers", return_value=""),
             ):
 
                 def _fake_resolve(board_slug, alias, git_url, curr_dir):
@@ -582,9 +583,7 @@ class TestZfScannerGateMultiRepo(unittest.TestCase):
                         self.assertIn(json.dumps({"wakeAgent": True}), printed)
                         combined = "\n".join(printed)
                         self.assertIn("Target Repository:** `frontend`", combined)
-                        self.assertIn(
-                            '--board "ecommerce" --repo "frontend"', combined
-                        )
+                        self.assertIn('--board "ecommerce" --repo "frontend"', combined)
 
     def test_multi_repo_idle_round_robin(self):
         # Both repos unchanged, but idle scan requested.
@@ -627,10 +626,10 @@ class TestZfScannerGateMultiRepo(unittest.TestCase):
                 "ZEROFACTORY_SKIP_LLM_PROBE": "1",
             },
         ):
-            with patch.object(self.mod, "_run_cmd") as mock_cmd, patch.object(
-                self.mod, "resolve_repo_path"
-            ) as mock_resolve, patch.object(
-                self.mod, "scan_code_markers", return_value=""
+            with (
+                patch.object(self.mod, "_run_cmd") as mock_cmd,
+                patch.object(self.mod, "resolve_repo_path") as mock_resolve,
+                patch.object(self.mod, "scan_code_markers", return_value=""),
             ):
 
                 def _fake_resolve(board_slug, alias, git_url, curr_dir):
@@ -663,9 +662,7 @@ class TestZfScannerGateMultiRepo(unittest.TestCase):
                         self.assertIn(json.dumps({"wakeAgent": True}), printed)
                         combined = "\n".join(printed)
                         self.assertIn("Target Repository:** `frontend`", combined)
-                        self.assertIn(
-                            '--board "ecommerce" --repo "frontend"', combined
-                        )
+                        self.assertIn('--board "ecommerce" --repo "frontend"', combined)
 
     def test_resolve_repo_path_unrelated_dir_returns_none(self):
         fake_curr = self.tmp / "unrelated_repo"
@@ -687,4 +684,3 @@ class TestZfScannerGateMultiRepo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
