@@ -26,10 +26,10 @@ sources:
     resource: repo://tests/conftest.py
   - id: openwiki-source-b4194cdb1aee8e18787b21d6
     resource: repo://tests/unit/dashboard/test_dashboard_css.py
-generated: { by: "hermes", at: "2026-10-06T19:22:52.001Z" }
+generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-06T19:22:52.001Z
+    at: 2026-11-01T07:54:23.892Z
 ---
 
 # Conventions
@@ -68,14 +68,14 @@ dispatcher import chain inserts foreign roots (e.g.
 `~/.hermes/hermes-agent`) into `sys.path`, and that repo's own `tests/`
 package would otherwise win `import tests` and break `from tests.unit...`
 imports inside test modules (an order-dependent `ModuleNotFoundError`)
-(`repo://tests/conftest.py#L18-L22`).
+(`repo://tests/conftest.py#L18-L23`).
 
 ## Namespaced logging
 
 Loggers are namespaced under `zerofactory.*` per subsystem
 (`zerofactory.cron`, `zerofactory.migrations`, ...), created with
 `logging.getLogger("zerofactory.<subsystem>")`
-(`repo://cron/definitions.py#L28`, `repo://migrations/runner.py#L23`). Use the
+(`repo://cron/definitions.py#L29`, `repo://migrations/runner.py#L23`). Use the
 matching namespace for new modules rather than the root logger.
 
 ## Error handling
@@ -110,9 +110,9 @@ non-zero on a missing tool) rather than silently skipping.
 the **hermetic environment defaults** that make every test safe to run without a
 real factory: it sets `ZEROFACTORY_SKIP_GIT`, `ZEROFACTORY_SKIP_CRON_SYNC`,
 `ZEROFACTORY_DISABLE_DISPATCHER`, and `ZEROFACTORY_SKIP_WORKER_SPAWN`
-(`repo://tests/conftest.py#L24-L27`) and provides `test_db_path` /
+(`repo://tests/conftest.py#L25-L29`) and provides `test_db_path` /
 `initialized_db`, `git_repo`, `api_client`, and `default_board` fixtures
-(`repo://tests/conftest.py#L44-L111`).
+(`repo://tests/conftest.py#L43-L113`).
 
 Test tiers (mirrored on disk):
 
@@ -124,7 +124,8 @@ Test tiers (mirrored on disk):
   `test_settings_api.py`).
 - **`tests/e2e/`** — hermetic multi-agent workflow and resilience simulations
   (`test_multi_agent_workflow.py`, `test_concurrency_resilience.py`,
-  `test_cli_lifecycle.py`, `test_automation_scripts.py`, `test_plugin_api.py`).
+  `test_cli_lifecycle.py`, `test_automation_scripts.py`, `test_plugin_api.py`,
+  `test_openwiki_cron_e2e.py`).
 
 The precommit gate runs **`python3 -m pytest tests/ -q`**
 (`repo://.zerofactory/precommit.sh`). Add a regression test alongside any bug fix
@@ -155,7 +156,7 @@ already carrying a role-tagged marker is returned unchanged, making re-writes
 idempotent and never double-prefix. The reviewer submits verdicts
 as `gh pr review --comment` (not `--approve` / `--request-changes`, which GitHub
 blocks for the PR author's own token) with `[AI:zf-reviewer]`-tagged bodies
-(`repo://dispatcher/worker_spawner.py#L129-L141`).
+(`repo://dispatcher/worker_spawner.py#L215-L228`).
 
 ## What NOT to add
 

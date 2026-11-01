@@ -24,10 +24,10 @@ sources:
     resource: repo://issues/jira.py
   - id: openwiki-source-6b26d87a1c92fff15057316c
     resource: repo://tests/unit/issues/test_issues.py
-generated: { by: "hermes", at: "2026-10-06T19:22:52.001Z" }
+generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-06T19:22:52.001Z
+    at: 2026-11-01T07:54:23.892Z
 ---
 
 # External Issue Import (GitHub & Jira)
@@ -94,9 +94,10 @@ Both clients implement `BaseIssueClient` (`repo://issues/base.py#L237-L248`)
 entry point:
 
 1. **Board resolution** — `resolve_board_for_issue`
-   (`repo://issues/importer.py#L30-L96`) picks the target board: an explicit
+   (`repo://issues/importer.py#L30-L111`) picks the target board: an explicit
    valid `board_slug` wins, then a match between the issue's
-   `repo_or_project` and each board's `git_url`/slug, then the current working
+   `repo_or_project` and each board's `git_url`/`repo_alias`/`jira_url`/slug
+   (via a `LEFT JOIN` over `board_repositories`), then the current working
    directory's `git remote origin` against board URLs; it falls back to the
    board slug argument or the default board.
 2. **Deterministic identity** — task id + dedup key from the `ExternalIssue`
@@ -107,8 +108,7 @@ entry point:
    a `[Triage] [<Type>] [<key>] <title>` title. The dashboard create-task
    endpoint honors the explicit `task_id`: if the row already exists it returns
    a `duplicate` response with the current status instead of inserting
-   (`repo://dashboard/routes/tasks.py#L272-L286`,
-   `repo://dashboard/models.py#L130-L135`). An optional
+   (`repo://dashboard/routes/tasks.py#L299-L311`). An optional
    `require_ai_request` guard rejects issues lacking the human AI-investigation
    label unless `--force` is passed.
 4. **Result** — the caller receives `{ok, id, duplicate, board_slug, status,
@@ -123,14 +123,15 @@ The dashboard wires the same import machinery into the operator UI
 - **Synchronization** — `GET/POST /boards/{slug}/sync-gh-issues` scans the
   board's repository for open issues flagged with the AI-investigation label
   and imports each via the same deterministic path
-  (`repo://dashboard/routes/boards.py#L535-L560`).
+  (`repo://dashboard/routes/boards.py#L1032-L1131`).
 - **Single import** — `POST /boards/{slug}/import-gh-issue` imports one issue
-  by number/URL (`repo://dashboard/routes/boards.py#L618-L676`).
+  by number/URL, resolving the board's `git_url` from `board_repositories`
+  (`repo://dashboard/routes/boards.py#L1132-L1195`).
 - **Task-based setup** — `GET /boards/{slug}/gh-issues-status` reports
   whether the repo has the standard `.github/ISSUE_TEMPLATE` configuration;
   `POST /boards/{slug}/setup-gh-issues` no longer writes templates in place —
   it routes through the shared setup-task helper
-  (`create_gh_issues_setup_task` in `repo://dashboard/gh_issues_service.py#L100-L118`)
+  (`create_gh_issues_setup_task` in `repo://dashboard/gh_issues_service.py#L104`)
   to file (or dedup to) a P0 `zf-builder` task whose prompt runs
   `python3 scripts/setup_gh_issues.py --path . --align`: in align mode
   `config.yml` is always regenerated repo-aware, while `bug_report.yml` /
@@ -141,8 +142,8 @@ The dashboard wires the same import machinery into the operator UI
   the created/already-active task id instead of inline template output.
 - **Jira link** — `POST /boards/{slug}/setup-jira` writes the board's
   `jira_url` and `POST /boards/{slug}/test-jira` runs
-  `JiraIssueClient.check_connection` against it
-  (`repo://dashboard/routes/boards.py#L677-L719`).
+  `JiraIssueClient.test_connection` against it
+  (`repo://dashboard/routes/boards.py#L1195-L1237`).
 
 ## CLI surface
 
@@ -163,7 +164,7 @@ same for Jira Cloud issues (handler at `repo://__init__.py#L907-L1024`).
 Tasks carrying `external_issue` metadata are closed the loop on the source
 tracker: when the dispatcher opens the PR for such a task, the body appends
 `Fixes #<n>` (GitHub) or `Resolves: <KEY>` (Jira)
-(`repo://dispatcher/scheduler.py#L1538-L1550`), so a human merge on GitHub also
+(`repo://dispatcher/scheduler.py#L1900-L1916`), so a human merge on GitHub also
 closes or references the original issue. In addition, for GitHub issues the
 dispatcher posts **exactly one** "PR opened" status reply on the source issue
 itself via `post_issue_pr_comment` (PR URL + `Fixes #<n>`, gated on

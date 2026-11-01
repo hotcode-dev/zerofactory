@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f68c7d7ff087652a67753f0ee96b6915c486100d9197c9d3738dac59feb5e299",
+  "pageVersion": "sha256:9ca3842d5dd16cf065fecd1ac365ceda895c44f5857024c32aca71cdb1c6cdcb",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -24,11 +24,19 @@
     },
     {
       "id": "claim_2bbf4cdf833e47c18a2589ebac54d4d4",
-      "statement": "openwiki_service detects a board missing openwiki/ and keys off the machine-readable ledger openwiki/.page-manifest.json (its PAGE_MANIFEST_PATH), not the generated index.md, so status reflects what the CLI actually produced.",
+      "statement": "openwiki_service detects a board repository missing openwiki/ and keys off the machine-readable ledger openwiki/.page-manifest.json (its OPENWIKI_PAGE_MANIFEST_RELPATH constant), not the generated index.md, so status reflects what the CLI actually produced; get_board_linked_repos makes the check multi-repo aware with an optional repo_alias.",
       "evidence": [
         {
-          "resource": "repo://dashboard/openwiki_service.py#L29-L41",
-          "version": "repo-lines-v1:sha256:7124c471d4bc0889d3de5fa48410a4c8c1e7dbd345a8909715c92e2fe3d15da8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NzFjY2M3MzFjMDcxNzdiMWNjMWYwMGJiMTM1ZWE4YjZhOTE0ZWU2ZmZlOGI2OTJhYTQ5MDk4ODcwNDhhZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNDU2NWMzZDk0NzIzZjBhNmMzZWFmZGExMmNmZTcxZmI1ZDg2N2UzZmYyZWE5ZjZlNzcyODE0OTQ1M2ZhNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0MzE0OTUzZDJkNzQ2NGQwZDNhZmNjNTZkMWQ3Yzc2NDg1M2FjYmEyMDA3ZmU1ZmFjMjRiMjYyY2YzMjc5MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3ODAzYjQ1YjNhOGEwZTU4YTEyN2RiODFmOWRhODdkYjg0ODIzMjZkNTdiNTJlMWY5Yjg2M2MzYWYxN2M4NGMifQ"
+          "resource": "repo://dashboard/openwiki_service.py#L202-L220",
+          "version": "repo-lines-v1:sha256:0059f3110d6298076d475f084d834ffc967fe0da09a7a267479401d4ded4db2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjNWYxZjBjMWJmNjBhZGY0NjJhZWRjYTkxYTZkOTE1ZGQxZDA2ZDk5NmFmMzk0ZTk1YjBmYzAwYmRhMWQ3MTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwMTFkZGVmNjNlNWVkYmZkYTBmNmI5OWE5ZjYxNDcwMWU2ZWIyOTE0ZGNlZGJhNDAxOWIyODE3MzczNGEwZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4YWU2MGEwOWE3ODRiNDdlYTA4NTMxNmJmZjkyYzY4MDExZGQ2NzBkODlmMjhkYWY1ZGE5YmI2YWU0MWJjNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlM2VkYmE5NzdkMmYwZDk1ZDhiYzYxNmZjNzA3YjZmYjhlNzA4Yzc5MzQzZDBhZjQ3YzA4OTBiMzY1MGIzMjcifQ"
+        },
+        {
+          "resource": "repo://dashboard/openwiki_service.py#L30-L41",
+          "version": "repo-lines-v1:sha256:dfb3b69025414a018048cce146d1ba49111227de0cc8ac3fd001ab5a47e991e8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NzFjY2M3MzFjMDcxNzdiMWNjMWYwMGJiMTM1ZWE4YjZhOTE0ZWU2ZmZlOGI2OTJhYTQ5MDk4ODcwNDhhZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0MzE0OTUzZDJkNzQ2NGQwZDNhZmNjNTZkMWQ3Yzc2NDg1M2FjYmEyMDA3ZmU1ZmFjMjRiMjYyY2YzMjc5MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3NmU2N2ExMDc5NzhjMTdmOWY2MTNjYzllNWEyOTQ0NGRiOWYwNzE4NWQ1ZGZiOGYxYmU1NWJmNTQ3MWE5MzkifQ"
+        },
+        {
+          "resource": "repo://dashboard/openwiki_service.py#L42-L60",
+          "version": "repo-lines-v1:sha256:325886839a581a1006383fb6f7d6c16fc137c9b10d76ab677f2220faf290ba72:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllZWE1ZWU1MDBiM2UzNTBiZWZjYmUxYmI5N2FmYjk0MjI3NjUyZjM2MDBjYTQyMTUxOTJmNGE3NmYwMTViMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiOWQyYmEyZTc5Yzg4MGJkNGE0MDk5ZDVjNDdkNDhjYjYyNGNkZTk0NmVjMTgwZTA3YjQ3MTc5ZDc2OGM1OTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNTU1Nzc3Y2VlMDIxMjQwY2RmMGFiOTlhY2YxYTkxMWM2ODlkMTUzNjE1NjMwODIwYzQ4YWY5ZmQzNGU3MmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkMDFmOWY0ZGI1ZGUzYjFhMDUwYzQ3MDkwOTJiNmFlNGIyOThjM2QyOTQ1ZTlhYzFhYzBiMjM3OGFmZGQwYjYifQ"
         }
       ]
     },
@@ -48,25 +56,25 @@
     },
     {
       "id": "claim_796c59060d4b4d59815fe0dff24a4bfb",
-      "statement": "The setup services file a P0 zf-builder task that runs natively through the Zero Factory dispatcher and Hermes background cron; they do not emit external .github/workflows or CLAUDE.md, so any tool-produced GitHub Actions wiki-update path is out of scope and must be deleted.",
+      "statement": "The setup services file a P0 zf-builder task that runs natively through the Zero Factory dispatcher and Hermes background cron; they do not emit external .github/workflows/openwiki-update.yml or CLAUDE.md, so any tool-produced GitHub Actions wiki-update path is out of scope - the OpenWiki setup prompt explicitly instructs the worker to delete them if created.",
       "evidence": [
         {
-          "resource": "repo://dashboard/openwiki_service.py#L110-L127",
-          "version": "repo-lines-v1:sha256:57238759e782d6413dbadd207f06b15430e061ce527c319de34fcf0131ebb391:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2NDk0NjNiMmUyOTgzMDVmOGE0M2QwNTBlZDAwZTNlYTdkZDFmM2Y4NDc5ODVhZmIzYjM2Yjc0NDA5MjMyNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://dashboard/openwiki_service.py#L190-L190",
+          "version": "repo-lines-v1:sha256:99d183dc10065bd3940271381e51ee4d0b872e21178672a35c5f4e7476667fe0:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTlkMTgzZGMxMDA2NWJkMzk0MDI3MTM4MWU1MWVlNGQwYjg3MmUyMTE3ODY3MmEzNWM1ZjRlNzQ3NjY2N2ZlMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTlkMTgzZGMxMDA2NWJkMzk0MDI3MTM4MWU1MWVlNGQwYjg3MmUyMTE3ODY3MmEzNWM1ZjRlNzQ3NjY2N2ZlMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTkzM2M0MDUzZGQzYzcwZmZjZDBiMjhjYmNjYWY2NjBiNTY3ZTM0NDM5MmJiMjQ1YjQzOGZmYmU2OTQ5ZWE1YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWEwZTM0YzM0NzhkODlkMTdiNThlOGRjOTQyZmYyMjYxNmUxNjM4ZjIyNDhmZDMxYzkzYjVmYWI0YjdkOGZiYSJ9"
         },
         {
-          "resource": "repo://dashboard/precommit_service.py#L129-L140",
-          "version": "repo-lines-v1:sha256:a54f11aaf7629221a76152690b8e690c5a5899e301e045f316604f955a338de7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4MGRlNzczZDA1ZmIwMTE2MWRmN2FlNzVkNjEzOWY5NDk3MWNjMDg0ZjFlZTk4YTZkNGE5OTZjYTMyYWUwZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4YWU2MGEwOWE3ODRiNDdlYTA4NTMxNmJmZjkyYzY4MDExZGQ2NzBkODlmMjhkYWY1ZGE5YmI2YWU0MWJjNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2MDdmM2QzOWMyZmMyZGI3MDM1MDc0NTczODliMTVlYTI3NTRhNjJhNDlmYWNkYTY1MzQ3ODc3YjVjN2JkODgifQ"
+          "resource": "repo://dashboard/precommit_service.py#L147-L152",
+          "version": "repo-lines-v1:sha256:073121f67e78c5381cc8b88c896290f8b0497884ddc0a9ae69e5f37532bad98f:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODFiYzQ4Nzg5MTdlMTQyOTc4OGQ5ZjgzNDhlYTlkYzA4Mjg1ZDE4NzQ3Y2NjOWQyN2RhYjBiZTM1MzJhNWQxYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDE5ZThjNWUwM2Q2MDA1MWM0MDI5YjRjZTgyYWIxYzEzODVkZDcyYTcwZmVhMWU1MWYxNzNiZDU4ODc0NjJiNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGNjNGE3ZDFjYzc5NmFiYTNlNDY3MjMzMjdmNTE3ZTlmODExOTgyZDI1MGYwNzAyOTg2ZTRiNTc2NGFkOTU4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2ZkZjM5YjQwNmU3OTY3NjBmYWJiMmNmYThhYTVjNjgwMzQyMDViNTE1YzRmMzcwOTQ3NDA5YjA1MTAzYjUxNiJ9"
         }
       ]
     },
     {
       "id": "claim_ac9e3af9a36f45c58b6a05e347281d05",
-      "statement": "cron/definitions.py defines zero-factory-task-queue-check as a no_agent: True job on a 120-minute interval that runs pure Python with no LLM to reap stuck workers and trigger the dispatch cycle.",
+      "statement": "cron/definitions.py defines zero-factory-task-queue-check as a no_agent: False job on a 15-minute interval (category core) whose script is zf_queue_watchdog.py; the deterministic Python path still runs without an LLM and the Hermes host only wakes when the watchdog emits a bottleneck alert.",
       "evidence": [
         {
-          "resource": "repo://cron/definitions.py#L248-L270",
-          "version": "repo-lines-v1:sha256:a0a467d41fb294e8bc90cba7a6ab24e1d915c0492f47dfb52ab50ed91acb17d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOTVmZmE1Mzg5OGY5OGJlNTc0YWEzYjdmMTgyNDIyMDJhN2RlZDdmYWU1OWNiMDFhMGFhMzljYWIxNDljYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhNGVlNTFjNDI5MTc5YTE5YjIyNDliNmJlNzg3NThiMTEzZWJhNWNkMzhhYjhkMTY0NWI5ZDM5ZTQ3MTUxMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzN2Q5ZTRiYzJlZjg4NjVkOWYzODhiMGI0MmYwOTllNDE2NDE0OTFhNTIxNGM1ZjAyODk4YjM5NGY4YmNmNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkYTY5OTU2MTQyOTE2Y2UzYzc1MmE2YWUwNmY2ZjIwOTQ1OWVmYjU0MmFiNjdhZjc4YTZhM2RmMjhiYmFkN2IifQ"
+          "resource": "repo://cron/definitions.py#L268-L293",
+          "version": "repo-lines-v1:sha256:efef143f005f79f885e1f80ad257504d5ca5b830a55c6883027a97a79c2f32d5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOTVmZmE1Mzg5OGY5OGJlNTc0YWEzYjdmMTgyNDIyMDJhN2RlZDdmYWU1OWNiMDFhMGFhMzljYWIxNDljYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkZjYwNmE4YWQwZGNhOTg2MjFkN2U5YzY0ZjBlZGY2ZGM5MTdjZjJjNGRlNGM5MDA0ZThlMDU3ZjdkZjFkMmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4MmI1YzJjMjRiZTRhNGYwNjJhOGYwMTg2YjY5ZmNhMDA1NzE3MDlkODk1ZDdjODU4ZmZjYjQyYWI0MjcyMWEifQ"
         }
       ]
     },
@@ -82,15 +90,11 @@
     },
     {
       "id": "claim_4447c57c3df0493db1509e09bcc6a6d4",
-      "statement": "zf_queue_watchdog.py is a No-Agent Mode watchdog that reaps stuck workers (reap_stuck_tasks), triggers run_dispatch_cycle, and pulls get_stats; it emits {\"wakeAgent\": false} when healthy (0 tokens) and a markdown alert when it finds a bottleneck.",
+      "statement": "zf_queue_watchdog.py is the queue watchdog: it auto-syncs open GitHub issues labeled zerofactory into active boards on a per-repo cooldown (a sync failure does not stamp the cooldown), reaps stuck workers (reap_stuck_tasks), triggers run_dispatch_cycle, pulls check_stuck_tasks(include_blocked=True), and pulls get_stats; it emits a wakeAgent false signal when healthy (0 tokens) and a markdown alert when it finds a bottleneck.",
       "evidence": [
         {
-          "resource": "repo://scripts/zf_queue_watchdog.py#L1-L20",
-          "version": "repo-lines-v1:sha256:13bd7a4be7fd302326f5d7670ce006aaf2ce26b9a1ab54cc78605a82b32633ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlYzFiMDk3Y2MwMGEzOTc3NTQ1MGE4NTQ3YTYxNzAwYjVmN2VmNTBhYjQ2MDgxMWMyYTFlNzg4ZDg2ZmY5YTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhNzk2YzcwYWM3N2RiYWJkYzllYTU2ZjEyYTBmZDMxMGExOGQ3NzQ4YmJiM2MzMjRmNTljMmNiYmEzZWVmN2EifQ"
-        },
-        {
-          "resource": "repo://scripts/zf_queue_watchdog.py#L44-L60",
-          "version": "repo-lines-v1:sha256:1f67240385fb36c0edbbe4287a0d643155cab0bb197ca323a62c9d2148943e98:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViZDQzMDk2ZTA5YTRiOGFlMzczOTM2MjQyOTk3Njk2NTE5NmE0ZGZlNzhmMjdhYzg4YzZmZGQyMTkxM2E4M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyY2I3ODhjZjA2ZTAxOGZjN2U4OGZjN2U3ZTcyY2RlMTZlNjBhZWYxMTY3NWQzYzczMjgyOTBhMmM4MThmZTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNzBjNDAyOThiNTIwNjM0NjlhODNlMzAzYjE2MTMxODFlNDQ1N2RjOTI1OGExZTI0MDZiODM5YWRiMWU3ZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4YTRhNmRiOThiNjVjM2U0NWEzMmYxOGZmYzRiYTFkODRjY2I5ZjYzNjY4MzY5MjMzZjMyMjdlY2NhZmZkZjYifQ"
+          "resource": "repo://scripts/zf_queue_watchdog.py#L50-L193",
+          "version": "repo-lines-v1:sha256:38bd097e725fdebd12aa7341178a20b411e09ab0a4965a1ee599ba7284f553c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1M2FhZWY2NDM2ZGI1YTU2ZTRmZDA1M2JiZDA2YWEwNzMzMzc0NTJjMDVmNWIwYzM3ZDEyNTZjY2RkN2Q0MmY5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwYzAxZDMyZmJlYWRkMWM0ZDlhOGMyMTY0OWM1N2JhNGM0NTljODY0ZGNkYjlkZDdhOGVkODE5MWNhMGVkMTAyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOThiMDYzZDliNDdlNjUzNzk2MjU1NzJjY2UxOTc2NjlkNTc2N2UxMmMxOGJlMDc1NjUyYjhjZDk4MWNlOGQ1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiNjJiMGI4NGEzNzZkMTg4OTkxNzE3YWE0NGNhZTYwYzE5NjUxZGY0NmE2ZjA4MGRhZDMzMDA0YjhjY2YyYzM0In0"
         }
       ]
     },
@@ -114,7 +118,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/zf_daily_stats.py",
-          "version": "repo-file-v1:sha256:2086ce47a8a8c155befecde44023ab7946a661d0514bcde3a3e29199197b5d69"
+          "version": "repo-file-v1:sha256:1666914151d1b41dac696f4f68b63b4bca6f1626550d6b7474e1d0e756f1994b"
         }
       ]
     },
@@ -184,29 +188,25 @@
     },
     {
       "id": "claim_fabad13f93e24e9c8fc024b343a9670e",
-      "statement": "Task creation accepts an optional explicit task_id and metadata: an existing task id returns a duplicate response with its current status instead of creating a row, and provided metadata is merged into the stored task metadata — this supports deterministic external issue imports.",
+      "statement": "Task creation accepts an optional explicit task_id and metadata: an existing task id returns a duplicate response with its current status instead of creating a row, and provided metadata is merged into the stored task metadata - this supports deterministic external issue imports.",
       "evidence": [
         {
-          "resource": "repo://dashboard/models.py#L130-L135",
-          "version": "repo-lines-v1:sha256:6b976a6482f467a8bd8c867e1b6fd88fe37330c936ec4f9fc8faf9c7a5f24d4c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZmODFkYjcxNzc5YTYxMWQyMjc5NDdlMTRmODhiYzQ0NjIzNTlkOGFiNWM0ZmQ5ZDQwZWViYzI5ZWJhOTZhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTlhYmFiNmFkMjYzNjgyMjJkMGRkNWFiN2M3YzYzY2ZkZTc1YzZlY2VjYmIzYjdhMjIyNDdjZGQ4NTBhNjdkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTRmYjI4YWE4OGNhYzYwN2Q0ODZkYmQ1NTQ2ZmJlNzk2YzZkYTc2NGQ2MjgxZjUzMDI3OWViOGQ5OGY1MzU3ZCJ9"
+          "resource": "repo://dashboard/models.py#L221-L244",
+          "version": "repo-lines-v1:sha256:fbb4c5a2a8c2b80fdbbb0bda12105de6e8170a15bc61714accf5de0d9e3df2bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOThiODRiYzFmM2MxYmY2Y2RkNDE2YzNiNjk2NjA1MTU0Yzc4MjU5MTIzY2M4M2VhMGY5NzkxMmM1NzhiMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxNmY4MGFmZTM4ZjczYThiODdiOWViOTcwZThkMDdiNTZlOTU0ZDM2ZDVmMjJlMjIzNjk2YmMyODdjODMzOWUifQ"
         },
         {
-          "resource": "repo://dashboard/routes/tasks.py#L267-L284",
-          "version": "repo-lines-v1:sha256:bba0f3f5f76e35aa5b0e8b424d166162cfe29eaa85a73f2685d08cd22ebbd87e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZDA5ZmE4MDMxMGJkMTk3NzgxMGM4MzFjNWNjMWI3YTQyYTE2NGMzNmU3NGYwOTJlY2FmYzM1YTEyZWRmNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZDc4M2YwNjdiZjMwYTczOGVmZTM0Y2IzMzIyMThkMmYxYjA2MDJkOGM2ZTY4YzljODQxMTRjNTc3MTNjOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3YmE5YzMxZTAzZDBiMzcxOWUzNTNjOWVlM2ZlY2ZiNTYxMmIxNzM4NGNjOWJmMDJiMTRiMjQzNzgwOWU1ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzNzU2Y2M1NzcwZGY4Yjg1ZjU2MWM5ZDM1NmQ3ZDExMzM3MDkxZDMxODE0MGE5MmFhOGEzNDI2Yjk0OGU1OWIifQ"
+          "resource": "repo://dashboard/routes/tasks.py#L269-L340",
+          "version": "repo-lines-v1:sha256:bedf50b6581b5a0f2a14745c8872f29b22081171b2baeb52c13ac4c8eb9e67c5:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkZjkzMTg3ZGI4ODY1ZDA2MjYzODgwMWJkY2MxOWRjNTAzNWIyZjA4N2VhMzU4YjFmMzZjN2ZmMzY2NWQ5MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmNjM2Y2IyZGZlNzY5MmZkMjkwZjNiYWUzYzhkOWUyYWU1OTkzZjRhMzQ5YzQ1MTg4NDIxNGQ4NDY5NDIxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1YjFiMjllMGM3MmQ3ZTM2MjRhZGM1ODQ0NDU0M2RkZmU1NGY2MzgxMzM3OTQ0M2VmNWEzZGYwNmYwNmY3YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmYzIyMDNkNjIzODYyMTk3OWU0ZDQwNzRhNzIwZTE4NDZiOGMzNDA5Nzg2YzU3ZGNhMTRhMWJhYWU1Mjk4NTcifQ"
         }
       ]
     },
     {
       "id": "claim_5f7b589c9aba416c9b4fff4d63e3c8de",
-      "statement": "scripts/zf_openwiki_gate.py deterministically decides whether OpenWiki docs need a sync: it skips when openwiki/ is missing, the working tree is dirty, or (unless forced) an openwiki-titled task is already active in triage/todo/running/blocked (has_active_openwiki_task); when HEAD has advanced past the last openwiki-touching commit it creates at most one P2 todo task for zf-builder via create_openwiki_task — through the dashboard create-task endpoint with a SQLite fallback — and never wakes an LLM.",
+      "statement": "scripts/zf_openwiki_gate.py deterministically decides whether OpenWiki docs need a sync: it skips when openwiki/ is missing, the working tree is dirty, or (unless forced) an openwiki-titled task is already active in triage/todo/running/blocked; when HEAD has advanced past the last openwiki-touching commit it creates at most one P2 todo task for zf-builder via create_openwiki_task - through the dashboard create-task endpoint with a SQLite fallback - and never wakes an LLM (the script always exits 0).",
       "evidence": [
         {
-          "resource": "repo://scripts/zf_openwiki_gate.py#L192-L216",
-          "version": "repo-lines-v1:sha256:2a9a57aaf78014a22e258a9335809bcbb1d7b2a0d30be8a7be86e2e1af9a01eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiYTc1NzE2MTYxMGUwNDZkMjY1MTc4NjJiM2Y4MmZkOTA3MGMzNzZmYWFiMmVmMjU1MzIwYmZjYWYyODJlN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMDM0ODFjNTdkMGYwZGMwZjc2Y2QyY2M4YjM2MDRjNGU4Mjk2ZGE0MTIyYWRkMTllODE3NDVkYzdlMzMxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2MzM3NWY4NmZiYjM1ODZiYjJjMGQ4NDJkZWRmYzliZjcwM2RlMjgzYjljMGMxNWM0Njg2YjBlNjU4NWU2MDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkMmZjNDJlNjE3YzRlZjAyYTFkYmZiMTU3YzI0NzQ0ZTljNmEwNTgxNjEzYzA3MmRjNDNmODgxMDRmYzA2YmYifQ"
-        },
-        {
-          "resource": "repo://scripts/zf_openwiki_gate.py#L51-L118",
-          "version": "repo-lines-v1:sha256:8b602f9671496001f46820a1941072d6a0d8e3bd49aea7551b0c5ad01f2e92be:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2FjNjI2MjQ1MTJiYzhjNWQ2ZjZmZGU4NDBmZmI4MjJhMzQ1YTBmZjQ1ZDEzYzBhYjRhYmQ1NDcyZTIzZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2NmNkY2IzZWI2YzY3NDc0MGU0YzQ3NDhkMzIwNjIxMWU5Yjg1ZjYzNDhkM2YwNjg1OGJhYzNkYTY2NmI2OGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyMmQ0N2MwMzBjMWQ4YThiYTNiZDU0MmU2N2UyMGYwODhmOTcxY2JmYmI5YmExNzExYzgwNDkxNmQxOGQwZGQifQ"
+          "resource": "repo://scripts/zf_openwiki_gate.py",
+          "version": "repo-file-v1:sha256:433395cc3467383193cf13037aab24d23bc371e93a3ef897ff48c2440d2bbd32"
         }
       ]
     },
@@ -215,18 +215,18 @@
       "statement": "The boards router exposes external-tracker integration endpoints: GET/POST /boards/{slug}/sync-gh-issues and POST /boards/{slug}/import-gh-issue for GitHub issue synchronization and import, GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues for the GitHub issues setup flow (files or deduplicates a P0 zf-builder setup task rather than writing templates directly), and POST /boards/{slug}/setup-jira / POST /boards/{slug}/test-jira for the Jira Cloud link.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/boards.py#L500-L719",
-          "version": "repo-lines-v1:sha256:2d8a08b6525df8f398d6e02330c7f04fa17868f8a8541b41f65a954d4554c88a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTk2OGE4ZjgzMDE4ZjY2NDM5YWExODVhYmZiZjAwNjM0OTNiNTJhZjJjMGYyNzNiNmM0YTYxNTlmMGNjYzIzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dashboard/routes/boards.py#L996-L1234",
+          "version": "repo-lines-v1:sha256:9bdec49b41c62f9b6505081bec695b26e9d1a0505d5aea29c3cb271b4c9475f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjOTcwYzY3YzdiNWM2NTYyZjkzZWE2YTA2MDNlMjYyZjY3Y2Q3MjI4OTc4OTY4NzYzZGE5NTNkZWRiMDhiMDJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjODE0MmExODM3ODRjZDA5OWRkYTRmMzk5NGQ5YWJhMDJkYjY5ODI2OTIzYjllNWQ1OTNhYjRlNGRlNTMxNWIxIn0"
         }
       ]
     },
     {
       "id": "claim_e543e69228f84fd0962cab94798ee6ff",
-      "statement": "The Grill-with-Docs protocol adds POST /tasks/{task_id}/triage (dispatches the task to zf-orchestrator for triage) and POST /tasks/{task_id}/interview-reply (records the human's answer to an open interview question); the frontend GrillInterviewPanel and grillParser.js scan task comments backwards for a 'Grill-with-Docs: Decision Required' marker or an active_interview metadata state to detect open questions and existing replies.",
+      "statement": "The Grill-with-Docs protocol adds POST /tasks/{task_id}/triage (dispatches the task to zf-orchestrator for triage) and POST /tasks/{task_id}/interview-reply (records the human's answer to an open interview question); the frontend GrillInterviewPanel and grillParser.js scan task comments backwards for a Grill-with-Docs: Decision Required marker or an active_interview metadata state to detect open questions and existing replies.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/tasks.py#L1003-L1122",
-          "version": "repo-lines-v1:sha256:bc42bbbf910fcd9c446ed79058b40ae959db62109bce6d462dc1c31fe46dbcc0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NGM3MDI3MjhmYWMwYTQyN2E4OGMwOTJjNzk0ZjhlOGE5ZjUwMWI2MmUwMWI0YjU1OWVmNDhlNWEwOTQ0MjJkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjYTM3MTNmOGQ3ODdhNzRhNTM2NTAwZGM3MjcyNjc2NjE4ZDNhMzUxMGFhMDhhMGFhZGNlYTBmYThhZTM1M2ZlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dashboard/routes/tasks.py#L1227-L1476",
+          "version": "repo-lines-v1:sha256:cc9bf767179891282628de7ca0558361c61bc95d4371096a2749d8672c025e1e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjOTM3OTI0NTZkOTdlNTllOWMyMjQwNTVlYjg3NjI2M2RiMGQxZDJmMjdmM2YxZGFhYWUyZTI0Y2NlYTM4NTI5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMGI0NjVmM2Y2MDg3NTM4MjRhZTBjOWMxZGIxYTJmYjRjMTRhOGUyMDA1MDc5YTczYWQ3YmJhYjU1YzIwYjM3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwZmRjMGE0MzViNDQwNTFlOTY0MTI5YTIwMjgwNjg3YWQzM2FlODI1ZGMyMzJhOGQ1NTAwOTllNjhlY2VkYmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwODcyNDUxMzQ0Y2M1ZjJiYTllNDQ2NzUxYjg0YjQ5NTMwNzkxNjlkNDM0ODk2OGQ5ZDk2YWFmZTVjMmFkMTM1In0"
         },
         {
           "resource": "repo://dashboard/src/utils/grillParser.js",
@@ -250,33 +250,29 @@
     },
     {
       "id": "claim_0f2cb25375114cd08ac1c75084527b40",
-      "statement": "The tasks router's PATCH /tasks/{task_id} updates task fields in one call but refuses status changes (400) — status is a lifecycle transition owned by a single code path, POST /tasks/{task_id}/move — and guards query parameters (board, status, assignee, priority, search) with isinstance string checks so non-string task fields never break grill/conflict status handling.",
+      "statement": "The tasks router's PATCH /tasks/{task_id} updates task fields in one call but refuses status changes (400) - status is a lifecycle transition owned by a single code path, POST /tasks/{task_id}/move - and the tasks router guards query parameters (board, status, assignee, priority, search, repo) with isinstance string checks so non-string task fields never break grill/conflict status handling.",
       "evidence": [
         {
-          "resource": "repo://__init__.py#L1084-L1105",
-          "version": "repo-lines-v1:sha256:cc5ac6b7ef7f47fb328270136278485e99a4678cbe52f3adfddc85ad8bb73bae:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZTI4YWQ4NDVjYWY0ZDZkYjU4Y2RlZTYyYWM1YTI4ODcxYTA5NTA2YmUxNmEzZGQ4NzYwYjFmOGEzMTM3YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5NjRlYzhhMzIxNDhlZmFlYmVjYzdiYmE4OWM5M2UyZTljZGQxZDBkYmQ2ODRlOWU4MDg1NjUwOTI4ZDRmZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVmNzZlZDY0NzIyNzM1Y2U2YTYwODhiMjA0MDIwOGFlYjFiYmM1MmJmZTNmNWFiMjA1N2E1MzdhMGIwNzM0Y2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YmUxMGIxNjg0MDIzMDA2MWFmMzlmYzFjNmI3MzFhNTQzZmYzYzM2YmI2M2FhMDQ0ZmQ1ZjBmZDVlYzYyZTgifQ"
+          "resource": "repo://dashboard/routes/tasks.py#L122-L145",
+          "version": "repo-lines-v1:sha256:de7337eadea055595e7d89e4927ef3344c4c1e04b9de3f49163d2e54ce528273:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwYjE4NjAwMzBlMzZkNmNkMTNkYTU4NGE0OGEyZDhlODdlMDY2ZjdjNjI0Y2NkMjg1OTM4YmE2ODUzN2I1Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNWJkYjIwNGU0ZjRkNjZlYTAzODQyODNiMDE4OTg2ZmMzYWRjY2Y2NzU5ZWUxZmNkYWY1OWUyNGE5M2EwODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2NzJkNmUyOThlOWEzMmFkYWYxYTkyMzcyZTAzYjE4ZjYwOTFiZTk4YjE4OTA5MTk2OWNhNDU5NzRkZDAwNGQifQ"
         },
         {
-          "resource": "repo://dashboard/routes/tasks.py#L630-L665",
-          "version": "repo-lines-v1:sha256:f714981337a98147b8f4a4eb03ccedb2d0aca847790cc284d4fbdeba74c03c0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3MjhhNWIzNzM1NzlkNDIwZDBiZGYzZjY4ODEzOGE1NDY4ZWJiODU2ZWU1YWY5YjkxYjBmMWQxM2U3Yjc2NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkYjE5OWYyYWE0MjlhZmJiZTZhYzliYTk5YzQ3NjAyNDc2MmQyMGM2NTRkN2E5NTBkY2NmNWJkYTQ0ZmNiYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmOGNmNmU2MjBjMDg2ZDAzMTIyYzIxNThkMTY2ODZkMmIzYzBkZGE3YjY1ZDdkMjc4YjVkNWFlOGE2MDMxMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkZGIxN2EzMjBlMjc1MDNiZjhlNmNhNzgxNjhiMWJjMDIwNDQ0NzJiZmNlMDcwMWVjOWIwMDMxYjkwMGY4OTEifQ"
+          "resource": "repo://dashboard/routes/tasks.py#L677-L704",
+          "version": "repo-lines-v1:sha256:4b6a0bdc882e547e104913ed190421ab9366bc7554d9d662a53e17a557223b70:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2Y2I4ZTExNjA0NTBjMzY0YzMyYTczYjMzMmJkODRkMTkyNmU3M2ExODAyZmIyNWFlNGNhYTU2OWJiZGQ0YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZjU3ZGI3NzI2YjMwNGFjYTMyYzFjOTBmYmEzNjA2OTc5MzUyNzI0MzJiMzExZjRhNDdlZDdjM2RmN2Q3MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2OWZlMWJmYWZmOTA5OTU2YWJlM2FlZDgyMzkwOTI5ZDc4M2E5OTIyOTdjNDA1ZjdjZTE1MTc2Yzc0NWI1Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkN2I2MDI1MjJjMTA5YzYwMTIwZTYyNjRkZTc1NWE3N2NhYzIwOGQwZGY4YmNhMDY5MDhhZDBkOWM4ZDg1NmEifQ"
         }
       ]
     },
     {
       "id": "claim_0fc16191dfd74afa811c8e8a5ae60fae",
-      "statement": "Setup-task deduplication is active-only: _find_setup_task(active_only=True) restricts to triage/todo/running because a 'blocked' task means 'awaiting human merge', not active work, so a finished-but-unmerged setup task must not dedup or it permanently wedges regenerate/retry flows; check_board_setup_status therefore reports pending_task_id (any non-done, for the UI badge) alongside dedup_task_id (active only, used by create_setup_task). The GitHub issues setup reuses this via create_gh_issues_setup_task, whose P0 prompt runs scripts/setup_gh_issues.py in --align mode: config.yml is always regenerated repo-aware, while bug_report.yml / feature_request.yml are rewritten only when missing or when they lack the expected 'zerofactory' label, preserving repo-customized templates.",
+      "statement": "Setup-task deduplication is active-only: _find_setup_task(active_only=True) restricts to triage/todo/running because a blocked task means awaiting human merge, not active work, so a finished-but-unmerged setup task must not dedup or it permanently wedges regenerate/retry flows; check_board_setup_status therefore reports pending_task_id (any non-done, for the UI badge) alongside dedup_task_id (active only, used by create_setup_task). The GitHub issues setup reuses this via create_gh_issues_setup_task, whose P0 prompt runs scripts/setup_gh_issues.py in --align mode: config.yml is always regenerated repo-aware, while bug_report.yml / feature_request.yml are rewritten only when missing or when they lack the expected zerofactory label, preserving repo-customized templates.",
       "evidence": [
         {
           "resource": "repo://dashboard/gh_issues_service.py#L100-L118",
-          "version": "repo-lines-v1:sha256:4b404be5b8fd3b373db5fdb1c1ec0747f0b3a24b4c1097bf121a5733a0eda8fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5OWFiNWFmMTAxODI3YThhZDIyZjI1OTY5YmRlNTk3NDQyNGVhY2U1ZWRiMzA2NDM1MjA3ZjBhZDAyYTQyZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "version": "repo-lines-v1:sha256:855e768389790eb2b3c294c53de8c2577291e42b5072ea3a44b6014bb14beb47:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYWE2MzMwNWVjN2RjNTE3ZGIyY2QyZjU0NmQ4NmVkNjVlNDRjOWJkOTc4ZTFiZjg1ZDI4M2JhZmM1MTRhN2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwNDExYzhlMjkyNGEyYTM5NjFkYzQ1YjJkM2UwZDQxZTI1MzEzYmJiNjdmMDJiY2UxZDM2Mjg1YTFmMzMyODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0ODYwY2FiNzNlZGM4NzU4OTQ0ZTgxOTM3MGYwYzI5M2VlMmE2M2RkODQ2MGJmMWM5ZjNlYmJlZjcyNTE4OWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkNWYxZjc2M2E4ZTAzMzNmMmFiNTI3MTE1NzJkYzllZjQwNzExYzFmNDI1Y2U5ZTIzOGFkMjJkMmU5ZmIxZTgifQ"
         },
         {
-          "resource": "repo://dashboard/setup_common.py#L121-L127",
-          "version": "repo-lines-v1:sha256:3fd03bf10996e21bfa0b368a90c905a18e56538d0d5462353dfbc07390f874a6:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDY4MzQ4NWE3ZWE5MTNmM2ZkMmI0ZDQ2MWU5ZjNlZGI4MmNmNTMzNWVkM2U2MzU4NWFlYTBjOTczNDM3ZDY3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDU5NWI2Njg1NjNjYzg3OTM1ZWU1ZGM4NzBlMzgwYzNhN2M4Y2RjODdhYmZjYTM5YTdhYzZiNWI5M2MzM2QxZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYxMTRkNzAwZjRhMWFlNmZhNmQ0ODQ5MWYzOTFhZTdiY2Y1ZThlN2VlZmJjZmNmNjhhOTQxZTUzYjAxOTdiNiJ9"
-        },
-        {
-          "resource": "repo://dashboard/setup_common.py#L56-L97",
-          "version": "repo-lines-v1:sha256:b3623462f5fe1841a82273183c0a1643a63fa89e331834651427a188b713d436:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3ZWY3MDlmYWJiOGM3NDA0ZDUwOTUzOTExODRiNDAxODZhOWQzNGUzODE5NTQwN2Y1ZTlhYjA5ZmM5ZTAyN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkOTYzYWI4NzI1NDdiYTUwYjczYzZiZjVjZWU1Njk1MmE5M2E2YWJmMDQzNDdkMmU5M2IxN2JlYTQxNWU0ZTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczM2U4NDg3Yzg1ZGZkY2Y5ZmE3YjkzYzc0NmM5NDYyNWFlNDdlMTIwYzc5N2U3OTFlNzM3ZjllZDdmZmM3M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1MDhhN2RlZTA0ZGQyMWQ5YmMwNzY4Y2Q5YjNjMGRiNGZlZDFlNjg3MjkzZmY2NGRlM2E0NTlmMjBlMTZhOTUifQ"
+          "resource": "repo://dashboard/setup_common.py#L56-L127",
+          "version": "repo-lines-v1:sha256:7af5f07bb131f8e64a4105833bd992b75610a9899b0f5f3364e8ab07b86fc465:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3ZWY3MDlmYWJiOGM3NDA0ZDUwOTUzOTExODRiNDAxODZhOWQzNGUzODE5NTQwN2Y1ZTlhYjA5ZmM5ZTAyN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0ZGFmZjc1ZjA0NzZkNGE0YzY3MTc0MDFhOGM3NmUzNjRmZDcyYzA4NjNjM2RhZjE4M2E2MjVhMTc4ZGRjMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczM2U4NDg3Yzg1ZGZkY2Y5ZmE3YjkzYzc0NmM5NDYyNWFlNDdlMTIwYzc5N2U3OTFlNzM3ZjllZDdmZmM3M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkMWUzZWViZmE1MjllOTRmM2U1NmEzOGU4MzdlYWM5Njg5YjBhZTUxMzkxZWVmZTYxODk1ZWUxNWJjYzg0ZGMifQ"
         },
         {
           "resource": "repo://scripts/setup_gh_issues.py",
@@ -289,18 +285,42 @@
       "statement": "move_task is the single code path that owns status changes: it classifies blocked_reason_type via normalize_blocked_reason_type and manages the awaiting_pr / close_pr packaging flags (an agent actor reporting done keeps the task running with awaiting_pr=true; a terminal/human close sets close_pr to archive the open PR).",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/tasks.py#L720-L918",
-          "version": "repo-lines-v1:sha256:ae5380f046d004c48fcb12d216841be8672d77e876019baaf5f683ff6207858b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTk5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0ODNjMWU0ODgzZTlkNWFkOTI4NzhiZjExOWQ5YmRkZTIxZTU1MzQ0Nzc5YzBjMDU0NDdhNmUzYTljZDE1MTdkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhNjUwMjYyYjdlMmRkNDQ1ZGFlMzBjMjA4NzlmOGU2MWZiY2MyNDg4MGRjZjUxMDU0YTA4NmFiZmViYjRmMmQ2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmYzFmZDBjNzdlODBkMjc0MzA4Yjc0YWJkYzlkMjQ4YmIyYmMwMTQ3ODRjODRlZTk0OTVkZTQ3NWI2NTg5YjZkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNWJiNzMxZTY2NjZiNTZhZmJiNWY2ZjEyZjZiNTIyNGVmOWQwZWE5NzM2NjNjNDU5ZDY2OTk3YTY2M2E1MjhiIn0"
+          "resource": "repo://dashboard/routes/tasks.py#L798-L940",
+          "version": "repo-lines-v1:sha256:e2ae33e4d705f48071e0a00dda130f51ceb59eb65ba092b6e65fb06622cd525d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0ODNjMWU0ODgzZTlkNWFkOTI4NzhiZjExOWQ5YmRkZTIxZTU1MzQ0Nzc5YzBjMDU0NDdhNmUzYTljZDE1MTdkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmYzFmZDBjNzdlODBkMjc0MzA4Yjc0YWJkYzlkMjQ4YmIyYmMwMTQ3ODRjODRlZTk0OTVkZTQ3NWI2NTg5YjZkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjZThmYjEyODkwYzQzMWI3Yzc5NzVjOTY2ZTM3MTc4M2I1NjZhOTY5MGZkM2VlOWZkMTZlNDY3Yzc0ZGY2MTViIn0"
         },
         {
-          "resource": "repo://paths.py#L81-L97",
-          "version": "repo-lines-v1:sha256:fa23d6b586b250fba5185cdaa122f5c2817a673b48e27168cc2997afaf452583:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzMWU5ZDMyMTc3ZDUxNzZjOTk1YWVlZmM3NDhkZTkyODVhNDE4ZDY3OWZiYzZjNmJlYzYzZTM4OGE0NWFlNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYmEwYTAyYjg1NjcwYTU4ZWMzMmNlMTVmMjkzOWM5Zjc0OWM0MjE2MWYyMDBhODYyNGUxOTY3MjJmYzRhNWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1ZDE3OWRkYzY5Y2E5NDJiMjYyNmJiNjU5N2ZkZDI2MDY2MzEyZDVmNTBmOTA5MmE1YmY2NzhiY2Q0MDVjNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwNmUzYWE5MTVhODdjNTUxYjZiYzZmNDQwMzE0Mjk3NmRhODgzZjQ0NWUxYmZjYzg3YzM5MzMzZTI3NmYzYjkifQ"
+          "resource": "repo://paths.py#L91-L105",
+          "version": "repo-lines-v1:sha256:1bdbb617a12721f49991d39212a8e8633128ce0b6ec5917f4b39f6c4a626e7a8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZGEzMTdmZWEwZjEzYjIzZTJkNGY3ODZkODM5ZmRlMGVlYzJkNGMyODk1MzcyN2RjZGJiNWUxNmIxMDg0NWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkNjMwNzI0NjNkY2I5NzRhMjgzY2RmYzE2MzZjMWIzMzRiYWU5ODViZDc5Mzk5YzY5ODlhYTlmYzZlMjRjZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNkMmUyZDk0NTEwOWZmNzkwNmRiNTM5MzJlOTkwOGIyNWRhM2VkMzFlYzVlYmU0OWYwYzcxMWRiZGE0ZmI2NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmYmRhMjhjZTk5ZWI1YjE1OTY4YzNjNTU4YTlhOTQ3NTY4Mzk2YmQzZGU3ZjlhZDc4MmE1NzA0ZGYzMGRmMDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8db938597d0a4451bdc52e80ff855520",
+      "statement": "Boards are multi-repository: repositories are first-class peers linked one-to-many via board_repositories (repo_alias, git_url, target_branch, additional_reviewer_usernames) and managed by GET /boards/{slug}/repositories, POST /boards/{slug}/repositories, PUT/PATCH /boards/{slug}/repositories/{repo_alias}, and DELETE /boards/{slug}/repositories/{repo_alias}, plus POST /boards/test-clone to validate a git URL before linking.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/boards.py#L418-L538",
+          "version": "repo-lines-v1:sha256:b712640400b9ca3629bd02a2e009d4e9399dfd62fbbe5d290a9d2273d1d6991d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ZDQwMDI0Njg1MTlmYTc4YzY2MTVlMDc3YWU3NDMzZDE3YTFlOTI3ZWEwYjYxNDJmY2I2YzNiN2FiZDI0OTBhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5YTE1NWZjZDRhNWI4MDA3ZTkwMWMxMjllMTcwNjU5YmM1ZGRiNTg3YmY5MDE4YzFhNzU0N2FhMGU2Y2U0MDAzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NmNiM2VkNWMzMjc3MTUwNDA2NjEzYzE4NmNjNDdmYjgzMmVjMTljN2E4MDA0ZjE2NTNmOTNiYzEwYTk5NTAxIn0"
+        },
+        {
+          "resource": "repo://dashboard/routes/boards.py#L702-L861",
+          "version": "repo-lines-v1:sha256:5c657c0ac3717e6f3b21f35544e26660f197828b990ee90a0f6cc6515134ad9b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0OGMxZjBmMjY4MWQ1ZTk1ZGJjYzZjNDc2YThkMGU1ZWVhOGQxYzczYzUwMjE4ZTNiNTc2NjYwNzRiNzZhMmUwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxNDdhMmFjOTI1Y2RkYjgyZTQ5N2Y5YWYzNWUzYmQyMWU1N2Y2ZjJlNGNjOTIxNWUwOTY4NjJmYzA1ZDJlYjJhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjOTRkN2FjNWI2Y2RlNGYyNDlkNzc0OGZhMjA5YTkwNDZjMTI3NjNiMDFkMmY3YWQ5MjNmNTc3NjYwZWI5Njk4In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_b4ab1ab720c34a759135867a256fde07",
+      "statement": "New task lifecycle endpoints extend the operator surface: POST /tasks/{task_id}/split decomposes a multi-repo triage task into per-repo todo tasks, POST /tasks/{task_id}/recover routes a failure-exhausted blocked task back to the orchestrator with optional operator guidance, and POST /tasks/{task_id}/report-bug reports an internal Zero Factory defect to the upstream GitHub issue tracker (auto-creating the issue when the auto_create_github_issues setting is enabled).",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L1277-L1663",
+          "version": "repo-lines-v1:sha256:5ff2f06b23a38a6cd3c11db2ab8b2685e6f6e04c8f89f046e84f5d8e8fc7c530:eyJzZWxlY3RlZExpbmVDb3VudCI6Mzg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiZjJhNzM5MzBmOGFiMTE2N2Y3OWIyNDYyNmFkOTJhNzcyNTk4Yjg3YTA4NzAzN2E3MDc2ZmQyYTRlODcwNDNjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwYzBlNGQ0YmUxMzZmNWI5ODY5YmYwMGUyOWNmNDkwYWYzMmJiZmJlYzAyOWNkY2Y1OGZhZWI0ZDc4ODEyOGUzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZmJkMDA5MzE0YmMyNzA4NDE2NzM0YTAyYWU1ZmYzOWExZTQ4YTA1MGJlOTFmNDNiMmZhYTkyMDAyYzYyYmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OTRlNWI1Njk1YmNhOGIzYjU0MGVmMTI3MzJiM2NjYTk2NzljNGQzNTYyNjUwNjY0MTU5NDRhZmMzNjRiMjgxIn0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-06T19:22:52.001Z"
+    "at": "2026-11-01T07:54:23.892Z"
   }
 }
