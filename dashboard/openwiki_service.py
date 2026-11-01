@@ -236,6 +236,7 @@ def create_openwiki_setup_task(
         progress_label="OpenWiki",
         created_label="OpenWiki",
         actor=actor,
+        tags=["automerge"],
     )
     # Automatically sync the board's OpenWiki workspace registry so sibling repos are linked
     try:

@@ -89,6 +89,7 @@ def create_openwiki_task(
                 status="todo",
                 assignee="zf-builder",
                 description=task_desc,
+                tags=["automerge"],
             )
         )
         return task
@@ -108,37 +109,41 @@ def create_openwiki_task(
                     cursor = conn.cursor()
                     cursor.execute("PRAGMA table_info(tasks)")
                     cols = {row[1] for row in cursor.fetchall()}
+                    insert_cols = [
+                        "id",
+                        "board_slug",
+                        "title",
+                        "description",
+                        "status",
+                        "assignee",
+                        "priority",
+                        "created_at",
+                        "updated_at",
+                    ]
+                    insert_vals: list[Any] = [
+                        task_id,
+                        board_slug,
+                        task_title,
+                        task_desc,
+                        "todo",
+                        "zf-builder",
+                        "P2",
+                        now_ts,
+                        now_ts,
+                    ]
                     if "repo_alias" in cols and repo_alias:
-                        conn.execute(
-                            """
-                            INSERT INTO tasks (id, board_slug, repo_alias, title, description, status, assignee, priority, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, 'todo', 'zf-builder', 'P2', ?, ?)
-                            """,
-                            (
-                                task_id,
-                                board_slug,
-                                repo_alias,
-                                task_title,
-                                task_desc,
-                                now_ts,
-                                now_ts,
-                            ),
+                        insert_cols.append("repo_alias")
+                        insert_vals.append(repo_alias)
+                    if "tags" in cols:
+                        insert_cols.append("tags")
+                        insert_vals.append(
+                            json.dumps(["automerge", "cat:documentation"])
                         )
-                    else:
-                        conn.execute(
-                            """
-                            INSERT INTO tasks (id, board_slug, title, description, status, assignee, priority, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, 'todo', 'zf-builder', 'P2', ?, ?)
-                            """,
-                            (
-                                task_id,
-                                board_slug,
-                                task_title,
-                                task_desc,
-                                now_ts,
-                                now_ts,
-                            ),
-                        )
+                    placeholders = ", ".join("?" for _ in insert_cols)
+                    conn.execute(
+                        f"INSERT INTO tasks ({', '.join(insert_cols)}) VALUES ({placeholders})",
+                        tuple(insert_vals),
+                    )
                     conn.commit()
                     return {"id": task_id}
             except Exception:

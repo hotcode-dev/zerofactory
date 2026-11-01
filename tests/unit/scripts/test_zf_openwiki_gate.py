@@ -121,7 +121,7 @@ class TestOpenWikiGate(unittest.TestCase):
         db_file = self.tmp / "zerofactory.db"
         with sqlite3.connect(str(db_file)) as conn:
             conn.execute(
-                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT, status TEXT, assignee TEXT, priority TEXT, created_at REAL, updated_at REAL)"
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT, status TEXT, assignee TEXT, priority TEXT, tags TEXT, created_at REAL, updated_at REAL)"
             )
             conn.commit()
 
@@ -149,6 +149,10 @@ class TestOpenWikiGate(unittest.TestCase):
                 self.assertIn("Detected 2 branch update(s)", reason)
                 self.assertIn("created task", reason)
                 self.assertIn("for zf-builder", reason)
+                with sqlite3.connect(str(db_file)) as conn:
+                    row = conn.execute("SELECT tags FROM tasks LIMIT 1").fetchone()
+                    self.assertIsNotNone(row)
+                    self.assertIn("automerge", json.loads(row[0]))
 
     def test_code_commit_touching_openwiki_does_not_reset_sync_point(self):
         """A code commit that also edits openwiki/ must not count as a docs sync."""
@@ -157,7 +161,7 @@ class TestOpenWikiGate(unittest.TestCase):
         db_file = self.tmp / "zerofactory.db"
         with sqlite3.connect(str(db_file)) as conn:
             conn.execute(
-                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT, status TEXT, assignee TEXT, priority TEXT, created_at REAL, updated_at REAL)"
+                "CREATE TABLE tasks (id TEXT PRIMARY KEY, board_slug TEXT, title TEXT, description TEXT, status TEXT, assignee TEXT, priority TEXT, tags TEXT, created_at REAL, updated_at REAL)"
             )
             conn.commit()
 

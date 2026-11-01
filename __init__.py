@@ -330,6 +330,11 @@ def register(ctx: Any):
             "--dedup-key", default=None, help="Explicit deduplication key override"
         )
         p_create.add_argument(
+            "--tags",
+            default=None,
+            help="Comma-separated task tags (e.g. automerge,hitl)",
+        )
+        p_create.add_argument(
             "--actor",
             default=None,
             help="Actor creating the task (defaults to HERMES_PROFILE or 'user')",
@@ -899,6 +904,12 @@ def register(ctx: Any):
                 if target_repos_arg
                 else None
             )
+            tags_arg = getattr(args, "tags", None)
+            tags_list = (
+                [t.strip() for t in tags_arg.split(",") if t.strip()]
+                if tags_arg
+                else None
+            )
             req = TaskCreate(
                 title=args.title,
                 description=desc,
@@ -912,6 +923,7 @@ def register(ctx: Any):
                 files=files_list,
                 category=getattr(args, "category", "bug-fix"),
                 dedup_key=getattr(args, "dedup_key", None),
+                tags=tags_list,
                 actor=actor_val,
             )
             res = _create_task(req)

@@ -232,6 +232,7 @@ def create_setup_task(
     progress_label: str,
     created_label: str,
     actor: str = "user",
+    tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create (or deduplicate to) a P0 setup task for a board repository."""
     init_db()
@@ -316,6 +317,7 @@ def create_setup_task(
         files=files,
         dedup_key=effective_dedup,
         actor=actor or "user",
+        tags=tags,
     )
 
     try:

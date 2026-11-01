@@ -98,6 +98,13 @@ def test_openwiki_status_and_task_lifecycle(initialized_db: Path, tmp_path: Path
     task_id = setup_res["task_id"]
     assert task_id is not None
 
+    from dashboard.plugin_api import get_task
+    from dispatcher.github_pr import is_task_automerge_enabled
+
+    created_task = get_task(task_id)["task"]
+    assert "automerge" in created_task["tags"]
+    assert is_task_automerge_enabled(created_task, {"automerge": False}) is True
+
     # Check status again: pending task should now be detected
     status2 = check_board_openwiki_status(slug)
     assert status2["has_openwiki"] is False
