@@ -460,6 +460,7 @@ def test_check_stuck_tasks_all_4_states(tmp_path: Path, monkeypatch):
     """)
 
     now = 10000
+    monkeypatch.setattr("time.time", lambda: float(now))
 
     # State 1: Dead worker / orphan running task
     conn.execute(
@@ -512,6 +513,23 @@ def test_check_stuck_tasks_all_4_states(tmp_path: Path, monkeypatch):
         ),
     )
 
+    # State 3b: Healthy PR packaging (within timeout, dead worker process must NOT be flagged stuck)
+    conn.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "t-packaging-healthy",
+            "Packaging In Flight",
+            "running",
+            "zf-builder",
+            None,
+            json.dumps({"awaiting_pr": True, "started_at": now - 60}),
+            now - 60,
+            now - 60,
+            "default",
+            "api",
+        ),
+    )
+
     # State 4: Failure exhausted in blocked
     conn.execute(
         "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -552,6 +570,10 @@ def test_check_stuck_tasks_all_4_states(tmp_path: Path, monkeypatch):
     )
     assert "t-packaging" in stuck_ids
     assert stuck_ids["t-packaging"]["stuck_state"] == "stuck_packaging"
+    assert "t-packaging-healthy" not in stuck_ids
+    healthy_entry = next(t for t in running_stuck if t["id"] == "t-packaging-healthy")
+    assert healthy_entry["is_stuck"] is False
+    assert healthy_entry["stuck_reason"] is None
     assert "t-exhausted" not in stuck_ids
 
     # 2. Calling with include_blocked=True includes State 4

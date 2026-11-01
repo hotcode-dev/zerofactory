@@ -578,6 +578,10 @@ def check_stuck_tasks(
                     is_stuck = True
                     stuck_reason = f"PR packaging phase timed out after {pack_age}s (limit {task_timeout}s)"
                     stuck_state = "stuck_packaging"
+                else:
+                    is_stuck = False
+                    stuck_reason = None
+                    stuck_state = None
             elif is_stuck:
                 if is_dead:
                     stuck_state = "dead_worker"
@@ -796,9 +800,11 @@ def build_stuck_task_context(
         "stuck_reason": "",
         "worker_failure_retries": 0,
         "precommit_retries": 0,
+        "packaging_retries": 0,
         "orchestrator_recovery_count": 0,
         "last_worker_failure": None,
         "last_precommit_error": None,
+        "last_packaging_error": None,
         "worker_log_tail": None,
         "comments": [],
     }
@@ -833,11 +839,13 @@ def build_stuck_task_context(
                 meta.get("worker_failure_retries", 0)
             )
             result["precommit_retries"] = int(meta.get("precommit_retries", 0))
+            result["packaging_retries"] = int(meta.get("packaging_retries", 0))
             result["orchestrator_recovery_count"] = int(
                 meta.get("orchestrator_recovery_count", 0)
             )
             result["last_worker_failure"] = meta.get("last_worker_failure")
             result["last_precommit_error"] = meta.get("last_precommit_error")
+            result["last_packaging_error"] = meta.get("last_packaging_error")
 
             cur.execute(
                 "SELECT author, body, created_at FROM task_comments WHERE task_id = ? ORDER BY created_at DESC LIMIT 5",

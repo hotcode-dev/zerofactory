@@ -1584,6 +1584,57 @@ def _poll_pr_and_route_review(
         return False
 
 
+def _handle_packaging_failure(
+    cursor: sqlite3.Cursor,
+    conn: sqlite3.Connection,
+    task_id: str,
+    err_msg: str,
+    now: int,
+    meta: dict[str, Any],
+) -> None:
+    max_retries = 3
+    retries = int(meta.get("packaging_retries", 0)) + 1
+    meta["packaging_retries"] = retries
+    meta["last_packaging_error"] = err_msg[:2500]
+
+    if retries >= max_retries:
+        meta["blocked_reason"] = (
+            f"PR packaging failed after {retries} attempts: {err_msg[:300]}"
+        )
+        meta["blocked_reason_type"] = "stuck"
+        meta["permanently_blocked"] = True
+        meta.pop("awaiting_pr", None)
+        cursor.execute(
+            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(meta), now, task_id),
+        )
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
+            (
+                task_id,
+                f"🚨 **PR Packaging Failed**: git/gh command failed after {retries} attempts:\n\n```\n{err_msg[:1000]}\n```\nMoved task to **blocked** for operator intervention.",
+                now,
+            ),
+        )
+        cursor.execute(
+            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'packaging_failed', ?, ?)",
+            (
+                task_id,
+                f"PR packaging failed after {retries} attempts: {err_msg[:200]}",
+                now,
+            ),
+        )
+    else:
+        cursor.execute(
+            "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(meta), now, task_id),
+        )
+    try:
+        conn.commit()
+    except Exception:
+        pass
+
+
 def _package_and_open_pr(
     conn: sqlite3.Connection,
     cursor: sqlite3.Cursor,
@@ -1875,15 +1926,100 @@ def _package_and_open_pr(
             return False
 
         steps.start("package.push")
-        subprocess.run(
-            ["git", "push", "-u", "origin", f"task/{task_id}"],
-            check=True,
+        push_cmd = ["git", "push", "-u", "origin", f"task/{task_id}"]
+        push_res = subprocess.run(
+            push_cmd,
             cwd=workspace_path,
             capture_output=True,
             text=True,
             timeout=180,
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
+        if push_res.returncode != 0:
+            push_err = (push_res.stderr or "").strip()
+            # If rejected because GitHub OAuth token lacks workflow scope,
+            # attempt fallback to SSH if the remote is an HTTPS GitHub URL.
+            if (
+                "without `workflow` scope" in push_err
+                or "without workflow scope" in push_err
+            ) and "github.com" in push_err:
+                try:
+                    rem_proc = subprocess.run(
+                        ["git", "remote", "get-url", "origin"],
+                        cwd=workspace_path,
+                        capture_output=True,
+                        text=True,
+                    )
+                    origin_url = (rem_proc.stdout or "").strip()
+                    if origin_url.startswith("https://github.com/"):
+                        path_part = origin_url[len("https://github.com/") :]
+                        if not path_part.endswith(".git"):
+                            path_part += ".git"
+                        ssh_url = f"git@github.com:{path_part}"
+                        _log.info(
+                            "Task %s: HTTPS push rejected for workflow scope; attempting SSH fallback (%s)",
+                            task_id,
+                            ssh_url,
+                        )
+                        push_ssh = subprocess.run(
+                            ["git", "push", "-u", ssh_url, f"task/{task_id}"],
+                            cwd=workspace_path,
+                            capture_output=True,
+                            text=True,
+                            timeout=180,
+                            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                        )
+                        if push_ssh.returncode == 0:
+                            subprocess.run(
+                                ["git", "remote", "set-url", "origin", ssh_url],
+                                cwd=workspace_path,
+                                capture_output=True,
+                            )
+                            try:
+                                r_alias = (
+                                    str(row["repo_alias"]).strip()
+                                    if (
+                                        "repo_alias" in row.keys()
+                                        and row["repo_alias"]
+                                    )
+                                    else None
+                                )
+                                if board_slug and r_alias:
+                                    cursor.execute(
+                                        "UPDATE board_repositories SET git_url = ? WHERE board_slug = ? AND repo_alias = ?",
+                                        (ssh_url, board_slug, r_alias),
+                                    )
+                                elif board_slug:
+                                    cursor.execute(
+                                        "UPDATE board_repositories SET git_url = ? WHERE board_slug = ? AND git_url = ?",
+                                        (ssh_url, board_slug, origin_url),
+                                    )
+                                if repo_path and repo_path.exists():
+                                    subprocess.run(
+                                        ["git", "remote", "set-url", "origin", ssh_url],
+                                        cwd=str(repo_path),
+                                        capture_output=True,
+                                    )
+                            except Exception as _sync_e:
+                                _log.debug(
+                                    "Could not sync SSH remote to DB/base repo: %s",
+                                    _sync_e,
+                                )
+                            push_res = push_ssh
+                except Exception as _fb_err:
+                    _log.warning(
+                        "SSH fallback attempt failed for task %s: %s",
+                        task_id,
+                        _fb_err,
+                    )
+
+            if push_res.returncode != 0:
+                raise subprocess.CalledProcessError(
+                    push_res.returncode,
+                    push_cmd,
+                    output=push_res.stdout,
+                    stderr=push_res.stderr,
+                )
 
         steps.start("package.pr")
         pr_url = row["pr_url"] or ""
@@ -1956,6 +2092,8 @@ def _package_and_open_pr(
             "blocked_reason_type",
             "permanently_blocked",
             "awaiting_pr",
+            "packaging_retries",
+            "last_packaging_error",
         ):
             meta.pop(key, None)
 
@@ -2050,19 +2188,23 @@ def _package_and_open_pr(
         else:
             steps.end("fail", f"git command failed: {err_msg[:200]}")
             _log.warning("Task %s commit/PR command failed: %s", task_id, err_msg)
+            _handle_packaging_failure(cursor, conn, task_id, err_msg, now, meta)
         return False
     except subprocess.TimeoutExpired as e:
         steps.end("error", f"timeout after {e.timeout}s: {e.cmd}")
+        err_msg = f"Timed out after {e.timeout}s executing: {e.cmd}"
         _log.warning(
-            "Task %s commit/PR step timed out after %ss: %s (task left in pre-PR status; next cycle will retry idempotently)",
+            "Task %s commit/PR step timed out after %ss: %s",
             task_id,
             e.timeout,
             e.cmd,
         )
+        _handle_packaging_failure(cursor, conn, task_id, err_msg, now, meta)
         return False
     except Exception as e:
         steps.end("error", f"{type(e).__name__}: {e}")
         _log.warning("Task %s commit/PR failed: %s", task_id, e)
+        _handle_packaging_failure(cursor, conn, task_id, str(e), now, meta)
         return False
 
 

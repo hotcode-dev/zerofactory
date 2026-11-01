@@ -801,3 +801,45 @@ def test_run_dispatch_cycle_respects_scanner_last_run_cooldown(tmp_path: Path):
         assert res["ok"] is True
         assert res["scans_triggered"] == 0
         assert "recent-board" not in spawned
+
+
+def test_handle_packaging_failure_increments_and_blocks(tmp_path: Path):
+    """_handle_packaging_failure increments retry count and blocks task on exhausting retries."""
+    from dispatcher.scheduler import _handle_packaging_failure
+
+    db_path = tmp_path / "test_pkg_fail.db"
+    _init_test_db(db_path)
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, assignee, metadata) VALUES ('t-pkg', 'Pkg Task', 'running', 'zf-builder', '{}')"
+        )
+        conn.commit()
+        cursor = conn.cursor()
+
+        meta = {}
+        # Attempt 1
+        _handle_packaging_failure(cursor, conn, "t-pkg", "push failed", 1000, meta)
+        assert meta["packaging_retries"] == 1
+        assert meta["last_packaging_error"] == "push failed"
+
+        cursor.execute("SELECT status, metadata FROM tasks WHERE id = 't-pkg'")
+        row = cursor.fetchone()
+        assert row[0] == "running"
+
+        # Attempt 2
+        _handle_packaging_failure(cursor, conn, "t-pkg", "push failed 2", 1010, meta)
+        assert meta["packaging_retries"] == 2
+
+        # Attempt 3 - should block
+        _handle_packaging_failure(cursor, conn, "t-pkg", "push failed 3", 1020, meta)
+        assert meta["packaging_retries"] == 3
+        assert meta["permanently_blocked"] is True
+        assert "PR packaging failed after 3 attempts" in meta["blocked_reason"]
+        assert meta["blocked_reason_type"] == "stuck"
+        assert "awaiting_pr" not in meta
+
+        cursor.execute("SELECT status, assignee FROM tasks WHERE id = 't-pkg'")
+        row = cursor.fetchone()
+        assert row[0] == "blocked"
+        assert row[1] == "human"
