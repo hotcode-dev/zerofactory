@@ -10,6 +10,7 @@ from dispatcher.reaper import (
     _compute_stuck_state,
     _mark_task_session_ended,
     reap_active_workers,
+    reap_stuck_tasks,
 )
 
 
@@ -566,3 +567,239 @@ def test_check_stuck_tasks_all_4_states(tmp_path: Path, monkeypatch):
     assert "SyntaxError" in ctx["last_precommit_error"]
 
     conn.close()
+
+
+def test_reap_active_workers_exit0_clears_worker_pid(tmp_path: Path):
+    """Exit-0 builder transition moves the task to the deterministic
+    packaging phase and clears the live worker identity (worker_pid /
+    session_id / started_at) so the dead-PID branch has nothing to misfire on.
+    Regression for the GitHub #84 3-day PR-packaging respawn loop."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            status TEXT,
+            assignee TEXT,
+            metadata TEXT,
+            updated_at INTEGER,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            actor TEXT,
+            action TEXT,
+            details TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            author TEXT,
+            body TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+
+    now = 5000
+    meta = json.dumps(
+        {
+            "worker_pid": 4242,
+            "session_id": "sess-abc",
+            "started_at": now - 100,
+            "sessions": [
+                {
+                    "session_id": "sess-abc",
+                    "status": "ongoing",
+                    "started_at": now - 100,
+                }
+            ],
+        }
+    )
+    conn.execute(
+        "INSERT INTO tasks VALUES ('t-exit0', 'Done Task', 'running', 'zf-builder', ?, ?, ?)",
+        (meta, now - 100, now - 100),
+    )
+    conn.commit()
+
+    from dispatcher.config import _active_workers
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 4242
+    mock_proc.poll.return_value = 0
+    _active_workers["t-exit0"] = mock_proc
+    try:
+        reaped = reap_active_workers(conn.cursor(), now=now)
+        conn.commit()
+    finally:
+        _active_workers.pop("t-exit0", None)
+
+    assert reaped == 1
+    row = conn.execute(
+        "SELECT status, metadata FROM tasks WHERE id = 't-exit0'"
+    ).fetchone()
+    assert row["status"] == "running"
+    saved_meta = json.loads(row["metadata"])
+    assert saved_meta.get("awaiting_pr") is True
+    assert "worker_pid" not in saved_meta
+    assert "session_id" not in saved_meta
+    assert "started_at" not in saved_meta
+    assert saved_meta.get("worker_failure_retries") in (None, 0)
+
+
+def test_reaper_does_not_reap_awaiting_pr_stale_pid(tmp_path: Path):
+    """A running task in the deterministic packaging phase (awaiting_pr) that
+    still carries a stale worker_pid is left alone: no worker_lost activity,
+    no failure-budget increment, no route to todo/blocked. Regression for
+    GitHub #84 (dead-PID branch misfiring on the packaging phase)."""
+    conn = _spawn_grace_conn(
+        "t-packaged",
+        {
+            "awaiting_pr": True,
+            "worker_pid": 999999,  # stale; no live _active_workers entry
+            "worker_failure_retries": 1,
+        },
+        now=5000,
+    )
+
+    reaped = reap_active_workers(conn.cursor(), now=5000)
+    conn.commit()
+
+    assert reaped == 0
+    row = conn.execute(
+        "SELECT status, metadata FROM tasks WHERE id = 't-packaged'"
+    ).fetchone()
+    assert row["status"] == "running"
+    saved_meta = json.loads(row["metadata"])
+    assert saved_meta.get("worker_failure_retries") == 1
+    lost = conn.execute(
+        "SELECT COUNT(*) FROM task_activity "
+        "WHERE task_id = 't-packaged' AND action = 'worker_lost'"
+    ).fetchone()[0]
+    assert lost == 0
+
+
+def _reaper_db_file(tmp_path: Path) -> Path:
+    """Minimal on-disk DB for reap_stuck_tasks (no stuck tasks)."""
+    db_file = tmp_path / "reaper.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.execute(
+        """
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            status TEXT,
+            assignee TEXT,
+            workspace_path TEXT,
+            metadata TEXT,
+            created_at INTEGER,
+            updated_at INTEGER,
+            board_slug TEXT,
+            repo_alias TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            actor TEXT,
+            action TEXT,
+            details TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            author TEXT,
+            body TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+    return db_file
+
+
+def test_reap_stuck_tasks_locked_db_returns_not_ok(tmp_path: Path, monkeypatch):
+    """A 'database is locked' OperationalError on the first connect attempt is
+    retried with backoff; the call never propagates OperationalError — it
+    either succeeds after backoff or returns a clean failure dict. Regression
+    for GitHub #84 (watchdog tick aborted on a WAL-locked kanban.db)."""
+    import dispatcher.reaper as reaper_mod
+
+    db_file = _reaper_db_file(tmp_path)
+
+    real_connect = sqlite3.connect
+    connect_calls = {"n": 0}
+
+    def flaky_connect(*args, **kwargs):
+        connect_calls["n"] += 1
+        if connect_calls["n"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(reaper_mod.sqlite3, "connect", flaky_connect)
+    sleeps = []
+    monkeypatch.setattr(reaper_mod.time, "sleep", lambda s: sleeps.append(s))
+
+    res = reap_stuck_tasks(db_path=db_file)
+
+    # No exception propagated; DB unlock was waited out and reaping succeeded.
+    assert connect_calls["n"] == 2
+    assert sleeps, "expected a backoff sleep between attempts"
+    assert res.get("ok") is True
+    assert res.get("reaped_count") == 0
+    assert res.get("reaped_tasks") == []
+    assert res.get("reaped") == []
+
+
+def test_reap_stuck_tasks_persistently_locked_db_fails_clean(
+    tmp_path: Path, monkeypatch
+):
+    """When the DB stays locked past the retry budget, reap_stuck_tasks logs a
+    warning and returns a clean failure dict instead of raising."""
+    import dispatcher.reaper as reaper_mod
+
+    db_file = _reaper_db_file(tmp_path)
+
+    def always_locked(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(reaper_mod.sqlite3, "connect", always_locked)
+    monkeypatch.setattr(reaper_mod.time, "sleep", lambda s: None)
+    # Advance the monotonic clock past the 30s budget on each poll so the
+    # retry loop exhausts quickly instead of looping forever.
+    clock = [0.0]
+
+    def fake_monotonic():
+        clock[0] += 10.0
+        return clock[0]
+
+    monkeypatch.setattr(reaper_mod.time, "monotonic", fake_monotonic)
+
+    res = reap_stuck_tasks(db_path=db_file)
+
+    assert res.get("ok") is False
+    assert res.get("reason") == "database locked"
+    assert res.get("reaped_count") == 0
+    assert res.get("reaped_tasks") == []
+    assert res.get("reaped") == []

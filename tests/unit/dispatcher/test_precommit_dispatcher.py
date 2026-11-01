@@ -141,3 +141,79 @@ def test_handle_precommit_failure_retries(initialized_db: Path, tmp_path: Path):
         cmt = cursor.fetchone()["body"]
         assert "Deterministic Precommit Failed" in cmt
         assert "Syntax error 4" in cmt
+
+
+def test_precommit_timeout_retry_clears_build(initialized_db: Path, tmp_path: Path):
+    """A pure precommit timeout (code -1) on a retry clears any stale build/
+    output so the next re-run does not trip over a half-written artifact (the
+    astro renderers.mjs stale-dir error). Regression for GitHub #84. A
+    genuine non-zero exit does NOT clear build/."""
+    now = int(time.time())
+    task_id = "zf-test-precommit-timeout"
+    workspace = tmp_path / "workspace"
+    build_dir = workspace / "build"
+    build_dir.mkdir(parents=True)
+    (build_dir / "stale.js").write_text("garbage\n")
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO boards (slug, description, created_at, updated_at) VALUES ('test-board', 'Test Board', ?, ?)",
+            (now, now),
+        )
+        cursor.execute(
+            "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) VALUES (?, 'test-board', ?, 'running', 'zf-builder', 'P1', ?, ?)",
+            (task_id, "feat: timeout task", now, now),
+        )
+        conn.commit()
+
+        # code=-1 => timeout on retry (retries < max) should clear stale build/
+        _handle_precommit_failure(
+            cursor,
+            task_id,
+            "feat: timeout task",
+            str(workspace),
+            "Precommit script timed out after 300s.",
+            now,
+            code=-1,
+        )
+        conn.commit()
+
+    assert not build_dir.exists(), "stale build/ must be cleared on timeout retry"
+
+    # A genuine test/lint failure (non-zero, non-timeout) must NOT touch build/.
+    task_id2 = "zf-test-precommit-notimeout"
+    build2 = tmp_path / "ws2" / "build"
+    build2.mkdir(parents=True)
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) VALUES (?, 'test-board', ?, 'running', 'zf-builder', 'P1', ?, ?)",
+            (task_id2, "feat: nonzero task", now, now),
+        )
+        conn.commit()
+        _handle_precommit_failure(
+            cursor,
+            task_id2,
+            "feat: nonzero task",
+            str(tmp_path / "ws2"),
+            "AssertionError: x != y",
+            now,
+            code=1,
+        )
+        conn.commit()
+
+    assert build2.exists(), "build/ must be preserved on a genuine non-timeout failure"
+
+
+def test_run_deterministic_precommit_honors_timeout_env(tmp_path: Path, monkeypatch):
+    """ZEROFACTORY_PRECOMMIT_TIMEOUT_SECONDS is honored (regression guard); the
+    message reflects the configured value."""
+    zf_dir = tmp_path / ".zerofactory"
+    zf_dir.mkdir()
+    (zf_dir / "precommit.sh").write_text("#!/usr/bin/env bash\nsleep 2\n")
+    monkeypatch.setenv("ZEROFACTORY_PRECOMMIT_TIMEOUT_SECONDS", "1")
+    passed, out, code = run_deterministic_precommit(tmp_path)
+    assert passed is False
+    assert code == -1
+    assert "timed out after 1s" in out

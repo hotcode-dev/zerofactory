@@ -1720,7 +1720,13 @@ def _package_and_open_pr(
             )
             steps.end("fail", f"precommit exit={precommit_code}")
             _disp._handle_precommit_failure(
-                cursor, task_id, title, workspace_path, precommit_out, now
+                cursor,
+                task_id,
+                title,
+                workspace_path,
+                precommit_out,
+                now,
+                code=precommit_code,
             )
             conn.commit()
             return False

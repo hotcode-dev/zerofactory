@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -900,8 +901,17 @@ def _handle_precommit_failure(
     workspace_path: str,
     err_output: str,
     now: int,
+    code: int = 0,
 ) -> None:
-    """Handle deterministic precommit check failure before git commit/push."""
+    """Handle deterministic precommit check failure before git commit/push.
+
+    ``code`` is the runner's exit code: a pure timeout is surfaced as ``-1``
+    (see ``run_deterministic_precommit``), distinct from a genuine test/lint
+    failure (a real non-zero exit). On a timeout we clear any stale build
+    output before routing back to the builder so the next retry does not trip
+    over a half-written artifact (e.g. astro's ``renderers.mjs`` error on a
+    leftover ``build/`` dir from a killed run).
+    """
     max_retries = int(os.environ.get("ZEROFACTORY_MAX_PRECOMMIT_RETRIES", "3"))
 
     cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
@@ -957,6 +967,28 @@ def _handle_precommit_failure(
         # failure output is injected into the respawned worker's prompt); clear
         # awaiting_pr — this is builder work again, not the packaging phase.
         meta.pop("awaiting_pr", None)
+        if code == -1:
+            # Pure timeout: a killed run may have left stale build output
+            # (astro's renderers.mjs error on a leftover build/ dir) that would
+            # fail the next retry deterministically. Clear it so the re-run
+            # starts clean. Guarded by existence check; single minimal step,
+            # no new config surface.
+            stale_build = Path(workspace_path) / "build"
+            if stale_build.exists():
+                try:
+                    shutil.rmtree(stale_build)
+                    _log.info(
+                        "Task %s: cleared stale %s after precommit timeout",
+                        task_id,
+                        stale_build,
+                    )
+                except Exception as e:
+                    _log.warning(
+                        "Task %s: failed to clear stale build dir %s: %s",
+                        task_id,
+                        stale_build,
+                        e,
+                    )
         cursor.execute(
             "UPDATE tasks SET assignee = 'zf-builder', status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
             (json.dumps(meta), now, task_id),
