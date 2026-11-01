@@ -16,10 +16,10 @@ sources:
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-10-06T19:22:52.001Z" }
+generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-10-06T19:22:52.001Z
+    at: 2026-11-01T07:54:23.892Z
 ---
 
 # Quickstart
@@ -40,7 +40,7 @@ coding rules in [Conventions](/openwiki/conventions.md).
 Zero Factory is a self-contained **Hermes Agent plugin** that runs a 24/7
 multi-agent software factory. Three specialist profiles — `zf-orchestrator`
 (decomposes goals and scans for tech debt), `zf-builder` (writes code + tests),
-and `zf-reviewer` (thematic PR review, up to 3 rounds) — operate on a durable
+and `zf-reviewer` (thematic PR review, up to 2 rounds) — operate on a durable
 Kanban board, each in an isolated Git worktree. No external Node.js daemon or
 profile-manager is required.
 
@@ -66,15 +66,17 @@ standard artifacts (the deterministic precommit gate and the `openwiki/`
 agent docs):
 
 ```bash
-# Add a board (optional --target-branch to point at a non-main base)
-hermes zerofactory board create <git_url> [--target-branch <branch>]
+# Add a board (a custom --slug, cross-service --architecture notes, and
+# --target-branch for a non-main base are optional; sibling repositories are
+# linked side-by-side via the dashboard / POST /boards/{slug}/repositories)
+hermes zerofactory board create <git_url> [--slug <slug>] [--target-branch <branch>] [--architecture <arch>]
 
 # File a P0 task that generates .zerofactory/precommit.sh for the board
-hermes zerofactory setup-repo --board <slug>
+hermes zerofactory setup-repo --board <slug> [--repo <alias>]
 
 # File a P0 task that generates openwiki/ agent documentation (the OpenWiki MCP
 # lifecycle) for the board
-hermes zerofactory setup-openwiki --board <slug>
+hermes zerofactory setup-openwiki --board <slug> [--repo <alias>]
 ```
 
 ## Run the deterministic precommit gate
@@ -111,7 +113,7 @@ pytest tests/                 # full suite
 pytest tests/unit/            # or a single tier: integration/ / e2e/
 ```
 
-**As of this commit the full suite is green: `278 passed, 1 skipped`.** Re-run
+**As of this commit the full suite is green: `382 passed, 1 skipped`.** Re-run
 it before publishing any claim about the count.
 
 ## Core CLI surface
@@ -126,10 +128,13 @@ hermes zerofactory update <task_id> [--title "..."] [--description "..."] [--ass
 hermes zerofactory move <task_id> <status> [--reason "..."] [--assignee <profile>]
 hermes zerofactory block <task_id> --reason "..."
 hermes zerofactory comment <task_id> "Note..."
+hermes zerofactory split <task_id> [--repos r1,r2]   # decompose a Triage task into per-repo sub-tasks
+hermes zerofactory recover <task_id> [--guidance "..."]  # route a stuck/blocked task back to todo with builder advice
+hermes zerofactory report-bug --task <task_id> --title "..." [--body "..."] [--create-issue]  # report an internal defect to GitHub
 
 # Boards
 hermes zerofactory board list
-hermes zerofactory board update <slug> [--description "..."] [--target-branch <branch>] [--jira-url <url>]
+hermes zerofactory board update <slug> [--description "..."] [--target-branch <branch>] [--jira-url <url>] [--architecture <arch>]
 hermes zerofactory board delete <slug>
 hermes zerofactory setup-gh-issues --board <slug>   # file a P0 zf-builder task that ships the issue templates + labels
 hermes zerofactory setup-jira --board <slug> --url https://your-domain.atlassian.net [--test]
@@ -157,8 +162,9 @@ dedup key, label-inferred priority/category — so re-imports report
 "Duplicate Skipped" instead of double-filing; `--sync` bulk-imports all open
 issues flagged with the AI-request label, and `import-jira-issue` does the same
 for Jira Cloud. `update` edits task fields in one call; its `--status` option
-routes through the `move_task` code path (the same rule `PATCH /tasks/{id}`
-enforces server-side) so lifecycle side effects — worker stop, flag cleanup,
+routes through the `move_task` code path in the CLI handler (the API
+`PATCH /tasks/{id}` refuses status changes with a 400, pointing at
+`POST /tasks/{id}/move`) so lifecycle side effects — worker stop, flag cleanup,
 dispatch trigger — always apply. `move` accepts `--assignee` to reassign
 ownership while transitioning columns
 ([External Issue Import](/openwiki/components/issues-importer.md)).

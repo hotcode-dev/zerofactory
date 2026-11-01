@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6b898794ce360bb6e012eb5003feb4f7d13355c10d91e36964c8e7d8109e6f9f",
+  "pageVersion": "sha256:63836f4e38ad689d6bca8f72d00a5102ffa721d6a4f0dcbcfc822403d691ca7d",
   "claims": [
     {
       "id": "claim_f5049d3391c7479baf38776d89ce8a5a",
@@ -36,10 +36,10 @@
     },
     {
       "id": "claim_f68da9f1e33c49fc9ce65a869db2c817",
-      "statement": "Loggers are namespaced under zerofactory.* per subsystem (e.g. zerofactory.cron, zerofactory.migrations) via logging.getLogger(\"zerofactory.<subsystem>\"); use the matching namespace for new modules rather than the root logger.",
+      "statement": "Loggers are namespaced under zerofactory.* per subsystem (e.g. zerofactory.cron, zerofactory.migrations) via logging.getLogger(\\\"zerofactory.<subsystem>\\\"); use the matching namespace for new modules rather than the root logger.",
       "evidence": [
         {
-          "resource": "repo://cron/definitions.py#L28-L28",
+          "resource": "repo://cron/definitions.py#L29-L29",
           "version": "repo-lines-v1:sha256:cec37842afb825f5988dc4ade60fc5e8711ca156acd7fc424e1f976989a15010:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2VjMzc4NDJhZmI4MjVmNTk4OGRjNGFkZTYwZmM1ZTg3MTFjYTE1NmFjZDdmYzQyNGUxZjk3Njk4OWExNTAxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2VjMzc4NDJhZmI4MjVmNTk4OGRjNGFkZTYwZmM1ZTg3MTFjYTE1NmFjZDdmYzQyNGUxZjk3Njk4OWExNTAxMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDYwMjcwMTEyNDgwZDYxZTkxMGU1YWNhY2I1MDllYzZhM2NhMzA0OGQ2NzFiMzAxNjg4NjZlNzU3YWM0YmYxOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDhmNWI3MjJhOTNjZjdjNDdmYTJiOGVkM2RlMmE4NWNiMjg1ODA4OTgwY2UxOTc4MjZkODAxNmMxMzc1MzFhYSJ9"
         },
         {
@@ -74,7 +74,7 @@
       "evidence": [
         {
           "resource": "repo://.zerofactory/precommit.sh",
-          "version": "repo-file-v1:sha256:e844f95da72caec4da11694758235ad312c7ca140885158096de23d25265c7ed"
+          "version": "repo-file-v1:sha256:8d9eab249bc1a6ac3c0c3e9a41fd8a65282bc1c0f33fb1a847c796658a27c646"
         }
       ]
     },
@@ -83,8 +83,8 @@
       "statement": "tests/conftest.py sets hermetic environment defaults before any test runs — ZEROFACTORY_SKIP_GIT, ZEROFACTORY_SKIP_CRON_SYNC, ZEROFACTORY_DISABLE_DISPATCHER, and ZEROFACTORY_SKIP_WORKER_SPAWN — so the suite runs safely without a real factory.",
       "evidence": [
         {
-          "resource": "repo://tests/conftest.py#L18-L22",
-          "version": "repo-lines-v1:sha256:28d6c1885a24cb7fb9ff8f86d4cd94eca4426b0776e064cfb5276f6c5fe7de2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZiN2RiZGM0ODU4NTAxZmNmNmY2NWI3MmUzZThlYWJmOTVlY2NmZjI4MTJiOGRhYzk1MzA5ZjJiY2I1ODFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGZlNTA2ODM2MjQxMWVjYWY4ZjUzOWRmOWVhNDg5MDI3MTM3OTc1MTZjNTFmOTg2MzJiYmNiZWZmYzViNDA3YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiYzk3YWVjOWM5YTM5NmI0ZDcxMjExYzIzOGJkNDQ4MmMxNDRmYzc4ZDg2YTI0MzIwMjgzZjJhMmJmNjkzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODFjMTQyNmJlYTdmYWJhMDVhMTJjMWUxYzg2MGRhNjdjNjE3MzhmZmNjY2NhNGY2NzZlNGI5MjZkZWE2NmUwMiJ9"
+          "resource": "repo://tests/conftest.py#L25-L29",
+          "version": "repo-lines-v1:sha256:28d6c1885a24cb7fb9ff8f86d4cd94eca4426b0776e064cfb5276f6c5fe7de2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZiN2RiZGM0ODU4NTAxZmNmNmY2NWI3MmUzZThlYWJmOTVlY2NmZjI4MTJiOGRhYzk1MzA5ZjJiY2I1ODFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGZlNTA2ODM2MjQxMWVjYWY4ZjUzOWRmOWVhNDg5MDI3MTM3OTc1MTZjNTFmOTg2MzJiYmNiZWZmYzViNDA3YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzFiODBkMzllN2E4NTZjOWU0NmQzOGZhODJkMTc5OTExZDNiZmQyMzgwMjY3ZDk1MDdmN2Y4ODI5NDQ3MjZlYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODFjMTQyNmJlYTdmYWJhMDVhMTJjMWUxYzg2MGRhNjdjNjE3MzhmZmNjY2NhNGY2NzZlNGI5MjZkZWE2NmUwMiJ9"
         }
       ]
     },
@@ -93,8 +93,8 @@
       "statement": "tests/conftest.py provides shared fixtures (test_db_path/initialized_db, git_repo, api_client, default_board); the suite is organized in three tiers — tests/unit (per-subsystem), tests/integration (FastAPI REST via api_client), and tests/e2e (hermetic multi-agent workflow and resilience simulations).",
       "evidence": [
         {
-          "resource": "repo://tests/conftest.py#L36-L106",
-          "version": "repo-lines-v1:sha256:f4c4eeac38de4c77e7fb578daa4cdf530e24908a18d97e7c0bd05fc3c5b436e4:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZjM2NmI5YmQ5YThkMGYzNDBhMmJjMGJlMWUyMmVlYTIwNTY4ZGQ3OGE0NTI4MWI3MjFiMzBmMjJkMDg3ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwYjA4NzgzMjUyMDUwNmU4NzkyNjJjMzBlNzM1ZGE2MWU2YzBiMzE4NDVmNWFjMjZkYzA1NjFhZWRkYzA0OTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2OGZkNmUyZmM5NmU1NTRkODc5YWU0MWQzNmI5YTQ5MmE4YWM3YjI3YWE4MjE3NjYzYjIwMDMyMmRlZjljZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://tests/conftest.py#L32-L113",
+          "version": "repo-lines-v1:sha256:837c467b9566755d9bcf4082e27e8148ddfb71d859df15ebe63d8e9130470165:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZjM2NmI5YmQ5YThkMGYzNDBhMmJjMGJlMWUyMmVlYTIwNTY4ZGQ3OGE0NTI4MWI3MjFiMzBmMjJkMDg3ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwYjA4NzgzMjUyMDUwNmU4NzkyNjJjMzBlNzM1ZGE2MWU2YzBiMzE4NDVmNWFjMjZkYzA1NjFhZWRkYzA0OTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4NThlYmY5YzYxZWZhYzVlNWIwODhiYWQzOTE1M2ZkMGRmNzA3OWY0NmZjZTM2YjE2YjJmNzQwNDY3Nzk2OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -117,12 +117,12 @@
       "statement": "Any agent-authored GitHub text (PR titles/bodies, review comments) must begin with a role-tagged [AI:<role>] marker such as [AI:zf-builder] or [AI:zf-reviewer] (enforced by the role-aware ai_prefix, whose AI_PREFIX_RE matches only role-tagged markers so it never emits a bare [AI] and is idempotent for already-tagged text) so humans can distinguish agent output from human output.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/github_pr.py#L321-L335",
-          "version": "repo-lines-v1:sha256:39d717a26183e83da4b175dd76fd6db7ca885434cfd4b212d0399b8d5ce99d45:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MDRkYTUzOGNlNDA4OGI0MTg3NGI1MDFjMjE3Yjg1YjRiNDkxMjBlMjQyOWZkOTA2ZTkxOTFkNjUwNmI2OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZDZkMjU2YmNmYWE1NWJiNTRiY2M3ZjMzMWEyN2YzNWI4N2ZhMmU5NzU2YTY5ZTk2NWNlZWJjNGY2MTdkOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzODdkYTk1NDY3YzJkNjZjYzQ5MzdkNDcxMzA0OGQ5YzEzOGNlNGVjM2MwYzc5OTg1MTk2MGEzYTdkZGIwNjIifQ"
+          "resource": "repo://dispatcher/github_pr.py#L324-L324",
+          "version": "repo-lines-v1:sha256:65b247a2c390ad27b933cc248b7ad3e843501231362c5d74665c375a76e4ed1a:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjViMjQ3YTJjMzkwYWQyN2I5MzNjYzI0OGI3YWQzZTg0MzUwMTIzMTM2MmM1ZDc0NjY1YzM3NWE3NmU0ZWQxYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjViMjQ3YTJjMzkwYWQyN2I5MzNjYzI0OGI3YWQzZTg0MzUwMTIzMTM2MmM1ZDc0NjY1YzM3NWE3NmU0ZWQxYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjg0MGM0MzZjNDc1NjQ2OWI5NTgxMjYyNDRmMzc4MmU1ZmFkYzc4ZGVmZDBjZjQwYmM5NGQ4YzliMmY4ZDIwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWRiMTM5NjdjZjUxNmQxN2U3Nzk5ZWVlZWIwMDNlYjJmMDE5N2ZjNGViOTcwNmIyNjQ5ZjAwMzgyMWM0OWU2MSJ9"
         },
         {
-          "resource": "repo://dispatcher/worker_spawner.py#L129-L141",
-          "version": "repo-lines-v1:sha256:dc5441c6e389f8748ff62004372eebd05cde323410a8ffafa6f027eccdd933af:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOWUzOTViZTI2M2VmMjUzNzk5NmM2NDJhZTBhYTNlYjZlNjBkNWM0ZGVlOGQ1YzRjYjYzNjUyMjc5Y2JmYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmODU0NDgyMTIwYzE4ZjJlOGQ2ZjFiOWNmYzdmOGY0YmZiZTYyNjNmMzc1NWUzMTYyMjA3YWZmMTJjNWI5M2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwNDEwYzE2YTE1NWE0YzYyYjhhMjI1ZjU2NGY4NmZhYzYwY2Q3MmM3MDUwOTM0ODE3NTJkM2FjYmEzYTZmZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjOGU4YjZhZjNiNjYxZTZmNGJhZGE3N2FkMzgyZmQyYjgyNzYxNTc0MjlhMzc2YjVhMzJiZDZmN2RiMDA4YWQifQ"
+          "resource": "repo://dispatcher/worker_spawner.py#L215-L228",
+          "version": "repo-lines-v1:sha256:b80c00830734f02f7e82fb5c4d46a6a96b84b68729208fbea132db9e14fc8883:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1Mzc4Nzk0ODhjNDZjZTc5YzliMTZhYzcyNzczZGVlZDVhYmNkYzhlMTE5YTRkY2FhYjVlOTM2YjdmN2I3M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYTU3ODJjNDVjYmE0OGZjM2I2MWZjZWFkNzRiNjFlMDY5NTUxYWU4OTAyYmJhNzkxYzU4MzYyYjRjYWM4NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhZDhhMzg1NGE3MjFjYjU2MjU3YmNlNzljMTI3OTFlMmZmYjcxYzc5ZTI1ODdjNDU5MDhmNTU0NWIyM2ZmMTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhZWQwOTllMTEwY2E2N2Y2ZTQ3M2EzYWU1MzcwNmNjYTcxYzk2Zjc0OTFlMDIxNDc5ODUxMWEwMjBmZTBiMTgifQ"
         }
       ]
     },
@@ -131,14 +131,14 @@
       "statement": "tests/conftest.py pins the repository's own `tests` package with `import tests  # noqa: E402` before any test module runs: the dispatcher import chain inserts foreign roots (e.g. ~/.hermes/hermes-agent) into sys.path, and without the pin that repo's own tests/ package would win `import tests` and break `from tests.unit...` imports (an order-dependent ModuleNotFoundError).",
       "evidence": [
         {
-          "resource": "repo://tests/conftest.py#L18-L22",
-          "version": "repo-lines-v1:sha256:10ae732aba6f5e3a85dfa9d682487c53efe37a3e03639cf07fd09fc310ffad33:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjg2MjkyN2IzODZjYzg1NWU0ODZhMjNmZWViMzBkYzk2NjQ5NzUxZjE3ZTc2MjkwN2JkNTZkYzRhYWZkMTFhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM0OTdkNGVhMDBhNDNlYTg4YThkMWZjY2U0OWIzZDc5NjBmZDY2Zjc5YmFhYzYwOTExMWFkNjU1M2EyODkxZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiYzk3YWVjOWM5YTM5NmI0ZDcxMjExYzIzOGJkNDQ4MmMxNDRmYzc4ZDg2YTI0MzIwMjgzZjJhMmJmNjkzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzFhNWE2MTljYTFkYWQyYjg5ZDdiZjEwMThhMTAxNDFlMzJjNzFmOTAzODkzZDE3M2NiNWZjNDZhOTVmZmE5YSJ9"
+          "resource": "repo://tests/conftest.py#L18-L23",
+          "version": "repo-lines-v1:sha256:dae90446d66e9e431c7cf5d191fd43343178690d2feb30542334b5dea7f55b77:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjg2MjkyN2IzODZjYzg1NWU0ODZhMjNmZWViMzBkYzk2NjQ5NzUxZjE3ZTc2MjkwN2JkNTZkYzRhYWZkMTFhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FjY2RkODAyZjA5ZmY5ZjQxYzczODRkNThiMWZkM2Y1ZTY4NTU1M2MzN2Q1OTY0ZjM0MzVjNzgwZDhlZjQ2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiYzk3YWVjOWM5YTM5NmI0ZDcxMjExYzIzOGJkNDQ4MmMxNDRmYzc4ZDg2YTI0MzIwMjgzZjJhMmJmNjkzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODIzOTZiNGVlNWFiYmM3NDFlZWU2YjQ3ZjhjZTA2YzJiODBjM2UzOGQ3OWQ2MjA4OWJiZTMwODAwNGMwY2NhZiJ9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-06T19:22:52.001Z"
+    "at": "2026-11-01T07:54:23.892Z"
   }
 }

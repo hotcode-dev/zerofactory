@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b0e1f5dee511cfd8f06e4b32320a43b3dce66f3d13f02b790546a94cf5a3e582",
+  "pageVersion": "sha256:3f6b03eb94c498442387b96fa48089469197f1ba637f2f3800fc44699102104a",
   "claims": [
     {
       "id": "claim_390ae1a0b32941e4b5bf337f7061ffa7",
@@ -22,7 +22,7 @@
       "evidence": [
         {
           "resource": "repo://.zerofactory/precommit.sh",
-          "version": "repo-file-v1:sha256:e844f95da72caec4da11694758235ad312c7ca140885158096de23d25265c7ed"
+          "version": "repo-file-v1:sha256:8d9eab249bc1a6ac3c0c3e9a41fd8a65282bc1c0f33fb1a847c796658a27c646"
         }
       ]
     },
@@ -38,11 +38,11 @@
     },
     {
       "id": "claim_e020c865291e476ca3be6d06cd5dd2ba",
-      "statement": "As of this commit the full pytest suite is green at 278 passed, 1 skipped (verified by running `python3 -m pytest tests/ -q` / `.zerofactory/precommit.sh`), organized in three tiers: tests/unit, tests/integration (FastAPI REST), and tests/e2e (multi-agent workflow + resilience).",
+      "statement": "As of this commit the full pytest suite is green at 382 passed, 1 skipped (verified by running `python3 -m pytest tests/ -q` / `.zerofactory/precommit.sh`), organized in three tiers: tests/unit, tests/integration (FastAPI REST), and tests/e2e (multi-agent workflow + resilience).",
       "evidence": [
         {
           "resource": "repo://.zerofactory/precommit.sh",
-          "version": "repo-file-v1:sha256:e844f95da72caec4da11694758235ad312c7ca140885158096de23d25265c7ed"
+          "version": "repo-file-v1:sha256:8d9eab249bc1a6ac3c0c3e9a41fd8a65282bc1c0f33fb1a847c796658a27c646"
         },
         {
           "resource": "repo://tests/conftest.py",
@@ -52,45 +52,45 @@
     },
     {
       "id": "claim_1906a2bc184e4200a0a241800b250366",
-      "statement": "The core CLI surface is registered under `hermes zerofactory`: setup / sync-profiles for profiles; list / create / import-gh-issue / import-jira-issue / update / move (with --reason and --assignee) / block / comment for tasks; board list / create / update / delete plus setup-repo, setup-openwiki, setup-gh-issues, and setup-jira for boards; memory list / add / delete for the per-board knowledge substrate; and dispatch / check-stuck / cron list / cron sync / cron run for automation.",
+      "statement": "The core CLI surface is registered under `hermes zerofactory`: setup / sync-profiles for profiles; list / create / import-gh-issue / import-jira-issue / update / move (with --reason and --assignee) / block / comment / split (triage decomposition across target repos) / recover (route a stuck task back to todo with guidance) / report-bug (internal defect to GitHub, optional auto-created issue) for tasks; board list / create (with --slug / --target-branch / --architecture) / update / delete plus setup-repo, setup-openwiki, setup-gh-issues, and setup-jira for boards; memory list / add / delete for the per-board knowledge substrate; and dispatch / check-stuck / cron list / cron sync / cron run for automation.",
       "evidence": [
         {
-          "resource": "repo://__init__.py#L208-L694",
-          "version": "repo-lines-v1:sha256:5f23c7c90f71b1795f1e0e40e753a6b842177a49968e3bfb5801fbccce3856fc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZmU1MWQ4OGI5OTkxOTNhMWMyM2JlZGFmZGI5YjA4MWY5OGM5YWVjMTU1MGViMDI5YjcyY2U2MWI1YzQ0MDA0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0OTNlMTNjY2Q1YjI5ZjBmMGZjNzg1NzExZDIzZjc1MWI5MjQxZTFlYjYxODliMDc0NDkxMWZjODExOGNhNDgyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5ODZhMTRmYWE5Y2YwOTM0NzYyY2E2YzA4MzA0NjA4MTQ4ZGM0ZmI5NGVhMDVmZTQ2MjcxZjgzYjgzODM2YTk4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NGI1MjNiMTIzMGIyYTU0Y2Q2MGRjNDNmNTc1NzUwOTIzOWYzZmQxOWJkN2FmNGFjNTVhYzNmODE2ZWYwMjg4In0"
+          "resource": "repo://__init__.py#L253-L840",
+          "version": "repo-lines-v1:sha256:62ead1b7a1ba3ddfe061b2858cf4ecb9ce2794daa109d3bb5c3afbe11c2640d4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTg4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlZTE1MGUyZTcxMDM1ZTk2M2MyZmY2NTJlMmEzZjBjNjI1YzZjY2VjY2EzOWUwZmNkN2VjYWZjMmY1NzcyZGZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhZWJiODlkYzNlYWIyMGZhMTk0NWNjNTNkMTZlZDdkYWZkOTQ2NWViY2ZlMTZiOTY1ZDA2NzdkYzc4NDg3MGVjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ODc2ZDQ1ZmU1NTQyMTc0OTVlNDdkYThmMGEzN2VjZWM3MWMyYjQxZjE4NjRjMWVmNzIxY2ViNTc2ODMxZmYwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMzZiYzJlODQ1OTVkM2ExOWMxODlmMjdlN2JmMzc0NTNkMmRlZTY1ZTljNTI4ZjExNmI3NWVjYzkxY2RlYTdhIn0"
         }
       ]
     },
     {
       "id": "claim_ca56a4799c454660bca2a960b3ecb0e0",
-      "statement": "A board is one repository the factory works on; `hermes zerofactory board create <git_url>` adds a board, and the companion P0 setup commands `setup-repo` and `setup-openwiki` file zf-builder tasks that generate .zerofactory/precommit.sh and openwiki/ agent documentation respectively.",
+      "statement": "A board links one or more repositories the factory works on; `hermes zerofactory board create <git_url>` adds a board (with optional --slug, --target-branch, --architecture), sibling repositories are linked side-by-side via the dashboard / POST /boards/{slug}/repositories, and the companion P0 setup commands `setup-repo` and `setup-openwiki` file zf-builder tasks that generate .zerofactory/precommit.sh and openwiki/ agent documentation respectively.",
       "evidence": [
         {
-          "resource": "repo://README.md#L56-L76",
-          "version": "repo-lines-v1:sha256:04fbde9585af90b2efe2285e6efb3cf554792e02c0ee1c256e5165d578f9fabc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzMmQzMjE5ZmVjMmQ0MDViYWU1MmYyZTk0MDRhOWUwNmE0ZGMxMzNlY2RiNzAxZmI3YmE1N2QzYmNjOGQ3MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNTcxOGQ4NjQ3Mjc0NDlmODIyZjQ3MThjYzIwZDhkODFlZGE2ZDFkMWJhZTM2YmQ0Y2I3OTgwNGQ0ODcxZmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+          "resource": "repo://README.md#L56-L80",
+          "version": "repo-lines-v1:sha256:fe6b924618f6401905a0141dc9448bc59c6dc716892d3c00d8834c0ef21e4911:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkZGI0MDRmMmQ5NTUwYjgwNmE4NGYyMTMxODI2NWY4OWNkNmQ4MDRhMzVhZWNhZGExYmM5NDJhZjExMmM0NDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiMGRhZGI3ZGJmYjZjYTljMTliYzk3ZjQ3OTI4YjMwNDBiOWUyZjIxNGU0YTQ1YWE3MGM1ZmVkY2ZhZTgzM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4YjJlZTQwNmIzYTlhYTQ5MThmZjRkZTE0YzU1Mjg5NjkxZjJkNWNiZTA2Zjk1YTJhMGI4MjY5MzNkNmVmOTgifQ"
         },
         {
-          "resource": "repo://__init__.py#L447-L470",
-          "version": "repo-lines-v1:sha256:f5a209846a408ae18f79329399964892bdff5c974764579df8bdee9894883452:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3ZTU4OTBiYjY4ODM3MDIyNzFhZTAwZTUzMGJlZjA1Y2Y0ODQ2ZDZkZTllNDcxZjRiNjNkODZjZDM2MGNjZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzOTNiNGE2MDNhMzBmYjAyMTdhOGE5MTRiMDNhMjZmNGQ2NDJjNTdmYmViOTU3ZGYyNmYyM2Q2NDBlNjhkOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2ZDc4MWFjODA1ODQ1ZTdmNTQyOGM3NTM3OWEyNTQ4NmZjZWVjYWNiZTU2YmIwYjhiYWNkNTEzOGQzOWI4ZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhYjFlZGE2NjA5YTQ4MjQ4MTEzMTA3Mzc0YTY1YzI1MWZmNzE1Yzc0ZjEyMDQwZDUwNjAxNzhmOTQ1ZTRkOWYifQ"
+          "resource": "repo://__init__.py#L703-L830",
+          "version": "repo-lines-v1:sha256:fcadeb7ee0a9440094d54ef336dc6bc2cdabd59a897dda31eaaf97a35d20f6c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1OTA5YTUzYTYxOGQwMjhlMWQzMDAwYzBhN2FiY2VlY2JlNWZiMzdmNGU1MTFlZmU0NjY0M2ZhZDZlNjY4NzJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5MGJmYmE2OGQ5NmQ3NDgzZTRlMWMxNTljMzBjNjBiZjRkNjZhZjEyOTg4ZGY5NDJhOWRiOWRhODQ0Zjg5NzYxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwODE3NDlhMmE3MjliMDUwM2M2NzM1NjFjNDgxYjFmYmEzMWFhOWY3Yzg1OTA0MDQxZWQxYWM4OTZmODVjM2M4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1YjcyZDE5ZGM1YjAyZjk4ZTY5ZmRkODdkNGY1NzY5NjRjY2MwMjVkY2FhN2UyZDJjYjAxNDI2NzNhZWRiOWI5In0"
         }
       ]
     },
     {
       "id": "claim_72736700047b41b8a2a2259f2fd9a1f0",
-      "statement": "The `update` CLI command's --status option routes through the move_task code path (the same rule PATCH /tasks/{id} enforces server-side by refusing status changes with a 400) so lifecycle side effects — worker stop, flag cleanup, dispatch trigger — always apply when a task transitions status via update.",
+      "statement": "The `update` CLI command's --status option routes through the move_task code path in the CLI handler (the API PATCH /tasks/{id} refuses status changes with a 400, pointing at POST /tasks/{id}/move) so lifecycle side effects — worker stop, flag cleanup, dispatch trigger — always apply when a task transitions status via update.",
       "evidence": [
         {
-          "resource": "repo://__init__.py",
-          "version": "repo-file-v1:sha256:e7ae2233aeb01258c42fa59ecdcd6ba1373fad706205e63471c110f53c353754"
+          "resource": "repo://__init__.py#L1255-L1273",
+          "version": "repo-lines-v1:sha256:4d4e6f34bd1ded6e7e87614c8066f37c14ee1cd04d0e3b111e477b0afddb34e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZTI4YWQ4NDVjYWY0ZDZkYjU4Y2RlZTYyYWM1YTI4ODcxYTA5NTA2YmUxNmEzZGQ4NzYwYjFmOGEzMTM3YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiZTY5NzlkYmJlM2ZhMDhkNTY0MDU4OGNiNDhjOGZiMDJmNGUwYTVjNWU1YTI4OWIxZGUwZDhjNTk5NDcwODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhOTExZTk5Y2I5MjEyNjkwM2YxOTJhYTY3MTY4OThhNGNkZjhhYTM4MTU3ZWEwYzcxMmUzY2U1ZDQ3ZTEyYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3ZTk5NjYxZDQzZWY5OWQxMDFhMGQyZjY2MWJhYzc5OTczNDY4MzQ2MDMxNmM3MjIwZTNhMzc2YmJkYTIwNWQifQ"
         },
         {
-          "resource": "repo://dashboard/routes/tasks.py#L633-L665",
-          "version": "repo-lines-v1:sha256:5f913c043289871ddf5050e7abda99ea6e6b0dc56a6a65655d7ceb513ddddbcd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2Y2I4ZTExNjA0NTBjMzY0YzMyYTczYjMzMmJkODRkMTkyNmU3M2ExODAyZmIyNWFlNGNhYTU2OWJiZGQ0YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmZWU3MGI1OTc5ZWY2ZDE5OGE2MDkxNjFiODNkYjIxY2Y0MzYzYzVmMDc2ZmMzNWNmNzJlNGIzMDJjYWI3ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2OWZlMWJmYWZmOTA5OTU2YWJlM2FlZDgyMzkwOTI5ZDc4M2E5OTIyOTdjNDA1ZjdjZTE1MTc2Yzc0NWI1Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzMmViNzJiZmY0NGRlZDhlZjA3NmUyZmRiMmY4OTdhZmEwOWUzZDM3NzVkMjMzYzM1NDJlNmEzODQ1ZDQ3ZjAifQ"
+          "resource": "repo://dashboard/routes/tasks.py#L677-L706",
+          "version": "repo-lines-v1:sha256:5149ddf0708966e775ca7885dda26d1ca598c1ac1798fa5dd170a41c90648717:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2Y2I4ZTExNjA0NTBjMzY0YzMyYTczYjMzMmJkODRkMTkyNmU3M2ExODAyZmIyNWFlNGNhYTU2OWJiZGQ0YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhYzU2Y2M5YjBiNmM5ZTlhZDY3MTRjYjRiNzgwNGFlZWIzOGRmZThlMzk3OGRkNWZhMjE0ODM2ZjRkNTcwZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2OWZlMWJmYWZmOTA5OTU2YWJlM2FlZDgyMzkwOTI5ZDc4M2E5OTIyOTdjNDA1ZjdjZTE1MTc2Yzc0NWI1Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlMDEzYWM2NmYxOGFhMzQ1OTk3ZTJmNGM4ZGI1ZmYxYmM0OGY0OWY4YWVkMjFjZTJkYTc3YjdkYzVhZmFlZGEifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-10-06T19:22:52.001Z"
+    "at": "2026-11-01T07:54:23.892Z"
   }
 }
