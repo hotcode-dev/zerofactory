@@ -95,6 +95,9 @@ _active_scanners: dict[str, subprocess.Popen] = {}
 # Bounded timeout (seconds) for `git worktree remove` cleanup on the PR-lifecycle hot path.
 _WORKTREE_REMOVE_TIMEOUT = 30
 
+# Bounded timeout (seconds) for `git worktree add` during worktree provisioning.
+_WORKTREE_ADD_TIMEOUT = 30
+
 # Bounded timeout (seconds) for best-effort remote branch deletion on the PR MERGED/CLOSED archive path.
 _REMOTE_BRANCH_DELETE_TIMEOUT = 30
 

@@ -55,6 +55,7 @@ from pathlib import Path
 # Submodule re-exports
 from .config import (
     _REMOTE_BRANCH_DELETE_TIMEOUT,
+    _WORKTREE_ADD_TIMEOUT,
     _WORKTREE_REMOVE_TIMEOUT,
     DEFAULT_IDLE_SCAN_ACTIVE_THRESHOLD,
     DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
@@ -191,6 +192,7 @@ __all__ = [
     "_active_workers",
     "_last_idle_scan_times",
     "_active_scanners",
+    "_WORKTREE_ADD_TIMEOUT",
     "_WORKTREE_REMOVE_TIMEOUT",
     "_REMOTE_BRANCH_DELETE_TIMEOUT",
     "_log",

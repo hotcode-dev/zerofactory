@@ -241,6 +241,24 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             if wt:
                                 workspace_path = wt
 
+                        if (
+                            (not workspace_path or not Path(workspace_path).exists())
+                            and assignee in ("zf-builder", "zf-reviewer")
+                            and not os.environ.get("ZEROFACTORY_SKIP_GIT")
+                        ):
+                            log_step_state(
+                                "dispatch",
+                                task_id,
+                                "failed",
+                                f"could not setup worktree for {assignee}",
+                            )
+                            _log.error(
+                                "Task %s dispatch aborted: could not provision worktree for %s",
+                                task_id,
+                                assignee,
+                            )
+                            continue
+
                         meta = {}
                         try:
                             meta = json.loads(row["metadata"] or "{}")
@@ -588,34 +606,25 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 continue
 
                             if not workspace_path or not Path(workspace_path).exists():
-                                if row["pr_url"]:
-                                    wt = _disp.setup_worktree(
-                                        cursor,
-                                        task_id,
-                                        title,
-                                        assignee,
-                                        tenant,
-                                        db_path,
-                                        board_slug=board_slug,
-                                        repo_path=repo_path,
-                                        repo_alias=repo_alias,
-                                    )
-                                    if wt and Path(wt).exists():
-                                        workspace_path = wt
-                                    else:
-                                        log_step_state(
-                                            "package",
-                                            task_id,
-                                            "skip",
-                                            "worktree missing and re-provisioning failed",
-                                        )
-                                        continue
+                                wt = _disp.setup_worktree(
+                                    cursor,
+                                    task_id,
+                                    title,
+                                    assignee,
+                                    tenant,
+                                    db_path,
+                                    board_slug=board_slug,
+                                    repo_path=repo_path,
+                                    repo_alias=repo_alias,
+                                )
+                                if wt and Path(wt).exists():
+                                    workspace_path = wt
                                 else:
                                     log_step_state(
                                         "package",
                                         task_id,
                                         "skip",
-                                        "worktree missing and no PR to rebuild from",
+                                        "worktree missing and re-provisioning failed",
                                     )
                                     continue
                             if _package_and_open_pr(
@@ -1979,8 +1988,7 @@ def _package_and_open_pr(
                                 r_alias = (
                                     str(row["repo_alias"]).strip()
                                     if (
-                                        "repo_alias" in row.keys()
-                                        and row["repo_alias"]
+                                        "repo_alias" in row.keys() and row["repo_alias"]
                                     )
                                     else None
                                 )

@@ -843,3 +843,81 @@ def test_handle_packaging_failure_increments_and_blocks(tmp_path: Path):
         row = cursor.fetchone()
         assert row[0] == "blocked"
         assert row[1] == "human"
+
+
+def test_dispatch_aborts_when_worktree_setup_fails(tmp_path: Path):
+    """When setup_worktree returns None for zf-builder, dispatch aborts without setting running or spawning."""
+    import dispatcher
+
+    db_path = tmp_path / "test_abort_dispatch.db"
+    _init_test_db(db_path)
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, assignee, priority, metadata) VALUES ('t-fail', 'Task Fail', 'todo', 'zf-builder', 'P0', '{}')"
+        )
+        conn.commit()
+
+    lock_file = tmp_path / "dispatcher.lock"
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(
+            os.environ,
+            {"ZEROFACTORY_SKIP_GIT": "", "ZEROFACTORY_SKIP_WORKER_SPAWN": "1"},
+        ),
+        patch.object(dispatcher, "setup_worktree", return_value=None),
+        patch.object(dispatcher, "spawn_agent_worker") as mock_spawn,
+    ):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+        assert res["dispatched"] == 0
+        assert not mock_spawn.called
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        task = conn.execute(
+            "SELECT status, assignee FROM tasks WHERE id = 't-fail'"
+        ).fetchone()
+        assert task["status"] == "todo"
+        assert task["assignee"] == "zf-builder"
+
+
+def test_packaging_reprovisions_worktree_when_pr_url_is_none(tmp_path: Path):
+    """When awaiting_pr is True and workspace_path is None, packaging attempts setup_worktree even if pr_url is None."""
+    import dispatcher
+
+    db_path = tmp_path / "test_reprovision.db"
+    _init_test_db(db_path)
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    (repo_dir / ".git").mkdir()
+
+    ws_mock_dir = tmp_path / "ws_mock"
+    ws_mock_dir.mkdir()
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, assignee, priority, metadata, workspace_path, pr_url, tenant) "
+            "VALUES ('t-pkg-no-pr', 'Task Packaging', 'running', 'zf-builder', 'P0', '{\"awaiting_pr\": true}', NULL, NULL, ?)",
+            (str(repo_dir),),
+        )
+        conn.commit()
+
+    called_setup = []
+
+    def mock_setup_wt(*args, **kwargs):
+        called_setup.append(True)
+        return str(ws_mock_dir)
+
+    lock_file = tmp_path / "dispatcher.lock"
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+        patch.object(dispatcher, "setup_worktree", side_effect=mock_setup_wt),
+        patch("dispatcher.scheduler._package_and_open_pr", return_value=True),
+        patch.object(dispatcher, "reap_active_workers", return_value=0),
+    ):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+        assert len(called_setup) == 1
