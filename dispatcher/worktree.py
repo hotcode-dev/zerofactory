@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .config import (
     _REMOTE_BRANCH_DELETE_TIMEOUT,
+    _WORKTREE_ADD_TIMEOUT,
     _WORKTREE_REMOVE_TIMEOUT,
     VALID_PROFILES,
     StepTracker,
@@ -311,9 +312,9 @@ def setup_worktree(
                         ["git", "worktree", "add", str(worktree_dir), branch_name],
                         check=True,
                         cwd=repo_path,
-                        timeout=5,
+                        timeout=_WORKTREE_ADD_TIMEOUT,
                     )
-                except subprocess.CalledProcessError:
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                     subprocess.run(
                         ["git", "worktree", "prune"],
                         check=False,
@@ -325,7 +326,7 @@ def setup_worktree(
                         ["git", "worktree", "add", str(worktree_dir), branch_name],
                         check=True,
                         cwd=repo_path,
-                        timeout=5,
+                        timeout=_WORKTREE_ADD_TIMEOUT,
                     )
             # Sync existing worktree with latest default branch if assignee is builder
             if assignee == "zf-builder" and worktree_dir.exists():
@@ -345,7 +346,7 @@ def setup_worktree(
                         ],
                         check=True,
                         cwd=repo_path,
-                        timeout=5,
+                        timeout=_WORKTREE_ADD_TIMEOUT,
                     )
                 except Exception:
                     subprocess.run(
@@ -360,7 +361,7 @@ def setup_worktree(
                         ],
                         check=True,
                         cwd=repo_path,
-                        timeout=5,
+                        timeout=_WORKTREE_ADD_TIMEOUT,
                     )
             # Sync newly created worktree with latest default branch if assignee is builder
             if assignee == "zf-builder" and worktree_dir.exists():
@@ -454,6 +455,16 @@ def setup_worktree(
             repo_path,
             e,
         )
+        if (
+            "task_root" in locals()
+            and isinstance(task_root, Path)
+            and task_root.exists()
+        ):
+            try:
+                if not any(task_root.iterdir()):
+                    task_root.rmdir()
+            except Exception:
+                pass
         return None
 
 

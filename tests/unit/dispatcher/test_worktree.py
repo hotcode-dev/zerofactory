@@ -383,3 +383,54 @@ def test_setup_worktree_multi_repo_side_by_side(tmp_path: Path):
         _remove_worktree(ws_path, primary_repo)
         assert not prim_dir.exists()
         assert not sib_dir.exists()
+
+
+def test_setup_worktree_timeout_configured():
+    """Ensure worktree add timeout constant is set to 30 seconds."""
+    from dispatcher.config import _WORKTREE_ADD_TIMEOUT
+
+    assert _WORKTREE_ADD_TIMEOUT >= 30
+
+
+def test_setup_worktree_cleans_empty_task_root_on_failure(tmp_path: Path):
+    """When setup_worktree encounters a git failure, empty task_root is cleaned up."""
+    from dispatcher.worktree import setup_worktree
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    _init_tasks_db(conn)
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+
+    # Fail git worktree add
+    with (
+        patch("dispatcher.worktree.Path.home", return_value=fake_home),
+        patch(
+            "subprocess.run",
+            side_effect=subprocess.CalledProcessError(1, ["git", "worktree"]),
+        ),
+    ):
+        res = setup_worktree(
+            conn.cursor(),
+            task_id="t-fail-clean",
+            title="Fail and Clean",
+            assignee="zf-builder",
+            tenant=str(repo),
+            db_path=Path("/tmp/dummy.db"),
+        )
+        assert res is None
+        # task_root should not be left behind empty
+        task_root = (
+            fake_home
+            / ".zerofactory"
+            / "workspaces"
+            / "default"
+            / "worktrees"
+            / "t-fail-clean"
+        )
+        assert not task_root.exists()

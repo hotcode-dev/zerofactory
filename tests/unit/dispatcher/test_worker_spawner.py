@@ -50,7 +50,10 @@ def test_spawn_agent_worker_skip_env():
 
 def test_spawn_agent_worker_cmd_and_session_isolation():
     """Verify hermes command structure, start_new_session=True, and session matching."""
-    with tempfile.NamedTemporaryFile(suffix=".db") as tmp_db:
+    with (
+        tempfile.NamedTemporaryFile(suffix=".db") as tmp_db,
+        tempfile.TemporaryDirectory() as tmp_ws,
+    ):
         conn = sqlite3.connect(tmp_db.name)
         conn.execute(
             """
@@ -70,8 +73,8 @@ def test_spawn_agent_worker_cmd_and_session_isolation():
         )
         # Session for target task
         conn.execute(
-            "INSERT INTO sessions VALUES ('sess-mine', 'Task ID: zf-mine', '/ws/mine', ?)",
-            (now,),
+            "INSERT INTO sessions VALUES ('sess-mine', 'Task ID: zf-mine', ?, ?)",
+            (tmp_ws, now),
         )
         conn.commit()
         conn.close()
@@ -97,7 +100,7 @@ def test_spawn_agent_worker_cmd_and_session_isolation():
                 assignee="zf-reviewer",
                 priority="P0",
                 description="Test isolation",
-                workspace_path="/ws/mine",
+                workspace_path=tmp_ws,
                 branch_name="task/zf-mine",
             )
 
@@ -267,3 +270,54 @@ def test_spawn_agent_worker_with_repo_alias_and_architecture():
         assert "Repository: api-gw" in prompt
         assert "SYSTEM ARCHITECTURE & MULTI-REPO TOPOLOGY" in prompt
         assert "TASK DEPENDENCIES & RELATED FEATURES" in prompt
+
+
+def test_spawn_agent_worker_refuses_without_valid_workspace_path():
+    """Verify that zf-builder and zf-reviewer fail-closed if workspace_path is missing or nonexistent."""
+    with (
+        patch("subprocess.Popen") as mock_popen,
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}, clear=False),
+    ):
+        os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+
+        # 1. zf-builder with None workspace_path
+        pid, sess = spawn_agent_worker(
+            task_id="t-fail-1",
+            title="Fail Task",
+            assignee="zf-builder",
+            priority="P1",
+            description="No ws",
+            workspace_path=None,
+            branch_name="task/t-fail-1",
+        )
+        assert pid is None
+        assert sess is None
+        assert not mock_popen.called
+
+        # 2. zf-builder with nonexistent workspace_path
+        pid, sess = spawn_agent_worker(
+            task_id="t-fail-2",
+            title="Fail Task",
+            assignee="zf-builder",
+            priority="P1",
+            description="Bad ws",
+            workspace_path="/path/does/not/exist/ever/12345",
+            branch_name="task/t-fail-2",
+        )
+        assert pid is None
+        assert sess is None
+        assert not mock_popen.called
+
+        # 3. zf-reviewer with None workspace_path
+        pid, sess = spawn_agent_worker(
+            task_id="t-fail-3",
+            title="Fail Review",
+            assignee="zf-reviewer",
+            priority="P1",
+            description="No ws",
+            workspace_path=None,
+            branch_name="task/t-fail-3",
+        )
+        assert pid is None
+        assert sess is None
+        assert not mock_popen.called

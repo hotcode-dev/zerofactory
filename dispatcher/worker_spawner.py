@@ -93,11 +93,28 @@ def spawn_agent_worker(
         or (str(local_hermes) if local_hermes.exists() else "hermes")
     )
 
-    workdir = (
-        workspace_path
-        if (workspace_path and Path(workspace_path).exists())
-        else os.getcwd()
-    )
+    if assignee in ("zf-builder", "zf-reviewer") and not os.environ.get(
+        "ZEROFACTORY_SKIP_GIT"
+    ):
+        if not workspace_path or not Path(workspace_path).exists():
+            steps.end(
+                "fail",
+                f"missing or nonexistent workspace_path for {assignee}: {workspace_path}",
+            )
+            _log.error(
+                "Refusing to spawn %s for task %s without valid workspace worktree: %s",
+                assignee,
+                task_id,
+                workspace_path,
+            )
+            return None, None
+        workdir = Path(workspace_path)
+    else:
+        workdir = (
+            Path(workspace_path)
+            if (workspace_path and Path(workspace_path).exists())
+            else Path.cwd()
+        )
 
     if repo_alias is None:
         try:
