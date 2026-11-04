@@ -1979,8 +1979,7 @@ def _package_and_open_pr(
                                 r_alias = (
                                     str(row["repo_alias"]).strip()
                                     if (
-                                        "repo_alias" in row.keys()
-                                        and row["repo_alias"]
+                                        "repo_alias" in row.keys() and row["repo_alias"]
                                     )
                                     else None
                                 )
