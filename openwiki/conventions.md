@@ -27,9 +27,6 @@ sources:
   - id: openwiki-source-b4194cdb1aee8e18787b21d6
     resource: repo://tests/unit/dashboard/test_dashboard_css.py
 generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-11-01T07:54:23.892Z
 ---
 
 # Conventions

@@ -1,14 +1,9 @@
 ---
 type: subsystem
 title: Dispatch Engine
-description: The dispatcher subsystem — run_dispatch_cycle lifecycle, multi-repo isolated Git worktrees, worker spawning with a spawn-grace period, the deterministic precommit self-healing gate, git/PR ops, the per-commit review cap, automerge, and the WAL-tolerant stuck-worker reaper.
+description: The dispatcher subsystem — run_dispatch_cycle lifecycle, multi-repo isolated Git worktrees, worker spawning with a spawn-grace period, the deterministic precommit self-healing gate, git/PR ops incl. the packaging-failure retry budget and the HTTPS-to-SSH push fallback, the per-commit review cap, automerge, and the WAL-tolerant stuck-worker reaper.
 tags: [dispatcher, dispatch-loop, git-worktree, worker-spawning, precommit, github-pr, reaper, self-healing, multi-repo, automerge, spawn-grace]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-11-01T07:54:23.892Z
 sources:
-  - id: openwiki-source-c705147b9966f3d6f300034a
-    resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-78d773f851580c376cac002d
     resource: repo://dispatcher/config.py
   - id: openwiki-source-5e3b047b4a47ae6a59b90052
@@ -23,7 +18,10 @@ sources:
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-bd2c9dd479aa89010adee0f5
     resource: repo://dispatcher/worktree.py
-generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
+generated: { by: "hermes", at: "2026-11-04T14:49:39.483Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-11-04T14:49:39.483Z
 ---
 
 # Dispatch Engine
@@ -60,9 +58,11 @@ Within one cycle it:
    (`repo://dispatcher/worker_spawner.py#L69-L622`).
 5. **Packages** — on worker completion the task stays `running` with
    `awaiting_pr` set; `_package_and_open_pr` runs the deterministic precommit
-   gate, commits, merges against latest main, pushes, opens a GitHub PR, and
-   routes the ticket to `zf-reviewer` (or auto-merges it when enabled)
-   (`repo://dispatcher/scheduler.py#L1587`).
+   gate, commits, merges against latest main, pushes (with an HTTPS→SSH
+   fallback when the OAuth token lacks workflow scope), opens a GitHub PR, and
+   routes the ticket to `zf-reviewer` (or auto-merges it when enabled),
+   retrying up to 3 times before parking the task in `blocked`
+   (`repo://dispatcher/scheduler.py#L1638`).
 6. **Reaps** — `reap_stuck_tasks` / `reap_active_workers` detect and clean up
    hung workers (`repo://dispatcher/reaper.py`).
 
@@ -136,10 +136,20 @@ escalates to a human.
 marked by `metadata["awaiting_pr"] = true` (set by the dashboard `move_task`
 when an agent actor reports completion, and by the reaper when it observes a
 worker exit mid-package). `_package_and_open_pr`
-(`repo://dispatcher/scheduler.py#L1587`) is the single owner of that
-phase; it is idempotent and re-runs on the next cycle until it succeeds. When
-a task is closed terminally by a human or by a merged PR,
-`_finalize_terminal_done` (`repo://dispatcher/scheduler.py#L2069`) only
+(`repo://dispatcher/scheduler.py#L1638`) is the single owner of that
+phase; it is idempotent and re-runs on the next cycle until it succeeds.
+The phase also carries its own failure budget: any git/PR command failure
+(including timeouts) routes to `_handle_packaging_failure`, which increments
+`metadata["packaging_retries"]`, stores the first 2500 chars of the error in
+`metadata["last_packaging_error"]`, and — once 3 attempts are exhausted —
+parks the task in `blocked` with `blocked_reason_type = "stuck"`, assignee
+`human`, a dispatcher comment, and a `packaging_failed` activity entry,
+instead of looping the packaging step forever
+(`repo://dispatcher/scheduler.py#L1587-L1636`). The `recover` endpoint and
+`build_stuck_task_context` both surface/reset these counters
+(`repo://dashboard/routes/tasks.py#L1551-L1590`,
+(`repo://dispatcher/reaper.py#L800-L845`). When a task is closed terminally by a human or by a merged PR,
+`_finalize_terminal_done` (`repo://dispatcher/scheduler.py#L2210`) only
 cleans up — stopping any stale worker, pruning the worktree, and, when
 `close_pr` is set, closing the open PR and deleting the remote branch so
 GitHub matches the board. It never commits, pushes, opens a PR, or routes the
@@ -181,16 +191,23 @@ ops).
   `ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**): exceeding it sets
   `review_cap_reached` and `blocked_reason_type = "human-gate"`, assigns the
   task to `human`, and moves it to `blocked` instead of looping builder ↔
-  reviewer forever (`repo://dispatcher/scheduler.py#L1113-L1150`).
+  reviewer forever (`repo://dispatcher/scheduler.py#L1281-L1342`).
 - **External-issue PR linkage** — when a task carries `external_issue` metadata
   (see [External Issue Import](/openwiki/components/issues-importer.md)), the
   PR body the dispatcher opens appends `Fixes #<n>` (GitHub) or
   `Resolves: <KEY>` (Jira) so merging the PR closes the source issue
-  (`repo://dispatcher/scheduler.py#L1538-L1550`); for GitHub issues the
+  (`repo://dispatcher/scheduler.py#L2040-L2052`); for GitHub issues the
   dispatcher additionally posts a single idempotent "PR opened" status reply on
   the source issue via `post_issue_pr_comment` (gated on `has_ai_request`,
   marker-deduped with `<!-- zf-task:<task_id> -->`)
-  (`repo://dispatcher/scheduler.py#L741-L828`).
+  (`repo://dispatcher/scheduler.py#L851-L939`).
+- **HTTPS→SSH push fallback** — when `git push` of the task branch is rejected
+  because the GitHub OAuth token lacks the `workflow` scope, the dispatcher
+  derives the SSH URL from the `https://github.com/…` origin remote, retries the
+  push against `git@github.com:…`, and — on success — rewrites the worktree's
+  `origin` remote, the base repo's remote, and the `board_repositories.git_url`
+  row to the SSH URL so subsequent pushes stay on SSH
+  (`repo://dispatcher/scheduler.py#L1928-L2020`).
 
 ## Reaper
 

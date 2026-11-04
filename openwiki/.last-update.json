@@ -1,7 +1,7 @@
 {
-  "updatedAt": "2026-11-01T10:55:22.361Z",
+  "updatedAt": "2026-11-04T15:10:58.699Z",
   "command": "update",
-  "gitHead": "9ca5b1bf34fe126a302f11fe033fb9138425400b",
+  "gitHead": "969af14da9692bcf1bc70e8423700fe72805c055",
   "model": "host-agent/hermes",
   "status": "complete",
   "language": "en"

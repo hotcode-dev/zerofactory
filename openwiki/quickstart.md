@@ -16,10 +16,7 @@ sources:
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-11-01T07:54:23.892Z
+generated: { by: "hermes", at: "2026-11-04T14:49:39.483Z" }
 ---
 
 # Quickstart
@@ -121,7 +118,7 @@ it before publishing any claim about the count.
 ```bash
 # Tasks
 hermes zerofactory list [--status <status>] [--assignee <profile>]
-hermes zerofactory create "Implement Feature X"
+hermes zerofactory create "Implement Feature X" [--tags automerge,hitl]
 hermes zerofactory import-gh-issue 42 [--repo owner/repo] [--board <slug>] [--status triage] [--priority P1] [--assignee zf-builder] [--sync] [--force]
 hermes zerofactory import-jira-issue PROJ-123 [--board <slug>] [--priority P1]
 hermes zerofactory update <task_id> [--title "..."] [--description "..."] [--assignee <profile>] [--priority P1] [--status <status>]
@@ -186,6 +183,8 @@ runs the deterministic pipeline (precommit → commit → push → PR → route 
 reviewer) via `_package_and_open_pr`. Approved PRs park in `blocked` awaiting a
 human merge on GitHub; the dispatcher moves them to `done` through
 `_finalize_terminal_done` (which only cleans up — closing the open PR when
-`close_pr` is set — and never re-opens review) and prunes the worktree. Details
+`close_pr` is set — and never re-opens review) and prunes the worktree. The
+packaging step retries up to 3 times on git/PR failure before parking the task
+in `blocked` for a human. Details
 in [Architecture](/openwiki/architecture.md#session-per-handoff-model)
 and [Dispatch Engine](/openwiki/components/dispatcher.md).

@@ -3,9 +3,6 @@ type: subsystem
 title: Dashboard, Cron & Automation
 description: The operator and automation layer — the FastAPI dashboard REST surface (multi-repository boards, task lifecycle incl. split/recover/report-bug, settings incl. Mem0 memory, GitHub issues sync/import, Jira link), the cron subsystem, and the No-Agent Mode scripts that drive 0-token background queue checks and wake-gated scans.
 tags: [dashboard, rest-api, cron, automation, no-agent-mode, fastapi, setup-services, gh-issues, jira, ui-components, multi-repo, mem0]
-verified:
-  - by: openwiki/0.6.0
-    at: 2026-11-01T07:54:23.892Z
 sources:
   - id: openwiki-source-0fcd11b2ec72e81b8258e0a7
     resource: repo://cron/config.py
@@ -53,7 +50,10 @@ sources:
     resource: repo://scripts/zf_queue_watchdog.py
   - id: openwiki-source-bc25bd3bfcf63b730444ea04
     resource: repo://scripts/zf_scanner_gate.py
-generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
+generated: { by: "hermes", at: "2026-11-04T14:49:39.483Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-11-04T14:49:39.483Z
 ---
 
 # Dashboard, Cron & Automation
@@ -113,7 +113,8 @@ eight sub-routers (`repo://dashboard/routes/__init__.py#L46-L54`):
   `POST /tasks/{task_id}/split` decomposes a multi-repo triage task into
   per-repo `todo` tasks, `POST /tasks/{task_id}/recover` routes a
   failure-exhausted blocked task back to the orchestrator with optional
-  operator guidance, and `POST /tasks/{task_id}/report-bug` reports an
+  operator guidance (resetting the failure counters including the packaging
+  retry state), and `POST /tasks/{task_id}/report-bug` reports an
   internal Zero Factory defect to the upstream GitHub issue tracker
   (auto-creating the issue when the `auto_create_github_issues` setting is
   enabled) (`repo://dashboard/routes/tasks.py#L1277-L1663`). Query params
@@ -156,7 +157,9 @@ Factory artifacts and file a **P0 setup task** for `zf-builder`:
 
 Both route through the shared `setup_common.py` helper (`check_board_setup_status`,
 `create_setup_task`) with a `setup:` dedup key so a superseded task is replaced
-rather than duplicated (`repo://dashboard/setup_common.py`). The GitHub issues
+rather than duplicated (`repo://dashboard/setup_common.py`); the helper accepts
+an optional `tags` parameter, and the OpenWiki setup flow stamps `["automerge"]`
+on its P0 task (`repo://dashboard/openwiki_service.py#L236-L240`). The GitHub issues
 setup reuses the same helper: `create_gh_issues_setup_task`
 (`repo://dashboard/gh_issues_service.py#L100-L118`) files the P0 task whose
 prompt runs `python3 scripts/setup_gh_issues.py --path . --align` — align mode
@@ -274,9 +277,11 @@ Four deterministic scripts drive the token-efficient automation and emit a
   `running`/`blocked`. When HEAD has advanced past the last `openwiki`-touching
   commit, it creates at most **one** P2 `todo` task for `zf-builder` via
   `create_openwiki_task` — deterministically, idempotent via the create-task
-  endpoint, with a SQLite fallback if the plugin API is unavailable — and
-  reports 0-token completion (the script always exits 0, so the LLM run is
-  suppressed either way; `repo://scripts/zf_openwiki_gate.py`).
+  endpoint, with a SQLite fallback if the plugin API is unavailable — and the
+  filed task carries the `automerge` tag (and `cat:documentation`) so it can
+  auto-merge after review; it then reports 0-token completion (the script
+  always exits 0, so the LLM run is suppressed either way;
+  `repo://scripts/zf_openwiki_gate.py`).
 - **`scripts/zf_daily_stats.py`** — a deterministic 24-hour metrics / velocity
   calculator with no LLM involvement.
 
