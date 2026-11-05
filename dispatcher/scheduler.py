@@ -166,6 +166,11 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     running_per_board[str(rc_row["board_slug"] or "")] = rc_row["cnt"]
 
                 if active_count < max_active_tasks and llm_workers < max_llm_workers:
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM tasks WHERE status = 'running' AND assignee IN ('zf-orchestrator', 'zf-goldfish')"
+                    )
+                    running_triage_workers = cursor.fetchone()[0]
+
                     cursor.execute(f"""
                         SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug, status{repo_col} FROM tasks
                         WHERE status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator')
@@ -183,6 +188,19 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             continue
                         assignee = normalize_assignee(row["assignee"] or "zf-builder")
                         if assignee == "human":
+                            continue
+
+                        is_triage_worker = assignee in (
+                            "zf-orchestrator",
+                            "zf-goldfish",
+                        )
+                        if is_triage_worker and running_triage_workers >= 1:
+                            log_step_state(
+                                "dispatch",
+                                task_id,
+                                "deferred",
+                                f"triage worker concurrency cap (1) reached ({running_triage_workers} active); will dispatch next cycle",
+                            )
                             continue
                         cand_meta = {}
                         try:
@@ -325,9 +343,25 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         task_orig_status = (
                             str(row["status"]) if "status" in row.keys() else "todo"
                         )
-                        target_dispatch_status = (
-                            "triage" if task_orig_status == "triage" else "running"
-                        )
+                        target_dispatch_status = "running"
+                        if (
+                            task_orig_status == "triage"
+                            and assignee == "zf-orchestrator"
+                        ):
+                            meta["triage_phase"] = "elephant_drafting"
+                            target_repos_c = meta.get("target_repos") or []
+                            if (
+                                meta.get("egm")
+                                or (
+                                    isinstance(target_repos_c, list)
+                                    and len(target_repos_c) > 1
+                                )
+                                or meta.get("category") == "epic"
+                            ):
+                                meta["egm"] = True
+                        elif assignee == "zf-goldfish":
+                            meta["triage_phase"] = "goldfish_auditing"
+
                         cursor.execute(
                             "UPDATE tasks SET status = ?, updated_at = ?, metadata = ? WHERE id = ? AND (status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator'))",
                             (
@@ -419,6 +453,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         running_per_board[board_key] = board_active + 1
                         active_count += 1
                         llm_workers += 1
+                        if is_triage_worker:
+                            running_triage_workers += 1
                         dispatched += 1
                         promoted += 1
 

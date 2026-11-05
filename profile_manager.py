@@ -4,6 +4,7 @@ Automatically provisions and synchronizes the namespaced Zero Factory agent prof
 - zf-orchestrator
 - zf-builder
 - zf-reviewer
+- zf-goldfish
 
 Profiles are created inside ~/.hermes/profiles/ without overwriting user data.
 """
@@ -24,7 +25,7 @@ except ImportError:
 
 _log = logging.getLogger("zerofactory.profiles")
 
-ZF_PROFILES = ("zf-orchestrator", "zf-builder", "zf-reviewer")
+ZF_PROFILES = ("zf-orchestrator", "zf-builder", "zf-reviewer", "zf-goldfish")
 
 # All HERMES_LANGFUSE_* keys written to .env files by sync_langfuse_profiles().
 # Used to scrub stale credentials from every profile .env when Langfuse is disabled.

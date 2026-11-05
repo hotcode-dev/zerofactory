@@ -179,22 +179,40 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta.pop("started_at", None)
 
                     is_triage_task = (
-                        curr_stat == "triage" or curr_asgn == "zf-orchestrator"
+                        curr_stat == "triage"
+                        or curr_asgn in ("zf-orchestrator", "zf-goldfish")
+                        or meta.get("triage_phase")
+                        in ("elephant_drafting", "goldfish_auditing", "human_approval")
+                        or bool(meta.get("awaiting_interview"))
+                        or bool(meta.get("awaiting_approval"))
                     )
                     blocked_reason = str(meta.get("blocked_reason") or "").lower()
+                    target_asgn = curr_asgn
+
                     if is_triage_task and (
                         "grill" in blocked_reason
                         or "interview" in blocked_reason
                         or "human" in blocked_reason
-                        or curr_stat == "triage"
+                        or curr_asgn == "human"
+                        or meta.get("awaiting_interview")
                     ):
                         target_status = "triage"
+                        target_asgn = "human"
                         meta.pop("blocked_reason", None)
                         meta["awaiting_interview"] = True
-                        cursor.execute(
-                            "UPDATE tasks SET assignee = 'human' WHERE id = ? AND assignee != 'human'",
-                            (task_id,),
-                        )
+                    elif curr_asgn == "zf-goldfish":
+                        target_status = "triage"
+                        target_asgn = "human"
+                        meta["triage_phase"] = "human_approval"
+                        meta["awaiting_approval"] = True
+                    elif curr_asgn == "zf-orchestrator" and (
+                        meta.get("triage_phase") == "elephant_drafting"
+                        or meta.get("egm")
+                        or meta.get("specification")
+                    ):
+                        target_status = "todo"
+                        target_asgn = "zf-goldfish"
+                        meta["triage_phase"] = "goldfish_auditing"
                     elif curr_stat in ("blocked", "todo", "triage"):
                         target_status = curr_stat
                     elif is_triage_task:
@@ -210,21 +228,22 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         meta["awaiting_pr"] = True
 
                     cursor.execute(
-                        "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                        (target_status, json.dumps(meta), now, task_id),
+                        "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                        (target_status, target_asgn, json.dumps(meta), now, task_id),
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', ?, ?)",
                         (
                             task_id,
-                            f"Worker process completed successfully (exit 0); status set to {target_status}",
+                            f"Worker process completed successfully (exit 0); status set to {target_status} ({target_asgn})",
                             now,
                         ),
                     )
                     _log.info(
-                        "Worker for task %s finished successfully (exit 0); moved to %s",
+                        "Worker for task %s finished successfully (exit 0); moved to %s (%s)",
                         task_id,
                         target_status,
+                        target_asgn,
                     )
                 else:
                     cursor.execute(
@@ -286,7 +305,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         meta["blocked_reason"] = (
                             f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})"
                         )
-                        retry_status = "todo" if row_status == "running" else "blocked"
+                        retry_status = (
+                            "triage"
+                            if (row_status == "running" and curr_asgn == "zf-orchestrator")
+                            else ("todo" if row_status == "running" else "blocked")
+                        )
                         cursor.execute(
                             "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
                             (retry_status, json.dumps(meta), now, task_id),
@@ -353,7 +376,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta["blocked_reason"] = (
                         f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries})"
                     )
-                    retry_status = "todo" if row_status == "running" else "blocked"
+                    retry_status = (
+                        "triage"
+                        if (row_status == "running" and curr_asgn == "zf-orchestrator")
+                        else ("todo" if row_status == "running" else "blocked")
+                    )
                     cursor.execute(
                         "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
                         (retry_status, json.dumps(meta), now, task_id),

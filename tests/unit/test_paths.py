@@ -154,11 +154,18 @@ class TestPathsResolution(unittest.TestCase):
         self.assertIs(PA_VALID_ASSIGNEES, P.VALID_ASSIGNEES)
         self.assertCountEqual(
             PA_VALID_ASSIGNEES,
-            {"unassigned", "human", "zf-builder", "zf-reviewer", "zf-orchestrator"},
+            {
+                "unassigned",
+                "human",
+                "zf-builder",
+                "zf-reviewer",
+                "zf-orchestrator",
+                "zf-goldfish",
+            },
         )
         self.assertCountEqual(
             D.VALID_PROFILES,
-            {"zf-builder", "zf-reviewer", "zf-orchestrator"},
+            {"zf-builder", "zf-reviewer", "zf-orchestrator", "zf-goldfish"},
         )
         self.assertNotIn("unassigned", D.VALID_PROFILES)
 

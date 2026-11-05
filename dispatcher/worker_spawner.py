@@ -281,6 +281,102 @@ def spawn_agent_worker(
             if wiki_files:
                 openwiki_info = f"Documentation substrate available in openwiki/: {', '.join(sorted(wiki_files))}\n\n"
 
+        task_meta: dict = {}
+        try:
+            task_meta = (
+                json.loads(metadata or "{}")
+                if isinstance(metadata, str)
+                else dict(metadata or {})
+            )
+        except Exception:
+            task_meta = {}
+        target_repos_val = task_meta.get("target_repos") or []
+        is_egm = bool(
+            task_meta.get("egm")
+            or task_meta.get("triage_phase") == "elephant_drafting"
+            or (isinstance(target_repos_val, list) and len(target_repos_val) > 1)
+            or task_meta.get("category") == "epic"
+        )
+
+        if is_egm:
+            goal_instructions = (
+                f"Your goal as Orchestrator (Sequential EGM Triage - Elephant Drafting Protocol):\n"
+                f"You are the Elephant architect in the Sequential Elephant-Goldfish Model (EGM) triage pipeline.\n"
+                f"Your job is to deeply investigate the codebase, resolve ambiguities, and draft an airtight, minimal technical specification.\n"
+                f"Zero Factory adheres to 'stateless workers, stateful substrate': all decisions must be recorded in durable documentation (openwiki/, memory, and task metadata) so downstream workers operate without ambiguity.\n\n"
+                f"1. GROUND IN DOCUMENTATION & REPOSITORY PATTERNS:\n"
+                f"   - Inspect repository documentation (openwiki/, README.md, architecture docs) and code in {workdir}.\n"
+                f"   - Ensure proposed designs, APIs, and libraries conform to existing conventions and the Ponytail Ladder of Laziness.\n\n"
+                f"2. EVALUATE HUMAN INPUT & AMBIGUITY (GRILL-WITH-DOCS GATE):\n"
+                f"   - Check the discussion comments above for any prior questions and human responses.\n"
+                f"   - If there are unresolved architectural choices, design trade-offs, scope ambiguities, or missing acceptance criteria:\n"
+                f"     * Formulate a structured interview question with clear, mutually exclusive options (Option A, Option B, etc.).\n"
+                f"     * Format your comment EXACTLY with this structure so the UI renders interactive selection buttons for the human:\n"
+                f"       ### 🎯 Grill-with-Docs: Decision Required\n"
+                f"       **Question:** <Clear, targeted question>\n"
+                f"       - [ ] **Option A:** <Details, trade-offs, pros/cons>\n"
+                f"       - [ ] **Option B:** <Details, trade-offs, pros/cons>\n"
+                f"       - [ ] **Option C:** <Details, trade-offs, pros/cons>\n"
+                f"       **Documentation Context:** <Citations to openwiki/ or codebase patterns>\n\n"
+                f"     * Post the question to the task discussion:\n"
+                f'       hermes zerofactory comment {task_id} "<formatted interview question>"\n'
+                f"     * Keep the task in Triage awaiting human reply (assign to human so the dashboard displays the interview options and the dispatcher pauses re-dispatch until answered):\n"
+                f"       hermes zerofactory move {task_id} triage --assignee human\n"
+                f"     * Finish your turn cleanly (DO NOT proceed with spec drafting until answered).\n\n"
+                f"3. DRAFT TECHNICAL SPECIFICATION & COMMIT TO SUBSTRATE:\n"
+                f"   - If all requirements are clear, draft a comprehensive technical specification including:\n"
+                f"     * Exact architectural boundaries, components, and contracts\n"
+                f"     * Step-by-step implementation plan\n"
+                f"     * Concrete, testable acceptance criteria\n"
+                f"     * YAGNI & Ponytail justification\n"
+                f"   - Record the finalized specification:\n"
+                f'     hermes zerofactory update {task_id} --specification "<full specification markdown>"\n'
+                f"   - Record any new conventions or architectural decisions into board memory:\n"
+                f'     hermes zerofactory memory add --board {board_slug or "default"} "<rule or decision>" --category decision\n'
+                f"   - DO NOT split the task or move it to todo! Finish your turn cleanly with exit code 0.\n"
+                f"     Zero Factory will automatically dispatch zf-goldfish to audit your specification before human approval.\n"
+            )
+        else:
+            goal_instructions = (
+                f"Your goal as Orchestrator (Grill-with-Docs Triage Protocol):\n"
+                f"Execute the Grill-with-Docs triage protocol to break down this task, resolve architectural trade-offs, and ground all decisions in repository documentation.\n"
+                f"Zero Factory adheres to 'stateless workers, stateful substrate': all decisions must be recorded in durable documentation (openwiki/, memory, and task description) so downstream workers (zf-builder) operate without ambiguity.\n\n"
+                f"1. GROUND IN DOCUMENTATION & REPOSITORY PATTERNS:\n"
+                f"   - Inspect repository documentation (openwiki/, README.md, architecture docs) and code in {workdir}.\n"
+                f"   - Ensure proposed designs, APIs, and libraries conform to existing conventions.\n\n"
+                f"2. EVALUATE HUMAN INPUT & AMBIGUITY (DECISION GATE):\n"
+                f"   - Check the discussion comments above for any prior questions and human responses.\n"
+                f"   - If there are unresolved architectural choices, design trade-offs, scope ambiguities, or missing acceptance criteria:\n"
+                f"     * Formulate a structured interview question with clear, mutually exclusive options (Option A, Option B, etc.).\n"
+                f"     * Format your comment EXACTLY with this structure so the UI renders interactive selection buttons for the human:\n"
+                f"       ### 🎯 Grill-with-Docs: Decision Required\n"
+                f"       **Question:** <Clear, targeted question>\n"
+                f"       - [ ] **Option A:** <Details, trade-offs, pros/cons>\n"
+                f"       - [ ] **Option B:** <Details, trade-offs, pros/cons>\n"
+                f"       - [ ] **Option C:** <Details, trade-offs, pros/cons>\n"
+                f"       **Documentation Context:** <Citations to openwiki/ or codebase patterns>\n\n"
+                f"     * Post the question to the task discussion:\n"
+                f'       hermes zerofactory comment {task_id} "<formatted interview question>"\n'
+                f"     * Keep the task in Triage awaiting human reply (assign to human so the dashboard displays the interview options and the dispatcher pauses re-dispatch until answered):\n"
+                f"       hermes zerofactory move {task_id} triage --assignee human\n"
+                f"     * Finish your turn cleanly (DO NOT mark blocked, DO NOT write implementation code in worktree, DO NOT open PR).\n\n"
+                f"   - If all decisions have been resolved (or the human has replied with their selection in the comments):\n"
+                f"     * Record any new conventions or architectural decisions into board memory:\n"
+                f'       hermes zerofactory memory add --board {board_slug or "default"} "<rule or decision>" --category decision\n'
+                f"     * If needed, update openwiki/ documentation or ADRs in {workdir}.\n"
+                f"     * Update the task description with the finalized specification, acceptance criteria, and test plan:\n"
+                f'       hermes zerofactory update {task_id} --description "<comprehensive specification & acceptance criteria>"\n'
+                f"     * MULTI-REPO DECOMPOSITION (IF TASK TARGETS MULTIPLE REPOSITORIES):\n"
+                f"       If this task relates to 2 or more repositories (or target_repos contains multiple repositories), Zero Factory isolates each builder task to a single repo worktree.\n"
+                f"       Decompose this triage task into separate Todo tasks per repository:\n"
+                f"       hermes zerofactory split {task_id} --repos <repo1,repo2,...>\n"
+                f"       This will automatically create linked Todo tasks for each repository, mark this triage task done, and dispatch zf-builder for each.\n"
+                f"     * SINGLE-REPO PROMOTION:\n"
+                f"       If the task targets only 1 repository:\n"
+                f"       hermes zerofactory move {task_id} todo --assignee zf-builder\n"
+                f"     * Provide a clear triage summary confirming the handoff to zf-builder.\n"
+            )
+
         prompt = (
             f"Task ID: {task_id}\n"
             f"Title: {title}\n"
@@ -296,43 +392,90 @@ def spawn_agent_worker(
             f"{deps_block}"
             f"{openwiki_info}"
             f"{task_comments_context}"
-            f"Your goal as Orchestrator (Grill-with-Docs Triage Protocol):\n"
-            f"Execute the Grill-with-Docs triage protocol to break down this task, resolve architectural trade-offs, and ground all decisions in repository documentation.\n"
-            f"Zero Factory adheres to 'stateless workers, stateful substrate': all decisions must be recorded in durable documentation (openwiki/, memory, and task description) so downstream workers (zf-builder) operate without ambiguity.\n\n"
-            f"1. GROUND IN DOCUMENTATION & REPOSITORY PATTERNS:\n"
-            f"   - Inspect repository documentation (openwiki/, README.md, architecture docs) and code in {workdir}.\n"
-            f"   - Ensure proposed designs, APIs, and libraries conform to existing conventions.\n\n"
-            f"2. EVALUATE HUMAN INPUT & AMBIGUITY (DECISION GATE):\n"
-            f"   - Check the discussion comments above for any prior questions and human responses.\n"
-            f"   - If there are unresolved architectural choices, design trade-offs, scope ambiguities, or missing acceptance criteria:\n"
-            f"     * Formulate a structured interview question with clear, mutually exclusive options (Option A, Option B, etc.).\n"
-            f"     * Format your comment EXACTLY with this structure so the UI renders interactive selection buttons for the human:\n"
-            f"       ### 🎯 Grill-with-Docs: Decision Required\n"
-            f"       **Question:** <Clear, targeted question>\n"
-            f"       - [ ] **Option A:** <Details, trade-offs, pros/cons>\n"
-            f"       - [ ] **Option B:** <Details, trade-offs, pros/cons>\n"
-            f"       - [ ] **Option C:** <Details, trade-offs, pros/cons>\n"
-            f"       **Documentation Context:** <Citations to openwiki/ or codebase patterns>\n\n"
-            f"     * Post the question to the task discussion:\n"
-            f'       hermes zerofactory comment {task_id} "<formatted interview question>"\n'
-            f"     * Keep the task in Triage awaiting human reply (assign to human so the dashboard displays the interview options and the dispatcher pauses re-dispatch until answered):\n"
-            f"       hermes zerofactory move {task_id} triage --assignee human\n"
-            f"     * Finish your turn cleanly (DO NOT mark blocked, DO NOT write implementation code in worktree, DO NOT open PR).\n\n"
-            f"   - If all decisions have been resolved (or the human has replied with their selection in the comments):\n"
-            f"     * Record any new conventions or architectural decisions into board memory:\n"
-            f'       hermes zerofactory memory add --board {board_slug or "default"} "<rule or decision>" --category decision\n'
-            f"     * If needed, update openwiki/ documentation or ADRs in {workdir}.\n"
-            f"     * Update the task description with the finalized specification, acceptance criteria, and test plan:\n"
-            f'       hermes zerofactory update {task_id} --description "<comprehensive specification & acceptance criteria>"\n'
-            f"     * MULTI-REPO DECOMPOSITION (IF TASK TARGETS MULTIPLE REPOSITORIES):\n"
-            f"       If this task relates to 2 or more repositories (or target_repos contains multiple repositories), Zero Factory isolates each builder task to a single repo worktree.\n"
-            f"       Decompose this triage task into separate Todo tasks per repository:\n"
-            f"       hermes zerofactory split {task_id} --repos <repo1,repo2,...>\n"
-            f"       This will automatically create linked Todo tasks for each repository, mark this triage task done, and dispatch zf-builder for each.\n"
-            f"     * SINGLE-REPO PROMOTION:\n"
-            f"       If the task targets only 1 repository:\n"
-            f"       hermes zerofactory move {task_id} todo --assignee zf-builder\n"
-            f"     * Provide a clear triage summary confirming the handoff to zf-builder.\n"
+            f"{goal_instructions}"
+        )
+    elif assignee == "zf-goldfish":
+        task_meta: dict = {}
+        try:
+            task_meta = (
+                json.loads(metadata or "{}")
+                if isinstance(metadata, str)
+                else dict(metadata or {})
+            )
+        except Exception:
+            task_meta = {}
+
+        draft_spec = (
+            task_meta.get("specification")
+            or description
+            or "No specification recorded."
+        )
+        revision_count = int(task_meta.get("revision_count", 0))
+
+        task_comments_context = ""
+        try:
+            _db = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
+            if _db.exists():
+                with sqlite3.connect(str(_db)) as _c:
+                    _c.row_factory = sqlite3.Row
+                    _cur = _c.cursor()
+                    _cur.execute(
+                        "SELECT author, body, created_at FROM task_comments WHERE task_id = ? ORDER BY created_at ASC",
+                        (task_id,),
+                    )
+                    _cmt_rows = _cur.fetchall()
+                    if _cmt_rows:
+                        _cmt_blocks = []
+                        for idx, r in enumerate(_cmt_rows, 1):
+                            _cmt_blocks.append(
+                                f"### Comment #{idx} (by @{r['author']}):\n{r['body']}"
+                            )
+                        task_comments_context = (
+                            "### 💬 Previous Discussion & Revision History:\n"
+                            + "\n\n".join(_cmt_blocks)
+                            + "\n\n"
+                        )
+        except Exception as e:
+            _log.debug("Could not inspect task_comments for goldfish prompt: %s", e)
+
+        goal_instructions = (
+            f"Your role as Spec Auditor (zf-goldfish):\n"
+            f"You are the Goldfish Auditor in the Sequential EGM Triage Pipeline (Revision Round {revision_count}).\n"
+            f"You have ZERO memory of prior turns. You evaluate the drafted specification with radical skepticism.\n"
+            f"You do not write implementation code and do not modify files.\n\n"
+            f"### Drafted Specification to Audit:\n"
+            f"```markdown\n{draft_spec}\n```\n\n"
+            f"### Audit Guidelines (Ponytail 7-Rung Ladder of Laziness & Acceptance Criteria):\n"
+            f"1. Rung 1-3 (Do Nothing / Delete / Stdlib): Is this feature truly necessary? Does it re-invent existing standard library or repository utilities?\n"
+            f"2. Over-engineering: Flag speculative abstractions, unnecessary wrapper classes, unused configuration parameters, or premature generalizations.\n"
+            f"3. Acceptance Criteria Testability: Are acceptance criteria concrete and mechanically testable? Reject vague statements like 'should be fast' or 'handle errors gracefully'.\n"
+            f"4. Interface Boundaries & Multi-Repo Contracts: Are cross-service APIs, endpoints, and schemas explicitly defined without ambiguity?\n"
+            f"5. Edge Cases & Concurrency: Flag unhandled failure modes, race conditions, missing timeouts, or security risks.\n\n"
+            f"### Required Output:\n"
+            f"1. Formulate your audit findings categorized by severity:\n"
+            f"   - 🔴 **Blocker**: Critical flaws, missing contracts, or severe over-engineering that must be revised.\n"
+            f"   - 🟡 **Major**: Notable design concerns or testing gaps that should be addressed.\n"
+            f"   - 🟢 **Nit**: Minor suggestions or style preferences.\n"
+            f"2. Conclude with an unambiguous recommendation:\n"
+            f"   - `### SPEC AUDIT: APPROVED` (if no Blockers exist)\n"
+            f"   - `### SPEC AUDIT: REVISION REQUESTED` (if one or more Blockers exist)\n"
+            f"3. Post your audit report directly to the task discussion:\n"
+            f'   hermes zerofactory comment {task_id} "<audit report markdown>"\n'
+            f"4. Finish your turn cleanly (exit 0). DO NOT move or update the task status; Zero Factory will automatically park the task for human review.\n"
+        )
+
+        prompt = (
+            f"Task ID: {task_id}\n"
+            f"Title: {title}\n"
+            f"Priority: {priority}\n"
+            f"Assigned Role: {assignee}\n"
+            f"{repo_header}\n"
+            f"Original Goal / Description:\n{description or 'No description provided.'}\n\n"
+            f"Workspace: {workdir}\n\n"
+            f"{memories_block}"
+            f"{arch_block}"
+            f"{task_comments_context}"
+            f"{goal_instructions}"
         )
     else:
         # Fail-closed: if the worktree cannot be verified clean, treat it as a
@@ -558,6 +701,12 @@ def spawn_agent_worker(
     if profile_home.exists():
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
+    try:
+        _db_path = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
+        if _db_path.exists():
+            env["ZEROFACTORY_DB"] = str(_db_path)
+    except Exception:
+        pass
     _d()._inject_langfuse_env(env)
 
     try:

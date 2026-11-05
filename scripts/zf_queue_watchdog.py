@@ -117,7 +117,7 @@ def sync_open_github_issues(cooldown_seconds: int = 900) -> list[dict]:
                         issue=iss,
                         board_slug=slug,
                         status="triage",
-                        assignee="zf-orchestrator",
+                        assignee="human",
                         actor="zf-watchdog",
                     )
                     if not res.get("duplicate"):

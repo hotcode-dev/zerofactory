@@ -52,11 +52,12 @@ graph TD
 
 ## The Specialist Team
 
-Zero Factory automatically provisions and maintains three specialized agent profiles:
+Zero Factory automatically provisions and maintains four specialized agent profiles:
 
 | Profile | Role | Core Responsibilities |
 |---|---|---|
-| **`zf-orchestrator`** | Pipeline Overseer | Manages the Kanban board, oversees goal decomposition, autonomously scans repositories for tech debt using the Ponytail ladder of laziness, and escalates blockers. |
+| **`zf-orchestrator`** | Pipeline Overseer & Elephant Planner | Manages the Kanban board, oversees goal decomposition, drafts technical specifications in triage, autonomously scans repositories for tech debt using the Ponytail ladder of laziness, and escalates blockers. |
+| **`zf-goldfish`** | Spec Auditor & Gatekeeper | Conducts zero-context adversarial reviews on drafted specifications during sequential triage (Ponytail 7-Rung Ladder of Laziness & Acceptance Criteria), surfacing blockers and nits before human sign-off. |
 | **`zf-builder`** | Senior Software Engineer | Writes clean code and tests using surgical, token-efficient diffs (Ponytail Ladder of Laziness), operates inside automated Git worktrees, and ships features rapidly. |
 | **`zf-reviewer`** | Quality Gatekeeper | Conducts thematic code reviews on GitHub Pull Requests (Correctness & Tests → Verification & Polish, up to 2 rounds), verifying test adequacy, performance, and architecture. |
 
@@ -101,6 +102,8 @@ hermes zerofactory list --status running          # Filter tasks by status
 hermes zerofactory list --assignee zf-builder     # Filter tasks by assignee
 hermes zerofactory create "Implement Feature X"   # Create a new ticket
 hermes zerofactory create "Bug #42" --target-repos api,web # Create multi-repo triage task
+hermes zerofactory approve <task_id> [--split]    # Approve triage specification & promote/split
+hermes zerofactory reject <task_id> --feedback "..." # Request spec revision back to zf-orchestrator
 hermes zerofactory split <task_id> [--repos api,web]       # Decompose multi-repo triage into Todo tasks
 hermes zerofactory import-gh-issue 42             # Deterministically import GitHub issue #42
 hermes zerofactory move <task_id> running          # Transition task status
@@ -155,8 +158,11 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
        └── Changes Requested ──► [Todo] (Re-assigned to zf-builder)
 ```
 
-1. **Goal Ingestion (`Triage`)**: Submit a high-level goal or feature request via CLI or web UI.
-2. **Decomposition & Codebase Scanning (`Todo`)**: `zf-orchestrator` breaks `Triage` goals down into atomic sub-tasks, and runs periodic codebase scans to directly file actionable `Todo` improvement tasks for `zf-builder`.
+1. **Goal Ingestion (`Triage`)**: Submit a high-level goal or feature request via CLI, web UI, or synchronized GitHub issues (parked under `human` assignee with 0 GPU tokens until activated).
+2. **Sequential EGM Triage Pipeline (`Triage` ➔ `Todo`)**:
+   - **Elephant Drafting (`zf-orchestrator`)**: Drafts an end-to-end technical specification, system contracts, and acceptance criteria. Pauses for operator clarification if ambiguities arise.
+   - **Goldfish Spec Audit (`zf-goldfish`)**: Performs an adversarial, zero-context review enforcing the Ponytail 7-Rung Ladder of Laziness and concrete testability criteria.
+   - **Human Release Gate**: A human operator approves the spec via web UI or CLI (`hermes zerofactory approve <task_id>`), promoting single-repo tasks directly to `Todo` for `zf-builder` or atomically decomposing multi-repo epics into sibling sub-tasks.
 3. **Autonomous Execution (`Running`)**: The dispatcher validates dependencies, provisions an isolated Git worktree, and launches `zf-builder` to write code and tests.
    - **Global LLM capacity**: Settings → Global Max Concurrent LLM Workers caps running task agents and in-flight improvement scanners across all boards. For example, with a cap of 3, two running tasks on one board and one on another leave no slot for further tasks or scanners. The per-board running limits and Max Active Tasks (task WIP) apply independently. No-Agent queue checks do not consume LLM capacity.
 4. **Deterministic Precommit & PR Creation (`Running`)**: When `zf-builder` finishes, the dispatcher executes `.zerofactory/precommit.sh` in the worktree (format ➔ build ➔ tests). Auto-formatted changes are staged, and if tests fail, the builder receives error logs to auto-fix (up to 3 retries). Once clean, the dispatcher commits, merges with latest main, pushes, opens a GitHub Pull Request, and routes it to `zf-reviewer` in `Running` for thematic review (Correctness & Tests ➔ Verification & Polish, up to 2 rounds).

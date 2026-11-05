@@ -50,6 +50,7 @@ PROFILE_MAP = {
     "zf-builder": "zf-builder",
     "zf-reviewer": "zf-reviewer",
     "zf-orchestrator": "zf-orchestrator",
+    "zf-goldfish": "zf-goldfish",
 }
 
 #: Sentinel assignee meaning "no agent is responsible for this task".

@@ -18,9 +18,11 @@ try:
         BoardUpdate as _BoardUpdate,
         CommentCreate,
         MemoryCreate,
+        TaskApproveRequest,
         TaskCreate,
         TaskMove,
         TaskRecoverRequest,
+        TaskRejectRequest,
         TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
@@ -31,7 +33,9 @@ try:
         MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH,
     )
     from .dashboard.plugin_api import (
+        approve_task as _approve_task,
         recover_task as _recover_task,
+        reject_task as _reject_task,
         report_task_bug as _report_task_bug,
     )
     from .dashboard.plugin_api import (
@@ -101,9 +105,11 @@ except ImportError:
         BoardUpdate as _BoardUpdate,
         CommentCreate,
         MemoryCreate,
+        TaskApproveRequest,
         TaskCreate,
         TaskMove,
         TaskRecoverRequest,
+        TaskRejectRequest,
         TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
@@ -114,7 +120,9 @@ except ImportError:
         MEMORY_CONTENT_MAX_LENGTH as _MEMORY_CONTENT_MAX_LENGTH,
     )
     from plugin_api import (
+        approve_task as _approve_task,
         recover_task as _recover_task,
+        reject_task as _reject_task,
         report_task_bug as _report_task_bug,
     )
     from plugin_api import (
@@ -534,6 +542,10 @@ def register(ctx: Any):
         p_update.add_argument("task_id", help="Task ID")
         p_update.add_argument("--title", default=None, help="New title")
         p_update.add_argument("--description", default=None, help="New description")
+        p_update.add_argument("--specification", default=None, help="New specification")
+        p_update.add_argument(
+            "--metadata", default=None, help="JSON string of metadata updates"
+        )
         p_update.add_argument("--assignee", default=None, help="New assignee")
         p_update.add_argument(
             "--priority",
@@ -589,6 +601,40 @@ def register(ctx: Any):
             "--actor",
             default=None,
             help="Actor executing split (defaults to HERMES_PROFILE or 'user')",
+        )
+
+        # approve
+        p_approve = subparsers.add_parser(
+            "approve",
+            help="Approve a drafted specification in triage (promotes single-repo to todo or splits multi-repo)",
+        )
+        p_approve.add_argument("task_id", help="Task ID")
+        p_approve.add_argument(
+            "--split",
+            action="store_true",
+            help="Force splitting multi-repo specification into child tasks",
+        )
+        p_approve.add_argument(
+            "--actor",
+            default=None,
+            help="Author/actor approving the specification",
+        )
+
+        # reject
+        p_reject = subparsers.add_parser(
+            "reject",
+            help="Request revision on a drafted specification in triage",
+        )
+        p_reject.add_argument("task_id", help="Task ID")
+        p_reject.add_argument(
+            "--feedback",
+            required=True,
+            help="Feedback and required changes for the spec revision",
+        )
+        p_reject.add_argument(
+            "--actor",
+            default=None,
+            help="Author/actor requesting the revision",
         )
 
         # check-stuck
@@ -985,7 +1031,7 @@ def register(ctx: Any):
                             board_slug=getattr(args, "board", None),
                             status=getattr(args, "status", "triage"),
                             priority=getattr(args, "priority", None),
-                            assignee=getattr(args, "assignee", "zf-orchestrator"),
+                            assignee=getattr(args, "assignee", "human"),
                             actor=actor,
                         )
                         if res.get("duplicate"):
@@ -1030,7 +1076,7 @@ def register(ctx: Any):
                         board_slug=getattr(args, "board", None),
                         status=getattr(args, "status", "triage"),
                         priority=getattr(args, "priority", None),
-                        assignee=getattr(args, "assignee", "zf-orchestrator"),
+                        assignee=getattr(args, "assignee", "human"),
                         actor=actor,
                     )
                     if res.get("duplicate"):
@@ -1264,13 +1310,58 @@ def register(ctx: Any):
                 )
             print()
 
+        elif action == "approve":
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            split_flag = bool(getattr(args, "split", False))
+            res = _approve_task(
+                args.task_id, TaskApproveRequest(split=split_flag, actor=actor)
+            )
+            if "created_tasks" in res:
+                print(f"\n✓ Successfully approved & split triage task {args.task_id}:")
+                for t in res.get("created_tasks", []):
+                    print(
+                        f"  - {t['id']} [{t['repo_alias']}]: {t['title']} → {t['status']} ({t['assignee']})"
+                    )
+                print()
+            else:
+                print(
+                    f"\n✓ Successfully approved specification for task {args.task_id} → status {res.get('status')} ({res.get('assignee')})\n"
+                )
+
+        elif action == "reject":
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            feedback = getattr(args, "feedback", "")
+            res = _reject_task(
+                args.task_id, TaskRejectRequest(feedback=feedback, actor=actor)
+            )
+            print(
+                f"\n✓ Revision requested for task {args.task_id} → status {res.get('status')} ({res.get('assignee')})\n"
+            )
+
         elif action == "update":
             status_val = getattr(args, "status", None)
+            meta_val = None
+            if getattr(args, "metadata", None):
+                try:
+                    meta_val = json.loads(args.metadata)
+                except Exception as e:
+                    print(f"Error parsing --metadata JSON: {e}", file=sys.stderr)
+                    sys.exit(1)
             req = TaskUpdate(
                 title=getattr(args, "title", None),
                 description=getattr(args, "description", None),
+                specification=getattr(args, "specification", None),
                 assignee=getattr(args, "assignee", None),
                 priority=getattr(args, "priority", None),
+                metadata=meta_val,
             )
             res = _update_task(args.task_id, req)
             if status_val:

@@ -129,7 +129,7 @@ def import_external_issue(
     - Deterministic task ID derived from board + issue key
     - Deterministic dedup key to avoid duplicate tasks
     - Deterministic priority & category mapping
-    - Option 1 triage routing: status='triage', assignee='zf-orchestrator'
+    - Option A parked triage routing when assignee='human' (0 GPU tokens until promoted)
     - Rich metadata preservation for downstream PR linking and reviewer context
     """
     if require_ai_request and not issue.has_ai_request_label():
@@ -186,6 +186,7 @@ def import_external_issue(
         "dedup_key": dedup_key,
         "category": category,
         "issue_type": issue.issue_type,
+        "external_unverified": True,
     }
 
     actor_val = actor or os.environ.get("HERMES_PROFILE") or "user"
