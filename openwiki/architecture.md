@@ -5,7 +5,7 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-01T07:54:23.892Z
+    at: 2026-11-04T14:49:39.483Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -37,9 +37,11 @@ sources:
     resource: repo://paths.py
   - id: openwiki-source-81127d20a2ccc07b7626fc4e
     resource: repo://plugin.yaml
+  - id: openwiki-source-20bc44fdf115b28983477777
+    resource: repo://scripts/zf_openwiki_gate.py
   - id: openwiki-source-57b14ecc6ef51ae6212b15f0
     resource: repo://settings.py
-generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
+generated: { by: "hermes", at: "2026-11-04T14:49:39.483Z" }
 ---
 
 # Zero Factory Architecture
@@ -101,7 +103,14 @@ the orchestrator with operator guidance), and `hermes zerofactory
 report-bug --task <task_id> --title ...` (report an internal Zero Factory
 defect to the upstream GitHub issue tracker, optionally auto-creating the
 issue when the `auto_create_github_issues` setting is enabled)
-(`repo://__init__.py#L573-L694`).
+(`repo://__init__.py#L573-L694`). `create` accepts an optional
+`--tags` flag (comma-separated, e.g. `automerge,hitl`) that writes task tags
+into the `tags` column; these tags drive the auto-merge precedence check in
+the PR-poll path (the `automerge` opt-in vs `hitl`/`manual-review` opt-out
+tags described in [Dispatch Engine](/openwiki/components/dispatcher.md)), and
+the automated OpenWiki doc-sync + setup flows stamp `automerge` on the tasks
+they file so they can auto-merge after review
+(`repo://__init__.py#L332-L336`, `#L907-L927`).
 
 ## Control / data flow
 
@@ -204,13 +213,20 @@ route to reviewer) via `_package_and_open_pr`. Only a terminal event (a human
 closing the task, a merged PR, an auto-merge, or a PR archive via `close_pr`)
 clears the flag and finalizes the task through `_finalize_terminal_done`, which
 never commits, pushes, or re-opens review
-(`repo://dispatcher/scheduler.py#L1587`, `#L2069`). Blocked tasks carry a
+(`repo://dispatcher/scheduler.py#L1638`, `#L2210`). Blocked tasks carry a
 canonical `metadata["blocked_reason_type"]` classified by
 `normalize_blocked_reason_type` into `changes-requested`, `approved`,
 `human-gate`, or `stuck` (stamped by the dispatcher when a retry budget is
 exhausted; any other free-text reason falls through to
 `human-gate`), so downstream routing is deterministic instead of
-prose-matching (`repo://paths.py#L91-L105`).
+prose-matching (`repo://paths.py#L91-L105`). The packaging phase itself now
+carries its own retry budget: repeated git/PR failures during
+`_package_and_open_pr` increment `metadata["packaging_retries"]` and store
+`metadata["last_packaging_error"]`; after 3 attempts the task is parked in
+`blocked` with `blocked_reason_type = "stuck"` and assignee `human`
+(`repo://dispatcher/scheduler.py#L1587-L1636`), and the `recover` endpoint
+resets both fields alongside the other failure counters
+(`repo://dashboard/routes/tasks.py#L1551-L1590`).
 
 ## Session-per-handoff model
 

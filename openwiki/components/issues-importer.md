@@ -24,10 +24,10 @@ sources:
     resource: repo://issues/jira.py
   - id: openwiki-source-6b26d87a1c92fff15057316c
     resource: repo://tests/unit/issues/test_issues.py
-generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
+generated: { by: "hermes", at: "2026-11-04T14:49:39.483Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-01T07:54:23.892Z
+    at: 2026-11-04T14:49:39.483Z
 ---
 
 # External Issue Import (GitHub & Jira)
@@ -148,16 +148,16 @@ The dashboard wires the same import machinery into the operator UI
 ## CLI surface
 
 `hermes zerofactory import-gh-issue <issue>` registers the command in the
-plugin shell (`repo://__init__.py#L291-L354`): `<issue>` may be a number,
+plugin shell (`repo://__init__.py#L344-L408`): `<issue>` may be a number,
 `#42`, a full GitHub URL, or `owner/repo#42`; `--repo` (inferred from the
 board `git_url` or git remote when omitted), `--board`, `--status` (default
 `triage`), `--priority`, `--assignee` (default `zf-orchestrator`), `--label`
 (default `zerofactory`), `--force`, `--sync` (bulk-import all labeled open
 issues), `--type`, and `--actor` round out the flags. The handler
-(`repo://__init__.py#L779-L905`) fetches via `GitHubIssueClient` and prints the
+(`repo://__init__.py#L937-L1063`) fetches via `GitHubIssueClient` and prints the
 imported task id, board, status, priority, and URL. A sibling
-`hermes zerofactory import-jira-issue` (`repo://__init__.py#L356-L402`) does the
-same for Jira Cloud issues (handler at `repo://__init__.py#L907-L1024`).
+`hermes zerofactory import-jira-issue` (`repo://__init__.py#L409-L455`) does the
+same for Jira Cloud issues (handler at `repo://__init__.py#L1065-L1113`).
 
 ## Downstream: PR linkage
 

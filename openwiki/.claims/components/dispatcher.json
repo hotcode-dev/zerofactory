@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:967cebe2d4df35121efdbb4dae871e92338985c9cf4455d6accc17d13eb51d06",
+  "pageVersion": "sha256:a87bfe8d8841665fe11ac3c77f17f6be235b10afaee940954eba909218a6a756",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
@@ -168,15 +168,15 @@
     },
     {
       "id": "claim_dfa80aa93d1a4b0886e05e6d11c2d1dc",
-      "statement": "When an agent actor reports done the task stays running with metadata['awaiting_pr']=true and _package_and_open_pr is the single owner of the packaging phase: idempotently running precommit, commit, merge against latest main, push, opening the GitHub PR, and routing the ticket to zf-reviewer on each cycle until it succeeds; _finalize_terminal_done only cleans up (stop stale worker, prune worktree, close the open PR when close_pr is set) and never commits, pushes, opens a PR, or routes the task back to review.",
+      "statement": "When an agent actor reports done the task stays running with metadata['awaiting_pr']=true and _package_and_open_pr is the single owner of the packaging phase: idempotently running precommit, commit, merge against latest main, push (with an HTTPS-to-SSH fallback when the OAuth token lacks workflow scope), opening the GitHub PR, and routing the ticket to zf-reviewer on each cycle until it succeeds; the phase has a 3-attempt failure budget (_handle_packaging_failure: increments packaging_retries, stores last_packaging_error, then parks the task in blocked with blocked_reason_type='stuck' and assignee=human), and _finalize_terminal_done only cleans up (stop stale worker, prune worktree, close the open PR when close_pr is set) and never commits, pushes, opens a PR, or routes the task back to review.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/tasks.py#L798-L1087",
-          "version": "repo-lines-v1:sha256:b23ffb03f015d2cef6e8a402391b410712ea85d4d99709ce56a739e71123368d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjkwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0ODNjMWU0ODgzZTlkNWFkOTI4NzhiZjExOWQ5YmRkZTIxZTU1MzQ0Nzc5YzBjMDU0NDdhNmUzYTljZDE1MTdkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NmZlODkxN2JmZWNkNWJjN2I1OTMxM2U4ZWY1MjVmNTFjZTBhMTk5ZjUwODc5ZGZlOGNlYmRlYTMzZmI2NDVmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmYzFmZDBjNzdlODBkMjc0MzA4Yjc0YWJkYzlkMjQ4YmIyYmMwMTQ3ODRjODRlZTk0OTVkZTQ3NWI2NTg5YjZkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMjJhMGE2ZDg1YzRkYTllYmMyMWY1MmU5YTk0Njk2ZTFiYTRmNzY5YjQxNGExNTUyODdhOGY5N2M5OTJkMTYwIn0"
+          "resource": "repo://dispatcher/scheduler.py#L1587-L1636",
+          "version": "repo-lines-v1:sha256:f89d57df103f3cd9d0738ee0324ecbbae8329e0de2263574b9ac5ea78b8c7d77:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4YTRjNzJjYmYzZmFjZDQyNjNmNTVjMjc3ODVhZWYzMTJhZTczMDJjODg5NmU3ZTEzMTM4YzI4OWNjNzJmYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5OWVmZWRmZDJkOTcwNmQ4OTFjN2JhOTgzZTdmODRlMDVhZDBlMDE5MWMxMzI3OThiZTVlM2MxY2M1MzA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmNmI5ZmNjMTYzNzQ4OTUwZTkwMGY3NDQyMDVjMDUxMWI5Y2Q2OTFlYWQ0NTJhYmE4ODRkOTAyMzRiMzc4NGEifQ"
         },
         {
-          "resource": "repo://dispatcher/scheduler.py#L1587-L2068",
-          "version": "repo-lines-v1:sha256:96ef00c40f35574498db79d39451626037e086b493abcc373603c8b5ecd48f70:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiYjRmNjA5ZGUxMjVmMjM5OWFhNDQ1NTNjYWM3NDY3NTlhNmY4NzQyMTBjMTczNDZlNzUwMzNmNWUwOTY2OTE3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmOTllZmVkZmQyZDk3MDZkODkxYzdiYTk4M2U3Zjg0ZTA1YWQwZTAxOTFjMTMyNzk4YmU1ZTNjMWNjNTMwNDI2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0YmQyZjQ1MTE3N2YwYTg3MWQ5ODk5OTY2NDQwMGEzNTc4YjkzOWU4NjRjYWMzNmEyZTU0NTdiOWExZjdhZDA1In0"
+          "resource": "repo://dispatcher/scheduler.py#L1638-L2068",
+          "version": "repo-lines-v1:sha256:128ce6023d6b47d92a8e0527d5d73b316d0e65121f79a5865cafb5e6dadb15e6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiYjRmNjA5ZGUxMjVmMjM5OWFhNDQ1NTNjYWM3NDY3NTlhNmY4NzQyMTBjMTczNDZlNzUwMzNmNWUwOTY2OTE3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOGU5MTc0YzEwZDU1NjQyYWFhZTM4NWNlZmRlNzg2MmNkOWE2OGMzMDlhNWUwNDIyNjZmMTY5NDk5Y2NjYzBlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YTI4ZjMwNDBkZmJlYjY4Y2M5NDYwODQ3Yjg1ZGI1OWQzZTBhZDcwOTc5OTcxYTczNGM0OTVhMjEwYjllYjdkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzZTUzNGU4MGQ4ZmJjYTczMGNjOTZhMThiM2IyMmIzODE3N2Q0MjdiM2VjZjI3Y2UxMjE4YWQ4MTI0YjhlNjZjIn0"
         }
       ]
     },
@@ -193,6 +193,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-01T07:54:23.892Z"
+    "at": "2026-11-04T14:49:39.483Z"
   }
 }
