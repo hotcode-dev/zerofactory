@@ -42,9 +42,11 @@ try:
         CommentCreate,
         DependencyLink,
         InterviewReply,
+        TaskApproveRequest,
         TaskCreate,
         TaskMove,
         TaskRecoverRequest,
+        TaskRejectRequest,
         TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
@@ -74,9 +76,11 @@ except (ImportError, ValueError):
         CommentCreate,
         DependencyLink,
         InterviewReply,
+        TaskApproveRequest,
         TaskCreate,
         TaskMove,
         TaskRecoverRequest,
+        TaskRejectRequest,
         TaskReportBugRequest,
         TaskSplitRequest,
         TaskUpdate,
@@ -741,39 +745,44 @@ def update_task(task_id: str, req: TaskUpdate):
     if req.tags is not None:
         updates.append("tags = ?")
         params.append(json.dumps(req.tags))
+
+    meta_changes = False
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+        m_row = cursor.fetchone()
+        existing_meta = {}
+        if m_row and m_row[0]:
+            try:
+                existing_meta = (
+                    json.loads(m_row[0])
+                    if isinstance(m_row[0], str)
+                    else dict(m_row[0])
+                )
+            except Exception:
+                existing_meta = {}
+
     if req.target_repos is not None:
         cleaned_target_repos = [
             str(r).strip() for r in req.target_repos if str(r).strip()
         ]
-        if req.metadata is not None:
-            req.metadata["target_repos"] = cleaned_target_repos
-        else:
-            with get_db_conn() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
-                m_row = cursor.fetchone()
-                existing_meta = {}
-                if m_row and m_row[0]:
-                    try:
-                        existing_meta = (
-                            json.loads(m_row[0])
-                            if isinstance(m_row[0], str)
-                            else dict(m_row[0])
-                        )
-                    except Exception:
-                        existing_meta = {}
-                existing_meta["target_repos"] = cleaned_target_repos
-                updates.append("metadata = ?")
-                params.append(json.dumps(existing_meta))
-                changes.append(
-                    f"target_repos updated ({len(cleaned_target_repos)} repos)"
-                )
-    if req.metadata is not None and req.target_repos is None:
+        existing_meta["target_repos"] = cleaned_target_repos
+        changes.append(f"target_repos updated ({len(cleaned_target_repos)} repos)")
+        meta_changes = True
+
+    if req.specification is not None:
+        existing_meta["specification"] = req.specification
+        changes.append("specification updated")
+        meta_changes = True
+
+    if req.metadata is not None:
+        existing_meta.update(req.metadata)
+        changes.append("metadata updated")
+        meta_changes = True
+
+    if meta_changes:
         updates.append("metadata = ?")
-        params.append(json.dumps(req.metadata))
-    elif req.metadata is not None and req.target_repos is not None:
-        updates.append("metadata = ?")
-        params.append(json.dumps(req.metadata))
+        params.append(json.dumps(existing_meta))
 
     if not updates:
         return {"ok": True, "message": "No changes requested"}
@@ -1356,8 +1365,10 @@ def split_task(task_id: str, req: TaskSplitRequest | None = None):
             child_id = generate_task_id(board_slug)
             custom_info = custom_tasks_by_repo.get(repo, {})
             child_title = custom_info.get("title") or f"[{repo}] {clean_title}"
+            spec_content = meta.get("specification")
+            spec_section = f"\n\n### Specification & Acceptance Criteria:\n{spec_content}\n" if spec_content else ""
             child_desc = custom_info.get("description") or (
-                f"{parent_desc}\n\n---\n*Decomposed from Triage task `{task_id}` for repository `{repo}`.*"
+                f"{parent_desc}{spec_section}\n\n---\n*Decomposed from Triage task `{task_id}` for repository `{repo}`.*"
             )
 
             child_meta = dict(meta)
@@ -1976,3 +1987,155 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
         "task_id": task_id,
         "message": f"Bug reported to {ZEROFACTORY_REPO}: {issue_url}",
     }
+
+
+@router.post("/tasks/{task_id}/approve")
+def approve_task(task_id: str, req: TaskApproveRequest | None = None):
+    """Approve a drafted specification in triage: decomposes multi-repo or promotes single-repo to todo."""
+    if req is None:
+        req = TaskApproveRequest()
+    init_db()
+    now = int(time.time())
+    actor = req.actor or os.environ.get("HERMES_PROFILE") or "user"
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(task_row)
+
+        raw_meta = task.get("metadata") or "{}"
+        try:
+            meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta)
+        except Exception:
+            meta = {}
+
+        meta.pop("awaiting_approval", None)
+        meta["approved_at"] = now
+        meta["approved_by"] = actor
+        meta["triage_phase"] = "approved"
+
+        target_repos = meta.get("target_repos")
+        is_multi_repo = (
+            bool(req.split)
+            or (isinstance(target_repos, list) and len(target_repos) > 1)
+        )
+
+        if is_multi_repo:
+            cursor.execute(
+                "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
+            )
+            conn.commit()
+            return split_task(task_id, TaskSplitRequest(actor=actor))
+        else:
+            target_status = "todo"
+            assignee = "zf-builder"
+            cursor.execute(
+                "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                (target_status, assignee, json.dumps(meta), now, task_id),
+            )
+            comment_body = (
+                f"✅ **[Specification Approved]** Specification approved by `{actor}`. "
+                "Task promoted to **Todo** and assigned to `zf-builder` for implementation."
+            )
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+                (task_id, actor, comment_body, now),
+            )
+            log_activity(
+                conn,
+                task_id,
+                actor,
+                "approve_spec",
+                f"Specification approved by {actor}; promoted to todo",
+            )
+            conn.commit()
+
+            if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get(
+                "ZEROFACTORY_DISABLE_DISPATCHER"
+            ):
+                _trigger_async_dispatch("task_approved")
+
+            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            updated_row = cursor.fetchone()
+            return row_to_dict(updated_row)
+
+
+@router.post("/tasks/{task_id}/reject")
+def reject_task(task_id: str, req: TaskRejectRequest):
+    """Reject or request revision on a drafted specification in triage."""
+    init_db()
+    now = int(time.time())
+    actor = req.actor or os.environ.get("HERMES_PROFILE") or "user"
+
+    with get_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task_row = cursor.fetchone()
+        if not task_row:
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        task = row_to_dict(task_row)
+
+        raw_meta = task.get("metadata") or "{}"
+        try:
+            meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta)
+        except Exception:
+            meta = {}
+
+        meta.pop("awaiting_approval", None)
+        revision_count = int(meta.get("revision_count", 0)) + 1
+        meta["revision_count"] = revision_count
+
+        comment_body = (
+            f"🔄 **[Revision Requested (Round {revision_count}/2)]** by `{actor}`:\n\n"
+            f"{req.feedback.strip()}"
+        )
+        cursor.execute(
+            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
+            (task_id, actor, comment_body, now),
+        )
+
+        if revision_count >= 2:
+            meta["permanently_blocked"] = True
+            meta["blocked_reason"] = (
+                "Maximum spec revision rounds reached (2/2). Human intervention required."
+            )
+            meta["blocked_reason_type"] = "human-gate"
+            cursor.execute(
+                "UPDATE tasks SET status = 'blocked', assignee = 'human', metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
+            )
+            log_activity(
+                conn,
+                task_id,
+                actor,
+                "reject_spec",
+                f"Max revision rounds reached (2/2); task blocked by {actor}",
+            )
+        else:
+            meta["triage_phase"] = "elephant_drafting"
+            cursor.execute(
+                "UPDATE tasks SET status = 'triage', assignee = 'zf-orchestrator', metadata = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(meta), now, task_id),
+            )
+            log_activity(
+                conn,
+                task_id,
+                actor,
+                "reject_spec",
+                f"Revision requested by {actor} (round {revision_count}/2); returned to zf-orchestrator",
+            )
+
+        conn.commit()
+
+        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get(
+            "ZEROFACTORY_DISABLE_DISPATCHER"
+        ):
+            _trigger_async_dispatch("task_rejected")
+
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        updated_row = cursor.fetchone()
+        return row_to_dict(updated_row)

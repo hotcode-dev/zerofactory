@@ -267,7 +267,11 @@ export function KanbanBoard(props) {
                                         descStr.includes("Grill-with-Docs") ||
                                         titleStr.toLowerCase().includes("grill");
 
-                                      const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview);
+                                      const isSpecApproval =
+                                        metaStr.includes("human_approval") ||
+                                         metaStr.includes("awaiting_approval");
+
+                                      const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview || isSpecApproval);
                                       const hasPr = Boolean(t.pr_url && String(t.pr_url).trim().length > 0);
                                       // "Awaiting merge" requires an actual PR URL; blocked without PR is a human gate or action item.
                                       const isHumanReview = t.status === "blocked" && t.assignee === "human" && hasPr;
@@ -283,7 +287,11 @@ export function KanbanBoard(props) {
                                       let dotClass = "";
                                       let labelText = "";
 
-                                      if (isGrillInterview || (t.status === "triage" && t.assignee === "human")) {
+                                      if (isSpecApproval) {
+                                        badgeClass = "bg-purple-500/20 border-purple-500/40 text-purple-200";
+                                        dotClass = "bg-purple-400 zfk-pulse-active";
+                                        labelText = "📋 Spec & Audit Ready • Awaiting Approval";
+                                      } else if (isGrillInterview || (t.status === "triage" && t.assignee === "human")) {
                                         badgeClass = "bg-indigo-500/20 border-indigo-500/40 text-indigo-200";
                                         dotClass = "bg-indigo-400 zfk-pulse-active";
                                         labelText = isGrillInterview

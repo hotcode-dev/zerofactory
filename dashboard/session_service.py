@@ -59,6 +59,7 @@ AGENT_LABELS = {
     "zf-orchestrator": "Orchestrator",
     "zf-builder": "Builder",
     "zf-reviewer": "Reviewer",
+    "zf-goldfish": "Spec Auditor",
     "unassigned": "Agent",
 }
 
@@ -66,6 +67,7 @@ AGENT_ICONS = {
     "zf-orchestrator": "🧭",
     "zf-builder": "🔨",
     "zf-reviewer": "🔍",
+    "zf-goldfish": "🐟",
     "unassigned": "🤖",
 }
 

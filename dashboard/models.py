@@ -51,6 +51,7 @@ ACTIVITY_ACTORS: list[str] = [
     "zf-orchestrator",
     "zf-builder",
     "zf-reviewer",
+    "zf-goldfish",
     "dispatcher",
     "user",
     "other",
@@ -245,6 +246,7 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
+    specification: str | None = None
     board_slug: str | None = None
     repo_alias: str | None = None
     target_repos: list[str] | None = None
@@ -271,6 +273,23 @@ class TaskSplitRequest(BaseModel):
     repos: list[str] | None = None
     tasks: list[dict[str, Any]] | None = None
     actor: str | None = None
+
+
+class TaskApproveRequest(BaseModel):
+    split: bool | None = Field(
+        default=False,
+        description="Whether to split into sub-tasks (if multi-repo or explicitly requested)",
+    )
+    actor: str | None = Field(default="user", description="Actor approving task specification")
+
+
+class TaskRejectRequest(BaseModel):
+    feedback: str = Field(
+        ..., min_length=1, description="Feedback or required changes for specification revision"
+    )
+    actor: str | None = Field(
+        default="user", description="Actor rejecting or requesting revision"
+    )
 
 
 class TaskRecoverRequest(BaseModel):

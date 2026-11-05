@@ -82,6 +82,8 @@ export function TaskDetailModal(props) {
 
   if (!selectedTask) return null;
 
+  const taskMeta = typeof selectedTask.metadata === "string" ? (() => { try { return JSON.parse(selectedTask.metadata); } catch(e) { return {}; } })() : (selectedTask.metadata || {});
+
   return React.createElement(
     Modal,
     {
@@ -141,6 +143,56 @@ export function TaskDetailModal(props) {
         React.createElement(
           "div",
           { className: "flex items-center gap-2" },
+          selectedTask.status === "triage" &&
+            Boolean(taskMeta && (taskMeta.awaiting_approval || taskMeta.triage_phase === "human_approval")) &&
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 hover:text-white bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+                onClick: async () => {
+                  try {
+                    await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/approve", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ actor: "user" })
+                    });
+                    showToast("✅ Specification approved! Promoted to Todo", "success");
+                    loadTaskDetails(selectedTask.id);
+                    loadTasksAndStats();
+                  } catch (err) {
+                    showToast("Approve failed: " + err.message, "error");
+                  }
+                }
+              },
+              "✅ Approve Spec"
+            ),
+          selectedTask.status === "triage" &&
+            Boolean(taskMeta && (taskMeta.awaiting_approval || taskMeta.triage_phase === "human_approval")) &&
+            React.createElement(
+              "button",
+              {
+                type: "button",
+                className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-rose-300 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+                onClick: async () => {
+                  const feedback = prompt("Enter revision feedback for zf-orchestrator:");
+                  if (!feedback || !feedback.trim()) return;
+                  try {
+                    await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/reject", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ feedback: feedback.trim(), actor: "user" })
+                    });
+                    showToast("🔄 Revision requested. Returned to Elephant drafting", "success");
+                    loadTaskDetails(selectedTask.id);
+                    loadTasksAndStats();
+                  } catch (err) {
+                    showToast("Revision request failed: " + err.message, "error");
+                  }
+                }
+              },
+              "🔄 Request Revision"
+            ),
           selectedTask.status === "triage" &&
             React.createElement(
               "button",
@@ -500,6 +552,35 @@ export function TaskDetailModal(props) {
                       className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap"
                     },
                     selectedTask.description || "(No description provided)"
+                  )
+                ),
+
+                // Drafted Specification (Sequential EGM)
+                Boolean(taskMeta && taskMeta.specification) &&
+                React.createElement(
+                  "div",
+                  { className: "space-y-1.5" },
+                  React.createElement(
+                    "div",
+                    { className: "flex items-center justify-between" },
+                    React.createElement(
+                      "label",
+                      { className: "block text-xs font-semibold text-purple-400 tracking-wide flex items-center gap-1.5" },
+                      "📋 Technical Specification (Sequential EGM)"
+                    ),
+                    taskMeta.triage_phase &&
+                      React.createElement(
+                        "span",
+                        { className: "text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 uppercase" },
+                        taskMeta.triage_phase
+                      )
+                  ),
+                  React.createElement(
+                    "div",
+                    {
+                      className: "bg-purple-950/20 border border-purple-800/50 rounded-lg p-3.5 text-xs leading-relaxed text-purple-200 whitespace-pre-wrap font-mono select-text"
+                    },
+                    taskMeta.specification
                   )
                 ),
 

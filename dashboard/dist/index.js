@@ -559,7 +559,8 @@ var ZeroFactoryDashboard = (function(exports) {
 					const descStr = typeof t.description === "string" ? t.description : "";
 					const titleStr = typeof t.title === "string" ? t.title : "";
 					const isGrillInterview = metaStr.includes("Grill-with-Docs") || metaStr.includes("Awaiting Human Input") || metaStr.includes("awaiting_interview") || descStr.includes("Grill-with-Docs") || titleStr.toLowerCase().includes("grill");
-					const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview);
+					const isSpecApproval = metaStr.includes("human_approval") || metaStr.includes("awaiting_approval");
+					const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview || isSpecApproval);
 					const hasPr = Boolean(t.pr_url && String(t.pr_url).trim().length > 0);
 					const isHumanReview = t.status === "blocked" && t.assignee === "human" && hasPr;
 					const isHumanBlockedNoPr = t.status === "blocked" && t.assignee === "human" && !hasPr;
@@ -569,7 +570,11 @@ var ZeroFactoryDashboard = (function(exports) {
 					let badgeClass = "";
 					let dotClass = "";
 					let labelText = "";
-					if (isGrillInterview || t.status === "triage" && t.assignee === "human") {
+					if (isSpecApproval) {
+						badgeClass = "bg-purple-500/20 border-purple-500/40 text-purple-200";
+						dotClass = "bg-purple-400 zfk-pulse-active";
+						labelText = "📋 Spec & Audit Ready • Awaiting Approval";
+					} else if (isGrillInterview || t.status === "triage" && t.assignee === "human") {
 						badgeClass = "bg-indigo-500/20 border-indigo-500/40 text-indigo-200";
 						dotClass = "bg-indigo-400 zfk-pulse-active";
 						labelText = isGrillInterview ? "🎯 Waiting for Human Decision • Grill Interview" : isMultiRepoTriage ? "🔀 Multi-Repo Triage • Ready to Split" : "🎯 Waiting for Human Input";
@@ -2309,6 +2314,13 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		};
 		if (!selectedTask) return null;
+		const taskMeta = typeof selectedTask.metadata === "string" ? (() => {
+			try {
+				return JSON.parse(selectedTask.metadata);
+			} catch (e) {
+				return {};
+			}
+		})() : selectedTask.metadata || {};
 		return React.createElement(Modal, {
 			isOpen: Boolean(selectedTask),
 			onClose: () => setSelectedTask(null),
@@ -2345,7 +2357,46 @@ var ZeroFactoryDashboard = (function(exports) {
 				type: "button",
 				className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
 				onClick: () => handleDeleteTask(selectedTask.id)
-			}, "Delete Task"), React.createElement("div", { className: "flex items-center gap-2" }, selectedTask.status === "triage" && React.createElement("button", {
+			}, "Delete Task"), React.createElement("div", { className: "flex items-center gap-2" }, selectedTask.status === "triage" && Boolean(taskMeta && (taskMeta.awaiting_approval || taskMeta.triage_phase === "human_approval")) && React.createElement("button", {
+				type: "button",
+				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 hover:text-white bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+				onClick: async () => {
+					try {
+						await fetchJSON("/api/plugins/zerofactory/tasks/" + selectedTask.id + "/approve", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ actor: "user" })
+						});
+						showToast("✅ Specification approved! Promoted to Todo", "success");
+						loadTaskDetails(selectedTask.id);
+						loadTasksAndStats();
+					} catch (err) {
+						showToast("Approve failed: " + err.message, "error");
+					}
+				}
+			}, "✅ Approve Spec"), selectedTask.status === "triage" && Boolean(taskMeta && (taskMeta.awaiting_approval || taskMeta.triage_phase === "human_approval")) && React.createElement("button", {
+				type: "button",
+				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-rose-300 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+				onClick: async () => {
+					const feedback = prompt("Enter revision feedback for zf-orchestrator:");
+					if (!feedback || !feedback.trim()) return;
+					try {
+						await fetchJSON("/api/plugins/zerofactory/tasks/" + selectedTask.id + "/reject", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								feedback: feedback.trim(),
+								actor: "user"
+							})
+						});
+						showToast("🔄 Revision requested. Returned to Elephant drafting", "success");
+						loadTaskDetails(selectedTask.id);
+						loadTasksAndStats();
+					} catch (err) {
+						showToast("Revision request failed: " + err.message, "error");
+					}
+				}
+			}, "🔄 Request Revision"), selectedTask.status === "triage" && React.createElement("button", {
 				type: "button",
 				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-teal-300 hover:text-white bg-teal-950/70 hover:bg-teal-900 border border-teal-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
 				onClick: async () => {
@@ -2541,7 +2592,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			onKeyDown: (e) => {
 				if (e.key === "Enter") e.target.blur();
 			}
-		}))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"), React.createElement("div", { className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap" }, selectedTask.description || "(No description provided)")), React.createElement(GrillInterviewPanel, {
+		}))), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Description / Acceptance Criteria"), React.createElement("div", { className: "bg-slate-950/60 border border-slate-800/80 rounded-lg p-3.5 text-xs leading-relaxed text-slate-300 whitespace-pre-wrap" }, selectedTask.description || "(No description provided)")), Boolean(taskMeta && taskMeta.specification) && React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-purple-400 tracking-wide flex items-center gap-1.5" }, "📋 Technical Specification (Sequential EGM)"), taskMeta.triage_phase && React.createElement("span", { className: "text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 uppercase" }, taskMeta.triage_phase)), React.createElement("div", { className: "bg-purple-950/20 border border-purple-800/50 rounded-lg p-3.5 text-xs leading-relaxed text-purple-200 whitespace-pre-wrap font-mono select-text" }, taskMeta.specification)), React.createElement(GrillInterviewPanel, {
 			task: selectedTask,
 			loadTaskDetails,
 			loadTasksAndStats,
