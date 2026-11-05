@@ -102,6 +102,8 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                 except Exception:
                     task_cols = set()
                 repo_col = ", repo_alias" if "repo_alias" in task_cols else ""
+                tags_col = ", tags" if "tags" in task_cols else ""
+                desc_col = ", description" if "description" in task_cols else ""
 
                 # 1. Unblock tasks whose parent dependencies are all done
                 cursor.execute("""
@@ -461,7 +463,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
                 if not os.environ.get("ZEROFACTORY_SKIP_GIT"):
                     cursor.execute(f"""
-                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata{repo_col} FROM tasks
+                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata{repo_col}{tags_col}{desc_col} FROM tasks
                         WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
                            OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator'))
                            OR (status = 'running' AND metadata LIKE '%"awaiting_pr": true%')
@@ -1494,6 +1496,11 @@ def _poll_pr_and_route_review(
             try:
                 if "tags" in row.keys() and row["tags"]:
                     tags_val = row["tags"]
+                elif "id" in row.keys() and row["id"]:
+                    cursor.execute("SELECT tags FROM tasks WHERE id = ?", (row["id"],))
+                    _tr = cursor.fetchone()
+                    if _tr and _tr[0]:
+                        tags_val = _tr[0]
             except Exception:
                 tags_val = []
 

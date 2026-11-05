@@ -295,3 +295,205 @@ def test_scheduler_automerge_on_approval(tmp_path, monkeypatch):
         assert "Auto-Merge mode" in act["details"]
 
     conn.close()
+
+
+def test_scheduler_automerge_on_approval_with_task_tags_override(tmp_path, monkeypatch):
+    """When board automerge is disabled (0), task tag 'automerge' still triggers auto-merge on approval."""
+    from dispatcher.scheduler import _poll_pr_and_route_review
+
+    db_file = tmp_path / "kanban.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, automerge INTEGER)")
+    conn.execute(
+        """CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            description TEXT,
+            assignee TEXT,
+            status TEXT,
+            board_slug TEXT,
+            repo_alias TEXT,
+            pr_url TEXT,
+            tags TEXT,
+            workspace_path TEXT,
+            metadata TEXT,
+            updated_at INTEGER
+        )"""
+    )
+    conn.execute(
+        "CREATE TABLE board_repositories (board_slug TEXT, repo_alias TEXT, additional_reviewer_usernames TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE task_comments (id INTEGER PRIMARY KEY, task_id TEXT, author TEXT, body TEXT, created_at INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE task_activity (id INTEGER PRIMARY KEY, task_id TEXT, actor TEXT, action TEXT, details TEXT, created_at INTEGER)"
+    )
+
+    # Board default is 0 (disabled)
+    conn.execute("INSERT INTO boards VALUES ('test-board', 0)")
+    conn.execute("INSERT INTO board_repositories VALUES ('test-board', 'repo-1', '[]')")
+    # Task has explicit 'automerge' tag
+    conn.execute(
+        """INSERT INTO tasks VALUES (
+            'task-101', 'Docs sync task', 'Documentation sync', 'zf-reviewer', 'blocked', 'test-board',
+            'repo-1', 'https://github.com/org/repo/pull/101', '["automerge", "cat:documentation"]', '/tmp/ws/101',
+            '{"blocked_reason_type": "approved"}', 1000
+        )"""
+    )
+    conn.commit()
+
+    cursor = conn.cursor()
+    # Query matching run_dispatch_cycle SELECT
+    cursor.execute(
+        "SELECT id, title, description, workspace_path, assignee, pr_url, board_slug, status, tags, metadata, repo_alias FROM tasks WHERE id = 'task-101'"
+    )
+    row = cursor.fetchone()
+
+    fake_pr_view = {
+        "state": "OPEN",
+        "reviewDecision": "APPROVED",
+        "url": "https://github.com/org/repo/pull/101",
+        "mergeable": "MERGEABLE",
+        "headRefOid": "def5678",
+    }
+
+    def fake_subprocess_run(cmd, *args, **kwargs):
+        if "view" in cmd:
+            return MagicMock(returncode=0, stdout=json.dumps(fake_pr_view), stderr="")
+        if "merge" in cmd:
+            return MagicMock(returncode=0, stdout="Merged\n", stderr="")
+        if "api" in cmd:
+            return MagicMock(returncode=0, stdout="[]", stderr="")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with (
+        patch("subprocess.run", side_effect=fake_subprocess_run),
+        patch("dispatcher._remove_worktree"),
+        patch("dispatcher.stop_task_worker"),
+        patch("dispatcher._delete_remote_branch"),
+    ):
+        result = _poll_pr_and_route_review(
+            conn=conn,
+            cursor=cursor,
+            row=row,
+            meta={"blocked_reason_type": "approved"},
+            workspace_path="/tmp/ws/101",
+            repo_path=tmp_path,
+            board_slug="test-board",
+            tenant=None,
+            db_path=db_file,
+            now=2000,
+        )
+
+        assert result is True
+
+        cursor.execute("SELECT status, metadata FROM tasks WHERE id = 'task-101'")
+        updated_task = cursor.fetchone()
+        assert updated_task["status"] == "done"
+
+        cursor.execute(
+            "SELECT action, details FROM task_activity WHERE task_id = 'task-101'"
+        )
+        act = cursor.fetchone()
+        assert act is not None
+        assert act["action"] == "automerged"
+
+    conn.close()
+
+
+def test_scheduler_automerge_on_approval_fallback_tags_query(tmp_path, monkeypatch):
+    """If row is missing tags column, scheduler falls back to querying tags from tasks table."""
+    from dispatcher.scheduler import _poll_pr_and_route_review
+
+    db_file = tmp_path / "kanban.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE boards (slug TEXT PRIMARY KEY, automerge INTEGER)")
+    conn.execute(
+        """CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            assignee TEXT,
+            status TEXT,
+            board_slug TEXT,
+            repo_alias TEXT,
+            pr_url TEXT,
+            tags TEXT,
+            workspace_path TEXT,
+            metadata TEXT,
+            updated_at INTEGER
+        )"""
+    )
+    conn.execute(
+        "CREATE TABLE board_repositories (board_slug TEXT, repo_alias TEXT, additional_reviewer_usernames TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE task_comments (id INTEGER PRIMARY KEY, task_id TEXT, author TEXT, body TEXT, created_at INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE task_activity (id INTEGER PRIMARY KEY, task_id TEXT, actor TEXT, action TEXT, details TEXT, created_at INTEGER)"
+    )
+
+    conn.execute("INSERT INTO boards VALUES ('test-board', 0)")
+    conn.execute("INSERT INTO board_repositories VALUES ('test-board', 'repo-1', '[]')")
+    conn.execute(
+        """INSERT INTO tasks VALUES (
+            'task-102', 'Feature task', 'zf-reviewer', 'blocked', 'test-board',
+            'repo-1', 'https://github.com/org/repo/pull/102', '["automerge"]', '/tmp/ws/102',
+            '{"blocked_reason_type": "approved"}', 1000
+        )"""
+    )
+    conn.commit()
+
+    cursor = conn.cursor()
+    # Explicitly omit tags column from row to test the fallback query
+    cursor.execute(
+        "SELECT id, title, assignee, status, board_slug, repo_alias, pr_url, workspace_path, metadata FROM tasks WHERE id = 'task-102'"
+    )
+    row = cursor.fetchone()
+    assert "tags" not in row.keys()
+
+    fake_pr_view = {
+        "state": "OPEN",
+        "reviewDecision": "APPROVED",
+        "url": "https://github.com/org/repo/pull/102",
+        "mergeable": "MERGEABLE",
+        "headRefOid": "ghi9012",
+    }
+
+    def fake_subprocess_run(cmd, *args, **kwargs):
+        if "view" in cmd:
+            return MagicMock(returncode=0, stdout=json.dumps(fake_pr_view), stderr="")
+        if "merge" in cmd:
+            return MagicMock(returncode=0, stdout="Merged\n", stderr="")
+        if "api" in cmd:
+            return MagicMock(returncode=0, stdout="[]", stderr="")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with (
+        patch("subprocess.run", side_effect=fake_subprocess_run),
+        patch("dispatcher._remove_worktree"),
+        patch("dispatcher.stop_task_worker"),
+        patch("dispatcher._delete_remote_branch"),
+    ):
+        result = _poll_pr_and_route_review(
+            conn=conn,
+            cursor=cursor,
+            row=row,
+            meta={"blocked_reason_type": "approved"},
+            workspace_path="/tmp/ws/102",
+            repo_path=tmp_path,
+            board_slug="test-board",
+            tenant=None,
+            db_path=db_file,
+            now=2000,
+        )
+
+        assert result is True
+
+        cursor.execute("SELECT status FROM tasks WHERE id = 'task-102'")
+        assert cursor.fetchone()["status"] == "done"
+
+    conn.close()
