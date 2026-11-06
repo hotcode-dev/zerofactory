@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6f5697b0e1ec3e3f83febf82f54a6a6866fc0b272148c04da9d67f877bda704e",
+  "pageVersion": "sha256:2c2105a8cf203610b33bb4351892f7581cbe8bb317fbecf498b0ebec7b15ff60",
   "claims": [
     {
       "id": "claim_be552b6d7ec04f239ee42608bf0f568d",
@@ -61,8 +61,8 @@
       "statement": "import_external_issue creates the Kanban task deterministically: it resolves the board, derives the task id and 'issue:' dedup key, infers priority/category unless overridden, builds a '[Triage] [<Type>] [<key>] <title>' title, and passes an explicit task_id plus external_issue/dedup_key metadata through TaskCreate to the dashboard create-task endpoint; a require_ai_request guard rejects issues lacking the human AI-investigation label unless forced.",
       "evidence": [
         {
-          "resource": "repo://issues/importer.py#L111-L220",
-          "version": "repo-lines-v1:sha256:5d81852da78c57aba4b8240f9b16551e731a3d715c46c852734617429c28c41a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NjJlZjYxMzY3NGI5NmU0NTE0YTRmNjY3Y2E4MGUyODYzZmYyYmE2ZWM5MTY2NGFlYmQ0MThmMWJhMmVmYTExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NWRiMTkwNzUxNzdjZTM0Mzg3ZWIzYTNmY2Y5NmFlY2NjZDY1YTA3NmVhNmIxNjM5NTE5ZjUxNWYyOWY1YmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://issues/importer.py#L116-L226",
+          "version": "repo-lines-v1:sha256:7f08e40b636e4d180b613dd6e87d7a5174fbf43ea8f9d7628c30b76711b893cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NjJlZjYxMzY3NGI5NmU0NTE0YTRmNjY3Y2E4MGUyODYzZmYyYmE2ZWM5MTY2NGFlYmQ0MThmMWJhMmVmYTExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NWRiMTkwNzUxNzdjZTM0Mzg3ZWIzYTNmY2Y5NmFlY2NjZDY1YTA3NmVhNmIxNjM5NTE5ZjUxNWYyOWY1YmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -81,16 +81,16 @@
       "statement": "The CLI commands `hermes zerofactory import-gh-issue <issue>` and `hermes zerofactory import-jira-issue <issue>` accept a number, #42, a GitHub URL, or owner/repo#42 (and Jira keys/URLs), with flags for --repo, --board, --status (default triage), --priority, --assignee (default zf-orchestrator), --label (default zerofactory), --force, --sync (bulk-import all labeled open issues), --type, and --actor; the handler fetches via GitHubIssueClient and prints the resulting task id, board, status, priority, and URL.",
       "evidence": [
         {
-          "resource": "repo://__init__.py#L291-L354",
-          "version": "repo-lines-v1:sha256:3ca43a27502e5e7e313a4e32568829deea2e690facf4cb1227ba64012b7d422a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmNWYzN2YyZDE0NGVhZmUzYmJkOTI4M2NkNDg0ZTg5ZDgwNzhlYjAxYmVkOTlkYTZkODEwNTE3NGI5NDYyMDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3NDNlNmViYmQ5MmQ5ZjQwMjZlNTliM2Q1MWFmNTdmY2RjYWMxMWY1ZTk2YzgwMjc2NjdkY2JmYTgxOGYwZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1MmZmMTQ5MGE0N2JkYjYwZDYzMjkxNzNhYWQ0NDFhMmI5MzI5MDMzNjhjMzBjZjRhYWExMzUxYjE1MDRhMWUifQ"
+          "resource": "repo://__init__.py#L1111-L1159",
+          "version": "repo-lines-v1:sha256:552c97e0aeafa34de89da50635e56dab43028279762647ac513e7d61d3d58e58:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyYTFkNzBmMTAxYjdmMDU4YjIxYmFkYjBkZDY1NjBhOWRmMDQ1YTA3ZDYzZTEyN2M3ZTY1MDM0YWM0MDBmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZjcxYjI3ZTA1MmI1ZDgxNGQyNzBjNmRjNzcxNjQ4MmZiNWJhMWFmZjA4OTZkMGUzZTk2OGI1ZjViZWY4ODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjYWYzZjNkNzllNGFmZTAzZDI0ZWIyZjFjNmEzMGNhYjkyZjczMmIwNDc1NzU5MzNiY2I4MmVjNGViNjljNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0OWVlOTMwOTcxMTU4YmMwMTZjMmIwMDNmMWM4ZjhjYzdiMGVlODRhMzVjZWE3NDY4OTIxNWVmOWIxZGMzMjEifQ"
         },
         {
-          "resource": "repo://__init__.py#L356-L402",
-          "version": "repo-lines-v1:sha256:953234b86d2b27c6f9006d6e7676122ae4eac50875404a3c01b2e10401bf126c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjNjJiNjdkZmQwNGVjMmFhYTUyOWRiZmFlN2RiNmMzYmRlYmY4YmVlNTU1ZTM3MzExZGQ3YmU0NGRkODBlYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlmODUyYzY0YzRhNDIyNjVkNzBlZDZjNDIxMDFiYTExZTQwZTJhODc0ZmExMzVkZmI2NGQ3ZWZiYTg2ZjA5ZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5OTRjODkzZDdlNWQ2YmJiMjM3YzNlZTNjOTQyNjVhNjIwOGFjMDNlN2I2OGM3ODlkNDViMmUwZTU0OTRkODYifQ"
+          "resource": "repo://__init__.py#L351-L464",
+          "version": "repo-lines-v1:sha256:d6231942b6155f523c7415df69cc93a830cdc4c478339027190dea795d4ebd9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZjVmMzdmMmQxNDRlYWZlM2JiZDkyODNjZDQ4NGU4OWQ4MDc4ZWIwMWJlZDk5ZGE2ZDgxMDUxNzRiOTQ2MjA2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyMWYyMGFlMDkyMDdmZmZjZWY4YjNjZGFkOGZhYmZmMDcyNGFlMGI2YTJlZjYyMjYxYTVhZDY5YTFjMDI0MzU4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNzQzZTZlYmJkOTJkOWY0MDI2ZTU5YjNkNTFhZjU3ZmNkY2FjMTFmNWU5NmM4MDI3NjY3ZGNiZmE4MThmMGQyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhMDcxOGY2ZTZlMGRiMDljNTNhZGY4NTUzMTUxY2U5ZjNjMTE4NDc0ZGYyNzYxNGJiMjc3NmNmM2Q5YWUyYzg1In0"
         },
         {
-          "resource": "repo://__init__.py#L779-L905",
-          "version": "repo-lines-v1:sha256:892d122c3d84eebf50de4b8762d6c803abf0f46edf1eeb8030be7959f795dc05:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMjFlMzVjMGQ3Y2Q2MGY0NGZlNTI3MmMyNWNkNDUzN2JiNTk3MWM1OTI2MTJmNDAyN2JiOTZkNTVkYTAxNzA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiOGY3MWIyN2UwNTJiNWQ4MTRkMjcwYzZkYzc3MTY0ODJmYjViYTFhZmYwODk2ZDBlM2U5NjhiNWY1YmVmODg5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYTVhYzM4NGYwNTRlNzc1MjkxZWM4MTgxYTk0Nzc2NzMzMzA2ZGU1YWYzN2ZmNmQwYTg3ZWE5N2ZkMWQ2YjA5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiY2YxMTY4NjQ0NjFiZGNiNWE4Mzk1NjUwY2ZkYTk2ZTM2NmZjYzM1ZmM3YTAwM2UxZDk5ZThkNDJmODk0OGE4In0"
+          "resource": "repo://__init__.py#L983-L1109",
+          "version": "repo-lines-v1:sha256:0a33724704683358c1ff8fd208bad97e63a1c401acf70071f37b6ffda40ed0ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMjFlMzVjMGQ3Y2Q2MGY0NGZlNTI3MmMyNWNkNDUzN2JiNTk3MWM1OTI2MTJmNDAyN2JiOTZkNTVkYTAxNzA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiOGY3MWIyN2UwNTJiNWQ4MTRkMjcwYzZkYzc3MTY0ODJmYjViYTFhZmYwODk2ZDBlM2U5NjhiNWY1YmVmODg5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYTVhYzM4NGYwNTRlNzc1MjkxZWM4MTgxYTk0Nzc2NzMzMzA2ZGU1YWYzN2ZmNmQwYTg3ZWE5N2ZkMWQ2YjA5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiY2YxMTY4NjQ0NjFiZGNiNWE4Mzk1NjUwY2ZkYTk2ZTM2NmZjYzM1ZmM3YTAwM2UxZDk5ZThkNDJmODk0OGE4In0"
         }
       ]
     },
@@ -141,6 +141,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-04T14:49:39.483Z"
+    "at": "2026-11-06T15:00:57.907Z"
   }
 }

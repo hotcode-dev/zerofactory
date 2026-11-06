@@ -5,7 +5,7 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-04T14:49:39.483Z
+    at: 2026-11-06T15:00:57.907Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -37,22 +37,26 @@ sources:
     resource: repo://paths.py
   - id: openwiki-source-81127d20a2ccc07b7626fc4e
     resource: repo://plugin.yaml
-  - id: openwiki-source-20bc44fdf115b28983477777
-    resource: repo://scripts/zf_openwiki_gate.py
   - id: openwiki-source-57b14ecc6ef51ae6212b15f0
     resource: repo://settings.py
-generated: { by: "hermes", at: "2026-11-04T14:49:39.483Z" }
+generated: { by: "hermes", at: "2026-11-06T15:00:57.907Z" }
 ---
 
 # Zero Factory Architecture
 
 Zero Factory is a self-contained **Hermes Agent plugin** (see `repo://plugin.yaml#L1-L8`)
-that runs a 24/7 multi-agent software factory. Three specialist agent profiles
-— `zf-orchestrator`, `zf-builder`, `zf-reviewer` — operate on a durable Kanban
-board; a dispatcher provisions isolated Git worktrees, spawns the right
-specialist, enforces a deterministic precommit gate, opens GitHub PRs, and
-routes work through review rounds until a human merges (or an optional
-board-level auto-merge does it).
+that runs a 24/7 multi-agent software factory. Four specialist agent profiles
+— `zf-orchestrator`, `zf-goldfish`, `zf-builder`, `zf-reviewer` — operate on
+a durable Kanban board; a dispatcher provisions isolated Git worktrees,
+spawns the right specialist, enforces a deterministic precommit gate, opens
+GitHub PRs, and routes work through review rounds until a human merges (or
+an optional auto-merge — board-level or task-level `automerge` tag — does
+it). Triage work for complex or multi-repo goals flows through a sequential
+Elephant-Goldfish Model (EGM) pipeline: `zf-orchestrator` drafts the
+specification, `zf-goldfish` audits it in a zero-context session, and a human
+operator releases it (see
+[Dashboard, Cron & Automation](/openwiki/components/dashboard-cron.md) and
+[Dispatch Engine](/openwiki/components/dispatcher.md)).
 
 The architecture deliberately follows **stateless workers, stateful substrate**:
 durable state lives in Git worktrees, GitHub PR comments, the Kanban
@@ -89,13 +93,15 @@ links the source issue (`Fixes #42` / `Resolves: PROJ-123`). See
 [External Issue Import](/openwiki/components/issues-importer.md).
 
 The CLI surface also carries a `hermes zerofactory update` command (edit a
-task's title, description, assignee, or priority in one call; a `--status` on
+task's title, description, assignee, priority, metadata, or specification in
+one call; a `--status` on
 `update` routes through the `move_task` code path so lifecycle side effects —
 worker stop, flag cleanup, dispatch trigger — always apply, the same rule
 enforced server-side by `PATCH /tasks/{id}` refusing status changes) plus an
 `--assignee` option on `move`, letting handoffs reassign ownership while
-transitioning columns (`repo://__init__.py#L1084-L1105`,
-`repo://dashboard/routes/tasks.py#L655-L665`). Triage work gained
+transitioning columns (`repo://__init__.py#L517-L565`,
+`repo://__init__.py#L1349-L1377`,
+`repo://dashboard/routes/tasks.py#L680-L688`, `#L704-L716`). Triage work gained
 `hermes zerofactory split <task_id> --repos r1,r2` (decompose a multi-repo
 triage task into per-repo `todo` tasks), `hermes zerofactory recover
 <task_id> [--guidance ...]` (route a failure-exhausted blocked task back to
@@ -103,14 +109,20 @@ the orchestrator with operator guidance), and `hermes zerofactory
 report-bug --task <task_id> --title ...` (report an internal Zero Factory
 defect to the upstream GitHub issue tracker, optionally auto-creating the
 issue when the `auto_create_github_issues` setting is enabled)
-(`repo://__init__.py#L573-L694`). `create` accepts an optional
+(`repo://__init__.py#L589-L716`). The EGM release gate adds `hermes
+zerofactory approve <task_id> [--split]` (approve a drafted specification:
+promote a single-repo task to `todo` or split a multi-repo one into linked
+`todo` children) and `hermes zerofactory reject <task_id> --feedback "..."`
+(route the spec back to `zf-orchestrator` for one of at most 2 revision
+rounds, after which the task parks blocked for a human)
+(`repo://__init__.py#L606-L637`). `create` accepts an optional
 `--tags` flag (comma-separated, e.g. `automerge,hitl`) that writes task tags
 into the `tags` column; these tags drive the auto-merge precedence check in
 the PR-poll path (the `automerge` opt-in vs `hitl`/`manual-review` opt-out
 tags described in [Dispatch Engine](/openwiki/components/dispatcher.md)), and
 the automated OpenWiki doc-sync + setup flows stamp `automerge` on the tasks
 they file so they can auto-merge after review
-(`repo://__init__.py#L332-L336`, `#L907-L927`).
+(`repo://__init__.py#L336-L342`, `#L1645-L1680`).
 
 ## Control / data flow
 
@@ -226,7 +238,39 @@ carries its own retry budget: repeated git/PR failures during
 `blocked` with `blocked_reason_type = "stuck"` and assignee `human`
 (`repo://dispatcher/scheduler.py#L1587-L1636`), and the `recover` endpoint
 resets both fields alongside the other failure counters
-(`repo://dashboard/routes/tasks.py#L1551-L1590`).
+(`repo://dashboard/routes/tasks.py#L1559-L1598`).
+
+## Sequential EGM triage pipeline
+
+Complex triage work runs through a sequential Elephant-Goldfish Model (EGM)
+pipeline with a strict 1-worker cap so it never starves implementation
+tasks: the dispatcher claims a task only when no other `zf-orchestrator` /
+`zf-goldfish` worker is running
+(`repo://dispatcher/scheduler.py#L168-L201`), and stamps `triage_phase` as
+the claim lands — `elephant_drafting` for `zf-orchestrator` (setting
+`egm = true` when the task is multi-repo, `category == "epic"`, or already
+flagged) and `goldfish_auditing` for `zf-goldfish`
+(`repo://dispatcher/scheduler.py#L350-L366`). Phase transitions are
+deterministic reaper side effects, not agent decisions: when the
+`zf-orchestrator` drafting worker exits cleanly the reaper promotes the task
+to `todo` assigned to `zf-goldfish` with `triage_phase = "goldfish_auditing"`,
+and when the `zf-goldfish` audit worker exits it parks the task back in
+`triage` assigned to `human` with `triage_phase = "human_approval"` and
+`awaiting_approval = true`
+(`repo://dispatcher/reaper.py#L200-L216`). Each phase runs in a brand-new
+zero-context session (the goldfish audit prompt carries no drafting
+conversation; `repo://dispatcher/worker_spawner.py#L397-L442`).
+
+The release gate is human-only. `POST /tasks/{id}/approve` (or `hermes
+zerofactory approve <task_id> [--split]`) promotes a single-repo task to
+`todo` or splits a multi-repo one into linked `todo` children
+(`repo://dashboard/routes/tasks.py#L1992-L2064`); `POST /tasks/{id}/reject`
+(or `hermes zerofactory reject <task_id> --feedback "..."`) bumps
+`revision_count` and routes the spec back to `zf-orchestrator` in
+`elephant_drafting` — at most 2 revision rounds, after which the task is
+blocked for a human with `blocked_reason_type = "human-gate"`
+(`repo://dashboard/routes/tasks.py#L2067-L2141`). The full protocol is
+documented in `repo://docs/sequential_egm_triage.md`.
 
 ## Session-per-handoff model
 
