@@ -431,17 +431,5 @@ except (ImportError, ValueError):
 # Initialize on import
 try:
     init_db()
-    if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER"):
-        try:
-            from ..dispatcher import start_background_dispatcher
-
-            start_background_dispatcher()
-        except Exception:
-            try:
-                from dispatcher import start_background_dispatcher  # type: ignore
-
-                start_background_dispatcher()
-            except Exception:
-                pass
 except Exception as e:
     _log.error("Failed to initialize Zero Factory Kanban database: %s", e)

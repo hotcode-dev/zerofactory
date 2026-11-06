@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -19,6 +20,38 @@ from .config import (
     _log,
     normalize_assignee,
 )
+
+
+def _find_checked_out_worktree(repo_path: Path, branch_name: str) -> Path | None:
+    """Check git worktree list to find if a branch is already checked out."""
+    if not repo_path or not repo_path.exists():
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if proc.returncode != 0:
+            return None
+        cur_wt = None
+        target_ref = f"refs/heads/{branch_name}"
+        for line in proc.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("worktree "):
+                cur_wt = line[len("worktree ") :].strip()
+            elif line.startswith("branch "):
+                ref = line[len("branch ") :].strip()
+                if ref == target_ref or ref == branch_name:
+                    if cur_wt:
+                        p = Path(cur_wt)
+                        if p.exists() and (p / ".git").exists():
+                            return p
+    except Exception:
+        pass
+    return None
 
 
 def resolve_task_repo_path(
@@ -211,6 +244,36 @@ def setup_worktree(
     worktree_dir.parent.mkdir(parents=True, exist_ok=True)
 
     branch_name = f"task/{task_id}"
+
+    # If worktree_dir does not exist yet, check if branch is already checked out elsewhere or under task_root
+    if not worktree_dir.exists():
+        checked_out = _find_checked_out_worktree(repo_path, branch_name)
+        if checked_out and checked_out.exists():
+            worktree_dir = checked_out
+        elif task_root.exists():
+            cand_dirs = [task_root / repo_path.name, task_root]
+            try:
+                for sub in task_root.iterdir():
+                    if sub.is_dir() and sub not in cand_dirs:
+                        cand_dirs.append(sub)
+            except Exception:
+                pass
+            for cand in cand_dirs:
+                if cand.exists() and (
+                    (cand / ".git").is_file() or (cand / ".git").is_dir()
+                ):
+                    try:
+                        chk = subprocess.run(
+                            ["git", "rev-parse", "--git-dir"],
+                            cwd=str(cand),
+                            capture_output=True,
+                            timeout=5,
+                        )
+                        if chk.returncode == 0:
+                            worktree_dir = cand
+                            break
+                    except Exception:
+                        pass
     try:
         target_branch = ""
         if cursor and board_slug:
@@ -314,20 +377,60 @@ def setup_worktree(
                         cwd=repo_path,
                         timeout=_WORKTREE_ADD_TIMEOUT,
                     )
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                    subprocess.run(
-                        ["git", "worktree", "prune"],
-                        check=False,
-                        cwd=repo_path,
-                        capture_output=True,
-                        timeout=10,
-                    )
-                    subprocess.run(
-                        ["git", "worktree", "add", str(worktree_dir), branch_name],
-                        check=True,
-                        cwd=repo_path,
-                        timeout=_WORKTREE_ADD_TIMEOUT,
-                    )
+                except (
+                    subprocess.CalledProcessError,
+                    subprocess.TimeoutExpired,
+                ) as add_err:
+                    err_msg = ""
+                    if isinstance(add_err, subprocess.CalledProcessError):
+                        err_bytes = add_err.stderr or add_err.stdout or b""
+                        err_msg = (
+                            err_bytes.decode("utf-8", errors="replace")
+                            if isinstance(err_bytes, bytes)
+                            else str(err_bytes)
+                        )
+                    m = re.search(r"is already checked out at '([^']+)'", err_msg)
+                    if m and Path(m.group(1)).exists():
+                        worktree_dir = Path(m.group(1))
+                    else:
+                        existing_wt = _find_checked_out_worktree(repo_path, branch_name)
+                        if existing_wt:
+                            worktree_dir = existing_wt
+                        else:
+                            subprocess.run(
+                                ["git", "worktree", "prune"],
+                                check=False,
+                                cwd=repo_path,
+                                capture_output=True,
+                                timeout=10,
+                            )
+                            try:
+                                subprocess.run(
+                                    [
+                                        "git",
+                                        "worktree",
+                                        "add",
+                                        str(worktree_dir),
+                                        branch_name,
+                                    ],
+                                    check=True,
+                                    cwd=repo_path,
+                                    timeout=_WORKTREE_ADD_TIMEOUT,
+                                )
+                            except subprocess.CalledProcessError as add_err2:
+                                err_bytes2 = add_err2.stderr or add_err2.stdout or b""
+                                err_msg2 = (
+                                    err_bytes2.decode("utf-8", errors="replace")
+                                    if isinstance(err_bytes2, bytes)
+                                    else str(err_bytes2)
+                                )
+                                m2 = re.search(
+                                    r"is already checked out at '([^']+)'", err_msg2
+                                )
+                                if m2 and Path(m2.group(1)).exists():
+                                    worktree_dir = Path(m2.group(1))
+                                else:
+                                    raise
             # Sync existing worktree with latest default branch if assignee is builder
             if assignee == "zf-builder" and worktree_dir.exists():
                 _d().pull_and_merge_main(worktree_dir, repo_path, default_branch)
@@ -348,21 +451,37 @@ def setup_worktree(
                         cwd=repo_path,
                         timeout=_WORKTREE_ADD_TIMEOUT,
                     )
-                except Exception:
-                    subprocess.run(
-                        [
-                            "git",
-                            "worktree",
-                            "add",
-                            str(worktree_dir),
-                            "-b",
-                            branch_name,
-                            "HEAD",
-                        ],
-                        check=True,
-                        cwd=repo_path,
-                        timeout=_WORKTREE_ADD_TIMEOUT,
-                    )
+                except Exception as add_err:
+                    err_msg = ""
+                    if isinstance(add_err, subprocess.CalledProcessError):
+                        err_bytes = add_err.stderr or add_err.stdout or b""
+                        err_msg = (
+                            err_bytes.decode("utf-8", errors="replace")
+                            if isinstance(err_bytes, bytes)
+                            else str(err_bytes)
+                        )
+                    m = re.search(r"is already checked out at '([^']+)'", err_msg)
+                    if m and Path(m.group(1)).exists():
+                        worktree_dir = Path(m.group(1))
+                    else:
+                        existing_wt = _find_checked_out_worktree(repo_path, branch_name)
+                        if existing_wt:
+                            worktree_dir = existing_wt
+                        else:
+                            subprocess.run(
+                                [
+                                    "git",
+                                    "worktree",
+                                    "add",
+                                    str(worktree_dir),
+                                    "-b",
+                                    branch_name,
+                                    "HEAD",
+                                ],
+                                check=True,
+                                cwd=repo_path,
+                                timeout=_WORKTREE_ADD_TIMEOUT,
+                            )
             # Sync newly created worktree with latest default branch if assignee is builder
             if assignee == "zf-builder" and worktree_dir.exists():
                 _d().pull_and_merge_main(worktree_dir, repo_path, default_branch)

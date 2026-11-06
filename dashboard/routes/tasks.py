@@ -1366,7 +1366,11 @@ def split_task(task_id: str, req: TaskSplitRequest | None = None):
             custom_info = custom_tasks_by_repo.get(repo, {})
             child_title = custom_info.get("title") or f"[{repo}] {clean_title}"
             spec_content = meta.get("specification")
-            spec_section = f"\n\n### Specification & Acceptance Criteria:\n{spec_content}\n" if spec_content else ""
+            spec_section = (
+                f"\n\n### Specification & Acceptance Criteria:\n{spec_content}\n"
+                if spec_content
+                else ""
+            )
             child_desc = custom_info.get("description") or (
                 f"{parent_desc}{spec_section}\n\n---\n*Decomposed from Triage task `{task_id}` for repository `{repo}`.*"
             )
@@ -2018,9 +2022,8 @@ def approve_task(task_id: str, req: TaskApproveRequest | None = None):
         meta["triage_phase"] = "approved"
 
         target_repos = meta.get("target_repos")
-        is_multi_repo = (
-            bool(req.split)
-            or (isinstance(target_repos, list) and len(target_repos) > 1)
+        is_multi_repo = bool(req.split) or (
+            isinstance(target_repos, list) and len(target_repos) > 1
         )
 
         if is_multi_repo:

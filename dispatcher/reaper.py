@@ -307,7 +307,10 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         )
                         retry_status = (
                             "triage"
-                            if (row_status == "running" and curr_asgn == "zf-orchestrator")
+                            if (
+                                row_status == "running"
+                                and curr_asgn == "zf-orchestrator"
+                            )
                             else ("todo" if row_status == "running" else "blocked")
                         )
                         cursor.execute(

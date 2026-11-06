@@ -280,12 +280,16 @@ class TaskApproveRequest(BaseModel):
         default=False,
         description="Whether to split into sub-tasks (if multi-repo or explicitly requested)",
     )
-    actor: str | None = Field(default="user", description="Actor approving task specification")
+    actor: str | None = Field(
+        default="user", description="Actor approving task specification"
+    )
 
 
 class TaskRejectRequest(BaseModel):
     feedback: str = Field(
-        ..., min_length=1, description="Feedback or required changes for specification revision"
+        ...,
+        min_length=1,
+        description="Feedback or required changes for specification revision",
     )
     actor: str | None = Field(
         default="user", description="Actor rejecting or requesting revision"

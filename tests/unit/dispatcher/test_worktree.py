@@ -434,3 +434,88 @@ def test_setup_worktree_cleans_empty_task_root_on_failure(tmp_path: Path):
             / "t-fail-clean"
         )
         assert not task_root.exists()
+
+
+def test_find_checked_out_worktree(tmp_path: Path):
+    """Ensure _find_checked_out_worktree parses git porcelain worktree output."""
+    from dispatcher.worktree import _find_checked_out_worktree
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "f.txt").write_text("hello")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+
+    wt = tmp_path / "wt1"
+    subprocess.run(
+        ["git", "worktree", "add", str(wt), "-b", "task/t-1"], cwd=repo, check=True
+    )
+
+    found = _find_checked_out_worktree(repo, "task/t-1")
+    assert found == wt
+    assert _find_checked_out_worktree(repo, "nonexistent") is None
+
+
+def test_setup_worktree_reuses_existing_checked_out_worktree(tmp_path: Path):
+    """When a branch is already checked out at another path (e.g. repo.name vs repo_alias), setup_worktree reuses it."""
+    from dispatcher.worktree import setup_worktree
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    _init_tasks_db(conn)
+
+    repo = tmp_path / "my_repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "f.txt").write_text("hello")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+
+    fake_home = tmp_path / "home"
+    task_root = (
+        fake_home
+        / ".zerofactory"
+        / "workspaces"
+        / "test-board"
+        / "worktrees"
+        / "t-exist"
+    )
+    task_root.mkdir(parents=True)
+    # Checked out at repo.name ('my_repo')
+    existing_dir = task_root / "my_repo"
+    subprocess.run(
+        ["git", "worktree", "add", str(existing_dir), "-b", "task/t-exist"],
+        cwd=repo,
+        check=True,
+    )
+
+    with (
+        patch("dispatcher.worktree.Path.home", return_value=fake_home),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+    ):
+        # setup_worktree called with repo_alias="different_alias"
+        ws_path = setup_worktree(
+            conn.cursor(),
+            task_id="t-exist",
+            title="Existing WT Task",
+            assignee="zf-builder",
+            tenant=None,
+            db_path=tmp_path / "dummy.db",
+            board_slug="test-board",
+            repo_path=repo,
+            repo_alias="different_alias",
+        )
+        assert ws_path == str(existing_dir)

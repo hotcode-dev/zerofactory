@@ -71,7 +71,11 @@ def test_triage_worker_concurrency_cap(test_db: Path):
             INSERT INTO tasks (id, title, status, assignee, priority, metadata, created_at, updated_at)
             VALUES ('running-orch', 'Active Drafting', 'running', 'zf-orchestrator', 'P0', ?, ?, ?)
             """,
-            (json.dumps({"triage_phase": "elephant_drafting", "worker_pid": 111}), now, now),
+            (
+                json.dumps({"triage_phase": "elephant_drafting", "worker_pid": 111}),
+                now,
+                now,
+            ),
         )
         # 1 queued triage task
         conn.execute(
@@ -89,7 +93,9 @@ def test_triage_worker_concurrency_cap(test_db: Path):
 
     with sqlite3.connect(str(test_db)) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT status FROM tasks WHERE id = 'queued-orch'").fetchone()
+        row = conn.execute(
+            "SELECT status FROM tasks WHERE id = 'queued-orch'"
+        ).fetchone()
         assert row["status"] == "triage"
 
 
@@ -103,13 +109,15 @@ def test_reaper_elephant_exit_transitions_to_goldfish(test_db: Path):
             VALUES ('task-egm-2', 'Elephant Finished', 'running', 'zf-orchestrator', 'P1', ?, ?, ?)
             """,
             (
-                json.dumps({
-                    "triage_phase": "elephant_drafting",
-                    "egm": True,
-                    "specification": "### System Architecture\nDefined components and contracts.",
-                    "worker_pid": 8888,
-                    "sessions": [{"status": "ongoing", "started_at": now}],
-                }),
+                json.dumps(
+                    {
+                        "triage_phase": "elephant_drafting",
+                        "egm": True,
+                        "specification": "### System Architecture\nDefined components and contracts.",
+                        "worker_pid": 8888,
+                        "sessions": [{"status": "ongoing", "started_at": now}],
+                    }
+                ),
                 now,
                 now,
             ),
@@ -149,13 +157,15 @@ def test_grill_interview_prevents_goldfish_advance(test_db: Path):
             VALUES ('task-grill-1', 'Grill Active', 'running', 'human', 'P1', ?, ?, ?)
             """,
             (
-                json.dumps({
-                    "triage_phase": "elephant_drafting",
-                    "egm": True,
-                    "awaiting_interview": True,
-                    "worker_pid": 7777,
-                    "sessions": [{"status": "ongoing", "started_at": now}],
-                }),
+                json.dumps(
+                    {
+                        "triage_phase": "elephant_drafting",
+                        "egm": True,
+                        "awaiting_interview": True,
+                        "worker_pid": 7777,
+                        "sessions": [{"status": "ongoing", "started_at": now}],
+                    }
+                ),
                 now,
                 now,
             ),
@@ -196,17 +206,21 @@ def test_claim_goldfish_auditing(test_db: Path):
             VALUES ('task-gold-1', 'Goldfish Audit Task', 'todo', 'zf-goldfish', 'P1', ?, ?, ?)
             """,
             (
-                json.dumps({
-                    "triage_phase": "goldfish_auditing",
-                    "specification": "### Spec\nTest spec",
-                }),
+                json.dumps(
+                    {
+                        "triage_phase": "goldfish_auditing",
+                        "specification": "### Spec\nTest spec",
+                    }
+                ),
                 now,
                 now,
             ),
         )
         conn.commit()
 
-    with patch.object(dispatcher, "spawn_agent_worker", return_value=(5555, "goldfish-sess-1")):
+    with patch.object(
+        dispatcher, "spawn_agent_worker", return_value=(5555, "goldfish-sess-1")
+    ):
         res = run_dispatch_cycle(db_path=test_db)
         assert res.get("ok")
 
@@ -229,12 +243,14 @@ def test_reaper_goldfish_exit_transitions_to_human_approval(test_db: Path):
             VALUES ('task-gold-2', 'Goldfish Audit Running', 'running', 'zf-goldfish', 'P1', ?, ?, ?)
             """,
             (
-                json.dumps({
-                    "triage_phase": "goldfish_auditing",
-                    "specification": "Spec content",
-                    "worker_pid": 4444,
-                    "sessions": [{"status": "ongoing", "started_at": now}],
-                }),
+                json.dumps(
+                    {
+                        "triage_phase": "goldfish_auditing",
+                        "specification": "Spec content",
+                        "worker_pid": 4444,
+                        "sessions": [{"status": "ongoing", "started_at": now}],
+                    }
+                ),
                 now,
                 now,
             ),
@@ -275,11 +291,13 @@ def test_approve_single_repo(test_db: Path):
             VALUES ('task-appr-1', 'Single Repo Spec', 'triage', 'human', 'P1', ?, ?, ?)
             """,
             (
-                json.dumps({
-                    "triage_phase": "human_approval",
-                    "awaiting_approval": True,
-                    "specification": "Single repo implementation spec",
-                }),
+                json.dumps(
+                    {
+                        "triage_phase": "human_approval",
+                        "awaiting_approval": True,
+                        "specification": "Single repo implementation spec",
+                    }
+                ),
                 now,
                 now,
             ),
@@ -321,12 +339,14 @@ def test_approve_multi_repo_splits(test_db: Path):
             VALUES ('task-split-1', '[Triage] Multi-Repo Epic', 'Parent goal', 'triage', 'human', 'P1', 'test-board', ?, ?, ?)
             """,
             (
-                json.dumps({
-                    "triage_phase": "human_approval",
-                    "awaiting_approval": True,
-                    "target_repos": ["backend", "frontend"],
-                    "specification": "Shared interface contracts and boundaries",
-                }),
+                json.dumps(
+                    {
+                        "triage_phase": "human_approval",
+                        "awaiting_approval": True,
+                        "target_repos": ["backend", "frontend"],
+                        "specification": "Shared interface contracts and boundaries",
+                    }
+                ),
                 now,
                 now,
             ),
@@ -340,11 +360,15 @@ def test_approve_multi_repo_splits(test_db: Path):
     # Original parent task should be done
     with sqlite3.connect(str(test_db)) as conn:
         conn.row_factory = sqlite3.Row
-        parent = conn.execute("SELECT * FROM tasks WHERE id = 'task-split-1'").fetchone()
+        parent = conn.execute(
+            "SELECT * FROM tasks WHERE id = 'task-split-1'"
+        ).fetchone()
         assert parent["status"] == "done"
 
         # Check child task inherited specification
-        children = conn.execute("SELECT * FROM tasks WHERE id != 'task-split-1'").fetchall()
+        children = conn.execute(
+            "SELECT * FROM tasks WHERE id != 'task-split-1'"
+        ).fetchall()
         for child in children:
             assert child["status"] == "todo"
             assert child["assignee"] == "zf-builder"
@@ -361,18 +385,25 @@ def test_reject_first_round_returns_to_elephant(test_db: Path):
             VALUES ('task-rej-1', 'Spec to Revise', 'triage', 'human', 'P1', ?, ?, ?)
             """,
             (
-                json.dumps({
-                    "triage_phase": "human_approval",
-                    "awaiting_approval": True,
-                    "specification": "Initial spec draft",
-                }),
+                json.dumps(
+                    {
+                        "triage_phase": "human_approval",
+                        "awaiting_approval": True,
+                        "specification": "Initial spec draft",
+                    }
+                ),
                 now,
                 now,
             ),
         )
         conn.commit()
 
-    res = reject_task("task-rej-1", TaskRejectRequest(feedback="Please remove unnecessary abstractions", actor="reviewer"))
+    res = reject_task(
+        "task-rej-1",
+        TaskRejectRequest(
+            feedback="Please remove unnecessary abstractions", actor="reviewer"
+        ),
+    )
     assert res["status"] == "triage"
     assert res["assignee"] == "zf-orchestrator"
 
@@ -385,7 +416,9 @@ def test_reject_first_round_returns_to_elephant(test_db: Path):
         assert meta.get("awaiting_approval") is None
 
         # Verify comment was posted
-        comments = conn.execute("SELECT * FROM task_comments WHERE task_id = 'task-rej-1'").fetchall()
+        comments = conn.execute(
+            "SELECT * FROM task_comments WHERE task_id = 'task-rej-1'"
+        ).fetchall()
         assert len(comments) == 1
         assert "Please remove unnecessary abstractions" in comments[0]["body"]
 
@@ -400,19 +433,23 @@ def test_reject_second_round_blocks_task(test_db: Path):
             VALUES ('task-rej-2', 'Spec Second Rejection', 'triage', 'human', 'P1', ?, ?, ?)
             """,
             (
-                json.dumps({
-                    "triage_phase": "human_approval",
-                    "awaiting_approval": True,
-                    "revision_count": 1,
-                    "specification": "Second spec draft",
-                }),
+                json.dumps(
+                    {
+                        "triage_phase": "human_approval",
+                        "awaiting_approval": True,
+                        "revision_count": 1,
+                        "specification": "Second spec draft",
+                    }
+                ),
                 now,
                 now,
             ),
         )
         conn.commit()
 
-    res = reject_task("task-rej-2", TaskRejectRequest(feedback="Still too complex", actor="reviewer"))
+    res = reject_task(
+        "task-rej-2", TaskRejectRequest(feedback="Still too complex", actor="reviewer")
+    )
     assert res["status"] == "blocked"
     assert res["assignee"] == "human"
 
@@ -427,10 +464,12 @@ def test_reject_second_round_blocks_task(test_db: Path):
 
 def test_goldfish_prompt_generation(tmp_path: Path):
     """spawn_agent_worker generates contrarian spec audit prompt for zf-goldfish."""
-    meta = json.dumps({
-        "specification": "### Microservice Interface\nExpose gRPC endpoint.",
-        "revision_count": 1,
-    })
+    meta = json.dumps(
+        {
+            "specification": "### Microservice Interface\nExpose gRPC endpoint.",
+            "revision_count": 1,
+        }
+    )
     with (
         patch("subprocess.Popen") as mock_popen,
         patch.dict(os.environ, {}, clear=False),

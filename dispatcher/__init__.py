@@ -160,6 +160,7 @@ from .worker_spawner import (
 )
 from .worktree import (
     _delete_remote_branch,
+    _find_checked_out_worktree,
     _handle_local_merge_conflict,
     _handle_pr_conflict_from_github,
     _handle_precommit_failure,
@@ -259,6 +260,7 @@ __all__ = [
     "spawn_board_scanner",
     "reset_idle_scanner_state",
     # Worktree
+    "_find_checked_out_worktree",
     "resolve_task_repo_path",
     "setup_worktree",
     "run_deterministic_precommit",

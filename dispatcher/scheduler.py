@@ -528,19 +528,46 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                                 / b
                                                 / "worktrees"
                                             )  # type: ignore
-                                    cand_wt = (
-                                        get_board_worktrees_dir(board_slug)
-                                        / task_id
-                                        / target_name
+                                    task_root = (
+                                        get_board_worktrees_dir(board_slug) / task_id
                                     )
                                 else:
-                                    cand_wt = (
+                                    task_root = (
                                         repo_for_task.parent
                                         / f"{repo_for_task.name}-worktrees"
                                         / task_id
-                                        / target_name
                                     )
-                                if cand_wt.exists():
+
+                                cand_wt = getattr(
+                                    _disp,
+                                    "_find_checked_out_worktree",
+                                    lambda r, b: None,
+                                )(repo_for_task, f"task/{task_id}")
+                                if not cand_wt or not cand_wt.exists():
+                                    cand_dirs = [
+                                        task_root / target_name,
+                                        task_root / repo_for_task.name,
+                                        task_root,
+                                    ]
+                                    if task_root.exists():
+                                        try:
+                                            for sub in task_root.iterdir():
+                                                if (
+                                                    sub.is_dir()
+                                                    and sub not in cand_dirs
+                                                ):
+                                                    cand_dirs.append(sub)
+                                        except Exception:
+                                            pass
+                                    for cand in cand_dirs:
+                                        if cand.exists() and (
+                                            (cand / ".git").is_file()
+                                            or (cand / ".git").is_dir()
+                                        ):
+                                            cand_wt = cand
+                                            break
+
+                                if cand_wt and cand_wt.exists():
                                     workspace_path = str(cand_wt)
                                     cursor.execute(
                                         "UPDATE tasks SET workspace_path = ? WHERE id = ?",
