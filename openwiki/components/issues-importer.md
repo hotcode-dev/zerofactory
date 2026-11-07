@@ -27,7 +27,7 @@ sources:
 generated: { by: "hermes", at: "2026-11-06T15:00:57.907Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-06T15:00:57.907Z
+    at: 2026-11-07T14:59:48.283Z
 ---
 
 # External Issue Import (GitHub & Jira)
