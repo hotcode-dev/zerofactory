@@ -16,7 +16,10 @@ sources:
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-11-04T14:49:39.483Z" }
+generated: { by: "hermes", at: "2026-11-06T15:00:57.907Z" }
+verified:
+  - by: openwiki/0.6.0
+    at: 2026-11-06T15:00:57.907Z
 ---
 
 # Quickstart
@@ -110,7 +113,7 @@ pytest tests/                 # full suite
 pytest tests/unit/            # or a single tier: integration/ / e2e/
 ```
 
-**As of this commit the full suite is green: `382 passed, 1 skipped`.** Re-run
+**As of this commit the full suite is green: `403 passed, 1 skipped`.** Re-run
 it before publishing any claim about the count.
 
 ## Core CLI surface
@@ -121,6 +124,10 @@ hermes zerofactory list [--status <status>] [--assignee <profile>]
 hermes zerofactory create "Implement Feature X" [--tags automerge,hitl]
 hermes zerofactory import-gh-issue 42 [--repo owner/repo] [--board <slug>] [--status triage] [--priority P1] [--assignee zf-builder] [--sync] [--force]
 hermes zerofactory import-jira-issue PROJ-123 [--board <slug>] [--priority P1]
+hermes zerofactory approve <task_id> [--split]          # release gate: promote single-repo triage to todo or split multi-repo
+hermes zerofactory reject <task_id> --feedback "..."   # send a triage spec back to zf-orchestrator for revision
+hermes zerofactory stats                               # Kanban board statistics
+hermes zerofactory migrate [--status]                  # run or inspect SQLite database migrations
 hermes zerofactory update <task_id> [--title "..."] [--description "..."] [--assignee <profile>] [--priority P1] [--status <status>]
 hermes zerofactory move <task_id> <status> [--reason "..."] [--assignee <profile>]
 hermes zerofactory block <task_id> --reason "..."

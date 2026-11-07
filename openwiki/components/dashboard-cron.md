@@ -50,10 +50,10 @@ sources:
     resource: repo://scripts/zf_queue_watchdog.py
   - id: openwiki-source-bc25bd3bfcf63b730444ea04
     resource: repo://scripts/zf_scanner_gate.py
-generated: { by: "hermes", at: "2026-11-04T14:49:39.483Z" }
+generated: { by: "hermes", at: "2026-11-06T15:00:57.907Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-04T14:49:39.483Z
+    at: 2026-11-06T15:00:57.907Z
 ---
 
 # Dashboard, Cron & Automation
@@ -104,11 +104,11 @@ eight sub-routers (`repo://dashboard/routes/__init__.py#L46-L54`):
   lifecycle transition with side effects owned by a single code path,
   `POST /tasks/{task_id}/move` (`move_task`), which also classifies
   `blocked_reason_type` and manages the `awaiting_pr` / `close_pr` packaging
-  flags (`repo://dashboard/routes/tasks.py#L798-L940`); the Grill-with-Docs
+  flags (`repo://dashboard/routes/tasks.py#L807-L1092`); the Grill-with-Docs
   protocol adds `POST /tasks/{task_id}/triage` (dispatches to
   `zf-orchestrator` for triage) and
   `POST /tasks/{task_id}/interview-reply` (records the human's answer to an
-  open interview question) (`repo://dashboard/routes/tasks.py#L1227-L1476`).
+  open interview question) (`repo://dashboard/routes/tasks.py#L1237-L1557`).
   New lifecycle endpoints round out the operator surface:
   `POST /tasks/{task_id}/split` decomposes a multi-repo triage task into
   per-repo `todo` tasks, `POST /tasks/{task_id}/recover` routes a
@@ -117,7 +117,17 @@ eight sub-routers (`repo://dashboard/routes/__init__.py#L46-L54`):
   retry state), and `POST /tasks/{task_id}/report-bug` reports an
   internal Zero Factory defect to the upstream GitHub issue tracker
   (auto-creating the issue when the `auto_create_github_issues` setting is
-  enabled) (`repo://dashboard/routes/tasks.py#L1277-L1663`). Query params
+  enabled) (`repo://dashboard/routes/tasks.py#L1286-L1993`). The EGM
+  release gate adds `POST /tasks/{task_id}/approve` (promote an approved
+  spec to `todo` or split it into per-repo `todo` children) and
+  `POST /tasks/{task_id}/reject` (route the spec back to
+  `zf-orchestrator` for a revision; at most 2 rounds, then blocked for a
+  human with `blocked_reason_type = "human-gate"`); the UI shows a
+  "Spec & Audit Ready • Awaiting Approval" badge on cards whose metadata
+  carries `awaiting_approval` and one-click approve/reject buttons in the
+  task detail modal (`repo://dashboard/routes/tasks.py#L1992-L2141`,
+  `repo://dashboard/src/components/KanbanBoard.jsx#L272-L293`,
+  `repo://dashboard/src/modals/TaskDetailModal.jsx#L147-L171`). Query params
   and metadata fields are type-guarded with `isinstance` checks so
   non-string values never break grill/conflict status handling
   (`repo://dashboard/routes/tasks.py#L122-L145`).
@@ -134,7 +144,8 @@ eight sub-routers (`repo://dashboard/routes/__init__.py#L46-L54`):
 - **memories** — the per-board repository-knowledge substrate CRUD (dual-write
   to SQLite `board_memories` and Mem0 Qdrant; see
   [Architecture](/openwiki/architecture.md#mem0-vector-memory)).
-- **agents** — live status of the three specialist profiles.
+- **agents** — live status of the four specialist profiles (including
+  `zf-goldfish`, labeled "Spec Auditor").
 
 The routes import with a relative/absolute fallback pattern (try `from .routes`,
 then `from routes`) so the backend works both as a plugin module and when loaded
@@ -255,7 +266,9 @@ Four deterministic scripts drive the token-efficient automation and emit a
   open GitHub issues labeled `zerofactory` into the active boards on a
   per-repo cooldown (guarded by `ZEROFACTORY_AUTO_SYNC_GH_ISSUES` and a
   `gh_issues_sync_cache.json` timestamp so frequent ticks never spam the GitHub
-  API; a sync failure does **not** stamp the cooldown), (2) reaps stuck worker
+  API; a sync failure does **not** stamp the cooldown; synced issues park in
+  `triage` assigned to `human` so no GPU tokens are spent on unvetted
+  submissions), (2) reaps stuck worker
   subprocesses via `reap_stuck_tasks`, (3) triggers `run_dispatch_cycle`,
   (4) pulls `check_stuck_tasks(include_blocked=True)` for failure-exhausted
   reporting, and (5) pulls `get_stats`. When the queue is healthy it emits

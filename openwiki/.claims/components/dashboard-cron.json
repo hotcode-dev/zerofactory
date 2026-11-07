@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fbc9b66915c6daf27e53eb72db30097b2a106a082080cf930a391d257e874729",
+  "pageVersion": "sha256:b52f73e487524599957b3d76d7381b662c7db2afeab27ee88fbd32b47cb43389",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -90,11 +90,11 @@
     },
     {
       "id": "claim_4447c57c3df0493db1509e09bcc6a6d4",
-      "statement": "zf_queue_watchdog.py is the queue watchdog: it auto-syncs open GitHub issues labeled zerofactory into active boards on a per-repo cooldown (a sync failure does not stamp the cooldown), reaps stuck workers (reap_stuck_tasks), triggers run_dispatch_cycle, pulls check_stuck_tasks(include_blocked=True), and pulls get_stats; it emits a wakeAgent false signal when healthy (0 tokens) and a markdown alert when it finds a bottleneck.",
+      "statement": "zf_queue_watchdog.py is the queue watchdog: it auto-syncs open GitHub issues labeled zerofactory into active boards on a per-repo cooldown (a sync failure does not stamp the cooldown; synced issues park in triage assigned to human so no GPU tokens are spent on unvetted submissions), reaps stuck workers (reap_stuck_tasks), triggers run_dispatch_cycle, pulls check_stuck_tasks(include_blocked=True), and pulls get_stats; it emits a wakeAgent false signal when healthy (0 tokens) and a markdown alert when it finds a bottleneck.",
       "evidence": [
         {
-          "resource": "repo://scripts/zf_queue_watchdog.py#L50-L193",
-          "version": "repo-lines-v1:sha256:38bd097e725fdebd12aa7341178a20b411e09ab0a4965a1ee599ba7284f553c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1M2FhZWY2NDM2ZGI1YTU2ZTRmZDA1M2JiZDA2YWEwNzMzMzc0NTJjMDVmNWIwYzM3ZDEyNTZjY2RkN2Q0MmY5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwYzAxZDMyZmJlYWRkMWM0ZDlhOGMyMTY0OWM1N2JhNGM0NTljODY0ZGNkYjlkZDdhOGVkODE5MWNhMGVkMTAyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOThiMDYzZDliNDdlNjUzNzk2MjU1NzJjY2UxOTc2NjlkNTc2N2UxMmMxOGJlMDc1NjUyYjhjZDk4MWNlOGQ1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiNjJiMGI4NGEzNzZkMTg4OTkxNzE3YWE0NGNhZTYwYzE5NjUxZGY0NmE2ZjA4MGRhZDMzMDA0YjhjY2YyYzM0In0"
+          "resource": "repo://scripts/zf_queue_watchdog.py#L50-L266",
+          "version": "repo-lines-v1:sha256:4764b10f3d6adea9e46ce074f0b0373497acfc6aaa9c1655ded8e5c15be60630:eyJzZWxlY3RlZExpbmVDb3VudCI6MjE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1M2FhZWY2NDM2ZGI1YTU2ZTRmZDA1M2JiZDA2YWEwNzMzMzc0NTJjMDVmNWIwYzM3ZDEyNTZjY2RkN2Q0MmY5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ZmM5ZjRmMjk4YmJiZTY5MjM4NDZiMjVhM2Q2Y2QwMmYzMjI3ZTRjZjViODlhNmI4NjNiYTY3MGJjOTNiMDcyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOThiMDYzZDliNDdlNjUzNzk2MjU1NzJjY2UxOTc2NjlkNTc2N2UxMmMxOGJlMDc1NjUyYjhjZDk4MWNlOGQ1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -229,8 +229,8 @@
       "statement": "The Grill-with-Docs protocol adds POST /tasks/{task_id}/triage (dispatches the task to zf-orchestrator for triage) and POST /tasks/{task_id}/interview-reply (records the human's answer to an open interview question); the frontend GrillInterviewPanel and grillParser.js scan task comments backwards for a Grill-with-Docs: Decision Required marker or an active_interview metadata state to detect open questions and existing replies.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/tasks.py#L1227-L1476",
-          "version": "repo-lines-v1:sha256:cc9bf767179891282628de7ca0558361c61bc95d4371096a2749d8672c025e1e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjOTM3OTI0NTZkOTdlNTllOWMyMjQwNTVlYjg3NjI2M2RiMGQxZDJmMjdmM2YxZGFhYWUyZTI0Y2NlYTM4NTI5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMGI0NjVmM2Y2MDg3NTM4MjRhZTBjOWMxZGIxYTJmYjRjMTRhOGUyMDA1MDc5YTczYWQ3YmJhYjU1YzIwYjM3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwZmRjMGE0MzViNDQwNTFlOTY0MTI5YTIwMjgwNjg3YWQzM2FlODI1ZGMyMzJhOGQ1NTAwOTllNjhlY2VkYmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwODcyNDUxMzQ0Y2M1ZjJiYTllNDQ2NzUxYjg0YjQ5NTMwNzkxNjlkNDM0ODk2OGQ5ZDk2YWFmZTVjMmFkMTM1In0"
+          "resource": "repo://dashboard/routes/tasks.py#L1236-L1557",
+          "version": "repo-lines-v1:sha256:66095a426d16160fca396b138392728f22c17ff7135d7ae4c515e77d55b61b4c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzI2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjOTM3OTI0NTZkOTdlNTllOWMyMjQwNTVlYjg3NjI2M2RiMGQxZDJmMjdmM2YxZGFhYWUyZTI0Y2NlYTM4NTI5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwZmRjMGE0MzViNDQwNTFlOTY0MTI5YTIwMjgwNjg3YWQzM2FlODI1ZGMyMzJhOGQ1NTAwOTllNjhlY2VkYmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1ZGM1OTAxOWQ4ZjhkOGE1NDRiZTVlYzFkOGU3MjQyYTI4OTMzOTQ5YzhhM2IwMGFkYzc1NjlhYTE5ZjJmNjU4In0"
         },
         {
           "resource": "repo://dashboard/src/utils/grillParser.js",
@@ -317,14 +317,14 @@
       "statement": "New task lifecycle endpoints extend the operator surface: POST /tasks/{task_id}/split decomposes a multi-repo triage task into per-repo todo tasks, POST /tasks/{task_id}/recover routes a failure-exhausted blocked task back to the orchestrator with optional operator guidance, and POST/PUT /tasks/{task_id}/report-bug reports an internal Zero Factory defect to the upstream GitHub issue tracker (auto-creating the issue when the auto_create_github_issues setting is enabled).",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/tasks.py#L1277-L1978",
-          "version": "repo-lines-v1:sha256:a3e1e48b9aa0c55b9b603c9cd1c3ce5abb879e3c3004a05b3f9918cb8ae9a8b4:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiZjJhNzM5MzBmOGFiMTE2N2Y3OWIyNDYyNmFkOTJhNzcyNTk4Yjg3YTA4NzAzN2E3MDc2ZmQyYTRlODcwNDNjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZmJkMDA5MzE0YmMyNzA4NDE2NzM0YTAyYWU1ZmYzOWExZTQ4YTA1MGJlOTFmNDNiMmZhYTkyMDAyYzYyYmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dashboard/routes/tasks.py#L1286-L1993",
+          "version": "repo-lines-v1:sha256:23898b6a24fc5d7a972c809c958e122a7a12cfa75fdc05dfceb40785c1a5467d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiZjJhNzM5MzBmOGFiMTE2N2Y3OWIyNDYyNmFkOTJhNzcyNTk4Yjg3YTA4NzAzN2E3MDc2ZmQyYTRlODcwNDNjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZmJkMDA5MzE0YmMyNzA4NDE2NzM0YTAyYWU1ZmYzOWExZTQ4YTA1MGJlOTFmNDNiMmZhYTkyMDAyYzYyYmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwNDYzMGJlZDJjNzUzZTQ2OGNhNTdjMGMxYWVlODFiYTg5NTI3ZDgzMWFjNTMxNTNmY2FlZjI5MTcwMjU4NzYwIn0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-04T14:49:39.483Z"
+    "at": "2026-11-06T15:00:57.907Z"
   }
 }

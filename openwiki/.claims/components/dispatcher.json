@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a87bfe8d8841665fe11ac3c77f17f6be235b10afaee940954eba909218a6a756",
+  "pageVersion": "sha256:3f7ccfbc2f7a0e0dc151f0f4c0b85ad16f9be7848380410dba9aebe4d147e732",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
@@ -32,11 +32,11 @@
     },
     {
       "id": "claim_3df9c00b1980410b912370115c7db67e",
-      "statement": "Every task executes in its own isolated Git worktree on a task/<task_id> branch (setup_worktree creates <reponame>-worktrees/<task_id>), so a worker never touches main directly — the worktree + branch are the durable substrate that survives a worker crash.",
+      "statement": "Every task executes in its own isolated Git worktree on a task/<task_id> branch (setup_worktree resolves the repository and creates ~/.zerofactory/workspaces/<board>/worktrees/<task_id>/<repo_alias> on a task/<task_id> branch; every `git worktree add` runs under _WORKTREE_ADD_TIMEOUT with prune+retry on failure), so a worker never touches main directly — the worktree + branch are the durable substrate that survives a worker crash.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/worktree.py#L140-L290",
-          "version": "repo-lines-v1:sha256:8ab5bd7d06e5af268b48108dcbc6ff18b8c723cba853a6653d2a9c8e292fbae0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4OTI4ZWQ0MDc4ZTBkYzhiYWI4OWU3YzJiNDkzZDc1MGI4NzIzYmJiMmNjYmJkMjYxMGUzYTE3NmZmYzZhZDY1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0NzNhOTA2OGY3YWJjNDU2NTZiOWY0NWE4ZTE0YjE5MTAyYThiMGYyMTliZTBiNjU2NTE2N2UzOTg1M2ZhMjQxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NmIxMGY4MzIwN2U4MGI1YWU2MGMwMTViYjc1OTA0ZGExMmVhODY1ZDBiNzBmNGZjYjAxYjU2ZTQzNDkzZTY4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1MzU3ZWVkN2E5YWJlYWZlOGZhZjUxZmUxYjI0YmJiMTc4YzM5NjMxYjI2MDZiMzU1NmU5Yjc5NmNjOWQ2MWViIn0"
+          "resource": "repo://dispatcher/worktree.py#L174-L588",
+          "version": "repo-lines-v1:sha256:2b80fe212b2ac0a02cf25c3176f1bad38816db800d41a6363f7a2bb53ea420ed:eyJzZWxlY3RlZExpbmVDb3VudCI6NDE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4OTI4ZWQ0MDc4ZTBkYzhiYWI4OWU3YzJiNDkzZDc1MGI4NzIzYmJiMmNjYmJkMjYxMGUzYTE3NmZmYzZhZDY1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NmIxMGY4MzIwN2U4MGI1YWU2MGMwMTViYjc1OTA0ZGExMmVhODY1ZDBiNzBmNGZjYjAxYjU2ZTQzNDkzZTY4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1OWI4MDc4MWU4NWU0M2EwMjMwODU1YjRjN2NjNjhlYzBjNmJhYTk0NGY0NGE1Y2NhNmU1ZDMyY2U5ZjVlMjFkIn0"
         }
       ]
     },
@@ -69,12 +69,8 @@
       "statement": "spawn_agent_worker launches the assigned specialist as a detached hermes -p <assignee> subprocess with stdin=DEVNULL and stderr=STDOUT merged into the worker log, pinning HERMES_HOME to the profile's home, then correlates the new session_id against the profile's state.db via resolve_profile_state_db.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/worker_spawner.py#L303-L342",
-          "version": "repo-lines-v1:sha256:d776318b1fc00c598f2e0e33e8a020146472d5e8504467db48db207520ba0369:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3OGY4Nzk4NjkzZTdkOTc0MGYyZDQyNTU1MWE2YzY1MDcyYWYzZGNhOGQxNzc4YTQ4N2RlMTY5ODEzMzY0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NmI0MzQzMDFlMTJhODE2MjY3NmM0ZTE4NmQyYTY5ZGJlOTgwYzBmNmZiMmVhMTM0YjBiMWI5MzI0ZTU0YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzMDlhMmEzZjgxMjlkYmU2MmVmNjRkMTU3ZmRkYjg0OWZjNGY3ODEwOGI1ZTk2YzllYjljN2JhNjIzMmJlZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NWU2ZTJhNjMzYzRkZjJjM2FhY2I0ODJlZGRjZjg3MWZjNmFkY2M2MGQxMTE3OWQzNGMyYzZkNzgzZjU3Y2MifQ"
-        },
-        {
-          "resource": "repo://dispatcher/worker_spawner.py#L356-L378",
-          "version": "repo-lines-v1:sha256:f37a46aef3109be6fc1d9b3d59d9ea0a00cb539eff8ac3780304c4db076c499a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMDk2ZjY5NmU2ZTQzOWMxODQyMmE5ZDc0YTQ5MWU1ZTBhMDRhYjZmZmRmODc3N2E4YmVjZTdlNzQ3MWQ0MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhZDg1NTQxYjdkNDdkYjFlY2RkMmU3N2U1YzQ0NjI2MDdkZDUwYjAzNGE0MzM4ZmU5OGQzOGU5NDQyNzVjZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5ODZhNjhkZGZkZTlkYWVlY2M4ZjRkODJjODYzOGE0Y2VjY2RjMTVjNGE3OTMwNDBmZjUzNjUwMGRjYzQ1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExODM5MjFmNTNmMTE0ZGNlOWQwMThkMjQyMGUzZWU5OTExYzVkZTc4MGIwMDhjNjc1MzgzYWFmODc0YTEwODkifQ"
+          "resource": "repo://dispatcher/worker_spawner.py#L69-L788",
+          "version": "repo-lines-v1:sha256:0d3f004de3d66ee220dfc93cddc61e9079ff230420b8a9678e5f52e0f1c17919:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiNDViM2ZkMjgzZTdkZmI1ZTkyOGYyODcxMDVlMDRlNGJjYzRhNzNlMTZmNjgzYmRmOTlkYjg2MGQ1NTdiNzk5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1NmM5OGQ5OTY3YjQwNmIzNWY5NjU1NzVmZjY1ZDNlZGEyZGZhMjVlNzgzZjFlNGZmZWQ1OTc0NmI5ZGMxYjFjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0NTUwMzA0MjQzYTQ3ZDNiYjUwNDk2MjZhZDY5YjBkYjQyMDMyNmU4MDU1NGI5MjFlMmFlYzdkZDIwOTAwYTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -120,19 +116,19 @@
     },
     {
       "id": "claim_7414caddf45c4549ae10dc50ac6b83c1",
-      "statement": "reaper.py detects hung workers using a per-task max running time and an inactivity timeout: reap_active_workers terminates a worker that exceeded its budget and records the session end, and reap_stuck_tasks is the entry point the queue watchdog and the check-stuck CLI use; worker-failure handling is retry-oriented (a failed or vanished running worker returns to todo for re-spawn up to DEFAULT_MAX_WORKER_RETRIES), and the exhausted-retry path stamps blocked_reason_type='stuck' with assignee 'human'.",
+      "statement": "reaper.py detects hung workers using a per-task max running time and an inactivity timeout: reap_active_workers terminates a worker that exceeded its budget and records the session end, and reap_stuck_tasks is the entry point the queue watchdog and the check-stuck CLI use (with PRAGMA busy_timeout and retry-on-OperationalError backoff); worker-failure handling is retry-oriented (a failed or vanished running worker returns to todo for re-spawn up to DEFAULT_MAX_WORKER_RETRIES), and the exhausted-retry path stamps blocked_reason_type='stuck' with assignee 'human'.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/reaper.py#L114-L496",
-          "version": "repo-lines-v1:sha256:d99b19aca487d21915e1d3b2e1aaf075ccff78f933c660bd35085eb8144bb274:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhNDhhMTkwNmMwZjc4YzE4NmVhMWNhOGUxNDIwZTc0ZDYyNjIyNTM3MWU2ZGVkYTVmYmRlNDI3NDJjMjNmMjI4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkMDc0NDMxNDI0ZGUyODNhZDA3YTg2OTM0Mzc0YzQxODk4NDNkM2RjN2QzOWQxNGIwMzMyZDFmZGQ3NDJjZmIzIn0"
+          "resource": "repo://dispatcher/reaper.py#L114-L523",
+          "version": "repo-lines-v1:sha256:def0dc4ac6fc097cdb918c31480632a8165383ad2fedf025011b7cd804d25c1a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1ZjRhNGRhZjkzMjczMDQ2MjkxZWQ3NTQ0Mjk1ZDg0ODZhYWFkZTc2YjJjODMzMmUwNjEzMjRmOTdjNTZhY2Y1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYjU1ODA2YzIyYTcwNGFhOWFjN2ExNjY3NWIxZTM4MjUyNjBmZWNkYmRhMjdlOTkwMWE2NTdlYjJmMWY2ZGYxIn0"
         },
         {
-          "resource": "repo://dispatcher/reaper.py#L33-L100",
-          "version": "repo-lines-v1:sha256:73423182cfa04ad675c28619ad2708bb8379b4e0667fc03fe46994280bfd3989:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZTJiMDdiYTgwN2MwNWQ3MjZjZmUxMWZmYTVmMTdhYzczNGJjMGU2YWEyYzgwYjgxODJlMjA3N2MwNWU4ZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwY2U1MGYwNDA2Y2ZhZjI0ODVjMDlkYWUwNDg1YjEwMzJiZWU5YWY5MDZmMWJjNDc4ZmQ5MzRjOGIyYmM4MDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmZTFhZDY4MDk4MDRlODYyODg3M2ZiM2Q2NjFiNTU0YTMwZGEzMWJmNmI1MzRjZDQ5NGUxYjQyNjYxYTFlNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxNTI3NWVmNzI5NzBhZTM5NmNlZGM3MWIyMmFiYzAxZThiMjc0YWNlZGI0YTM4MDRmYWYzODE3NGMzYTg2NWUifQ"
+          "resource": "repo://dispatcher/reaper.py#L33-L38",
+          "version": "repo-lines-v1:sha256:55eb315f5a9ff72c7a36cfcd9ca58c3a975e66328624fa0125574d41a1528338:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDllMmIwN2JhODA3YzA1ZDcyNmNmZTExZmZhNWYxN2FjNzM0YmMwZTZhYTJjODBiODE4MmUyMDc3YzA1ZThkOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWZlMWFkNjgwOTgwNGU4NjI4ODczZmIzZDY2MWI1NTRhMzBkYTMxYmY2YjUzNGNkNDk0ZTFiNDI2NjFhMWU0OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjA1ZmZhNjgzMWNmYTVjNzVkYzg1NmExMzI4ZDdmNDcxNjgxYjZjOWRlOTA2MDUwNWViZWFlNzE2NTIxNzM3NyJ9"
         },
         {
-          "resource": "repo://dispatcher/reaper.py#L680-L782",
-          "version": "repo-lines-v1:sha256:92805d76f5d51cf251fddde9ecc8c2e668bd1e115ae05755235a071d08f483f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzNzBjZTE5OWZhOWExOTNkZmQ3NDRiNGYyNGUwNjE0NWU1NDQ5MjdhN2RjZDg2OTEzOTE5Y2ViMTdiNjY1NjEwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMDkzZTU3YmY0NGMzNDg5MTQ3OTU1MmFlMGY0MzY0ODIzNGE0ZDFmMjU0OGVkNTdmNDczOTlkOTJhYmI0NTg3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNTQyOWIxY2FiOWJiOTAzZTU1OGVlYjY0YTRiN2U0MzkwODFhZWIzNmM3NDhlNjMwOWRkNzc1NTBjODZhNmJjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNjhhNzc1YTIwMDA2NzQ0NWU2ZmQ3MWRhNzlkMTE4MmY4YjQ4YTZhMWVlMTUxY2Q1ZjI0YzNhMmY1MzVlMzUwIn0"
+          "resource": "repo://dispatcher/reaper.py#L714-L813",
+          "version": "repo-lines-v1:sha256:db0f67a9b10f37f7034474ee3665abdcb9f5f884d4f5eaab08c051f7a047fe93:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzNzBjZTE5OWZhOWExOTNkZmQ3NDRiNGYyNGUwNjE0NWU1NDQ5MjdhN2RjZDg2OTEzOTE5Y2ViMTdiNjY1NjEwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNTQyOWIxY2FiOWJiOTAzZTU1OGVlYjY0YTRiN2U0MzkwODFhZWIzNmM3NDhlNjMwOWRkNzc1NTBjODZhNmJjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwOWRmZWU5OWQ2OTJhNzFiMTQ4OGFhYjE2NzJmNWI2M2Q2MmU2NDU5MGRkM2E5NGRiMThmNTQyNjIwZmI2ZGM3In0"
         }
       ]
     },
@@ -193,6 +189,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-04T14:49:39.483Z"
+    "at": "2026-11-06T15:00:57.907Z"
   }
 }
