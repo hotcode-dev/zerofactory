@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b52f73e487524599957b3d76d7381b662c7db2afeab27ee88fbd32b47cb43389",
+  "pageVersion": "sha256:84fd694ded37fd9cafbc3915ff9dd2dd6b4ca4207d7cb9a48197f9a13835e404",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -321,10 +321,20 @@
           "version": "repo-lines-v1:sha256:23898b6a24fc5d7a972c809c958e122a7a12cfa75fdc05dfceb40785c1a5467d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiZjJhNzM5MzBmOGFiMTE2N2Y3OWIyNDYyNmFkOTJhNzcyNTk4Yjg3YTA4NzAzN2E3MDc2ZmQyYTRlODcwNDNjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZmJkMDA5MzE0YmMyNzA4NDE2NzM0YTAyYWU1ZmYzOWExZTQ4YTA1MGJlOTFmNDNiMmZhYTkyMDAyYzYyYmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwNDYzMGJlZDJjNzUzZTQ2OGNhNTdjMGMxYWVlODFiYTg5NTI3ZDgzMWFjNTMxNTNmY2FlZjI5MTcwMjU4NzYwIn0"
         }
       ]
+    },
+    {
+      "id": "claim_c444c647ee704c44ab1f669a0b624344",
+      "statement": "Importing dashboard/plugin_api.py auto-starts the background dispatcher loop in long-running server processes: _maybe_start_background_dispatcher only fires when 'dashboard' or 'gateway' appears in sys.argv, defers start_background_dispatcher() via a 2-second daemon threading.Timer so module imports and FastAPI mounting complete first, and is disabled by ZEROFACTORY_DISABLE_DISPATCHER or ZEROFACTORY_SKIP_DISPATCHER.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/plugin_api.py#L437-L473",
+          "version": "repo-lines-v1:sha256:6ec6f24a60d3e6a79fb0761c139b88b519d3058960d2844783c8d0b3db090fc5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NDVlMTdhZGVkMzA5NzQ1ZmZkYTMyOWZjZDY1ODYyZDUyOTZjNGVkN2IwZmVjZWIzMzA0NzVmNmUyNzRjNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MGI5ZTNiZDBmNGIwM2M4MGQ5MTFkYjBiNGZhZGUzNDJiNWMxOGNiYmZlMTkzOTE5NzdiNDZiMDFlZDg5ZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-06T15:00:57.907Z"
+    "at": "2026-11-07T14:59:48.283Z"
   }
 }

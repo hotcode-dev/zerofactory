@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3f12729c956ed7dd9b7a804291a2067358b44001ae016c1434e18d6b19e28fa0",
+  "pageVersion": "sha256:98608d7d760db2075236e89b56d2882c9c9aaf1efc1a89a1ca13ff5746e7831b",
   "claims": [
     {
       "id": "claim_80cf282ecc34488f9bf7da2c69151cc1",
@@ -48,15 +48,15 @@
     },
     {
       "id": "claim_0a9c31282a1b469097af3ac793a4d7b8",
-      "statement": "All durable state is an embedded SQLite database in WAL mode with foreign_keys=ON and busy_timeout=5000 enabled on every connection.",
+      "statement": "All durable state is an embedded SQLite database in WAL mode with foreign_keys=ON and busy_timeout=30000 (30s, connect timeout=30.0) enabled on every connection.",
       "evidence": [
         {
-          "resource": "repo://dashboard/db.py#L151-L152",
-          "version": "repo-lines-v1:sha256:c18186b6d339abea15d5c66581d9c007fb0fa28e82e6cc478613d2d7e3b85dca:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODYwYjgxNmI5NDhiYjEwOWE2ZDFjMmUyYTY5YjZlNzc5Yjk1ZGZiOTYxMjg0YTZkYTA1NjljNGRmMTMzMGIwZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTc4Zjc0NzhiMzI5M2YxOGRlMmZkYmE5YTg0Mjg3YzFmY2M4YWEwNDdmOWYyNjM3MGRiYzNjYWRjZGZhZTY2MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTBiYjM2MjIxODQ0Yjk0OTJiMzYzN2IyODA4NGY1ZmQxN2VkNTkxMTk3NTA0YjM4ZTU4ZDUyY2MxYzc5YjFmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmFmNDRiMDM5ODRhNzM3YzVlYTRmZDJhYTZlZmI4NTk3YzM5YThlMWFhYWEzODA2NDIxMTZiYzAyYmY3Y2UwZCJ9"
+          "resource": "repo://dashboard/db.py#L156-L159",
+          "version": "repo-lines-v1:sha256:211a4b7020f0a52e39a7f518aae67f8b5d7256c649d9c8c23437ed6cb3fcf59a:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZjYzI2YjRiN2QwNTk2YzJhMjQ3MjNhMDYzMTcxOTAyZDBiOTA2NGJkYzI4NmIzMzhlMWUxNGZlNmYyOTljZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmU2NmQyNDA1N2M3MDJhOTE0ZGNlMWQ5ODliNGEwMzBlM2E1Y2I3MGQ3NDk0ZWU4N2VhNjY1ZWExYTE5NTkxZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzk5OTMwNmQ5ZjkyYTAyZmYyZmEwOGMyYjI1NGU1YzdhOWRhYjAxOGE2ZjkwOGI2MWRjNjg4MDIzYTNmMzFkOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmFmNDRiMDM5ODRhNzM3YzVlYTRmZDJhYTZlZmI4NTk3YzM5YThlMWFhYWEzODA2NDIxMTZiYzAyYmY3Y2UwZCJ9"
         },
         {
-          "resource": "repo://dashboard/db.py#L225-L225",
-          "version": "repo-lines-v1:sha256:f0a06d47efe721e92249cbb46a826030fc66d7bf49c093c2994cd0c864022082:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjBhMDZkNDdlZmU3MjFlOTIyNDljYmI0NmE4MjYwMzBmYzY2ZDdiZjQ5YzA5M2MyOTk0Y2QwYzg2NDAyMjA4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjBhMDZkNDdlZmU3MjFlOTIyNDljYmI0NmE4MjYwMzBmYzY2ZDdiZjQ5YzA5M2MyOTk0Y2QwYzg2NDAyMjA4MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODE1NGI4ODQxZjdiZmNjMTQ3YTA4NjYxYjdmOGZlODc1OTRlZDEwNmViYTliZjMwMmMyOGFhZGY4NmVmZmVkNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWRhYTQ1OTY1Y2QzMjcxZDdjZTU0Y2I0MDAyYzMxMmYyZWE0ZTAzNDQ5NzNkZjBiNTkxNjJlMDA0MjBhZGRkOCJ9"
+          "resource": "repo://dashboard/db.py#L243-L243",
+          "version": "repo-lines-v1:sha256:f0a06d47efe721e92249cbb46a826030fc66d7bf49c093c2994cd0c864022082:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjBhMDZkNDdlZmU3MjFlOTIyNDljYmI0NmE4MjYwMzBmYzY2ZDdiZjQ5YzA5M2MyOTk0Y2QwYzg2NDAyMjA4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjBhMDZkNDdlZmU3MjFlOTIyNDljYmI0NmE4MjYwMzBmYzY2ZDdiZjQ5YzA5M2MyOTk0Y2QwYzg2NDAyMjA4MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjFmZDdhN2Y0MWZjMTdkNzg5MzU4YTk2MWIzYjRlYWUwOTRmZmE5N2QzY2U5MjY4ZjIwYTdmZTViMTFjNmI4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWRhYTQ1OTY1Y2QzMjcxZDdjZTU0Y2I0MDAyYzMxMmYyZWE0ZTAzNDQ5NzNkZjBiNTkxNjJlMDA0MjBhZGRkOCJ9"
         }
       ]
     },
@@ -233,10 +233,20 @@
           "version": "repo-lines-v1:sha256:ae16973f385e750092410f0ec42372d98d737d29c43d27d606192709d0998168:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkNWFlMzRiZDBlYjk2NTNkNjhlM2E3OTcyZDU1M2FkNTc5MjY2ZDc5MzYzYzZjYmJiZDM3YTllM2VlNDFhZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhYzg1Y2NhMjgyOTU4YmY1ZmQ0MTg2OWM1YWI0ZDA2YzU5MWFlYzBiODM1OGE2YmI4ZjUzNzBjY2ExYmI3ZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQyMmU4ZDgyNWNmMDAwOGUxMzE0YjkzNDkzYWY5ZjIwYzFiM2RjY2EwYzk5MjUwYTZlNzc5YTQ5ZTRkYzI1MGUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_da38e2826f7441979f8bc6f6bdb40078",
+      "statement": "init_db short-circuits when the DB path is already in _DB_INITIALIZED_PATHS, and its fast path probes an existing database for the tasks table and marks it initialized without re-running migrations when the table exists.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/db.py#L224-L240",
+          "version": "repo-lines-v1:sha256:598168d93b4255b96503cbd34f3d49aa011c7cc9c6f70afa485408174eed9bd7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlNzhjODk4MWE4NTY1NWNlMGNkNjcxMzVkZTNkYmY5M2JhMDViYmYxYzg4MDc0YjQ5NmE4NTRkZTBkN2JlMDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMDg2OGQ4NjJlNTk2ZTFmYTBhMGE1ODc4YjA1MGVlYWZjNmUzNGQwZTE2MmJlMzhjNmFmM2IxY2JhY2U4ZmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3MGFkOWE1ZjNiZGU1OTA0NGUxNjc2ZDY0N2E1MzdjYjkyZmMyYjMwYzMzODRkNDAxMjBlYWRhMmE5ZGY5ZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjYzNlNDJmZmQ5MzY3OWU5YjQ1NzhlZjQ0NzBhYmMwZTQ5MTY4NDFmMTEyYzhhOTM3MTI5ZmRjYmFkYWUxZjAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-06T15:00:57.907Z"
+    "at": "2026-11-07T14:59:48.283Z"
   }
 }

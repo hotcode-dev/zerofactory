@@ -20,6 +20,8 @@ sources:
     resource: repo://dashboard/models.py
   - id: openwiki-source-ad6531284d0db039367da971
     resource: repo://dashboard/openwiki_service.py
+  - id: openwiki-source-a3dff480db06dcfac47b01a1
+    resource: repo://dashboard/plugin_api.py
   - id: openwiki-source-556692619b07f09e3b0370a5
     resource: repo://dashboard/precommit_service.py
   - id: openwiki-source-afe67e60bbdbffde9666707f
@@ -50,10 +52,10 @@ sources:
     resource: repo://scripts/zf_queue_watchdog.py
   - id: openwiki-source-bc25bd3bfcf63b730444ea04
     resource: repo://scripts/zf_scanner_gate.py
-generated: { by: "hermes", at: "2026-11-06T15:00:57.907Z" }
+generated: { by: "hermes", at: "2026-11-07T14:59:48.283Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-06T15:00:57.907Z
+    at: 2026-11-07T14:59:48.283Z
 ---
 
 # Dashboard, Cron & Automation
@@ -150,6 +152,23 @@ eight sub-routers (`repo://dashboard/routes/__init__.py#L46-L54`):
 The routes import with a relative/absolute fallback pattern (try `from .routes`,
 then `from routes`) so the backend works both as a plugin module and when loaded
 directly — a repository-wide convention.
+
+### Background dispatcher auto-start
+
+Importing `plugin_api.py` also **auto-starts the background dispatcher loop** in
+long-running server processes: after the import-time `init_db()`,
+`_maybe_start_background_dispatcher()` runs and, only when `"dashboard"` or
+`"gateway"` appears in `sys.argv`, schedules
+`start_background_dispatcher()` through a **2-second `threading.Timer` daemon
+thread** so all module imports and FastAPI mounting complete before the first
+30s dispatch tick (`repo://dashboard/plugin_api.py#L437-L473`). This makes the
+dashboard/gateway process run the [Dispatch Engine](/openwiki/components/dispatcher.md)
+loop even if the plugin `register()` hook path is not exercised. CLI
+subcommands, pytest, and spawned child workers never start a loop — neither the
+argv check nor the process kind matches — and the environment variables
+`ZEROFACTORY_DISABLE_DISPATCHER` / `ZEROFACTORY_SKIP_DISPATCHER` disable the
+auto-start entirely (the same opt-outs honored by `register()`
+and `tests/conftest.py`).
 
 ### Setup services (OpenWiki & precommit)
 

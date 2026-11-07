@@ -5,7 +5,7 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-06T15:00:57.907Z
+    at: 2026-11-07T14:59:48.283Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -39,7 +39,7 @@ sources:
     resource: repo://plugin.yaml
   - id: openwiki-source-57b14ecc6ef51ae6212b15f0
     resource: repo://settings.py
-generated: { by: "hermes", at: "2026-11-06T15:00:57.907Z" }
+generated: { by: "hermes", at: "2026-11-07T14:59:48.283Z" }
 ---
 
 # Zero Factory Architecture
@@ -154,10 +154,18 @@ entries into the same prompt so agents do not repeat past mistakes
 ## Durable persistence (the substrate)
 
 All durable state is an embedded SQLite database in **WAL mode** with
-foreign keys and a busy timeout enabled on every connection
-(`repo://dashboard/db.py#L158-L159`, `#L232`). The schema is created by
-numbered migrations tracked in `schema_migrations`
+`foreign_keys=ON` and a **30s** busy timeout (`PRAGMA busy_timeout=30000`,
+connect `timeout=30.0`) enabled on every connection
+(`repo://dashboard/db.py#L156-L159`, WAL at `#L243`). The schema is created
+by numbered migrations tracked in `schema_migrations`
 (`repo://migrations/runner.py#L26-L40`).
+
+`init_db` is idempotent and cheap: a path already initialized in this process
+short-circuits via the `_DB_INITIALIZED_PATHS` set, and a **fast path** probes
+an existing database for the `tasks` table before running any migration or
+seeding work — a pre-initialized DB is simply marked initialized and returned
+without re-opening the migration runner
+(`repo://dashboard/db.py#L224-L240`).
 
 The core schema (`repo://migrations/0001_initial_schema.sql`) defines:
 
