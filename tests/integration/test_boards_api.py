@@ -2,7 +2,6 @@
 
 import subprocess
 
-import cron.definitions as defs
 from fastapi.testclient import TestClient
 
 
@@ -202,7 +201,7 @@ def test_board_status_endpoints_do_not_clone(api_client: TestClient, monkeypatch
     # With auto-clone enabled, the read-only status endpoints must stay read-only.
     monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
     monkeypatch.delenv("ZEROFACTORY_AUTO_CLONE", raising=False)
-    monkeypatch.setattr(defs.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     precommit_res = api_client.get(
         f"/api/plugins/zerofactory/boards/{slug}/precommit-status"

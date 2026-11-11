@@ -21,9 +21,15 @@ if _DASHBOARD_ROOT not in sys.path:
     sys.path.insert(0, _DASHBOARD_ROOT)
 
 try:
-    from ..paths import normalize_assignee, resolve_profile_state_db  # type: ignore
+    from ..paths import (  # type: ignore
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
 except (ImportError, ValueError):
-    from paths import normalize_assignee, resolve_profile_state_db  # type: ignore
+    from paths import (  # type: ignore
+        normalize_assignee,
+        resolve_profile_state_db,
+    )
 
 try:
     from .db import get_db_conn
@@ -33,25 +39,12 @@ except (ImportError, ValueError):
 _log = logging.getLogger(__name__)
 
 
-def _d():
-    return sys.modules.get("dashboard.plugin_api") or sys.modules.get("plugin_api")
-
-
 def get_profile_state_db(assignee: str) -> Path | None:
     """Find the SQLite state.db for an agent profile."""
     return resolve_profile_state_db(assignee)
 
 
 def _resolve_profile_state_db_dyn(prof: str) -> Path | None:
-    disp = _d()
-    if disp is not None:
-        target = getattr(disp, "resolve_profile_state_db", None)
-        if (
-            target is not None
-            and target is not get_profile_state_db
-            and target is not _resolve_profile_state_db_dyn
-        ):
-            return target(prof)
     return resolve_profile_state_db(prof)
 
 

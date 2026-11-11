@@ -89,17 +89,6 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('inactivity_timeout_seconds', ?, ?)",
                 (val, now),
             )
-        if req.enable_cron_scheduler is not None:
-            try:
-                from ..builtin_cron import set_cron_scheduler_enabled
-            except (ImportError, ValueError):
-                try:
-                    from ...builtin_cron import (
-                        set_cron_scheduler_enabled,  # type: ignore
-                    )
-                except (ImportError, ValueError):
-                    from builtin_cron import set_cron_scheduler_enabled  # type: ignore
-            set_cron_scheduler_enabled(bool(req.enable_cron_scheduler), conn=conn)
         if req.langfuse_enabled is not None:
             val = "true" if req.langfuse_enabled else "false"
             cursor.execute(

@@ -10,6 +10,9 @@ from unittest.mock import MagicMock, patch
 from dispatcher.scheduler import run_dispatch_cycle
 
 
+_TASK_COLS = "(id, title, description, status, assignee, priority, metadata, skills, workspace_kind, workspace_path, branch_name, board_slug, tenant, pr_url, updated_at, created_at)"
+
+
 def _init_test_db(db_path: Path):
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
@@ -30,7 +33,12 @@ def _init_test_db(db_path: Path):
                 tenant TEXT,
                 pr_url TEXT,
                 updated_at INTEGER,
-                created_at INTEGER
+                created_at INTEGER,
+                repo_alias TEXT DEFAULT NULL,
+                tags TEXT DEFAULT NULL,
+                worker_pid INTEGER DEFAULT NULL,
+                started_at INTEGER DEFAULT NULL,
+                blocked_reason TEXT DEFAULT NULL
             )
             """
         )
@@ -140,11 +148,15 @@ def test_run_dispatch_cycle_unblocks_prerequisite_dependencies(tmp_path: Path):
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('parent-1', 'Parent', '', 'done', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('parent-1', 'Parent', '', 'done', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
             (now, now),
         )
         conn.execute(
-            "INSERT INTO tasks VALUES ('child-1', 'Child', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('child-1', 'Child', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
             (now, now),
         )
         conn.execute(
@@ -182,7 +194,9 @@ def test_run_dispatch_cycle_promotes_todo_to_running(tmp_path: Path):
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-todo', 'Work Item', '', 'todo', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-todo', 'Work Item', '', 'todo', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
             (now, now),
         )
         conn.commit()
@@ -217,7 +231,9 @@ def test_run_dispatch_cycle_skips_pr_conflict_for_queued_or_builder_task(
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-todo', 'Feature', '', 'todo', 'zf-builder', 'P0', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/10', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-conf-todo', 'Feature', '', 'todo', 'zf-builder', 'P0', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/10', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -273,7 +289,9 @@ def test_run_dispatch_cycle_routes_blocked_human_pr_conflict_to_builder(tmp_path
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-blocked', 'Feature', '', 'blocked', 'human', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/20', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-conf-blocked', 'Feature', '', 'blocked', 'human', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/20', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -322,7 +340,9 @@ def test_run_dispatch_cycle_routes_blocked_builder_pr_conflict_to_builder(
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-builder-blocked', 'Feature', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/30', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-conf-builder-blocked', 'Feature', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/30', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -369,7 +389,9 @@ def test_run_dispatch_cycle_logs_conflict_fixing_activity(tmp_path: Path):
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-fix-conf', 'Fix feature', 'desc', 'todo', 'zf-builder', 'P1', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-fix-conf', 'Fix feature', 'desc', 'todo', 'zf-builder', 'P1', '{\"conflict_retries\": 1}', '[]', '', ?, '', 'b1', '', '', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -411,7 +433,9 @@ def test_run_dispatch_cycle_logs_conflict_resolved_activity(tmp_path: Path):
         # 'running' + awaiting_pr marks builder-finished work in the dispatcher
         # packaging phase (PR sync); 'done' is strictly terminal.
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-conf-res', 'Fix feature', 'desc', 'running', 'zf-builder', 'P1', '{\"conflict_retries\": 1, \"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-conf-res', 'Fix feature', 'desc', 'running', 'zf-builder', 'P1', '{\"conflict_retries\": 1, \"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -471,7 +495,9 @@ def test_run_dispatch_cycle_manual_done_archives_pr_and_stays_done(tmp_path: Pat
     with sqlite3.connect(str(db_path)) as conn:
         # 'close_pr' is set by move_task when a human closes a task with an open PR
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-manual-done', 'Ship feature', 'desc', 'done', 'zf-reviewer', 'P1', '{\"close_pr\": true}', '[]', '', NULL, '', 'b1', '', 'https://github.com/foo/bar/pull/77', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-manual-done', 'Ship feature', 'desc', 'done', 'zf-reviewer', 'P1', '{\"close_pr\": true}', '[]', '', NULL, '', 'b1', '', 'https://github.com/foo/bar/pull/77', ?, ?)",
             (now, now),
         )
         conn.commit()
@@ -547,7 +573,9 @@ def test_run_dispatch_cycle_awaiting_pr_handles_conflicting_pr(tmp_path: Path):
     now = 1000
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
-            "INSERT INTO tasks VALUES ('t-rev-conf', 'Fix conflict', 'desc', 'running', 'zf-builder', 'P1', '{\"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-rev-conf', 'Fix conflict', 'desc', 'running', 'zf-builder', 'P1', '{\"awaiting_pr\": true}', '[]', '', ?, '', 'b1', '', 'https://github.com/foo/bar/pull/50', ?, ?)",
             (str(tmp_path), now, now),
         )
         conn.commit()
@@ -681,17 +709,23 @@ def test_run_dispatch_cycle_relates_to_does_not_block_task(tmp_path: Path):
         )
         # Parent 1: done
         conn.execute(
-            "INSERT INTO tasks VALUES ('p-done', 'Parent Done', '', 'done', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('p-done', 'Parent Done', '', 'done', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
             (now, now),
         )
         # Parent 2: running (unfinished)
         conn.execute(
-            "INSERT INTO tasks VALUES ('p-running', 'Parent Running', '', 'running', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('p-running', 'Parent Running', '', 'running', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
             (now, now),
         )
         # Child 1: blocked on p-running (link_type = 'blocks') -> must STAY blocked
         conn.execute(
-            "INSERT INTO tasks VALUES ('c-blocked', 'Child Blocked', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('c-blocked', 'Child Blocked', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
             (now, now),
         )
         conn.execute(
@@ -700,7 +734,9 @@ def test_run_dispatch_cycle_relates_to_does_not_block_task(tmp_path: Path):
         )
         # Child 2: blocked on p-done (link_type = 'blocks') and relates to p-running (relates_to) -> must UNBLOCK
         conn.execute(
-            "INSERT INTO tasks VALUES ('c-relates', 'Child Relates', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('c-relates', 'Child Relates', '', 'blocked', 'zf-builder', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
             (now, now),
         )
         conn.execute(

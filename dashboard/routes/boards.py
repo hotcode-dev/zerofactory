@@ -30,7 +30,6 @@ try:
         BoardTestClone,
         BoardArchitectureUpdate,
         BoardUpdate,
-        JiraSetupRequest,
     )
     from ..setup_common import get_repo_resolver
 except (ImportError, ValueError):
@@ -42,7 +41,6 @@ except (ImportError, ValueError):
         BoardTestClone,
         BoardArchitectureUpdate,
         BoardUpdate,
-        JiraSetupRequest,
     )
     from setup_common import get_repo_resolver  # type: ignore
 
@@ -52,69 +50,8 @@ router = APIRouter()
 
 
 def _get_cron_helpers():
-    """Import builtin cron engine functions reliably regardless of how plugin_api is loaded."""
-    try:
-        from ...builtin_cron import (
-            ensure_builtin_cron_jobs,
-            list_builtin_jobs,
-            prune_board_cron_job,
-            reset_builtin_job,
-            toggle_builtin_job,
-            trigger_builtin_job,
-            update_builtin_job,
-        )
-
-        return (
-            ensure_builtin_cron_jobs,
-            prune_board_cron_job,
-            trigger_builtin_job,
-            list_builtin_jobs,
-            update_builtin_job,
-            toggle_builtin_job,
-            reset_builtin_job,
-        )
-    except Exception:
-        pass
-    try:
-        from builtin_cron import (  # type: ignore
-            ensure_builtin_cron_jobs,
-            list_builtin_jobs,
-            prune_board_cron_job,
-            reset_builtin_job,
-            toggle_builtin_job,
-            trigger_builtin_job,
-            update_builtin_job,
-        )
-
-        return (
-            ensure_builtin_cron_jobs,
-            prune_board_cron_job,
-            trigger_builtin_job,
-            list_builtin_jobs,
-            update_builtin_job,
-            toggle_builtin_job,
-            reset_builtin_job,
-        )
-    except Exception:
-        pass
-    try:
-        parent_dir = str(Path(__file__).resolve().parent.parent.parent)
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        import builtin_cron
-
-        return (
-            builtin_cron.ensure_builtin_cron_jobs,
-            builtin_cron.prune_board_cron_job,
-            builtin_cron.trigger_builtin_job,
-            builtin_cron.list_builtin_jobs,
-            builtin_cron.update_builtin_job,
-            builtin_cron.toggle_builtin_job,
-            builtin_cron.reset_builtin_job,
-        )
-    except Exception as e:
-        _log.warning("Failed to resolve builtin_cron helpers: %s", e)
-        return None, None, None, None, None, None, None
+    """No-op stub following removal of custom cron subsystem."""
+    return (None, None, None, None, None, None, None)
 
 
 @router.get("/boards")
@@ -128,7 +65,6 @@ def list_boards():
         boards = [dict(row) for row in cursor.fetchall()]
 
         for b in boards:
-            b["jira_url"] = (b.get("jira_url") or "").strip()
             b["architecture"] = (b.get("architecture") or "").strip()
             b["auto_record_memory"] = bool(b.get("auto_record_memory", 1))
             b["automerge"] = bool(b.get("automerge", 0))
@@ -180,7 +116,6 @@ def get_board(slug: str):
         if not row:
             raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
         b = dict(row)
-        b["jira_url"] = (b.get("jira_url") or "").strip()
         b["architecture"] = (b.get("architecture") or "").strip()
         b["auto_record_memory"] = bool(b.get("auto_record_memory", 1))
         b["automerge"] = bool(b.get("automerge", 0))
@@ -296,7 +231,6 @@ def create_board(req: BoardCreate):
         raise HTTPException(status_code=400, detail="Invalid board slug")
 
     desc = (req.description or "").strip()
-    jira_url = (req.jira_url or "").strip()
     architecture = (req.architecture or "").strip()
     mcr = max(1, req.max_concurrent_running or 1)
     arm = 1 if (req.auto_record_memory is None or req.auto_record_memory) else 0
@@ -313,9 +247,9 @@ def create_board(req: BoardCreate):
         cursor.execute(
             """INSERT INTO boards (
                 slug, description, max_concurrent_running, 
-                auto_record_memory, automerge, jira_url, architecture, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (slug, desc, mcr, arm, am, jira_url, architecture, now, now),
+                auto_record_memory, automerge, architecture, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (slug, desc, mcr, arm, am, architecture, now, now),
         )
 
         for r in repos_to_add:
@@ -565,9 +499,6 @@ def update_board(slug: str, req: BoardUpdate):
             am = 1 if req.automerge else 0
             updates.append("automerge = ?")
             params.append(am)
-        if req.jira_url is not None:
-            updates.append("jira_url = ?")
-            params.append(req.jira_url.strip())
         if req.architecture is not None:
             updates.append("architecture = ?")
             params.append(req.architecture.strip())
@@ -647,7 +578,6 @@ def update_board(slug: str, req: BoardUpdate):
         cursor.execute("SELECT * FROM boards WHERE slug = ?", (slug,))
         row = cursor.fetchone()
         board_data = dict(row) if row else {"slug": slug}
-        board_data["jira_url"] = (board_data.get("jira_url") or "").strip()
         board_data["architecture"] = (board_data.get("architecture") or "").strip()
         board_data["auto_record_memory"] = bool(board_data.get("auto_record_memory", 1))
         board_data["automerge"] = bool(board_data.get("automerge", 0))
@@ -1190,48 +1120,3 @@ def import_board_gh_issue_endpoint(slug: str, req: dict[str, Any]):
         actor="user",
     )
     return res
-
-
-@router.post("/boards/{slug}/setup-jira")
-def setup_board_jira_endpoint(slug: str, req: JiraSetupRequest | None = None):
-    """Configure and/or test Jira Cloud integration for a board."""
-    init_db()
-    with get_db_conn() as conn:
-        board = conn.execute("SELECT * FROM boards WHERE slug = ?", (slug,)).fetchone()
-        if not board:
-            raise HTTPException(status_code=404, detail=f"Board '{slug}' not found")
-
-        current_jira_url = (board["jira_url"] or "").strip()
-        if req and req.jira_url is not None:
-            new_jira_url = req.jira_url.strip()
-            conn.execute(
-                "UPDATE boards SET jira_url = ?, updated_at = ? WHERE slug = ?",
-                (new_jira_url, int(time.time()), slug),
-            )
-            conn.commit()
-            current_jira_url = new_jira_url
-
-    try:
-        from ...issues.jira import JiraIssueClient
-    except (ImportError, ValueError):
-        try:
-            from issues.jira import JiraIssueClient  # type: ignore
-        except (ImportError, ValueError):
-            from zerofactory.issues.jira import JiraIssueClient  # type: ignore
-
-    client = JiraIssueClient(base_url=current_jira_url, board_slug=slug)
-    conn_status = client.check_connection()
-
-    return {
-        "ok": True,
-        "slug": slug,
-        "jira_url": current_jira_url,
-        "connection": conn_status,
-        "message": conn_status.get("message", "Jira status checked"),
-    }
-
-
-@router.post("/boards/{slug}/test-jira")
-def verify_board_jira_endpoint(slug: str):
-    """Test reachability and authentication of configured Jira Cloud link."""
-    return setup_board_jira_endpoint(slug, None)

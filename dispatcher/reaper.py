@@ -15,6 +15,12 @@ from .config import (
     _log,
     log_step_state,
 )
+from .process_manager import (
+    ProcessState,
+    cleanup_process_artifacts,
+    get_process_exit_code,
+)
+from .state_machine import transition_task
 
 
 def _worker_log_path(task_id: str) -> Path:
@@ -114,17 +120,23 @@ def _mark_task_session_ended(
 def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
     """Check running tasks and reap finished, crashed, or stuck worker processes."""
     cursor.execute(
-        "SELECT id, title, status, metadata, updated_at, created_at FROM tasks WHERE status = 'running' OR (status = 'triage' AND metadata LIKE '%\"status\": \"ongoing\"%')"
+        "SELECT id, title, status, assignee, metadata, updated_at, created_at FROM tasks WHERE status = 'running' OR (status = 'triage' AND metadata LIKE '%\"status\": \"ongoing\"%')"
     )
     running_rows = cursor.fetchall()
     reaped = 0
 
     task_timeout = _d().get_task_timeout_seconds(cursor)
     inactivity_timeout = _d().get_inactivity_timeout_seconds(cursor)
+    conn = cursor.connection
 
     for row in running_rows:
         task_id = str(row["id"])
         row_status = str(row["status"]) if "status" in row.keys() else "running"
+        curr_asgn = (
+            str(row["assignee"])
+            if ("assignee" in row.keys() and row["assignee"])
+            else ""
+        )
         meta = {}
         try:
             meta = json.loads(row["metadata"] or "{}")
@@ -149,201 +161,195 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 (json.dumps(meta), task_id),
             )
 
+        # Detect exit using either in-memory proc or atomic .exit file
+        retcode = None
         if proc is not None:
             retcode = proc.poll()
-            if retcode is not None:
-                _active_workers.pop(task_id, None)
-                if retcode == 0:
-                    cursor.execute(
-                        "SELECT assignee, status, title FROM tasks WHERE id = ?",
-                        (task_id,),
-                    )
-                    t_check = cursor.fetchone()
-                    curr_asgn = t_check["assignee"] if t_check else ""
-                    curr_stat = t_check["status"] if t_check else ""
-                    _curr_title = (
-                        t_check["title"]
-                        if (t_check and "title" in t_check.keys())
-                        else ""
-                    )
+        else:
+            proc_state, file_rc = get_process_exit_code(task_id, pid)
+            if proc_state == ProcessState.COMPLETED and file_rc is not None:
+                retcode = file_rc
 
+        if retcode is not None:
+            _active_workers.pop(task_id, None)
+            cleanup_process_artifacts(task_id)
+            if retcode == 0:
+                cursor.execute(
+                    "SELECT assignee, status, title FROM tasks WHERE id = ?",
+                    (task_id,),
+                )
+                t_check = cursor.fetchone()
+                if t_check:
+                    curr_asgn = t_check["assignee"] or curr_asgn
+                    curr_stat = t_check["status"] or row_status
+                else:
+                    curr_stat = row_status
+
+                meta = _d()._mark_task_session_ended(meta, now, "finished")
+                meta.pop("worker_failure_retries", None)
+                meta.pop("last_worker_failure", None)
+                meta.pop("worker_pid", None)
+                meta.pop("session_id", None)
+                meta.pop("started_at", None)
+
+                is_triage_task = (
+                    curr_stat == "triage"
+                    or curr_asgn in ("zf-orchestrator", "zf-goldfish")
+                    or meta.get("triage_phase")
+                    in ("elephant_drafting", "goldfish_auditing", "human_approval")
+                    or bool(meta.get("awaiting_interview"))
+                    or bool(meta.get("awaiting_approval"))
+                )
+                blocked_reason = str(meta.get("blocked_reason") or "").lower()
+                target_asgn = curr_asgn
+
+                if is_triage_task and (
+                    "grill" in blocked_reason
+                    or "interview" in blocked_reason
+                    or "human" in blocked_reason
+                    or curr_asgn == "human"
+                    or meta.get("awaiting_interview")
+                ):
+                    target_status = "triage"
+                    target_asgn = "human"
+                    meta.pop("blocked_reason", None)
+                    meta["awaiting_interview"] = True
+                elif curr_asgn == "zf-goldfish":
+                    target_status = "triage"
+                    target_asgn = "human"
+                    meta["triage_phase"] = "human_approval"
+                    meta["awaiting_approval"] = True
+                elif curr_asgn == "zf-orchestrator" and (
+                    meta.get("triage_phase") == "elephant_drafting"
+                    or meta.get("egm")
+                    or meta.get("specification")
+                ):
+                    target_status = "todo"
+                    target_asgn = "zf-goldfish"
+                    meta["triage_phase"] = "goldfish_auditing"
+                elif curr_stat in ("blocked", "todo", "triage"):
+                    target_status = curr_stat
+                elif is_triage_task:
+                    target_status = "triage"
+                else:
+                    target_status = "running"
+                    meta["awaiting_pr"] = True
+
+                transition_task(
+                    conn,
+                    task_id,
+                    target_status,
+                    target_assignee=target_asgn,
+                    metadata_patch=meta,
+                    actor="dispatcher",
+                )
+                cursor.execute(
+                    "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', ?, ?)",
+                    (
+                        task_id,
+                        f"Worker process completed successfully (exit 0); status set to {target_status} ({target_asgn})",
+                        now,
+                    ),
+                )
+                _log.info(
+                    "Worker for task %s finished successfully (exit 0); moved to %s (%s)",
+                    task_id,
+                    target_status,
+                    target_asgn,
+                )
+            else:
+                cursor.execute(
+                    "SELECT assignee, status, title FROM tasks WHERE id = ?",
+                    (task_id,),
+                )
+                t_check = cursor.fetchone()
+                curr_stat = t_check["status"] if t_check else row_status
+                if curr_stat in ("todo", "done"):
                     meta = _d()._mark_task_session_ended(meta, now, "finished")
-                    meta.pop("worker_failure_retries", None)
-                    meta.pop("last_worker_failure", None)
-                    # The LLM worker is finished; clear its live identity so the
-                    # next reaper pass cannot misfire the dead-PID branch on the
-                    # stale PID and loop the task into a fresh respawn. Packaging
-                    # is deterministic (dispatcher step 3), not a live worker.
-                    meta.pop("worker_pid", None)
-                    meta.pop("session_id", None)
-                    meta.pop("started_at", None)
-
-                    is_triage_task = (
-                        curr_stat == "triage"
-                        or curr_asgn in ("zf-orchestrator", "zf-goldfish")
-                        or meta.get("triage_phase")
-                        in ("elephant_drafting", "goldfish_auditing", "human_approval")
-                        or bool(meta.get("awaiting_interview"))
-                        or bool(meta.get("awaiting_approval"))
-                    )
-                    blocked_reason = str(meta.get("blocked_reason") or "").lower()
-                    target_asgn = curr_asgn
-
-                    if is_triage_task and (
-                        "grill" in blocked_reason
-                        or "interview" in blocked_reason
-                        or "human" in blocked_reason
-                        or curr_asgn == "human"
-                        or meta.get("awaiting_interview")
-                    ):
-                        target_status = "triage"
-                        target_asgn = "human"
-                        meta.pop("blocked_reason", None)
-                        meta["awaiting_interview"] = True
-                    elif curr_asgn == "zf-goldfish":
-                        target_status = "triage"
-                        target_asgn = "human"
-                        meta["triage_phase"] = "human_approval"
-                        meta["awaiting_approval"] = True
-                    elif curr_asgn == "zf-orchestrator" and (
-                        meta.get("triage_phase") == "elephant_drafting"
-                        or meta.get("egm")
-                        or meta.get("specification")
-                    ):
-                        target_status = "todo"
-                        target_asgn = "zf-goldfish"
-                        meta["triage_phase"] = "goldfish_auditing"
-                    elif curr_stat in ("blocked", "todo", "triage"):
-                        target_status = curr_stat
-                    elif is_triage_task:
-                        target_status = "triage"
-                    else:
-                        # Builder/reviewer work finished: the task stays
-                        # 'running' while the deterministic pipeline packages
-                        # the worktree (precommit -> commit -> push -> PR ->
-                        # reviewer). 'done' is strictly terminal and only set
-                        # after merge/close/human close; the awaiting_pr flag
-                        # marks the packaging phase for the dispatcher.
-                        target_status = "running"
-                        meta["awaiting_pr"] = True
-
                     cursor.execute(
-                        "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                        (target_status, target_asgn, json.dumps(meta), now, task_id),
+                        "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                        (json.dumps(meta), now, task_id),
+                    )
+                    _log.info(
+                        "Worker for task %s exited with code %d but task is already in %s; keeping %s",
+                        task_id,
+                        retcode,
+                        curr_stat,
+                        curr_stat,
+                    )
+                    reaped += 1
+                    continue
+
+                meta = _d()._mark_task_session_ended(meta, now, "failed")
+                fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
+                meta["worker_failure_retries"] = fail_retries
+                meta["last_worker_failure"] = {"retcode": retcode, "failed_at": now}
+                max_worker_retries = _d().get_max_worker_retries()
+                if fail_retries >= max_worker_retries:
+                    meta["permanently_blocked"] = True
+                    reason = f"Worker process failed {fail_retries} times (limit {max_worker_retries})"
+                    meta["blocked_reason"] = reason
+                    meta["blocked_reason_type"] = "stuck"
+                    transition_task(
+                        conn,
+                        task_id,
+                        "blocked",
+                        blocked_reason=reason,
+                        metadata_patch=meta,
+                        actor="dispatcher",
+                        comment=f"Blocked: {reason}",
                     )
                     cursor.execute(
-                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_done', ?, ?)",
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed_permanently', ?, ?)",
                         (
                             task_id,
-                            f"Worker process completed successfully (exit 0); status set to {target_status} ({target_asgn})",
+                            f"Worker process failed with exit code {retcode} ({fail_retries}/{max_worker_retries} retries exceeded); task permanently blocked",
                             now,
                         ),
                     )
-                    _log.info(
-                        "Worker for task %s finished successfully (exit 0); moved to %s (%s)",
+                    _log.warning(
+                        "Worker for task %s permanently blocked after %d failures (code %d)",
                         task_id,
-                        target_status,
-                        target_asgn,
+                        fail_retries,
+                        retcode,
                     )
                 else:
-                    cursor.execute(
-                        "SELECT assignee, status, title FROM tasks WHERE id = ?",
-                        (task_id,),
+                    reason = f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})"
+                    meta["blocked_reason"] = reason
+                    retry_status = (
+                        "triage"
+                        if (row_status == "running" and curr_asgn == "zf-orchestrator")
+                        else ("todo" if row_status == "running" else "blocked")
                     )
-                    t_check = cursor.fetchone()
-                    curr_stat = t_check["status"] if t_check else ""
-                    if curr_stat in ("todo", "done"):
-                        meta = _d()._mark_task_session_ended(meta, now, "finished")
-                        cursor.execute(
-                            "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
-                            (json.dumps(meta), now, task_id),
-                        )
-                        _log.info(
-                            "Worker for task %s exited with code %d but task is already in %s; keeping %s",
+                    transition_task(
+                        conn,
+                        task_id,
+                        retry_status,
+                        blocked_reason=reason,
+                        metadata_patch=meta,
+                        actor="dispatcher",
+                        comment=f"Retrying: {reason}",
+                    )
+                    cursor.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed', ?, ?)",
+                        (
                             task_id,
-                            retcode,
-                            curr_stat,
-                            curr_stat,
-                        )
-                        reaped += 1
-                        continue
-
-                    meta = _d()._mark_task_session_ended(meta, now, "failed")
-                    fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
-                    meta["worker_failure_retries"] = fail_retries
-                    meta["last_worker_failure"] = {"retcode": retcode, "failed_at": now}
-                    max_worker_retries = _d().get_max_worker_retries()
-                    if fail_retries >= max_worker_retries:
-                        meta["permanently_blocked"] = True
-                        meta["blocked_reason"] = (
-                            f"Worker process failed {fail_retries} times (limit {max_worker_retries})"
-                        )
-                        meta["blocked_reason_type"] = "stuck"
-                        cursor.execute(
-                            "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-                            (json.dumps(meta), now, task_id),
-                        )
-                        cursor.execute(
-                            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                            (task_id, f"Blocked: {meta['blocked_reason']}", now),
-                        )
-                        cursor.execute(
-                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed_permanently', ?, ?)",
-                            (
-                                task_id,
-                                f"Worker process failed with exit code {retcode} ({fail_retries}/{max_worker_retries} retries exceeded); task permanently blocked",
-                                now,
-                            ),
-                        )
-                        _log.warning(
-                            "Worker for task %s permanently blocked after %d failures (code %d)",
-                            task_id,
-                            fail_retries,
-                            retcode,
-                        )
-                    else:
-                        meta["blocked_reason"] = (
-                            f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries})"
-                        )
-                        retry_status = (
-                            "triage"
-                            if (
-                                row_status == "running"
-                                and curr_asgn == "zf-orchestrator"
-                            )
-                            else ("todo" if row_status == "running" else "blocked")
-                        )
-                        cursor.execute(
-                            "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                            (retry_status, json.dumps(meta), now, task_id),
-                        )
-                        cursor.execute(
-                            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                            (task_id, f"Retrying: {meta['blocked_reason']}", now),
-                        )
-                        cursor.execute(
-                            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed', ?, ?)",
-                            (
-                                task_id,
-                                f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries}); queued for retry",
-                                now,
-                            ),
-                        )
-                        _log.warning(
-                            "Worker for task %s failed with exit code %d; queued for retry",
-                            task_id,
-                            retcode,
-                        )
-                reaped += 1
-                continue
-        elif pid:
-            if row_status == "running" and meta.get("awaiting_pr"):
-                # Deterministic packaging phase that still carries a stale
-                # worker_pid in metadata: the LLM worker is done and the
-                # dispatcher's step-3 owns precommit->commit->push->PR. Never
-                # treat this as a lost worker or bump the failure budget.
-                continue
-            if not _d().is_pid_alive(int(pid)):
+                            f"Worker process exited with code {retcode} (attempt {fail_retries}/{max_worker_retries}); queued for retry",
+                            now,
+                        ),
+                    )
+                    _log.warning(
+                        "Worker for task %s failed with exit code %d; queued for retry",
+                        task_id,
+                        retcode,
+                    )
+            reaped += 1
+            continue
+        elif proc is None and pid:
+            proc_state, _ = get_process_exit_code(task_id, pid)
+            if proc_state == ProcessState.CRASHED or not _d().is_pid_alive(int(pid)):
+                if row_status == "running" and meta.get("awaiting_pr"):
+                    continue
                 meta = _d()._mark_task_session_ended(meta, now, "lost")
                 fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
                 meta["worker_failure_retries"] = fail_retries
@@ -355,17 +361,19 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 max_worker_retries = _d().get_max_worker_retries()
                 if fail_retries >= max_worker_retries:
                     meta["permanently_blocked"] = True
-                    meta["blocked_reason"] = (
+                    reason = (
                         f"Worker lost {fail_retries} times (limit {max_worker_retries})"
                     )
+                    meta["blocked_reason"] = reason
                     meta["blocked_reason_type"] = "stuck"
-                    cursor.execute(
-                        "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-                        (json.dumps(meta), now, task_id),
-                    )
-                    cursor.execute(
-                        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                        (task_id, f"Blocked: {meta['blocked_reason']}", now),
+                    transition_task(
+                        conn,
+                        task_id,
+                        "blocked",
+                        blocked_reason=reason,
+                        metadata_patch=meta,
+                        actor="dispatcher",
+                        comment=f"Blocked: {reason}",
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed_permanently', ?, ?)",
@@ -376,21 +384,21 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                         ),
                     )
                 else:
-                    meta["blocked_reason"] = (
-                        f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries})"
-                    )
+                    reason = f"Worker process PID {pid} not found (attempt {fail_retries}/{max_worker_retries})"
+                    meta["blocked_reason"] = reason
                     retry_status = (
                         "triage"
                         if (row_status == "running" and curr_asgn == "zf-orchestrator")
                         else ("todo" if row_status == "running" else "blocked")
                     )
-                    cursor.execute(
-                        "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                        (retry_status, json.dumps(meta), now, task_id),
-                    )
-                    cursor.execute(
-                        "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                        (task_id, f"Retrying: {meta['blocked_reason']}", now),
+                    transition_task(
+                        conn,
+                        task_id,
+                        retry_status,
+                        blocked_reason=reason,
+                        metadata_patch=meta,
+                        actor="dispatcher",
+                        comment=f"Retrying: {reason}",
                     )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_lost', ?, ?)",
@@ -408,21 +416,12 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 reaped += 1
                 continue
         elif row_status == "running" and meta.get("awaiting_pr"):
-            # Deterministic packaging phase (LLM finished; precommit/commit/PR
-            # pipeline active in the dispatcher) — not an orphan. Step 3 of the
-            # dispatch cycle owns this task until it routes onward.
             continue
         elif row_status == "running" and not has_ongoing_session:
-            # Task is marked 'running' but has no active process, PID, or ongoing session
             claim_age = max(0, now - int(row["updated_at"] or now))
             spawning_at = meta.get("spawning_at")
             spawn_age = max(0, now - int(spawning_at)) if spawning_at else claim_age
             if spawn_age < _d().get_spawn_grace_seconds():
-                # A spawn is (or may still be) in flight: the claim stamped
-                # `spawning_at`, and worker_pid / session rows are written only
-                # after hermes finishes starting. Recovering inside this window
-                # double-dispatched the builder on zf-hdz-4dc03cee — two
-                # concurrent sessions sharing one worktree.
                 log_step_state(
                     "reap",
                     task_id,
@@ -430,10 +429,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     f"spawn in flight for {spawn_age}s (grace {_d().get_spawn_grace_seconds()}s); not an orphan yet",
                 )
                 continue
-            cursor.execute(
-                "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?",
-                (now, task_id),
-            )
+            transition_task(conn, task_id, "todo", actor="dispatcher")
             cursor.execute(
                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_recovered', 'Orphaned running task (no active worker process or session) recovered to todo', ?)",
                 (task_id, now),
@@ -472,17 +468,17 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             max_worker_retries = _d().get_max_worker_retries()
             if fail_retries >= max_worker_retries:
                 meta["permanently_blocked"] = True
-                meta["blocked_reason"] = (
-                    f"Worker timeout/inactivity {fail_retries} times (limit {max_worker_retries}): {stuck_reason}"
-                )
+                reason = f"Worker timeout/inactivity {fail_retries} times (limit {max_worker_retries}): {stuck_reason}"
+                meta["blocked_reason"] = reason
                 meta["blocked_reason_type"] = "stuck"
-                cursor.execute(
-                    "UPDATE tasks SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-                    (json.dumps(meta), now, task_id),
-                )
-                cursor.execute(
-                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                    (task_id, f"Blocked: {meta['blocked_reason']}", now),
+                transition_task(
+                    conn,
+                    task_id,
+                    "blocked",
+                    blocked_reason=reason,
+                    metadata_patch=meta,
+                    actor="dispatcher",
+                    comment=f"Blocked: {reason}",
                 )
                 cursor.execute(
                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout_permanently', ?, ?)",
@@ -493,17 +489,17 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     ),
                 )
             else:
-                meta["blocked_reason"] = (
-                    f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})"
-                )
+                reason = f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})"
+                meta["blocked_reason"] = reason
                 retry_status = "todo" if row_status == "running" else "blocked"
-                cursor.execute(
-                    "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                    (retry_status, json.dumps(meta), now, task_id),
-                )
-                cursor.execute(
-                    "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'dispatcher', ?, ?)",
-                    (task_id, f"Retrying: {meta['blocked_reason']}", now),
+                transition_task(
+                    conn,
+                    task_id,
+                    retry_status,
+                    blocked_reason=reason,
+                    metadata_patch=meta,
+                    actor="dispatcher",
+                    comment=f"Retrying: {reason}",
                 )
                 cursor.execute(
                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout', ?, ?)",
@@ -519,6 +515,8 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 stuck_reason,
             )
             reaped += 1
+
+    return reaped
 
     return reaped
 

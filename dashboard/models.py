@@ -134,10 +134,6 @@ class BoardCreate(BaseModel):
         default_factory=list,
         description="Additional GitHub usernames whose PR feedback is trusted",
     )
-    jira_url: str | None = Field(
-        default="",
-        description="Optional Jira Cloud link / project URL (e.g. https://your-domain.atlassian.net)",
-    )
     automerge: bool | None = Field(
         default=False,
         description="Enable automatic PR merging upon review approval",
@@ -188,10 +184,6 @@ class BoardUpdate(BaseModel):
         default=None,
         description="Additional GitHub usernames whose PR feedback is trusted",
     )
-    jira_url: str | None = Field(
-        default=None,
-        description="Optional Jira Cloud link / project URL (e.g. https://your-domain.atlassian.net)",
-    )
     architecture: str | None = Field(
         default=None,
         description="Inter-service architecture and dependency notes",
@@ -209,13 +201,6 @@ class BoardTestClone(BaseModel):
     slug: str | None = Field(default=None, description="Optional board slug")
     repo_alias: str | None = Field(
         default=None, description="Optional repository alias"
-    )
-
-
-class JiraSetupRequest(BaseModel):
-    jira_url: str | None = Field(
-        default=None,
-        description="Optional Jira Cloud link / project URL (e.g. https://your-domain.atlassian.net)",
     )
 
 
@@ -342,29 +327,6 @@ class DependencyLink(BaseModel):
     link_type: str | None = "blocks"
 
 
-class CronJobUpdate(BaseModel):
-    enabled: bool | None = None
-    minutes: int | None = None
-    cron_expr: str | None = None
-    schedule: dict[str, Any] | None = None
-    schedule_display: str | None = None
-    model: str | None = None
-    workdir: str | None = None
-    prompt: str | None = None
-    name: str | None = None
-    script: str | None = None
-    no_agent: bool | None = None
-    context_from: str | list[str] | None = None
-    continuity: bool | None = None
-    scan_on_idle: bool | None = None
-    idle_scan_cooldown_minutes: int | None = None
-    idle_scan_max_todo: int | None = None
-
-
-class CronToggleRequest(BaseModel):
-    enabled: bool | None = None
-
-
 class SettingsUpdate(BaseModel):
     max_active_tasks: int | None = Field(
         default=None,
@@ -390,9 +352,6 @@ class SettingsUpdate(BaseModel):
         default=None,
         ge=1,
         description="Max idle duration (seconds) with no log output before worker is considered hung (default 900)",
-    )
-    enable_cron_scheduler: bool | None = Field(
-        default=None, description="Enable periodic background cron scheduler execution"
     )
     langfuse_enabled: bool | None = Field(
         default=None,

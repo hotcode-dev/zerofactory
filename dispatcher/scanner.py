@@ -5,67 +5,94 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
+from typing import Any
 
 from .config import (
+    DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
+    DEFAULT_IDLE_SCAN_MAX_TODO,
     _active_scanners,
-    _d,
     _last_idle_scan_times,
     _log,
+    load_settings,
 )
+from .git_ops import sync_repo_main
+from .process_manager import (
+    build_shell_wrapper,
+    cleanup_process_artifacts,
+    get_exit_file_path,
+    get_process_exit_code,
+    terminate_process_group,
+)
+from .worker_spawner import _inject_langfuse_env
 
 
 def reap_active_scanners() -> int:
     """Clean up finished or exited scanner worker processes."""
     reaped = 0
     for slug, proc in list(_active_scanners.items()):
-        if proc is not None:
-            retcode = proc.poll()
-            if retcode is not None:
-                _active_scanners.pop(slug, None)
-                reaped += 1
-                _log.debug(
-                    "Scanner process for board '%s' exited with code %d", slug, retcode
-                )
+        task_ref = f"scanner_{slug}"
+        exit_code = get_process_exit_code(task_ref)
+        proc_done = proc is not None and proc.poll() is not None
+        if proc_done or exit_code is not None:
+            _active_scanners.pop(slug, None)
+            cleanup_process_artifacts(task_ref)
+            reaped += 1
+            code = exit_code if exit_code is not None else (proc.poll() if proc else 0)
+            _log.debug("Scanner process for board '%s' exited with code %s", slug, code)
     return reaped
 
 
 def _running_cron_llm_jobs() -> int:
-    """Count in-process Zero Factory cron LLM jobs (exclude No-Agent queue checks)."""
-    try:
-        from cron.scheduler import get_running_job_ids  # type: ignore
-
-        return sum(
-            job_id.startswith("zero-factory-improvement-scanner-")
-            for job_id in get_running_job_ids()
-        )
-    except (ImportError, RuntimeError):
-        return 0
+    """Obsolete stub: custom cron subsystem removed; returns 0."""
+    return 0
 
 
 def _global_llm_occupancy(running_tasks: int) -> int:
     """LLM workers currently tracked by this Zero Factory process."""
-    try:
-        from ..builtin_cron import _active_cron_runs, reap_active_cron_runs
-    except (ImportError, ValueError):
+    return running_tasks + len(_active_scanners)
+
+
+def get_scanner_cron_config(board_slug: str, cursor: Any = None) -> dict[str, Any]:
+    """Retrieve scanner configuration for a board slug from settings or environment defaults."""
+    settings: dict[str, Any] = {}
+    if cursor is not None:
         try:
-            from .builtin_cron import (  # type: ignore
-                _active_cron_runs,
-                reap_active_cron_runs,
+            settings = load_settings(cursor)
+        except Exception:
+            pass
+    else:
+        try:
+            from .config import get_db_path
+
+            db_p = get_db_path()
+            if db_p.exists():
+                import sqlite3
+
+                with sqlite3.connect(str(db_p)) as conn:
+                    settings = load_settings(conn)
+        except Exception:
+            pass
+
+    scan_on_idle = settings.get("scan_on_idle", True)
+    env_soi = os.environ.get("ZEROFACTORY_SCAN_ON_IDLE")
+    if env_soi is not None:
+        scan_on_idle = env_soi.strip().lower() in ("1", "true", "yes")
+
+    return {
+        "enabled": True,
+        "scan_on_idle": scan_on_idle,
+        "idle_scan_cooldown_minutes": int(
+            settings.get(
+                "idle_scan_cooldown_minutes", DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES
             )
-        except (ImportError, ValueError):
-            from builtin_cron import (  # type: ignore
-                _active_cron_runs,
-                reap_active_cron_runs,
-            )
-    reap_active_cron_runs()
-    running_cron = getattr(_d(), "_running_cron_llm_jobs", _running_cron_llm_jobs)()
-    return (
-        running_tasks
-        + len(_active_scanners)
-        + running_cron
-        + sum(job_id != "zero-factory-task-queue-check" for job_id in _active_cron_runs)
-    )
+        ),
+        "idle_scan_max_todo": int(
+            settings.get("idle_scan_max_todo", DEFAULT_IDLE_SCAN_MAX_TODO)
+        ),
+        "last_run_timestamp": _last_idle_scan_times.get(board_slug, 0),
+    }
 
 
 def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int | None:
@@ -75,22 +102,12 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
     ):
         return None
 
-    try:
-        try:
-            from ..builtin_cron import is_cron_scheduler_enabled
-        except (ImportError, ValueError):
-            try:
-                from .builtin_cron import is_cron_scheduler_enabled  # type: ignore
-            except (ImportError, ValueError):
-                from builtin_cron import is_cron_scheduler_enabled  # type: ignore
-        if not is_cron_scheduler_enabled():
-            _log.debug(
-                "Cron scheduler is disabled in config; skipping scanner spawn for '%s'",
-                board_slug,
-            )
-            return None
-    except Exception as e:
-        _log.debug("Scanner cron scheduler check failed: %s", e)
+    cron_cfg = get_scanner_cron_config(board_slug)
+    if not cron_cfg.get("scan_on_idle"):
+        _log.debug(
+            "Idle scanning disabled; skipping scanner spawn for '%s'", board_slug
+        )
+        return None
 
     local_hermes = Path.home() / ".local" / "bin" / "hermes"
     hermes_bin = (
@@ -98,52 +115,28 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
         or shutil.which("hermes")
         or (str(local_hermes) if local_hermes.exists() else "hermes")
     )
-    job_id = f"zero-factory-improvement-scanner-{board_slug}"
-    # Check if this scanner job is paused/disabled before running
-    try:
-        try:
-            from ..builtin_cron import (
-                get_target_jobs_files,
-                list_builtin_jobs,
-                load_jobs_from_file,
-            )
-        except (ImportError, ValueError):
-            try:
-                from .builtin_cron import (
-                    get_target_jobs_files,
-                    list_builtin_jobs,
-                    load_jobs_from_file,
-                )  # type: ignore
-            except (ImportError, ValueError):
-                from builtin_cron import (
-                    get_target_jobs_files,
-                    list_builtin_jobs,
-                    load_jobs_from_file,
-                )  # type: ignore
-        for tf in get_target_jobs_files():
-            if tf.exists():
-                for j in load_jobs_from_file(tf):
-                    if isinstance(j, dict) and j.get("id") == job_id:
-                        if not j.get("enabled", True) or j.get("state") == "paused":
-                            _log.debug(
-                                "Scanner job '%s' is paused/disabled in %s; skipping spawn",
-                                job_id,
-                                tf,
-                            )
-                            return None
-        all_jobs = list_builtin_jobs()
-        job = next((j for j in all_jobs if j.get("id") == job_id), None)
-        if job and not job.get("enabled", True):
-            _log.debug(
-                "Scanner job '%s' is paused/disabled; skipping spawn for board '%s'",
-                job_id,
-                board_slug,
-            )
-            return None
-    except Exception as e:
-        _log.debug("Scanner enabled check failed: %s", e)
 
-    cmd = [hermes_bin, "-p", "zf-orchestrator", "cron", "run", job_id, "--accept-hooks"]
+    prompt = (
+        f"Scan repository for board '{board_slug}' for improvements and "
+        "technical debt following Ponytail ladder of laziness."
+    )
+    cmd = [
+        hermes_bin,
+        "-p",
+        "zf-orchestrator",
+        "--yolo",
+        "--cli",
+        "--accept-hooks",
+        "chat",
+        "-q",
+        prompt,
+    ]
+
+    task_ref = f"scanner_{board_slug}"
+    exit_file = get_exit_file_path(task_ref)
+    if exit_file.exists():
+        exit_file.unlink(missing_ok=True)
+    wrapped_cmd = build_shell_wrapper(cmd, exit_file)
 
     log_dir = Path.home() / ".hermes" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -156,22 +149,24 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
     env["ZEROFACTORY_IDLE_SCAN"] = "1"
-    _d()._inject_langfuse_env(env)
+    _inject_langfuse_env(env)
 
     workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()
 
     if repo_path and repo_path.is_dir():
         try:
-            _d().sync_repo_main(repo_path)
+            sync_repo_main(repo_path)
         except Exception as e:
             _log.debug(
-                "Auto-pull before idle scanner spawn failed for '%s': %s", board_slug, e
+                "Auto-pull before idle scanner spawn failed for '%s': %s",
+                board_slug,
+                e,
             )
 
     try:
         log_f = open(log_file_path, "ab")
         proc = subprocess.Popen(
-            cmd,
+            wrapped_cmd,
             cwd=workdir,
             stdin=subprocess.DEVNULL,
             stdout=log_f,
@@ -181,6 +176,7 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
         )
         log_f.close()
         _active_scanners[board_slug] = proc
+        _last_idle_scan_times[board_slug] = int(time.time())
         _log.info(
             "Spawned idle improvement scanner for board '%s' (PID: %d, cwd: %s)",
             board_slug,
@@ -190,7 +186,9 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
         return proc.pid
     except Exception as e:
         _log.error(
-            "Failed to spawn idle improvement scanner for board '%s': %s", board_slug, e
+            "Failed to spawn idle improvement scanner for board '%s': %s",
+            board_slug,
+            e,
         )
         return None
 
@@ -200,6 +198,6 @@ def reset_idle_scanner_state() -> None:
     _last_idle_scan_times.clear()
     for slug, proc in list(_active_scanners.items()):
         if proc is not None and proc.poll() is None:
-            # Scanners are spawned with start_new_session=True; terminate the whole process group
-            _d().terminate_process_group(proc, proc.pid)
+            terminate_process_group(proc, proc.pid)
+        cleanup_process_artifacts(f"scanner_{slug}")
     _active_scanners.clear()

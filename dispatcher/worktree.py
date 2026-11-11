@@ -9,6 +9,7 @@ import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from .config import (
     _REMOTE_BRANCH_DELETE_TIMEOUT,
@@ -20,6 +21,7 @@ from .config import (
     _log,
     normalize_assignee,
 )
+from .state_machine import transition_task
 
 
 def _find_checked_out_worktree(repo_path: Path, branch_name: str) -> Path | None:
@@ -51,6 +53,68 @@ def _find_checked_out_worktree(repo_path: Path, branch_name: str) -> Path | None
                             return p
     except Exception:
         pass
+    return None
+
+
+def resolve_board_repo_path(board: dict[str, Any]) -> Path | None:
+    """Resolve the local repository path for a given Kanban board."""
+    slug = (board.get("slug") or "").strip()
+    git_url = (board.get("git_url") or "").strip()
+    repo_alias = (board.get("repo_alias") or "").strip()
+    if not git_url and board.get("repositories"):
+        git_url = (board["repositories"][0].get("git_url") or "").strip()
+        if not repo_alias and board["repositories"][0].get("repo_alias"):
+            repo_alias = (board["repositories"][0].get("repo_alias") or "").strip()
+    if not git_url and board.get("description"):
+        match = re.search(r"(?:https?://|git@)[^\s)]+", board["description"])
+        if match:
+            git_url = match.group(0)
+
+    repo = ""
+    if git_url:
+        cleaned_url = re.sub(r"\.git$", "", git_url.strip().rstrip("/"))
+        parts = cleaned_url.replace(":", "/").split("/")
+        if len(parts) >= 1:
+            repo = parts[-1]
+    elif "-" in slug:
+        parts = slug.split("-", 1)
+        repo = parts[1]
+
+    candidate_names = set()
+    for n in (repo_alias, slug, repo):
+        if n:
+            candidate_names.add(n)
+            candidate_names.add(n.lower())
+
+    # 0. Check if git_url is an existing local directory
+    if git_url:
+        try:
+            local_p = Path(git_url)
+            if local_p.is_dir() and (local_p / ".git").exists():
+                return local_p.resolve()
+        except Exception:
+            pass
+
+    try:
+        from paths import get_board_repos_dir  # type: ignore
+    except Exception:
+        try:
+            from ..paths import get_board_repos_dir  # type: ignore
+        except Exception:
+            get_board_repos_dir = lambda b: (  # type: ignore
+                Path.home() / ".zerofactory" / "workspaces" / b / "repos"
+            )
+
+    candidates: list[Path] = []
+    if slug:
+        board_repos_dir = get_board_repos_dir(slug)
+        for cname in candidate_names:
+            candidates.append(board_repos_dir / cname)
+
+    for cand in candidates:
+        if cand.is_dir() and (cand / ".git").exists():
+            return cand.resolve()
+
     return None
 
 
@@ -108,14 +172,6 @@ def resolve_task_repo_path(
                             return p.resolve()
                     except Exception:
                         pass
-                try:
-                    try:
-                        from ..builtin_cron import resolve_board_repo_path
-                    except (ImportError, ValueError):
-                        from .builtin_cron import resolve_board_repo_path  # type: ignore
-                except Exception:
-                    from builtin_cron import resolve_board_repo_path  # type: ignore
-
                 resolved_r = resolve_board_repo_path(
                     {"git_url": url, "slug": board_slug or alias, "repo_alias": alias}
                 )
@@ -628,9 +684,14 @@ def _handle_local_merge_conflict(
             f"Merge conflict resolution exceeded {max_conflict_retries} attempts{file_msg}"
         )
         meta["blocked_reason_type"] = "stuck"
-        cursor.execute(
-            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(meta), now, task_id),
+        transition_task(
+            cursor.connection,
+            task_id,
+            "blocked",
+            target_assignee="human",
+            blocked_reason=meta["blocked_reason"],
+            metadata_patch=meta,
+            actor="dispatcher",
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
@@ -656,9 +717,13 @@ def _handle_local_merge_conflict(
             _log.debug("Failed to record task comment for conflict limit: %s", e)
         return
 
-    cursor.execute(
-        "UPDATE tasks SET assignee = 'zf-builder', status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-        (json.dumps(meta), now, task_id),
+    transition_task(
+        cursor.connection,
+        task_id,
+        "todo",
+        target_assignee="zf-builder",
+        metadata_patch=meta,
+        actor="dispatcher",
     )
     cursor.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
@@ -901,9 +966,14 @@ def _handle_pr_conflict_from_github(
             f"GitHub PR conflict resolution exceeded {max_conflict_retries} attempts"
         )
         meta["blocked_reason_type"] = "stuck"
-        cursor.execute(
-            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(meta), now, task_id),
+        transition_task(
+            cursor.connection,
+            task_id,
+            "blocked",
+            target_assignee="human",
+            blocked_reason=meta["blocked_reason"],
+            metadata_patch=meta,
+            actor="dispatcher",
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
@@ -946,9 +1016,13 @@ def _handle_pr_conflict_from_github(
         )
 
     file_msg = f" in {', '.join(conflict_files)}" if conflict_files else ""
-    cursor.execute(
-        "UPDATE tasks SET assignee = ?, status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-        (author, json.dumps(meta), now, task_id),
+    transition_task(
+        cursor.connection,
+        task_id,
+        "todo",
+        target_assignee=author,
+        metadata_patch=meta,
+        actor="dispatcher",
     )
     cursor.execute(
         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict', ?, ?)",
@@ -1066,9 +1140,14 @@ def _handle_precommit_failure(
             f"Deterministic precommit failed after {max_retries} attempts"
         )
         meta["blocked_reason_type"] = "stuck"
-        cursor.execute(
-            "UPDATE tasks SET assignee = 'human', status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(meta), now, task_id),
+        transition_task(
+            cursor.connection,
+            task_id,
+            "blocked",
+            target_assignee="human",
+            blocked_reason=meta["blocked_reason"],
+            metadata_patch=meta,
+            actor="dispatcher",
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'precommit_failed', ?, ?)",
@@ -1119,9 +1198,13 @@ def _handle_precommit_failure(
                         stale_build,
                         e,
                     )
-        cursor.execute(
-            "UPDATE tasks SET assignee = 'zf-builder', status = 'todo', metadata = ?, updated_at = ? WHERE id = ?",
-            (json.dumps(meta), now, task_id),
+        transition_task(
+            cursor.connection,
+            task_id,
+            "todo",
+            target_assignee="zf-builder",
+            metadata_patch=meta,
+            actor="dispatcher",
         )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'precommit_failed_retry', ?, ?)",

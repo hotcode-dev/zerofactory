@@ -14,7 +14,6 @@ from dashboard.db import init_db
 from dashboard.models import TaskCreate, TaskRecoverRequest, TaskReportBugRequest
 from dashboard.routes.tasks import create_task, recover_task, report_task_bug
 from paths import ZEROFACTORY_REPO, ZEROFACTORY_GITHUB_URL, ZEROFACTORY_ISSUES_URL
-from cron.definitions import CORE_CRON_JOBS, get_all_builtin_cron_jobs
 
 
 class TestTaskRecovery(unittest.TestCase):
@@ -50,17 +49,6 @@ class TestTaskRecovery(unittest.TestCase):
         self.assertEqual(
             ZEROFACTORY_ISSUES_URL, "https://github.com/hotcode-dev/zerofactory/issues"
         )
-
-    def test_cron_definition_has_queue_watchdog(self):
-        """Verify zero-factory-task-queue-check is registered in CORE_CRON_JOBS."""
-        self.assertIn("zero-factory-task-queue-check", CORE_CRON_JOBS)
-        job = CORE_CRON_JOBS["zero-factory-task-queue-check"]
-        self.assertEqual(job["script"], "zf_queue_watchdog.py")
-        self.assertEqual(job["profile"], "zf-orchestrator")
-        self.assertTrue(job["enabled"])
-        self.assertFalse(job["no_agent"])
-        self.assertFalse(job["continuity"])
-        self.assertEqual(job["schedule"]["minutes"], 15)
 
     def test_recover_task_happy_path(self):
         """Orchestrator recovers a stuck task to todo, resets counters, and injects guidance."""

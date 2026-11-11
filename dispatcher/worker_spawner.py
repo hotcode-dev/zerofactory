@@ -22,6 +22,7 @@ from .config import (
     normalize_assignee,
     resolve_profile_state_db,
 )
+from .process_manager import build_shell_wrapper, cleanup_process_artifacts
 
 
 def _inject_langfuse_env(env: dict[str, str], conn_or_cursor: Any = None) -> None:
@@ -710,6 +711,10 @@ def spawn_agent_worker(
     _d()._inject_langfuse_env(env)
 
     try:
+        cleanup_process_artifacts(task_id)
+        exit_prefix = log_dir / f"worker_{task_id}"
+        wrapped_cmd = build_shell_wrapper(cmd, exit_prefix)
+
         log_f = open(log_file_path, "ab")
         try:
             os.utime(log_file_path, None)
@@ -717,7 +722,7 @@ def spawn_agent_worker(
             pass
         spawn_time = time.time()
         proc = subprocess.Popen(
-            cmd,
+            wrapped_cmd,
             cwd=str(workdir),
             stdin=subprocess.DEVNULL,
             stdout=log_f,

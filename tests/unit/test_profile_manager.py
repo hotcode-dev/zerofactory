@@ -53,9 +53,8 @@ class TestProfileManagerUnit(unittest.TestCase):
                 self.assertGreater(len(copied), 0)
 
                 expected_scripts = [
-                    "zf_queue_watchdog.py",
-                    "zf_scanner_gate.py",
                     "zf_daily_stats.py",
+                    "zf_openwiki_gate.py",
                 ]
                 for s in expected_scripts:
                     root_s = fake_home / "scripts" / s

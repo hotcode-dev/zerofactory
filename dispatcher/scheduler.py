@@ -22,7 +22,6 @@ from .config import (
     DISPATCH_INTERVAL_SECONDS,
     _active_scanners,
     _active_workers,
-    _d,
     _dispatcher_lock,
     _dispatcher_thread,
     _last_idle_scan_times,
@@ -33,11 +32,14 @@ from .config import (
     log_step_state,
     normalize_assignee,
 )
+from .process_manager import is_pid_alive
+from .state_machine import transition_task
 
 
 def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
     """Execute one full dispatch cycle."""
-    _disp = _d()
+    import dispatcher as _disp
+
     _subprocess = getattr(_disp, "subprocess", subprocess)
 
     if db_path is None:
@@ -94,17 +96,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                 except Exception:
                     settings = {}
 
-                try:
-                    task_cols = {
-                        c[1]
-                        for c in cursor.execute("PRAGMA table_info(tasks)").fetchall()
-                    }
-                except Exception:
-                    task_cols = set()
-                repo_col = ", repo_alias" if "repo_alias" in task_cols else ""
-                tags_col = ", tags" if "tags" in task_cols else ""
-                desc_col = ", description" if "description" in task_cols else ""
-
                 # 1. Unblock tasks whose parent dependencies are all done
                 cursor.execute("""
                     SELECT id, title FROM tasks
@@ -119,10 +110,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     )
                 """)
                 for row in cursor.fetchall():
-                    cursor.execute(
-                        "UPDATE tasks SET status = 'todo', updated_at = ? WHERE id = ?",
-                        (now, row["id"]),
-                    )
+                    transition_task(conn, row["id"], "todo", actor="dispatcher")
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'unblock', 'All parent dependencies satisfied; moved to todo', ?)",
                         (row["id"], now),
@@ -173,11 +161,18 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     )
                     running_triage_workers = cursor.fetchone()[0]
 
-                    cursor.execute(f"""
-                        SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug, status{repo_col} FROM tasks
-                        WHERE status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator')
-                        ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
-                    """)
+                    try:
+                        cursor.execute("""
+                            SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug, status, repo_alias FROM tasks
+                            WHERE status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator')
+                            ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
+                        """)
+                    except sqlite3.OperationalError:
+                        cursor.execute("""
+                            SELECT id, title, description, priority, workspace_path, assignee, tenant, branch_name, metadata, board_slug, status, NULL as repo_alias FROM tasks
+                            WHERE status = 'todo' OR (status = 'triage' AND assignee = 'zf-orchestrator')
+                            ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END, created_at ASC
+                        """)
                     for row in cursor.fetchall():
                         if (
                             active_count >= max_active_tasks
@@ -215,7 +210,7 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             for s in cand_sessions
                         ):
                             cand_pid = cand_meta.get("worker_pid")
-                            if cand_pid and _d().is_pid_alive(int(cand_pid)):
+                            if cand_pid and is_pid_alive(int(cand_pid)):
                                 continue
                         title = row["title"] or ""
                         description = row["description"] or ""
@@ -428,11 +423,18 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         if session_id:
                             meta["session_id"] = session_id
                         meta["started_at"] = now
+                        meta.pop("spawning_at", None)
 
-                        cursor.execute(
-                            "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
-                            (json.dumps(meta), now, task_id),
-                        )
+                        try:
+                            cursor.execute(
+                                "UPDATE tasks SET worker_pid = ?, started_at = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                                (pid, now, json.dumps(meta), now, task_id),
+                            )
+                        except sqlite3.OperationalError:
+                            cursor.execute(
+                                "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
+                                (json.dumps(meta), now, task_id),
+                            )
                         cursor.execute(
                             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'start', ?, ?)",
                             (
@@ -462,13 +464,22 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
 
                 # 3. Handle Blocked / Completed Tasks (PR generation & Reviewer handoff)
                 if not os.environ.get("ZEROFACTORY_SKIP_GIT"):
-                    cursor.execute(f"""
-                        SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata{repo_col}{tags_col}{desc_col} FROM tasks
-                        WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
-                           OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator'))
-                           OR (status = 'running' AND metadata LIKE '%"awaiting_pr": true%')
-                           OR (status = 'done' AND (workspace_path IS NOT NULL OR metadata LIKE '%"close_pr": true%'))
-                    """)
+                    try:
+                        cursor.execute("""
+                            SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata, repo_alias, tags, description FROM tasks
+                            WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
+                               OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator'))
+                               OR (status = 'running' AND metadata LIKE '%"awaiting_pr": true%')
+                               OR (status = 'done' AND (workspace_path IS NOT NULL OR metadata LIKE '%"close_pr": true%'))
+                        """)
+                    except sqlite3.OperationalError:
+                        cursor.execute("""
+                            SELECT id, title, workspace_path, assignee, tenant, branch_name, pr_url, board_slug, status, metadata, NULL as repo_alias, NULL as tags, description FROM tasks
+                            WHERE (status != 'done' AND pr_url IS NOT NULL AND pr_url != '')
+                               OR (status = 'blocked' AND assignee NOT IN ('zf-reviewer', 'human', 'zf-orchestrator'))
+                               OR (status = 'running' AND metadata LIKE '%"awaiting_pr": true%')
+                               OR (status = 'done' AND (workspace_path IS NOT NULL OR metadata LIKE '%"close_pr": true%'))
+                        """)
                     for row in cursor.fetchall():
                         task_id = str(row["id"])
                         title = row["title"]
@@ -1030,7 +1041,8 @@ def _poll_pr_and_route_review(
     finalization, GitHub CONFLICTING -> builder conflict flow, and deterministic
     verdict routing (blocked_reason_type code or GitHub reviewDecision).
     """
-    _disp = _d()
+    import dispatcher as _disp
+
     task_id = str(row["id"])
     title = row["title"]
     assignee = row["assignee"]
@@ -1732,7 +1744,8 @@ def _package_and_open_pr(
     reviewer. On failure the task is left in place and the next cycle retries
     idempotently. "No commits between" completes the task as done.
     """
-    _disp = _d()
+    import dispatcher as _disp
+
     task_id = str(row["id"])
     title = row["title"]
     assignee = row["assignee"]
@@ -2300,7 +2313,8 @@ def _finalize_terminal_done(
     up leftovers (stale worker / worktree / open PR & branch) and clear the
     workspace pointer.
     """
-    _disp = _d()
+    import dispatcher as _disp
+
     task_id = str(row["id"])
     steps = StepTracker(task_id)
     steps.start("done.cleanup", f"pr={row['pr_url'] or '-'}")
@@ -2350,33 +2364,12 @@ def _finalize_terminal_done(
 
 
 def _dispatcher_loop():
-    """Background polling daemon thread for Kanban dispatch and periodic cron ticks."""
+    """Background polling daemon thread for Kanban dispatch."""
     while True:
         try:
-            _d().run_dispatch_cycle()
+            run_dispatch_cycle()
         except Exception as e:
             _log.error("Unexpected error in background dispatcher loop: %s", e)
-
-        try:
-            try:
-                from ..builtin_cron import is_cron_scheduler_enabled, tick_builtin_cron
-            except (ImportError, ValueError):
-                try:
-                    from .builtin_cron import (
-                        is_cron_scheduler_enabled,
-                        tick_builtin_cron,
-                    )  # type: ignore
-                except (ImportError, ValueError):
-                    from builtin_cron import (
-                        is_cron_scheduler_enabled,
-                        tick_builtin_cron,
-                    )  # type: ignore
-            if is_cron_scheduler_enabled():
-                tick_builtin_cron()
-            else:
-                _log.debug("Builtin cron scheduler disabled; skipping periodic tick")
-        except Exception as e:
-            _log.debug("Builtin cron tick check: %s", e)
 
         time.sleep(DISPATCH_INTERVAL_SECONDS)
 

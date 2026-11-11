@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS boards (
     architecture TEXT NOT NULL DEFAULT '',
     max_concurrent_running INTEGER NOT NULL DEFAULT 1,
     auto_record_memory INTEGER NOT NULL DEFAULT 1,
-    jira_url TEXT NOT NULL DEFAULT '',
+    automerge INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     tenant TEXT DEFAULT '',
     skills TEXT DEFAULT '[]',
     tags TEXT DEFAULT '[]',
+    worker_pid INTEGER DEFAULT NULL,
+    started_at INTEGER DEFAULT NULL,
+    blocked_reason TEXT DEFAULT NULL,
     metadata TEXT DEFAULT '{}',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,

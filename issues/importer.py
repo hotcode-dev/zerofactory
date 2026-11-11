@@ -50,19 +50,16 @@ def resolve_board_for_issue(
             if row:
                 return str(row["slug"])
 
-        # 2. Try matching repo_or_project to git_url, jira_url, or slug in boards
+        # 2. Try matching repo_or_project to git_url, repo_alias, or slug in boards
         if repo_or_project:
             cursor.execute(
-                "SELECT b.slug, b.jira_url, br.git_url, br.repo_alias FROM boards b LEFT JOIN board_repositories br ON b.slug = br.board_slug ORDER BY b.created_at ASC"
+                "SELECT b.slug, br.git_url, br.repo_alias FROM boards b LEFT JOIN board_repositories br ON b.slug = br.board_slug ORDER BY b.created_at ASC"
             )
             for row in cursor.fetchall():
                 row_dict = dict(row)
                 slug = str(row_dict.get("slug") or "")
                 git_url = str(row_dict.get("git_url") or "")
                 repo_alias = str(row_dict.get("repo_alias") or "")
-                jira_url = str(row_dict.get("jira_url") or "")
-                if jira_url and repo_or_project.lower() in jira_url.lower():
-                    return slug
                 if repo_alias and repo_or_project.lower() in repo_alias.lower():
                     return slug
                 # Normalize git_url (strip .git, protocol)

@@ -297,17 +297,8 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
             ).fetchone()[0]
             self.assertEqual(status, "blocked")
 
-    def test_05_cli_cron_and_dispatch(self):
-        """CLI cron commands and dispatch trigger."""
-        # Cron list
-        out_cron = self._run_cli(["cron", "list"])
-        self.assertIn("zero-factory-task-queue-check", out_cron)
-
-        # Cron sync
-        out_sync = self._run_cli(["cron", "sync"])
-        self.assertIn("Synced builtin cron jobs", out_sync)
-
-        # Dispatch command
+    def test_05_cli_dispatch(self):
+        """CLI dispatch trigger."""
         out_disp = self._run_cli(["dispatch"])
         self.assertIn("Dispatch result", out_disp)
 

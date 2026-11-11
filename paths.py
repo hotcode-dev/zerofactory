@@ -53,6 +53,9 @@ PROFILE_MAP = {
     "zf-goldfish": "zf-goldfish",
 }
 
+#: Canonical sequence of recognized agent roles.
+AGENT_ROLES = tuple(PROFILE_MAP)
+
 #: Sentinel assignee meaning "no agent is responsible for this task".
 UNASSIGNED = "unassigned"
 

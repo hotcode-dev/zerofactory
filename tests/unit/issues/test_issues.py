@@ -1,4 +1,4 @@
-"""Unit tests for Zero Factory external issue tracker integration (GitHub & Jira)."""
+"""Unit tests for Zero Factory external issue tracker integration (GitHub)."""
 
 import json
 import sqlite3
@@ -11,7 +11,6 @@ import pytest
 from dashboard.plugin_api import create_board, BoardCreate
 from issues.base import ExternalIssue
 from issues.github import GitHubIssueClient, parse_github_issue_ref
-from issues.jira import JiraIssueClient, parse_jira_issue_ref, extract_adf_text
 from issues.importer import import_external_issue, resolve_board_for_issue
 
 
@@ -26,15 +25,6 @@ class TestExternalIssueModel:
         )
         assert issue_gh.to_dedup_key() == "issue:github:hotcode-dev/zerofactory:42"
 
-        issue_jira = ExternalIssue(
-            source="jira",
-            id="PROJ-789",
-            key="PROJ-789",
-            title="Refactor auth service",
-            repo_or_project="PROJ",
-        )
-        assert issue_jira.to_dedup_key() == "issue:jira:proj:proj-789"
-
     def test_deterministic_task_id(self):
         issue_gh = ExternalIssue(
             source="github",
@@ -46,15 +36,6 @@ class TestExternalIssueModel:
         # Board code for "hotcode-dev-zerofactory" -> "hdz"
         assert issue_gh.to_task_id("hotcode-dev-zerofactory") == "zf-hdz-gh42"
         assert issue_gh.to_task_id(None) == "zf-gh42"
-
-        issue_jira = ExternalIssue(
-            source="jira",
-            id="PROJ-123",
-            key="PROJ-123",
-            title="Update dependencies",
-            repo_or_project="PROJ",
-        )
-        assert issue_jira.to_task_id("ntsd-sdp-compact") == "zf-nsc-jiproj123"
 
     def test_priority_inference(self):
         p0_issue = ExternalIssue(
@@ -280,156 +261,6 @@ class TestGitHubParserAndClient:
             client.fetch_issue("9999")
 
 
-class TestJiraParserAndClient:
-    def test_parse_jira_issue_ref(self):
-        proj, key = parse_jira_issue_ref(
-            "https://mycompany.atlassian.net/browse/PROJ-456"
-        )
-        assert proj == "PROJ"
-        assert key == "PROJ-456"
-
-        proj, key = parse_jira_issue_ref("PROJ-456")
-        assert proj == "PROJ"
-        assert key == "PROJ-456"
-
-        proj, key = parse_jira_issue_ref("456", default_project="PROJ")
-        assert proj == "PROJ"
-        assert key == "PROJ-456"
-
-    def test_jira_mock_payload_parsing(self):
-        client = JiraIssueClient(
-            base_url="https://company.atlassian.net", default_project="AUTH"
-        )
-        fake_jira_data = {
-            "fields": {
-                "summary": "Implement OAuth2 PKCE",
-                "description": "Add PKCE validation for SPA clients",
-                "reporter": {"displayName": "Security Lead"},
-                "status": {"name": "In Progress"},
-                "labels": ["security", "p1", "feature"],
-                "assignee": {"displayName": "Dev Two"},
-            }
-        }
-        issue = client.fetch_issue("AUTH-101", mock_data=fake_jira_data)
-        assert issue.source == "jira"
-        assert issue.id == "AUTH-101"
-        assert issue.key == "AUTH-101"
-        assert issue.title == "Implement OAuth2 PKCE"
-        assert issue.url == "https://company.atlassian.net/browse/AUTH-101"
-        assert issue.author == "Security Lead"
-        assert issue.labels == ["security", "p1", "feature"]
-        assert issue.infer_category() == "security"
-        assert issue.infer_priority() == "P0"
-        assert issue.issue_type == "feature"
-
-    def test_jira_client_resolves_base_url_from_board(self, tmp_path, monkeypatch):
-        db_file = tmp_path / "zerofactory.db"
-        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
-        create_board(
-            BoardCreate(
-                git_url="https://github.com/myorg/myrepo.git",
-                jira_url="https://myteam.atlassian.net",
-            )
-        )
-        client = JiraIssueClient(board_slug="myorg-myrepo")
-        assert client.base_url == "https://myteam.atlassian.net"
-
-    def test_extract_adf_text(self):
-        adf_doc = {
-            "type": "doc",
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "This is a test description."},
-                    ],
-                },
-                {
-                    "type": "bulletList",
-                    "content": [
-                        {
-                            "type": "listItem",
-                            "content": [
-                                {
-                                    "type": "paragraph",
-                                    "content": [{"type": "text", "text": "Item 1"}],
-                                }
-                            ],
-                        }
-                    ],
-                },
-            ],
-        }
-        text = extract_adf_text(adf_doc)
-        assert "This is a test description." in text
-        assert "Item 1" in text
-
-    @patch("urllib.request.urlopen")
-    def test_jira_check_connection(self, mock_urlopen):
-        # 1. Successful connection
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__enter__.return_value = mock_resp
-        mock_urlopen.return_value = mock_resp
-
-        client = JiraIssueClient(
-            base_url="https://domain.atlassian.net",
-            email="bot@example.com",
-            api_token="dummy-token",
-        )
-        res = client.check_connection()
-        assert res["ok"]
-        assert res["connected"]
-        assert res["authenticated"]
-        assert client.test_connection()
-
-        # 2. No URL configured
-        empty_client = JiraIssueClient()
-        res_empty = empty_client.check_connection()
-        assert not res_empty["ok"]
-        assert not empty_client.test_connection()
-
-    @patch("urllib.request.urlopen")
-    def test_jira_fetch_issue_live_rest(self, mock_urlopen):
-        fake_api_data = {
-            "fields": {
-                "summary": "Fix login crash",
-                "description": {
-                    "type": "doc",
-                    "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [
-                                {"type": "text", "text": "Null pointer on submit"}
-                            ],
-                        }
-                    ],
-                },
-                "reporter": {"displayName": "Bob Builder"},
-                "status": {"name": "To Do"},
-                "labels": ["bug", "critical"],
-                "assignee": {"displayName": "Alice"},
-            }
-        }
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(fake_api_data).encode("utf-8")
-        mock_resp.__enter__.return_value = mock_resp
-        mock_urlopen.return_value = mock_resp
-
-        client = JiraIssueClient(
-            base_url="https://domain.atlassian.net",
-            email="bot@example.com",
-            api_token="token",
-        )
-        issue = client.fetch_issue("PROJ-999")
-        assert issue.key == "PROJ-999"
-        assert issue.title == "Fix login crash"
-        assert "Null pointer on submit" in issue.body
-        assert issue.author == "Bob Builder"
-        assert issue.issue_type == "bug"
-        assert issue.infer_priority() == "P0"
-
-
 class TestImporterIdempotencyAndDeterminism:
     @pytest.fixture(autouse=True)
     def setup_db(self, tmp_path, monkeypatch):
@@ -507,41 +338,6 @@ class TestImporterIdempotencyAndDeterminism:
         assert res["title"] == "[Triage] [Feature] [#43] Add dark mode support"
         assert res["category"] == "feature"
         assert res["assignee"] == "zf-orchestrator"
-
-    def test_resolve_board_matching_jira_url(self, tmp_path, monkeypatch):
-        db_file = tmp_path / "zerofactory.db"
-        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
-        create_board(
-            BoardCreate(
-                git_url="https://github.com/corp/core.git",
-                jira_url="https://corp.atlassian.net",
-            )
-        )
-        matched_slug = resolve_board_for_issue("corp.atlassian.net", db_path=db_file)
-        assert matched_slug == "corp-core"
-
-    def test_board_crud_with_jira_url(self, tmp_path, monkeypatch):
-        from dashboard.routes.boards import update_board, list_boards
-        from dashboard.models import BoardUpdate
-
-        db_file = tmp_path / "zerofactory.db"
-        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
-        create_board(
-            BoardCreate(
-                git_url="https://github.com/myorg/alpha.git",
-                jira_url="https://alpha.atlassian.net",
-            )
-        )
-        boards = list_boards()["boards"]
-        alpha = next(b for b in boards if b["slug"] == "myorg-alpha")
-        assert alpha["jira_url"] == "https://alpha.atlassian.net"
-
-        update_board(
-            "myorg-alpha", BoardUpdate(jira_url="https://new-alpha.atlassian.net")
-        )
-        boards_after = list_boards()["boards"]
-        alpha_after = next(b for b in boards_after if b["slug"] == "myorg-alpha")
-        assert alpha_after["jira_url"] == "https://new-alpha.atlassian.net"
 
 
 class TestCliImportGhIssue:
@@ -652,58 +448,6 @@ class TestCliImportGhIssue:
         cmd_runner(args)
         out2 = capsys.readouterr().out
         assert "[Duplicate Skipped]" in out2
-
-    @patch("issues.jira.JiraIssueClient.fetch_issue")
-    def test_cli_import_jira_issue(
-        self, mock_jira_fetch, tmp_path, monkeypatch, capsys
-    ):
-        import argparse
-        import __init__ as plugin_main
-
-        db_file = tmp_path / "zerofactory.db"
-        monkeypatch.setenv("ZEROFACTORY_DB", str(db_file))
-        create_board(
-            BoardCreate(
-                git_url="https://github.com/corp/jira-proj.git",
-                jira_url="https://corp.atlassian.net",
-            )
-        )
-
-        mock_jira_fetch.return_value = ExternalIssue(
-            source="jira",
-            id="PROJ-202",
-            key="PROJ-202",
-            title="Database migration lockup",
-            body="Postgres transaction hangs",
-            repo_or_project="PROJ",
-            author="DBA",
-            labels=["bug", "p0"],
-            issue_type="bug",
-        )
-
-        fake_ctx = MagicMock()
-        fake_ctx.register_cli_command = MagicMock()
-        plugin_main.register(fake_ctx)
-        cmd_runner = fake_ctx.register_cli_command.call_args[1]["handler_fn"]
-
-        args = argparse.Namespace(
-            action="import-jira-issue",
-            issue="PROJ-202",
-            project="PROJ",
-            board="corp-jira-proj",
-            status="triage",
-            priority=None,
-            assignee="zf-orchestrator",
-            type=None,
-            actor="test-user",
-        )
-
-        cmd_runner(args)
-        out = capsys.readouterr().out
-        assert "Successfully imported Jira issue PROJ-202" in out
-        assert "Type:       Bug" in out
-        assert "Board:      corp-jira-proj" in out
-        assert "Assignee:   zf-orchestrator" in out
 
 
 class TestSetupGhIssuesScript:

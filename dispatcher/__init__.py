@@ -132,6 +132,11 @@ from .process_manager import (
     terminate_process_group,
     terminate_worker_process,
 )
+from .state_machine import (
+    InvalidStateTransitionError,
+    VALID_TRANSITIONS,
+    transition_task,
+)
 from .reaper import (
     _compute_stuck_state,
     _mark_task_session_ended,
@@ -141,10 +146,10 @@ from .reaper import (
     reap_active_workers,
     reap_stuck_tasks,
 )
-from cron.definitions import get_scanner_cron_config
 from .scanner import (
     _global_llm_occupancy,
     _running_cron_llm_jobs,
+    get_scanner_cron_config,
     reap_active_scanners,
     reset_idle_scanner_state,
     spawn_board_scanner,
@@ -165,6 +170,7 @@ from .worktree import (
     _handle_pr_conflict_from_github,
     _handle_precommit_failure,
     _remove_worktree,
+    resolve_board_repo_path,
     resolve_task_repo_path,
     run_deterministic_precommit,
     setup_worktree,
@@ -244,6 +250,10 @@ __all__ = [
     "terminate_worker_process",
     "stop_task_worker",
     "_inject_langfuse_env",
+    # State Machine
+    "VALID_TRANSITIONS",
+    "InvalidStateTransitionError",
+    "transition_task",
     # Reaper
     "_worker_log_path",
     "_compute_stuck_state",
@@ -261,6 +271,7 @@ __all__ = [
     "reset_idle_scanner_state",
     # Worktree
     "_find_checked_out_worktree",
+    "resolve_board_repo_path",
     "resolve_task_repo_path",
     "setup_worktree",
     "run_deterministic_precommit",

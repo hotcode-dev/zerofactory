@@ -120,7 +120,8 @@ def _seed_task(db_path: Path, metadata: dict, workspace_dir: Path):
             "VALUES ('b1', 'main', 'https://github.com/foo/bar.git', 'main')"
         )
         conn.execute(
-            "INSERT INTO tasks VALUES (?, 'Work Item', '', 'running', 'zf-builder', "
+            "INSERT INTO tasks (id, title, description, status, assignee, priority, metadata, skills, workspace_kind, workspace_path, branch_name, board_slug, tenant, pr_url, updated_at, created_at) "
+            "VALUES (?, 'Work Item', '', 'running', 'zf-builder', "
             "'P1', ?, '[]', '', ?, '', 'b1', '', '', ?, ?)",
             (TASK_ID, json.dumps(metadata), str(workspace_dir), now, now),
         )

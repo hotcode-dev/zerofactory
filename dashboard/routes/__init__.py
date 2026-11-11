@@ -17,31 +17,19 @@ from fastapi import APIRouter, Response
 try:
     from .agents import router as agents_router
     from .boards import router as boards_router
-    from .cron import router as cron_router
     from .dispatch import router as dispatch_router
     from .memories import router as memories_router
     from .settings import router as settings_router
     from .stats import router as stats_router
     from .tasks import router as tasks_router
 except (ImportError, ValueError):
-    try:
-        from routes.agents import router as agents_router  # type: ignore
-        from routes.boards import router as boards_router  # type: ignore
-        from routes.cron import router as cron_router  # type: ignore
-        from routes.dispatch import router as dispatch_router  # type: ignore
-        from routes.memories import router as memories_router  # type: ignore
-        from routes.settings import router as settings_router  # type: ignore
-        from routes.stats import router as stats_router  # type: ignore
-        from routes.tasks import router as tasks_router  # type: ignore
-    except (ImportError, ValueError):
-        from .agents import router as agents_router  # type: ignore
-        from .boards import router as boards_router  # type: ignore
-        from .cron import router as cron_router  # type: ignore
-        from .dispatch import router as dispatch_router  # type: ignore
-        from .memories import router as memories_router  # type: ignore
-        from .settings import router as settings_router  # type: ignore
-        from .stats import router as stats_router  # type: ignore
-        from .tasks import router as tasks_router  # type: ignore
+    from routes.agents import router as agents_router  # type: ignore
+    from routes.boards import router as boards_router  # type: ignore
+    from routes.dispatch import router as dispatch_router  # type: ignore
+    from routes.memories import router as memories_router  # type: ignore
+    from routes.settings import router as settings_router  # type: ignore
+    from routes.stats import router as stats_router  # type: ignore
+    from routes.tasks import router as tasks_router  # type: ignore
 
 router = APIRouter()
 router.include_router(boards_router)
@@ -49,7 +37,6 @@ router.include_router(tasks_router)
 router.include_router(stats_router)
 router.include_router(settings_router)
 router.include_router(dispatch_router)
-router.include_router(cron_router)
 router.include_router(memories_router)
 router.include_router(agents_router)
 
@@ -72,7 +59,6 @@ def global_options_handler(full_path: str = ""):
 __all__ = [
     "agents_router",
     "boards_router",
-    "cron_router",
     "dispatch_router",
     "memories_router",
     "router",

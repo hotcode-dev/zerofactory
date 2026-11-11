@@ -112,8 +112,45 @@ def test_spawn_agent_worker_cmd_and_session_isolation():
             env = kwargs.get("env", {})
 
             assert "--yolo" in cmd
+            assert cmd[0] == "sh"
+            assert cmd[1] == "-c"
+            assert "zf-runner" in cmd
             assert kwargs.get("start_new_session") is True
             assert env.get("HERMES_PROFILE") == "zf-reviewer"
+
+
+def test_spawn_agent_worker_cleans_artifacts():
+    """Verify spawn_agent_worker calls cleanup_process_artifacts and builds wrapper."""
+    with (
+        tempfile.TemporaryDirectory() as tmp_ws,
+        patch("dispatcher.worker_spawner.cleanup_process_artifacts") as mock_cleanup,
+        patch(
+            "dispatcher.worker_spawner.build_shell_wrapper",
+            wraps=lambda cmd, prefix: ["wrapped"] + cmd,
+        ) as mock_wrap,
+        patch("subprocess.Popen") as mock_popen,
+        patch.dict(os.environ, {}, clear=False),
+    ):
+        os.environ.pop("ZEROFACTORY_SKIP_WORKER_SPAWN", None)
+        mock_proc = MagicMock()
+        mock_proc.pid = 1111
+        mock_proc.poll.return_value = 0
+        mock_popen.return_value = mock_proc
+
+        spawn_agent_worker(
+            task_id="t-clean",
+            title="Clean test",
+            assignee="zf-builder",
+            priority="P1",
+            description="desc",
+            workspace_path=tmp_ws,
+            branch_name="task/t-clean",
+        )
+
+        mock_cleanup.assert_called_once_with("t-clean")
+        assert mock_wrap.called
+        args, _ = mock_popen.call_args
+        assert args[0][0] == "wrapped"
 
 
 def _spawn_builder_with_comment(body: str, task_id: str) -> str:

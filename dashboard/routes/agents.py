@@ -19,6 +19,11 @@ if _DASHBOARD_ROOT not in sys.path:
 from fastapi import APIRouter
 
 try:
+    from ...paths import AGENT_ROLES  # type: ignore
+except (ImportError, ValueError):
+    from paths import AGENT_ROLES  # type: ignore
+
+try:
     from ..db import get_db_conn, init_db
     from ..session_service import (
         AGENT_ICONS,
@@ -60,13 +65,14 @@ def list_all_sessions(
 
 @router.get("/agents")
 def get_agents_status(board_slug: str | None = None):
-    """Retrieve real-time status and telemetry for the 3 Zero Factory specialist agents."""
+    """Retrieve real-time status and telemetry for Zero Factory specialist agents."""
     init_db()
-    profiles = ["zf-orchestrator", "zf-builder", "zf-reviewer"]
+    profiles = list(AGENT_ROLES)
     role_descriptions = {
         "zf-orchestrator": "Backlog planning, triage, workflow coordination & improvement scans",
         "zf-builder": "Autonomous code implementation, bug fixing, test writing & pull requests",
         "zf-reviewer": "Automated pull request review, edge case verification & test suite execution",
+        "zf-goldfish": "Adversarial spec audit, acceptance criteria & Ponytail ladder validation",
     }
 
     running_tasks_by_assignee = {}

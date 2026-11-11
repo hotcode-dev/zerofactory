@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import json
 import os
 import signal
@@ -9,8 +10,45 @@ import sqlite3
 import subprocess
 import time
 from pathlib import Path
+from typing import Optional, Tuple
 
-from .config import _active_workers, _d, _log
+from .config import _active_workers, _log
+
+
+class ProcessState(str, enum.Enum):
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    CRASHED = "CRASHED"
+
+
+def build_shell_wrapper(cmd: list[str], exit_prefix: Path | str) -> list[str]:
+    """Wrap command in a POSIX shell invocation that atomically writes integer exit code on exit/signal."""
+    script = (
+        'prefix="$1"; shift; '
+        'trap "rc=\\$?; printf \\"%d\\n\\" \\"\\$rc\\" > \\"${prefix}.exit.tmp\\" && '
+        'mv \\"${prefix}.exit.tmp\\" \\"${prefix}.exit\\"; exit \\$rc" EXIT INT TERM; '
+        '"$@"'
+    )
+    return ["sh", "-c", script, "zf-runner", str(exit_prefix)] + cmd
+
+
+def get_exit_file_path(task_id: str) -> Path:
+    """Return standard .exit file path for a task worker in ~/.hermes/logs."""
+    logs_dir = Path.home() / ".hermes" / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return logs_dir / f"worker_{task_id}.exit"
+
+
+def cleanup_process_artifacts(task_id: str) -> None:
+    """Unlink lingering .exit and .exit.tmp files for task_id."""
+    logs_dir = Path.home() / ".hermes" / "logs"
+    for name in (f"worker_{task_id}.exit", f"worker_{task_id}.exit.tmp"):
+        p = logs_dir / name
+        try:
+            if p.exists():
+                p.unlink()
+        except OSError:
+            pass
 
 
 def is_pid_alive(pid: int | None) -> bool:
@@ -44,6 +82,49 @@ def is_pid_alive(pid: int | None) -> bool:
     return True
 
 
+def get_process_exit_code(
+    task_id: str, pid: int | None
+) -> Tuple[ProcessState, Optional[int]]:
+    """Determine process status and return code using .exit file and OS PID checks.
+
+    Returns:
+        (ProcessState.COMPLETED, returncode): when .exit file exists and is parsed.
+        (ProcessState.RUNNING, None): when process is actively running and matches identity.
+        (ProcessState.CRASHED, -1): when process is missing or zombie with no .exit file.
+    """
+    exit_path = get_exit_file_path(task_id)
+    if exit_path.exists():
+        try:
+            content = exit_path.read_text(encoding="utf-8").strip()
+            if content:
+                rc = int(content)
+                return ProcessState.COMPLETED, rc
+        except Exception:
+            pass
+
+    if pid and is_pid_alive(pid):
+        # Validate process identity before confirming running state
+        is_hermes = False
+        try:
+            cmdline_path = Path(f"/proc/{pid}/cmdline")
+            if cmdline_path.exists():
+                cmd_data = cmdline_path.read_bytes().decode("utf-8", errors="replace")
+                if (
+                    "hermes" in cmd_data
+                    or task_id in cmd_data
+                    or "zf-runner" in cmd_data
+                ):
+                    is_hermes = True
+            else:
+                is_hermes = True
+        except Exception:
+            is_hermes = True
+        if is_hermes:
+            return ProcessState.RUNNING, None
+
+    return ProcessState.CRASHED, -1
+
+
 def terminate_process_group(
     proc: subprocess.Popen | None, pid: int | None, grace: float = 2.0
 ) -> None:
@@ -52,35 +133,18 @@ def terminate_process_group(
     All Zero Factory spawn sites run children with ``start_new_session=True``
     so the tree survives the spawner; the direct child (the ``hermes`` CLI
     wrapper) spawns its own descendants (the agent loop, git, npm, network
-    subprocesses). Signalling only the direct child (``proc.terminate()`` /
-    ``os.kill(pid, ...)``) left the whole descendant tree orphaned: it kept
-    consuming LLM API credits, could write to the worktree/GitHub after the
-    task had already transitioned, and (when a descendant held the combined
-    stdout log pipe open) blocked the dispatcher on ``proc.wait(timeout=...)``.
+    subprocesses).
 
     Because ``start_new_session=True`` puts the child in a NEW session whose
     PGID equals its PID, ``os.killpg`` on that group reaches every descendant.
-    Linux-only (``os.killpg``); Windows is not a target platform.
-
-    Fail-open contract (matches the previous child-only termination path):
-    every failure mode — dead/unknown group (``ProcessLookupError``),
-    permission problems, recycled PIDs — is logged and swallowed; this never
-    raises. A cheap pre-flight ``killpg(pgid, 0)`` probes the group without
-    delivering a signal and guards against signalling a recycled PGID.
     """
-    _disp = _d()
-    _os = getattr(_disp, "os", os)
-    _time = getattr(_disp, "time", time)
-
     pgid: int | None = None
     if proc is not None and isinstance(proc.pid, int):
         try:
-            pgid = _os.getpgid(proc.pid)
+            pgid = os.getpgid(proc.pid)
         except (AttributeError, OSError):
             pgid = None
     if pgid is None and isinstance(pid, int) and pid > 0:
-        # PID-only fallback (metadata path, no live handle): start_new_session
-        # guarantees PGID == PID, so signal the group via the child's PID.
         pgid = pid
 
     if pgid is None:
@@ -91,38 +155,33 @@ def terminate_process_group(
         )
         return
 
-    # Cheap guard: make sure the group still exists before signalling (avoids
-    # racing a recycled PGID). killpg(..., 0) probes without delivering a
-    # signal; a recycled/unknown group raises ProcessLookupError here.
+    # Cheap guard: probe group existence before signalling
     try:
-        _os.killpg(pgid, 0)
+        os.killpg(pgid, 0)
     except ProcessLookupError:
-        # Not a process group leader (e.g. spawned without start_new_session) or already dead.
         if pid:
-            if not _d().is_pid_alive(pid):
+            if not is_pid_alive(pid):
                 try:
-                    _os.waitpid(pid, os.WNOHANG)
+                    os.waitpid(pid, os.WNOHANG)
                 except (ChildProcessError, OSError):
                     pass
                 return
             try:
-                _os.kill(pid, signal.SIGTERM)
-                _time.sleep(min(grace, 0.5))
-                _os.kill(pid, signal.SIGKILL)
+                os.kill(pid, signal.SIGTERM)
+                time.sleep(min(grace, 0.5))
+                os.kill(pid, signal.SIGKILL)
             except OSError:
                 pass
             try:
-                _os.waitpid(pid, os.WNOHANG)
+                os.waitpid(pid, os.WNOHANG)
             except (ChildProcessError, OSError):
                 pass
         return
     except OSError as e:
-        # EPERM (we lack permission for the group) still proves it exists —
-        # proceed and let the TERM/KILL attempts handle it.
         _log.debug("terminate_process_group: probe on group %s failed: %s", pgid, e)
 
     try:
-        _os.killpg(pgid, signal.SIGTERM)
+        os.killpg(pgid, signal.SIGTERM)
     except (ProcessLookupError, OSError) as e:
         _log.debug("terminate_process_group: SIGTERM to group %s failed: %s", pgid, e)
         return
@@ -130,16 +189,15 @@ def terminate_process_group(
     if proc is not None and isinstance(proc.pid, int):
         try:
             proc.wait(timeout=grace)
-            return  # group exited gracefully within the grace window
+            return  # group exited gracefully within grace window
         except Exception:
             pass
     elif grace > 0:
-        _time.sleep(grace)
+        time.sleep(grace)
 
     try:
-        _os.killpg(pgid, signal.SIGKILL)
+        os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, OSError) as e:
-        # Group likely exited between the grace window and the SIGKILL — fine.
         _log.debug("terminate_process_group: SIGKILL to group %s failed: %s", pgid, e)
 
     if proc is not None and isinstance(proc.pid, int):
@@ -149,32 +207,32 @@ def terminate_process_group(
             pass
     elif pid and isinstance(pid, int):
         try:
-            _os.waitpid(pid, os.WNOHANG)
+            os.waitpid(pid, os.WNOHANG)
         except (ChildProcessError, OSError):
             pass
 
 
 def terminate_worker_process(proc: subprocess.Popen | None, pid: int | None) -> None:
-    """Safely terminate a worker process with SIGTERM then SIGKILL.
-
-    Signals the worker's whole process group (session) rather than just the
-    direct child, because all spawn sites use ``start_new_session=True`` and
-    the ``hermes`` CLI wrapper spawns its own descendants. Fail-open: never
-    raises. See ``terminate_process_group`` for details.
-    """
+    """Safely terminate a worker process group with SIGTERM then SIGKILL."""
     try:
-        _d().terminate_process_group(proc, pid)
-    except Exception as e:  # defensive: the helper is fail-open, but never leak
+        terminate_process_group(proc, pid)
+    except Exception as e:
         _log.debug("terminate_worker_process: group termination raised: %s", e)
+
+
+def terminate_task_worker(task_id: str, pid: int | None) -> None:
+    """Safely terminate any active worker process group for a task and clean up artifacts."""
+    _active_workers.pop(task_id, None)
+    if pid and is_pid_alive(pid):
+        terminate_process_group(None, pid)
+    cleanup_process_artifacts(task_id)
 
 
 def stop_task_worker(task_id: str, cursor: sqlite3.Cursor | None = None) -> None:
     """Safely terminate any active worker process for a task.
 
-    Invoked before git worktree removal or task transitions to prevent orphaned
-    zombie processes from running in deleted directories, leaking resources,
-    and corrupting plugin symlinks. Checks in-memory workers first, then falls
-    back to metadata `worker_pid`. Idempotent and exception-safe.
+    Checks in-memory workers first, then falls back to `tasks.worker_pid` column or metadata.
+    Idempotent and exception-safe.
     """
     proc = _active_workers.pop(task_id, None)
     pid = None
@@ -182,16 +240,37 @@ def stop_task_worker(task_id: str, cursor: sqlite3.Cursor | None = None) -> None
         pid = proc.pid
     elif cursor:
         try:
-            cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
-            row = cursor.fetchone()
-            if row:
-                raw_meta = (
-                    row["metadata"]
-                    if hasattr(row, "keys") or isinstance(row, dict)
-                    else row[0]
+            try:
+                cursor.execute(
+                    "SELECT worker_pid, metadata FROM tasks WHERE id = ?", (task_id,)
                 )
-                meta = json.loads(raw_meta or "{}")
-                pid = meta.get("worker_pid")
+                row = cursor.fetchone()
+                if row:
+                    pid = (
+                        row["worker_pid"]
+                        if hasattr(row, "keys") and "worker_pid" in row.keys()
+                        else row[0]
+                    )
+                    if not pid:
+                        raw_meta = (
+                            row["metadata"]
+                            if hasattr(row, "keys") and "metadata" in row.keys()
+                            else (row[1] if len(row) > 1 else None)
+                        )
+                        meta = json.loads(raw_meta or "{}")
+                        pid = meta.get("worker_pid")
+            except sqlite3.OperationalError:
+                cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+                row = cursor.fetchone()
+                if row:
+                    raw_meta = (
+                        row["metadata"]
+                        if hasattr(row, "keys") and "metadata" in row.keys()
+                        else row[0]
+                    )
+                    meta = json.loads(raw_meta or "{}")
+                    pid = meta.get("worker_pid")
         except Exception:
             pass
-    _d().terminate_worker_process(proc, pid)
+    terminate_worker_process(proc, pid)
+    cleanup_process_artifacts(task_id)

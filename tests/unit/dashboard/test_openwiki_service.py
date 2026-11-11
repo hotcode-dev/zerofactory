@@ -3,8 +3,6 @@
 import subprocess
 from pathlib import Path
 
-import cron.definitions as defs
-
 from dashboard.openwiki_service import (
     OPENWIKI_RELATIVE_DIR,
     build_openwiki_setup_task_prompt,
@@ -163,7 +161,7 @@ def test_openwiki_status_check_does_not_auto_clone(initialized_db: Path, monkeyp
     # Exercise the read-only status check with auto-clone fully enabled.
     monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
     monkeypatch.delenv("ZEROFACTORY_AUTO_CLONE", raising=False)
-    monkeypatch.setattr(defs.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     res = check_board_openwiki_status(slug)
 

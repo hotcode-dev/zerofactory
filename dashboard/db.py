@@ -39,41 +39,12 @@ _log = logging.getLogger(__name__)
 # --- Scanner state file helpers -----------------------------------------------
 
 
-def _load_scanner_gate_module():
-    import importlib.util
-
-    gate_path = (
-        Path(__file__).resolve().parent.parent / "scripts" / "zf_scanner_gate.py"
-    )
-    if not gate_path.is_file():
-        return None
-    try:
-        spec = importlib.util.spec_from_file_location("zf_scanner_gate", gate_path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-    except Exception:
-        return None
-
-
-_scanner_gate_mod = _load_scanner_gate_module()
-
-
 def _mark_scanner_task_created(board_slug: str, repo_alias: str | None = None) -> bool:
     """Atomically flag that a task was created for ``board_slug`` in the shared
     scanner state file (flock-guarded read-modify-write + atomic os.replace).
-
-    Prefer the shared implementation in scripts/zf_scanner_gate.py; fall back
-    to an equivalent local implementation if that module is unavailable.
     """
     if not board_slug:
         return False
-    if _scanner_gate_mod is not None and hasattr(
-        _scanner_gate_mod, "mark_task_created"
-    ):
-        return bool(
-            _scanner_gate_mod.mark_task_created(board_slug, repo_alias=repo_alias)
-        )
 
     state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
     state_file = (
@@ -156,7 +127,7 @@ def get_db_conn():
     conn = sqlite3.connect(str(db_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON;")
-    conn.execute("PRAGMA busy_timeout=30000;")
+    conn.execute("PRAGMA busy_timeout=15000;")
     try:
         yield conn
     finally:

@@ -28,25 +28,19 @@ _log = logging.getLogger(__name__)
 def get_repo_resolver():
     """Import resolve_board_repo_path safely."""
     try:
-        from ..builtin_cron import resolve_board_repo_path
+        from ..dispatcher.worktree import resolve_board_repo_path
 
         return resolve_board_repo_path
     except Exception:
         pass
     try:
-        from builtin_cron import resolve_board_repo_path  # type: ignore
+        from dispatcher.worktree import resolve_board_repo_path  # type: ignore
 
         return resolve_board_repo_path
     except Exception:
         pass
     try:
-        from ..cron.definitions import resolve_board_repo_path
-
-        return resolve_board_repo_path
-    except Exception:
-        pass
-    try:
-        from cron.definitions import resolve_board_repo_path  # type: ignore
+        from dispatcher import resolve_board_repo_path  # type: ignore
 
         return resolve_board_repo_path
     except Exception:

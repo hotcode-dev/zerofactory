@@ -44,7 +44,6 @@ def test_migration_0001_initial_schema(tmp_path: Path):
             "architecture",
             "max_concurrent_running",
             "auto_record_memory",
-            "jira_url",
             "automerge",
         }.issubset(board_cols)
 
@@ -61,7 +60,12 @@ def test_migration_0001_initial_schema(tmp_path: Path):
 
         cur.execute("PRAGMA table_info(tasks)")
         task_cols = {row[1] for row in cur.fetchall()}
-        assert "repo_alias" in task_cols
+        assert {
+            "repo_alias",
+            "worker_pid",
+            "started_at",
+            "blocked_reason",
+        }.issubset(task_cols)
 
         cur.execute("PRAGMA table_info(task_links)")
         link_cols = {row[1] for row in cur.fetchall()}

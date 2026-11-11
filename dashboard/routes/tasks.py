@@ -21,6 +21,14 @@ if _DASHBOARD_ROOT not in sys.path:
 from fastapi import APIRouter, HTTPException, Query
 
 try:
+    from ...dispatcher import transition_task
+except (ImportError, ValueError):
+    try:
+        from dispatcher import transition_task  # type: ignore
+    except (ImportError, ValueError):
+        transition_task = None
+
+try:
     from ..db import (
         _mark_scanner_task_created,
         generate_task_id,
@@ -617,21 +625,34 @@ def stop_task_session(task_id: str, to_status: str | None = "blocked"):
             meta.pop("blocked_reason", None)
             meta.pop("blocked_reason_type", None)
 
-        # 'blocked' is the human gate: parked tasks belong to the human queue.
-        assignee_set = ", assignee = 'human'" if target_status == "blocked" else ""
-        cursor.execute(
-            f"UPDATE tasks SET status = ?{assignee_set}, metadata = ?, updated_at = ? WHERE id = ?",
-            (target_status, json.dumps(meta), now, task_id),
-        )
-
-        cursor.execute(
-            "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'user', 'session_aborted', 'AI session stopped by user', ?)",
-            (task_id, now),
-        )
-        cursor.execute(
-            "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'user', '⏹ AI session manually stopped by user.', ?)",
-            (task_id, now),
-        )
+        assignee = "human" if target_status == "blocked" else None
+        if transition_task:
+            transition_task(
+                conn,
+                task_id,
+                target_status,
+                target_assignee=assignee,
+                blocked_reason="AI session stopped by user"
+                if target_status == "blocked"
+                else None,
+                metadata_patch=meta,
+                actor="user",
+                comment="⏹ AI session manually stopped by user.",
+            )
+        else:
+            assignee_set = ", assignee = 'human'" if target_status == "blocked" else ""
+            cursor.execute(
+                f"UPDATE tasks SET status = ?{assignee_set}, metadata = ?, updated_at = ? WHERE id = ?",
+                (target_status, json.dumps(meta), now, task_id),
+            )
+            cursor.execute(
+                "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'user', 'session_aborted', 'AI session stopped by user', ?)",
+                (task_id, now),
+            )
+            cursor.execute(
+                "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, 'user', '⏹ AI session manually stopped by user.', ?)",
+                (task_id, now),
+            )
 
         # Mark ended_at in profile state.db if session_id is active
         if active_sid:
@@ -1008,16 +1029,27 @@ def move_task(task_id: str, req: TaskMove):
             new_assignee = "human"
 
         if prev_status != req.status or meta_updated or new_assignee:
-            if new_assignee:
-                cursor.execute(
-                    "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                    (new_status, new_assignee, json.dumps(meta), now, task_id),
+            if transition_task and prev_status != new_status:
+                transition_task(
+                    conn,
+                    task_id,
+                    new_status,
+                    target_assignee=new_assignee,
+                    blocked_reason=req.reason if req.status == "blocked" else None,
+                    metadata_patch=meta,
+                    actor=req.actor or "user",
                 )
             else:
-                cursor.execute(
-                    "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                    (new_status, json.dumps(meta), now, task_id),
-                )
+                if new_assignee:
+                    cursor.execute(
+                        "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                        (new_status, new_assignee, json.dumps(meta), now, task_id),
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                        (new_status, json.dumps(meta), now, task_id),
+                    )
             if prev_status != req.status:
                 move_actor = req.actor or "user"
                 move_detail = (

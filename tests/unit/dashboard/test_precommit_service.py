@@ -3,8 +3,6 @@
 import subprocess
 from pathlib import Path
 
-import cron.definitions as defs
-
 from dashboard.plugin_api import BoardCreate, create_board
 from dashboard.precommit_service import (
     PRECOMMIT_RELATIVE_PATH,
@@ -130,7 +128,7 @@ def test_precommit_status_check_does_not_auto_clone(initialized_db: Path, monkey
     # Exercise the read-only status check with auto-clone fully enabled.
     monkeypatch.delenv("ZEROFACTORY_SKIP_GIT", raising=False)
     monkeypatch.delenv("ZEROFACTORY_AUTO_CLONE", raising=False)
-    monkeypatch.setattr(defs.subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     res = check_board_precommit_status(slug)
 

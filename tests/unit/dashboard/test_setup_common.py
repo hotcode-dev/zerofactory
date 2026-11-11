@@ -37,8 +37,8 @@ def _insert_board(db_path: Path, slug: str, git_url: str = "") -> None:
         conn.execute(
             "INSERT INTO boards (slug, description, "
             "max_concurrent_running, auto_record_memory, "
-            "jira_url, created_at, updated_at) "
-            "VALUES (?, '', 1, 1, '', ?, ?)",
+            "created_at, updated_at) "
+            "VALUES (?, '', 1, 1, ?, ?)",
             (slug, now, now),
         )
         conn.execute(
@@ -106,7 +106,7 @@ def test_get_repo_resolver_none_when_all_imports_fail():
 
     def blocked_import(name, *args, **kwargs):
         top = name.split(".")[0]
-        if top in ("builtin_cron", "cron"):
+        if top in ("builtin_cron", "cron", "dispatcher"):
             raise ImportError(f"blocked import: {name}")
         return real_import(name, *args, **kwargs)
 

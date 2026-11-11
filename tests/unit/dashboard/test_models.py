@@ -8,8 +8,6 @@ from dashboard.models import (
     VALID_STATUSES,
     BoardCreate,
     BoardUpdate,
-    CronJobUpdate,
-    JiraSetupRequest,
     MemoryCreate,
     SettingsUpdate,
     TaskCreate,
@@ -92,41 +90,5 @@ def test_settings_update_fields():
         max_active_tasks=5,
         default_max_concurrent_workers=2,
         scan_on_idle=True,
-        enable_cron_scheduler=False,
     )
     assert s.max_active_tasks == 5
-    assert s.enable_cron_scheduler is False
-
-
-def test_cron_job_update_fields():
-    """CronJobUpdate allows idle scanning configuration."""
-    c = CronJobUpdate(
-        scan_on_idle=True,
-        idle_scan_cooldown_minutes=20,
-        idle_scan_max_todo=4,
-        minutes=10080,
-    )
-    assert c.scan_on_idle is True
-    assert c.idle_scan_cooldown_minutes == 20
-    assert c.idle_scan_max_todo == 4
-    assert c.minutes == 10080
-
-
-def test_board_jira_url_fields():
-    """BoardCreate and BoardUpdate support optional jira_url."""
-    b = BoardCreate(
-        git_url="https://github.com/owner/repo.git",
-        jira_url="https://myteam.atlassian.net",
-    )
-    assert b.jira_url == "https://myteam.atlassian.net"
-
-    b_default = BoardCreate(git_url="https://github.com/owner/repo.git")
-    assert b_default.jira_url == ""
-
-    bu = BoardUpdate(jira_url="https://company.atlassian.net")
-    assert bu.jira_url == "https://company.atlassian.net"
-
-    req = JiraSetupRequest(jira_url="https://jira.example.com")
-    assert req.jira_url == "https://jira.example.com"
-    req_empty = JiraSetupRequest()
-    assert req_empty.jira_url is None

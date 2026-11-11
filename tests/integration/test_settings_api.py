@@ -12,7 +12,6 @@ def test_get_and_patch_settings(api_client: TestClient):
     assert "settings" in data
     settings = data["settings"]
     assert "max_active_tasks" in settings
-    assert "enable_cron_scheduler" in settings
     assert "task_timeout_seconds" in settings
     assert "inactivity_timeout_seconds" in settings
 
@@ -24,7 +23,6 @@ def test_get_and_patch_settings(api_client: TestClient):
             "max_concurrent_llm_workers": 3,
             "task_timeout_seconds": 7200,
             "inactivity_timeout_seconds": 1800,
-            "enable_cron_scheduler": False,
         },
     )
     assert patch_res.status_code == 200
@@ -33,14 +31,12 @@ def test_get_and_patch_settings(api_client: TestClient):
     assert updated["max_concurrent_llm_workers"] == 3
     assert updated["task_timeout_seconds"] == 7200
     assert updated["inactivity_timeout_seconds"] == 1800
-    assert updated["enable_cron_scheduler"] is False
 
     # 3. GET verifies persistence
     get_after = api_client.get("/api/plugins/zerofactory/settings").json()["settings"]
     assert get_after["max_active_tasks"] == 7
     assert get_after["task_timeout_seconds"] == 7200
     assert get_after["inactivity_timeout_seconds"] == 1800
-    assert get_after["enable_cron_scheduler"] is False
 
 
 def test_sync_profiles_endpoint(api_client: TestClient, monkeypatch):
