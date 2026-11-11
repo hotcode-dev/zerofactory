@@ -1368,7 +1368,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#region dashboard/src/views/InstructionsView.jsx
 	function InstructionsView({ instructionTab, setInstructionTab, setActiveView }) {
 		const renderOverviewSection = () => {
-			return React.createElement("div", { className: "space-y-6" }, React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4" }, [
+			return React.createElement("div", { className: "space-y-6" }, React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" }, [
 				{
 					icon: "🏭",
 					title: "24/7 Autonomous Factory",
@@ -1388,6 +1388,11 @@ var ZeroFactoryDashboard = (function(exports) {
 					icon: "⚡",
 					title: "Zero-Token Idle Watchdogs",
 					desc: "Hermes No-Agent Mode and Wake-Gate suppress LLM queries when repositories are idle, saving up to 95% token usage."
+				},
+				{
+					icon: "🛠️",
+					title: "Autonomous Self-Recovery",
+					desc: "3-tier self-healing: zero-token orphan process reaper, 1-shot zf-orchestrator diagnostic recovery, and human override."
 				},
 				{
 					icon: "🧠",
@@ -1504,6 +1509,7 @@ var ZeroFactoryDashboard = (function(exports) {
 						"Autonomously scans projects via Codebase Improvement Scanner using the Ponytail ladder of laziness to create actionable TODO tasks",
 						"Audits repository for dead code (Rung 1), stdlib reuse (Rungs 2-3), and anti-overengineering (Rung 6)",
 						"Decomposes high-level goals into structured sub-tasks using kanban_decomposer",
+						"Diagnoses failure logs and executes autonomous self-recovery for stuck tasks (strictly capped at 1 attempt)",
 						"Manages ticket handoffs between zf-builder and zf-reviewer",
 						"Escalates unresolvable blockers and human reviews",
 						"Monitors queue health via zero-factory-task-queue-check"
@@ -1597,7 +1603,29 @@ var ZeroFactoryDashboard = (function(exports) {
 			].map((c) => React.createElement("div", {
 				key: c.id,
 				className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-4.5 space-y-2.5 shadow-sm"
-			}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300" }, c.title), React.createElement("span", { className: "text-xs font-mono font-semibold px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-200" }, c.id)), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, c.desc), React.createElement("div", { className: "text-xs text-slate-300 pt-2 border-t border-slate-800 font-medium flex items-center justify-between gap-2 flex-wrap" }, React.createElement("span", null, "Trigger:"), React.createElement("span", { className: "text-white font-semibold bg-slate-900 px-2 py-0.5 rounded border border-slate-700/80" }, c.trigger)))))), React.createElement("div", { className: "bg-gradient-to-br from-purple-950/50 via-slate-900/80 to-slate-900/80 border border-purple-600/70 rounded-2xl p-6 space-y-3 shadow-md" }, React.createElement("div", { className: "flex items-center gap-3" }, React.createElement("div", { className: "p-2.5 rounded-xl bg-purple-900/80 text-purple-200 border border-purple-500/50 shadow-xs" }, renderPrIcon("w-4 h-4")), React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, "Pull Request Tracking & Verification")), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "Tasks with active GitHub Pull Requests display an interactive PR link badge directly on the Kanban card. You can click the badge to jump straight to the GitHub review interface. Use the toolbar's ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold text-xs" }, "Has PR"), " filter button to instantly isolate all tickets currently under active Pull Request review.")));
+			}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300" }, c.title), React.createElement("span", { className: "text-xs font-mono font-semibold px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-200" }, c.id)), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, c.desc), React.createElement("div", { className: "text-xs text-slate-300 pt-2 border-t border-slate-800 font-medium flex items-center justify-between gap-2 flex-wrap" }, React.createElement("span", null, "Trigger:"), React.createElement("span", { className: "text-white font-semibold bg-slate-900 px-2 py-0.5 rounded border border-slate-700/80" }, c.trigger)))))), React.createElement("div", { className: "bg-gradient-to-br from-purple-950/50 via-slate-900/80 to-slate-900/80 border border-purple-600/70 rounded-2xl p-6 space-y-3 shadow-md" }, React.createElement("div", { className: "flex items-center gap-3" }, React.createElement("div", { className: "p-2.5 rounded-xl bg-purple-900/80 text-purple-200 border border-purple-500/50 shadow-xs" }, renderPrIcon("w-4 h-4")), React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, "Pull Request Tracking & Verification")), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "Tasks with active GitHub Pull Requests display an interactive PR link badge directly on the Kanban card. You can click the badge to jump straight to the GitHub review interface. Use the toolbar's ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold text-xs" }, "Has PR"), " filter button to instantly isolate all tickets currently under active Pull Request review.")), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" }, React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-800" }, React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, "🛠️ Self-Healing, Process Reaping & Autonomous Recovery"), React.createElement("span", { className: "text-xs font-mono text-emerald-200 bg-emerald-950/80 px-3 py-1 rounded-md border border-emerald-500/60 font-semibold" }, "3-Tier Fault Tolerance")), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "Tasks that fail build or test gates, hit worker crashes, or hang never get silently stranded. Zero Factory employs a three-tier recovery model combining deterministic zero-token process reaping, autonomous agent diagnosis, and human override gates:"), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 pt-1 text-xs" }, [
+				{
+					title: "1. Deterministic Reaper (0 Tokens)",
+					badge: "Python Watchdog",
+					badgeColor: "bg-emerald-950 border-emerald-500/70 text-emerald-200",
+					desc: "The background watchdog (scripts/zf_queue_watchdog.py) audits active processes without invoking LLMs. If a worker terminates abruptly or has no registered session, the orphaned claim is safely reaped and restored back to Todo (worker_recovered)."
+				},
+				{
+					title: "2. Autonomous Diagnosis (Max 1)",
+					badge: "zf-orchestrator",
+					badgeColor: "bg-indigo-950 border-indigo-500/70 text-indigo-200",
+					desc: "Tasks stuck in failure exhaustion awaken zf-orchestrator with pre-digested failure logs, git diffs, and precommit error tails. For code or test defects, the orchestrator invokes recovery with tailored guidance for zf-builder (strictly capped at 1 autonomous try)."
+				},
+				{
+					title: "3. Operator Rescue & HITL Gate",
+					badge: "Human Gate",
+					badgeColor: "bg-purple-950 border-purple-500/70 text-purple-200",
+					desc: "Repeated failures or unrecoverable environmental issues escalate directly to Blocked. Operators can inspect diagnostics and click '⚡ Recover Task' in the Task Detail modal or run the CLI with custom instructions to reset and re-dispatch."
+				}
+			].map((tier, idx) => React.createElement("div", {
+				key: idx,
+				className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-4.5 space-y-2.5 shadow-sm"
+			}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-xs font-bold text-white tracking-wide" }, tier.title), React.createElement("span", { className: "text-[10px] font-mono px-2 py-0.5 rounded border font-semibold " + tier.badgeColor }, tier.badge)), React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, tier.desc))))));
 		};
 		const renderWorktreesSection = () => {
 			return React.createElement("div", { className: "space-y-6" }, React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" }, React.createElement("h3", { className: "text-sm font-bold text-white m-0 tracking-wide" }, "🌳 The Git Worktree Isolation Model"), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "In traditional multi-agent systems, agents operate on the primary repository directory. This causes uncommitted file clashes, stash corruptions, and broken builds when parallel tasks run. Zero Factory completely eliminates this failure mode using dedicated Git worktrees."), React.createElement("div", { className: "p-4.5 bg-slate-950 border border-slate-700 rounded-xl space-y-2 font-mono text-xs text-slate-100 shadow-inner" }, React.createElement("div", { className: "text-indigo-300 font-bold" }, "# Workspace Directory Structure"), React.createElement("div", { className: "text-white font-bold" }, "~/.zerofactory/workspaces/<board_slug>/"), React.createElement("div", { className: "pl-4 text-slate-300" }, "├── repos/"), React.createElement("div", { className: "pl-8 text-slate-300" }, "└── my-repo/              # Pristine origin mirror (untouched by workers)"), React.createElement("div", { className: "pl-4 text-emerald-300 font-bold" }, "└── worktrees/"), React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "├── zf-dev-9a4f210b/      # Isolated worktree for Task 1"), React.createElement("div", { className: "pl-12 text-slate-400" }, "└── my-repo/"), React.createElement("div", { className: "pl-8 text-emerald-300 font-semibold" }, "└── zf-dev-b72e189c/      # Isolated worktree for Task 2"), React.createElement("div", { className: "pl-12 text-slate-400" }, "└── my-repo/")), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 pt-2" }, [
@@ -1878,7 +1906,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				title: "Queue Health & Worker Watchdog",
 				interval: "Every 120 minutes",
 				tokens: "0 Tokens (No-Agent Mode)",
-				desc: "Runs purely in Python using Hermes No-Agent Mode via scripts/zf_queue_watchdog.py (0 LLM tokens). Audits running tasks, reaps hung worker subprocesses, and automatically triggers run_dispatch_cycle().",
+				desc: "Runs purely in Python using Hermes No-Agent Mode via scripts/zf_queue_watchdog.py (0 LLM tokens). Audits running tasks, reaps hung worker subprocesses, recovers orphaned running tasks to Todo, and automatically triggers run_dispatch_cycle(). Eligible failure-exhausted tasks wake zf-orchestrator to diagnose failure logs and execute 1-shot autonomous recovery.",
 				badge: "No-Agent Mode"
 			}, {
 				id: "zero-factory-improvement-scanner-{slug}",

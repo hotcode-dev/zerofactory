@@ -1415,6 +1415,9 @@
     background-color: color-mix(in oklab, var(--color-emerald-900) 90%, transparent);
   }
 }
+.bg-emerald-950 {
+  background-color: var(--color-emerald-950);
+}
 .bg-emerald-950\/30 {
   background-color: color-mix(in srgb, oklch(26.2% 0.051 172.552) 30%, transparent);
   @supports (color: color-mix(in lab, red, red)) {
@@ -1508,6 +1511,9 @@
     background-color: color-mix(in oklab, var(--color-indigo-900) 90%, transparent);
   }
 }
+.bg-indigo-950 {
+  background-color: var(--color-indigo-950);
+}
 .bg-indigo-950\/20 {
   background-color: color-mix(in srgb, oklch(25.7% 0.09 281.288) 20%, transparent);
   @supports (color: color-mix(in lab, red, red)) {
@@ -1591,6 +1597,9 @@
   @supports (color: color-mix(in lab, red, red)) {
     background-color: color-mix(in oklab, var(--color-purple-900) 80%, transparent);
   }
+}
+.bg-purple-950 {
+  background-color: var(--color-purple-950);
 }
 .bg-purple-950\/20 {
   background-color: color-mix(in srgb, oklch(29.1% 0.149 302.717) 20%, transparent);
