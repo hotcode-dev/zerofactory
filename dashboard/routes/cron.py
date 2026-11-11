@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -34,32 +35,39 @@ try:
         DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
         DEFAULT_IDLE_SCAN_MAX_TODO,
         _active_scanners,
+        get_active_scanner_pids,
         get_scanner_cron_config,
+        kill_board_scanner,
         spawn_board_scanner,
     )
-    from dispatcher.scheduler import resolve_task_repo_path, run_dispatch_cycle
-    from dispatcher.config import load_settings, save_settings
+    from dispatcher.scheduler import run_dispatch_cycle
+    from dispatcher.worktree import resolve_task_repo_path
+    from settings import load_settings
 except Exception:
     try:
         from ...dispatcher.scanner import (
             DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
             DEFAULT_IDLE_SCAN_MAX_TODO,
             _active_scanners,
+            get_active_scanner_pids,
             get_scanner_cron_config,
+            kill_board_scanner,
             spawn_board_scanner,
         )
-        from ...dispatcher.scheduler import resolve_task_repo_path, run_dispatch_cycle
-        from ...dispatcher.config import load_settings, save_settings
+        from ...dispatcher.scheduler import run_dispatch_cycle
+        from ...dispatcher.worktree import resolve_task_repo_path
+        from ...settings import load_settings
     except Exception:
         DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES = 15
         DEFAULT_IDLE_SCAN_MAX_TODO = 2
         _active_scanners = {}  # type: ignore
+        get_active_scanner_pids = lambda: {}  # type: ignore
+        kill_board_scanner = lambda slug: True  # type: ignore
         get_scanner_cron_config = None  # type: ignore
         spawn_board_scanner = None  # type: ignore
         resolve_task_repo_path = None  # type: ignore
         run_dispatch_cycle = None  # type: ignore
         load_settings = None  # type: ignore
-        save_settings = None  # type: ignore
 
 _log = logging.getLogger(__name__)
 
@@ -81,7 +89,21 @@ def _list_builtin_jobs_with_conn(conn: sqlite3.Connection) -> List[Dict[str, Any
     jobs: List[Dict[str, Any]] = []
     cursor = conn.cursor()
 
+    raw_settings: Dict[str, str] = {}
+    try:
+        for row in cursor.execute("SELECT key, value FROM settings").fetchall():
+            raw_settings[str(row[0])] = str(row[1])
+    except Exception:
+        pass
+
+    def _is_job_enabled(job_id: str, default: bool = True) -> bool:
+        val = raw_settings.get(f"cron_enabled_{job_id}")
+        if val is not None:
+            return val.strip().lower() in ("1", "true", "yes")
+        return default
+
     # 1. Core watchdog & dispatcher job
+    queue_enabled = _is_job_enabled("zero-factory-task-queue-check", default=True)
     jobs.append(
         {
             "id": "zero-factory-task-queue-check",
@@ -90,14 +112,15 @@ def _list_builtin_jobs_with_conn(conn: sqlite3.Connection) -> List[Dict[str, Any
             "description": "Audits active worker processes, reaps stuck jobs, and runs dispatch cycles",
             "schedule": {"kind": "interval", "minutes": 15},
             "schedule_display": "Every 15m",
-            "enabled": True,
-            "state": "active",
+            "enabled": queue_enabled,
+            "state": "active" if queue_enabled else "paused",
             "last_status": "ok",
             "last_run_at": None,
         }
     )
 
     # 2. Daily activity stats
+    stats_enabled = _is_job_enabled("zero-factory-daily-stats", default=True)
     jobs.append(
         {
             "id": "zero-factory-daily-stats",
@@ -106,8 +129,8 @@ def _list_builtin_jobs_with_conn(conn: sqlite3.Connection) -> List[Dict[str, Any
             "description": "Aggregates daily performance statistics and agent activity",
             "schedule": {"kind": "cron", "expr": "0 9 * * *"},
             "schedule_display": "Daily 09:00",
-            "enabled": True,
-            "state": "scheduled",
+            "enabled": stats_enabled,
+            "state": "scheduled" if stats_enabled else "paused",
             "last_status": "ok",
             "last_run_at": None,
         }
@@ -119,6 +142,8 @@ def _list_builtin_jobs_with_conn(conn: sqlite3.Connection) -> List[Dict[str, Any
         boards = cursor.fetchall()
     except Exception:
         boards = []
+
+    active_pids = get_active_scanner_pids() if get_active_scanner_pids else {}
 
     for b in boards:
         b_dict = (
@@ -150,7 +175,7 @@ def _list_builtin_jobs_with_conn(conn: sqlite3.Connection) -> List[Dict[str, Any
                 "last_run_timestamp": 0,
             }
 
-        is_running = slug in _active_scanners
+        is_running = slug in active_pids or slug in _active_scanners
         is_enabled = scanner_cfg.get("enabled", True) and scanner_cfg.get(
             "scan_on_idle", True
         )
@@ -184,16 +209,18 @@ def _list_builtin_jobs_with_conn(conn: sqlite3.Connection) -> List[Dict[str, Any
             }
         )
 
+        openwiki_job_id = f"zero-factory-openwiki-update-{slug}"
+        openwiki_enabled = _is_job_enabled(openwiki_job_id, default=True)
         jobs.append(
             {
-                "id": f"zero-factory-openwiki-update-{slug}",
+                "id": openwiki_job_id,
                 "name": f"OpenWiki Sync ({slug})",
                 "category": "openwiki",
                 "description": f"Synchronizes architectural documentation in openwiki/ for board {slug}",
                 "schedule": {"kind": "interval", "minutes": 60},
                 "schedule_display": "Every 60m",
-                "enabled": True,
-                "state": "scheduled",
+                "enabled": openwiki_enabled,
+                "state": "scheduled" if openwiki_enabled else "paused",
                 "status": "idle",
                 "last_status": "ok",
                 "last_run_at": None,
@@ -268,71 +295,91 @@ def trigger_builtin_job(job_id: str) -> Dict[str, Any]:
 
 def toggle_builtin_job(job_id: str, enabled: bool) -> Dict[str, Any]:
     """Toggle a job active or paused."""
-    if job_id.startswith("zero-factory-improvement-scanner-"):
-        slug = job_id.replace("zero-factory-improvement-scanner-", "")
-        with get_db_conn() as conn:
-            if save_settings:
+    now = int(time.time())
+    val_str = "true" if enabled else "false"
+    with get_db_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+            (f"cron_enabled_{job_id}", val_str, now),
+        )
+        if job_id.startswith("zero-factory-improvement-scanner-"):
+            slug = job_id.replace("zero-factory-improvement-scanner-", "")
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                (f"scan_on_idle_{slug}", val_str, now),
+            )
+            if not enabled and kill_board_scanner:
                 try:
-                    save_settings(conn, {"scan_on_idle": enabled})
-                    conn.commit()
+                    kill_board_scanner(slug)
                 except Exception as e:
-                    _log.debug(
-                        "Failed to save scan_on_idle setting for %s: %s", slug, e
-                    )
-        return {"ok": True, "id": job_id, "enabled": enabled}
+                    _log.debug("Failed to terminate scanner for %s: %s", slug, e)
+        conn.commit()
     return {"ok": True, "id": job_id, "enabled": enabled}
 
 
 def update_builtin_job(job_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
     """Update settings for a job (e.g. cooldown, max_todo, scan_on_idle)."""
-    if job_id.startswith("zero-factory-improvement-scanner-"):
-        slug = job_id.replace("zero-factory-improvement-scanner-", "")
-        patch: Dict[str, Any] = {}
-        if "scan_on_idle" in update_data and update_data["scan_on_idle"] is not None:
-            patch["scan_on_idle"] = bool(update_data["scan_on_idle"])
-        if (
-            "idle_scan_cooldown_minutes" in update_data
-            and update_data["idle_scan_cooldown_minutes"] is not None
-        ):
-            patch["idle_scan_cooldown_minutes"] = int(
-                update_data["idle_scan_cooldown_minutes"]
+    now = int(time.time())
+    with get_db_conn() as conn:
+        if "enabled" in update_data and update_data["enabled"] is not None:
+            val_str = "true" if update_data["enabled"] else "false"
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                (f"cron_enabled_{job_id}", val_str, now),
             )
-        if (
-            "idle_scan_max_todo" in update_data
-            and update_data["idle_scan_max_todo"] is not None
-        ):
-            patch["idle_scan_max_todo"] = int(update_data["idle_scan_max_todo"])
-        if patch:
-            with get_db_conn() as conn:
-                if save_settings:
-                    try:
-                        save_settings(conn, patch)
-                        conn.commit()
-                    except Exception as e:
-                        _log.debug(
-                            "Failed to save scanner settings for %s: %s", slug, e
-                        )
-        return {"ok": True, "id": job_id, "updated": True}
+        if job_id.startswith("zero-factory-improvement-scanner-"):
+            slug = job_id.replace("zero-factory-improvement-scanner-", "")
+            if (
+                "scan_on_idle" in update_data
+                and update_data["scan_on_idle"] is not None
+            ):
+                soi_str = "true" if update_data["scan_on_idle"] else "false"
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    (f"scan_on_idle_{slug}", soi_str, now),
+                )
+            if (
+                "idle_scan_cooldown_minutes" in update_data
+                and update_data["idle_scan_cooldown_minutes"] is not None
+            ):
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    (
+                        "idle_scan_cooldown_minutes",
+                        str(int(update_data["idle_scan_cooldown_minutes"])),
+                        now,
+                    ),
+                )
+            if (
+                "idle_scan_max_todo" in update_data
+                and update_data["idle_scan_max_todo"] is not None
+            ):
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    (
+                        "idle_scan_max_todo",
+                        str(int(update_data["idle_scan_max_todo"])),
+                        now,
+                    ),
+                )
+        conn.commit()
     return {"ok": True, "id": job_id, "updated": True}
 
 
 def reset_builtin_job(job_id: str) -> Dict[str, Any]:
     """Reset a job to default settings."""
-    if job_id.startswith("zero-factory-improvement-scanner-"):
-        with get_db_conn() as conn:
-            if save_settings:
-                try:
-                    save_settings(
-                        conn,
-                        {
-                            "scan_on_idle": True,
-                            "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
-                            "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
-                        },
-                    )
-                    conn.commit()
-                except Exception as e:
-                    _log.debug("Failed to reset scanner settings: %s", e)
+    with get_db_conn() as conn:
+        conn.execute(
+            "DELETE FROM settings WHERE key = ?",
+            (f"cron_enabled_{job_id}",),
+        )
+        if job_id.startswith("zero-factory-improvement-scanner-"):
+            slug = job_id.replace("zero-factory-improvement-scanner-", "")
+            conn.execute(
+                "DELETE FROM settings WHERE key = ?",
+                (f"scan_on_idle_{slug}",),
+            )
+        conn.commit()
     return {"ok": True, "id": job_id, "reset": True}
 
 
@@ -340,11 +387,21 @@ def reset_builtin_job(job_id: str) -> Dict[str, Any]:
 def get_builtin_cron_jobs():
     """List all built-in Zero Factory cron jobs and their current runtime status."""
     jobs = list_builtin_jobs()
+    scheduler_enabled = True
+    try:
+        with get_db_conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key = 'enable_cron_scheduler'"
+            ).fetchone()
+            if row and row[0] is not None:
+                scheduler_enabled = str(row[0]).strip().lower() in ("1", "true", "yes")
+    except Exception:
+        pass
     return {
         "ok": True,
         "jobs": jobs,
         "count": len(jobs),
-        "scheduler_enabled": True,
+        "scheduler_enabled": scheduler_enabled,
     }
 
 
@@ -353,6 +410,21 @@ def get_builtin_cron_jobs():
 def toggle_cron_scheduler(req: CronToggleRequest | None = None):
     """Toggle the periodic background cron scheduler on or off."""
     enabled = req.enabled if (req and req.enabled is not None) else True
+    now = int(time.time())
+    val_str = "true" if enabled else "false"
+    try:
+        with get_db_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('enable_cron_scheduler', ?, ?)",
+                (val_str, now),
+            )
+            conn.commit()
+    except Exception as e:
+        _log.debug("Failed to save enable_cron_scheduler: %s", e)
+    return {
+        "ok": True,
+        "scheduler_enabled": enabled,
+    }
     return {
         "ok": True,
         "scheduler_enabled": enabled,

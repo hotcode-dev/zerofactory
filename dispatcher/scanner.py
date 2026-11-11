@@ -15,7 +15,6 @@ from .config import (
     _active_scanners,
     _last_idle_scan_times,
     _log,
-    load_settings,
 )
 from .git_ops import sync_repo_main
 from .process_manager import (
@@ -23,14 +22,69 @@ from .process_manager import (
     cleanup_process_artifacts,
     get_exit_file_path,
     get_process_exit_code,
+    is_pid_alive,
     terminate_process_group,
 )
 from .worker_spawner import _inject_langfuse_env
 
 
+def get_active_scanner_pids() -> dict[str, int]:
+    """Return mapping of board_slug -> active scanner PID across all processes."""
+    active: dict[str, int] = {}
+    logs_dir = Path.home() / ".hermes" / "logs"
+    if logs_dir.exists():
+        for pf in logs_dir.glob("scanner_*.pid"):
+            slug = pf.stem.replace("scanner_", "")
+            try:
+                pid = int(pf.read_text().strip())
+                if is_pid_alive(pid):
+                    active[slug] = pid
+                else:
+                    pf.unlink(missing_ok=True)
+            except Exception:
+                pf.unlink(missing_ok=True)
+    for slug, proc in list(_active_scanners.items()):
+        if proc is not None and proc.poll() is None and is_pid_alive(proc.pid):
+            active[slug] = proc.pid
+    return active
+
+
+def kill_board_scanner(board_slug: str) -> bool:
+    """Terminate any active scanner process for board_slug."""
+    proc = _active_scanners.pop(board_slug, None)
+    if proc is not None and proc.poll() is None:
+        try:
+            terminate_process_group(proc, proc.pid)
+        except Exception:
+            pass
+    logs_dir = Path.home() / ".hermes" / "logs"
+    pid_file = logs_dir / f"scanner_{board_slug}.pid"
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            if is_pid_alive(pid):
+                try:
+                    import signal
+
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                except Exception:
+                    try:
+                        import signal
+
+                        os.kill(pid, signal.SIGTERM)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        pid_file.unlink(missing_ok=True)
+    cleanup_process_artifacts(f"scanner_{board_slug}")
+    return True
+
+
 def reap_active_scanners() -> int:
     """Clean up finished or exited scanner worker processes."""
     reaped = 0
+    logs_dir = Path.home() / ".hermes" / "logs"
     for slug, proc in list(_active_scanners.items()):
         task_ref = f"scanner_{slug}"
         exit_code = get_process_exit_code(task_ref)
@@ -38,9 +92,25 @@ def reap_active_scanners() -> int:
         if proc_done or exit_code is not None:
             _active_scanners.pop(slug, None)
             cleanup_process_artifacts(task_ref)
+            pid_file = logs_dir / f"scanner_{slug}.pid"
+            pid_file.unlink(missing_ok=True)
             reaped += 1
             code = exit_code if exit_code is not None else (proc.poll() if proc else 0)
             _log.debug("Scanner process for board '%s' exited with code %s", slug, code)
+
+    # Also reap dead PID files from other processes
+    if logs_dir.exists():
+        for pf in logs_dir.glob("scanner_*.pid"):
+            slug = pf.stem.replace("scanner_", "")
+            if slug not in _active_scanners:
+                try:
+                    pid = int(pf.read_text().strip())
+                    if not is_pid_alive(pid):
+                        pf.unlink(missing_ok=True)
+                        cleanup_process_artifacts(f"scanner_{slug}")
+                        reaped += 1
+                except Exception:
+                    pf.unlink(missing_ok=True)
     return reaped
 
 
@@ -50,16 +120,17 @@ def _running_cron_llm_jobs() -> int:
 
 
 def _global_llm_occupancy(running_tasks: int) -> int:
-    """LLM workers currently tracked by this Zero Factory process."""
-    return running_tasks + len(_active_scanners)
+    """LLM workers currently tracked across all Zero Factory processes."""
+    return running_tasks + len(get_active_scanner_pids())
 
 
 def get_scanner_cron_config(board_slug: str, cursor: Any = None) -> dict[str, Any]:
     """Retrieve scanner configuration for a board slug from settings or environment defaults."""
-    settings: dict[str, Any] = {}
+    raw_settings: dict[str, Any] = {}
     if cursor is not None:
         try:
-            settings = load_settings(cursor)
+            for row in cursor.execute("SELECT key, value FROM settings").fetchall():
+                raw_settings[str(row[0])] = str(row[1])
         except Exception:
             pass
     else:
@@ -71,25 +142,40 @@ def get_scanner_cron_config(board_slug: str, cursor: Any = None) -> dict[str, An
                 import sqlite3
 
                 with sqlite3.connect(str(db_p)) as conn:
-                    settings = load_settings(conn)
+                    for row in conn.execute(
+                        "SELECT key, value FROM settings"
+                    ).fetchall():
+                        raw_settings[str(row[0])] = str(row[1])
         except Exception:
             pass
 
-    scan_on_idle = settings.get("scan_on_idle", True)
+    is_board_disabled = (
+        raw_settings.get(
+            f"cron_enabled_zero-factory-improvement-scanner-{board_slug}", "true"
+        )
+        .strip()
+        .lower()
+        in ("0", "false", "no")
+        or raw_settings.get(f"scan_on_idle_{board_slug}", "true").strip().lower()
+        in ("0", "false", "no")
+        or raw_settings.get("scan_on_idle", "true").strip().lower()
+        in ("0", "false", "no")
+    )
+    scan_on_idle = not is_board_disabled
     env_soi = os.environ.get("ZEROFACTORY_SCAN_ON_IDLE")
     if env_soi is not None:
         scan_on_idle = env_soi.strip().lower() in ("1", "true", "yes")
 
     return {
-        "enabled": True,
+        "enabled": scan_on_idle,
         "scan_on_idle": scan_on_idle,
         "idle_scan_cooldown_minutes": int(
-            settings.get(
+            raw_settings.get(
                 "idle_scan_cooldown_minutes", DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES
             )
         ),
         "idle_scan_max_todo": int(
-            settings.get("idle_scan_max_todo", DEFAULT_IDLE_SCAN_MAX_TODO)
+            raw_settings.get("idle_scan_max_todo", DEFAULT_IDLE_SCAN_MAX_TODO)
         ),
         "last_run_timestamp": _last_idle_scan_times.get(board_slug, 0),
     }
@@ -100,6 +186,16 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
     if os.environ.get("ZEROFACTORY_SKIP_WORKER_SPAWN") or os.environ.get(
         "ZEROFACTORY_SKIP_SCANNER_SPAWN"
     ):
+        return None
+
+    # Cross-process duplicate prevention check
+    active_pids = get_active_scanner_pids()
+    if board_slug in active_pids:
+        _log.debug(
+            "Scanner already active for board '%s' (PID: %d); skipping spawn",
+            board_slug,
+            active_pids[board_slug],
+        )
         return None
 
     cron_cfg = get_scanner_cron_config(board_slug)
@@ -149,6 +245,7 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
         env["HERMES_HOME"] = str(profile_home)
     env["PYTHONUNBUFFERED"] = "1"
     env["ZEROFACTORY_IDLE_SCAN"] = "1"
+    env["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
     _inject_langfuse_env(env)
 
     workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()
@@ -175,6 +272,11 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
             start_new_session=True,
         )
         log_f.close()
+        pid_file = log_dir / f"scanner_{board_slug}.pid"
+        try:
+            pid_file.write_text(str(proc.pid))
+        except Exception as pe:
+            _log.debug("Failed to write scanner pid file for %s: %s", board_slug, pe)
         _active_scanners[board_slug] = proc
         _last_idle_scan_times[board_slug] = int(time.time())
         _log.info(
@@ -200,4 +302,8 @@ def reset_idle_scanner_state() -> None:
         if proc is not None and proc.poll() is None:
             terminate_process_group(proc, proc.pid)
         cleanup_process_artifacts(f"scanner_{slug}")
+    logs_dir = Path.home() / ".hermes" / "logs"
+    if logs_dir.exists():
+        for pf in logs_dir.glob("scanner_*.pid"):
+            pf.unlink(missing_ok=True)
     _active_scanners.clear()

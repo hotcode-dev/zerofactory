@@ -129,7 +129,9 @@ def is_worker_or_child_process() -> bool:
     ):
         return True
     profile = os.environ.get("HERMES_PROFILE") or ""
-    if profile in ("zf-builder", "zf-reviewer"):
+    if profile in ("zf-builder", "zf-reviewer", "zf-orchestrator", "zf-goldfish"):
+        return True
+    if os.environ.get("ZEROFACTORY_IDLE_SCAN") == "1":
         return True
     if os.environ.get("HERMES_KANBAN_TASK"):
         return True

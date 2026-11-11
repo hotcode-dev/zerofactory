@@ -101,3 +101,40 @@ def test_cron_run_job(api_client: TestClient, default_board: str):
     # Unknown job
     res_unknown = api_client.post("/api/plugins/zerofactory/cron/unknown-job-id/run")
     assert res_unknown.status_code == 400
+
+
+def test_cron_job_pause_persists_status(api_client: TestClient, default_board: str):
+    """Verify pausing a job updates its enabled flag and paused state in GET /cron."""
+    job_id = f"zero-factory-improvement-scanner-{default_board}"
+
+    # Pause job
+    res_pause = api_client.post(
+        f"/api/plugins/zerofactory/cron/{job_id}/toggle",
+        json={"enabled": False},
+    )
+    assert res_pause.status_code == 200
+    assert res_pause.json()["enabled"] is False
+
+    # Check GET /cron reflects paused state
+    res = api_client.get("/api/plugins/zerofactory/cron")
+    assert res.status_code == 200
+    jobs = res.json()["jobs"]
+    scanner = next((j for j in jobs if j["id"] == job_id), None)
+    assert scanner is not None
+    assert scanner["enabled"] is False
+    assert scanner["state"] == "paused"
+
+    # Resume job
+    res_resume = api_client.post(
+        f"/api/plugins/zerofactory/cron/{job_id}/toggle",
+        json={"enabled": True},
+    )
+    assert res_resume.status_code == 200
+    assert res_resume.json()["enabled"] is True
+
+    # Check GET /cron reflects active state
+    res2 = api_client.get("/api/plugins/zerofactory/cron")
+    scanner2 = next((j for j in res2.json()["jobs"] if j["id"] == job_id), None)
+    assert scanner2 is not None
+    assert scanner2["enabled"] is True
+    assert scanner2["state"] == "active"

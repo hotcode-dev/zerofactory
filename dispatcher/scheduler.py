@@ -787,7 +787,12 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                     board_todo_count = todo_per_board.get(board_slug, 0)
 
                     if board_active_running < board_mcr and board_todo_count < max_todo:
-                        if board_slug not in _active_scanners:
+                        active_scanners = (
+                            _disp.get_active_scanner_pids()
+                            if hasattr(_disp, "get_active_scanner_pids")
+                            else _active_scanners
+                        )
+                        if board_slug not in active_scanners:
                             last_scan = max(
                                 _last_idle_scan_times.get(board_slug, 0),
                                 int(cron_cfg.get("last_run_timestamp") or 0),
