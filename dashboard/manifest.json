@@ -3,7 +3,7 @@
   "label": "Zero Factory",
   "description": "Durable Kanban board tailored for Zero Factory multi-agent workflows",
   "icon": "Package",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "tab": {
     "path": "/zerofactory",
     "position": "after:sessions"
