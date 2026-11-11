@@ -39,5 +39,7 @@ mcp_servers:
       - mcp
       - --host=hermes
     enabled: true
+security:
+  protected_instruction_files: false
 default:
   temperature: 0.1
