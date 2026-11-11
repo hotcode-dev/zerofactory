@@ -4484,8 +4484,9 @@ var ZeroFactoryDashboard = (function(exports) {
 			}
 		}, [showToast]);
 		const handleToggleCronScheduler = useCallback(async (currentEnabled) => {
+			const nextEnabled = !currentEnabled;
+			setCronSchedulerEnabled(nextEnabled);
 			try {
-				const nextEnabled = !currentEnabled;
 				const res = await fetchJSON(API_BASE + "/cron/scheduler/toggle", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
@@ -4493,11 +4494,14 @@ var ZeroFactoryDashboard = (function(exports) {
 				});
 				if (res && res.ok) {
 					showToast(nextEnabled ? "Cron scheduler activated" : "Cron scheduler paused", "success");
-					setCronSchedulerEnabled(nextEnabled);
-					loadCronJobs();
-					loadSettings();
-				} else showToast("Failed to toggle cron scheduler: " + (res.error || "Unknown error"), "error");
+					await loadCronJobs();
+					await loadSettings();
+				} else {
+					setCronSchedulerEnabled(currentEnabled);
+					showToast("Failed to toggle cron scheduler: " + (res.error || "Unknown error"), "error");
+				}
 			} catch (err) {
+				setCronSchedulerEnabled(currentEnabled);
 				showToast("Error toggling cron scheduler: " + err.message, "error");
 			}
 		}, [
@@ -4506,18 +4510,33 @@ var ZeroFactoryDashboard = (function(exports) {
 			showToast
 		]);
 		const handleToggleCronJob = useCallback(async (jobId, currentEnabled) => {
+			const nextEnabled = !currentEnabled;
+			setCronJobs((prev) => prev.map((job) => job.id === jobId ? {
+				...job,
+				enabled: nextEnabled,
+				state: nextEnabled ? job.state === "paused" ? "active" : job.state : "paused"
+			} : job));
 			try {
-				const nextEnabled = !currentEnabled;
-				const res = await fetchJSON(API_BASE + `/cron/${jobId}/toggle`, {
+				const res = await fetchJSON(API_BASE + `/cron/${encodeURIComponent(jobId)}/toggle`, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ enabled: nextEnabled })
 				});
 				if (res && res.ok) {
 					showToast(nextEnabled ? "Cron job activated" : "Cron job paused", "success");
-					loadCronJobs();
-				} else showToast("Failed to toggle cron job: " + (res.error || "Unknown error"), "error");
+					await loadCronJobs();
+				} else {
+					setCronJobs((prev) => prev.map((job) => job.id === jobId ? {
+						...job,
+						enabled: currentEnabled
+					} : job));
+					showToast("Failed to toggle cron job: " + (res.error || "Unknown error"), "error");
+				}
 			} catch (err) {
+				setCronJobs((prev) => prev.map((job) => job.id === jobId ? {
+					...job,
+					enabled: currentEnabled
+				} : job));
 				showToast("Error toggling cron job: " + err.message, "error");
 			}
 		}, [loadCronJobs, showToast]);
