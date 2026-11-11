@@ -17,6 +17,7 @@ from fastapi import APIRouter, Response
 try:
     from .agents import router as agents_router
     from .boards import router as boards_router
+    from .cron import router as cron_router
     from .dispatch import router as dispatch_router
     from .memories import router as memories_router
     from .settings import router as settings_router
@@ -25,6 +26,7 @@ try:
 except (ImportError, ValueError):
     from routes.agents import router as agents_router  # type: ignore
     from routes.boards import router as boards_router  # type: ignore
+    from routes.cron import router as cron_router  # type: ignore
     from routes.dispatch import router as dispatch_router  # type: ignore
     from routes.memories import router as memories_router  # type: ignore
     from routes.settings import router as settings_router  # type: ignore
@@ -39,6 +41,7 @@ router.include_router(settings_router)
 router.include_router(dispatch_router)
 router.include_router(memories_router)
 router.include_router(agents_router)
+router.include_router(cron_router)
 
 
 @router.options("/")

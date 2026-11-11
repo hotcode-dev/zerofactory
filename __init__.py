@@ -192,17 +192,29 @@ except ImportError:
     )
 
 try:
-    from .builtin_cron import (
+    from .dashboard.routes.cron import (
         ensure_builtin_cron_jobs,
         list_builtin_jobs,
         trigger_builtin_job,
     )
 except ImportError:
-    from builtin_cron import (
-        ensure_builtin_cron_jobs,
-        list_builtin_jobs,
-        trigger_builtin_job,
-    )  # type: ignore
+    try:
+        from dashboard.routes.cron import (
+            ensure_builtin_cron_jobs,
+            list_builtin_jobs,
+            trigger_builtin_job,
+        )  # type: ignore
+    except ImportError:
+
+        def ensure_builtin_cron_jobs(*args, **kwargs):  # type: ignore
+            return {"ok": True, "synced": 0, "synced_targets": []}
+
+        def list_builtin_jobs(*args, **kwargs):  # type: ignore
+            return []
+
+        def trigger_builtin_job(*args, **kwargs):  # type: ignore
+            return {"ok": False, "error": "Cron subsystem not available"}
+
 
 try:
     from .profile_manager import ZF_PROFILES, ensure_zf_profiles
@@ -210,9 +222,9 @@ except ImportError:
     from profile_manager import ZF_PROFILES, ensure_zf_profiles  # type: ignore
 
 try:
-    from .issues import GitHubIssueClient, JiraIssueClient, import_external_issue
+    from .issues import GitHubIssueClient, import_external_issue
 except ImportError:
-    from issues import GitHubIssueClient, JiraIssueClient, import_external_issue  # type: ignore
+    from issues import GitHubIssueClient, import_external_issue  # type: ignore
 
 try:
     from .paths import ZEROFACTORY_REPO, ZEROFACTORY_GITHUB_URL, ZEROFACTORY_ISSUES_URL
@@ -413,54 +425,6 @@ def register(ctx: Any):
             help="Actor executing import (defaults to HERMES_PROFILE or 'user')",
         )
 
-        # import-jira-issue
-        p_import_jira = subparsers.add_parser(
-            "import-jira-issue",
-            help="Import Jira issue into Zero Factory Kanban deterministically",
-        )
-        p_import_jira.add_argument(
-            "issue",
-            help="Jira issue key (e.g. PROJ-123) or full URL (https://domain.atlassian.net/browse/PROJ-123)",
-        )
-        p_import_jira.add_argument(
-            "--project",
-            default=None,
-            help="Default Jira project key (e.g. PROJ)",
-        )
-        p_import_jira.add_argument(
-            "--board",
-            default=None,
-            help="Target board slug. Inferred from project or board's jira_url if omitted.",
-        )
-        p_import_jira.add_argument(
-            "--status",
-            default="triage",
-            choices=["triage", "todo", "running", "blocked", "done"],
-            help="Initial Kanban column (default: triage)",
-        )
-        p_import_jira.add_argument(
-            "--priority",
-            default=None,
-            choices=["P0", "P1", "P2", "P3"],
-            help="Priority override (inferred deterministically from issue labels if omitted)",
-        )
-        p_import_jira.add_argument(
-            "--assignee",
-            default="zf-orchestrator",
-            help="Assignee (default: zf-orchestrator)",
-        )
-        p_import_jira.add_argument(
-            "--type",
-            choices=["bug", "feature"],
-            default=None,
-            help="Explicit issue type override ('bug' or 'feature')",
-        )
-        p_import_jira.add_argument(
-            "--actor",
-            default=None,
-            help="Actor executing import (defaults to HERMES_PROFILE or 'user')",
-        )
-
         # setup-gh-issues
         p_setup_gh = subparsers.add_parser(
             "setup-gh-issues",
@@ -490,27 +454,6 @@ def register(ctx: Any):
             "--actor",
             default=None,
             help="Actor executing setup (defaults to HERMES_PROFILE or 'user')",
-        )
-
-        # setup-jira
-        p_setup_jira = subparsers.add_parser(
-            "setup-jira",
-            help="Configure Jira Cloud link and test connectivity for a board",
-        )
-        p_setup_jira.add_argument(
-            "--board",
-            required=True,
-            help="Target board slug to configure Jira for",
-        )
-        p_setup_jira.add_argument(
-            "--url",
-            default=None,
-            help="Jira Cloud instance URL (e.g. https://your-domain.atlassian.net)",
-        )
-        p_setup_jira.add_argument(
-            "--test",
-            action="store_true",
-            help="Test Jira connectivity and API authentication",
         )
 
         # move
@@ -773,14 +716,9 @@ def register(ctx: Any):
             action="store_true",
             help="Automatically trigger setup task for .zerofactory/precommit.sh",
         )
-        p_bcreate.add_argument(
-            "--jira-url",
-            default="",
-            help="Optional Jira Cloud instance or project URL (e.g. https://your-domain.atlassian.net)",
-        )
         p_bupdate = board_subs.add_parser(
             "update",
-            help="Update board configuration (description, target-branch, jira-url, architecture)",
+            help="Update board configuration (description, target-branch, architecture)",
         )
         p_bupdate.add_argument("slug", help="Board slug to update")
         p_bupdate.add_argument(
@@ -788,9 +726,6 @@ def register(ctx: Any):
         )
         p_bupdate.add_argument(
             "--target-branch", default=None, help="New target branch"
-        )
-        p_bupdate.add_argument(
-            "--jira-url", default=None, help="Jira Cloud instance URL"
         )
         p_bupdate.add_argument(
             "--architecture",
@@ -1108,56 +1043,6 @@ def register(ctx: Any):
                 )
                 sys.exit(1)
 
-        elif action == "import-jira-issue":
-            client = JiraIssueClient(
-                board_slug=getattr(args, "board", None),
-                default_project=getattr(args, "project", None),
-            )
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
-            try:
-                issue = client.fetch_issue(
-                    args.issue, project=getattr(args, "project", None)
-                )
-                if getattr(args, "type", None):
-                    issue.issue_type = getattr(args, "type")
-
-                res = import_external_issue(
-                    issue=issue,
-                    board_slug=getattr(args, "board", None),
-                    status=getattr(args, "status", "triage"),
-                    priority=getattr(args, "priority", None),
-                    assignee=getattr(args, "assignee", "zf-orchestrator"),
-                    actor=actor,
-                )
-                if res.get("duplicate"):
-                    print(
-                        f"\n[Duplicate Skipped] {res.get('message', 'Task already exists')}"
-                    )
-                    print(f"  Task ID:    {res['id']}")
-                    print(f"  Issue:      {res['issue_key']} ({res['issue_url']})\n")
-                else:
-                    print(f"\n✓ Successfully imported Jira issue {res['issue_key']}")
-                    print(f"  Task ID:    {res['id']}")
-                    print(f"  Type:       {res['issue_type'].capitalize()}")
-                    print(f"  Board:      {res['board_slug']}")
-                    print(f"  Status:     {res['status']}")
-                    print(f"  Assignee:   {res['assignee']}")
-                    print(f"  Priority:   {res['priority']}")
-                    print(f"  Title:      {res['title']}")
-                    if res.get("issue_url"):
-                        print(f"  URL:        {res['issue_url']}")
-                    print()
-            except Exception as e:
-                print(
-                    f"\nError importing Jira issue: {e}\n",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
         elif action == "setup-gh-issues":
             board_slug = getattr(args, "board", None)
             actor_val = (
@@ -1226,47 +1111,6 @@ def register(ctx: Any):
             print(
                 "\nSetup complete! Issues filed with the 'zerofactory' label can now be triaged by Zero Factory AI.\n"
             )
-
-        elif action == "setup-jira":
-            board_slug = getattr(args, "board", None)
-            new_url = getattr(args, "url", None)
-
-            if not board_slug:
-                print("Error: --board <slug> is required", file=sys.stderr)
-                sys.exit(1)
-
-            init_db()
-            with get_db_conn() as conn:
-                board = conn.execute(
-                    "SELECT * FROM boards WHERE slug = ?", (board_slug,)
-                ).fetchone()
-                if not board:
-                    print(f"Error: Board '{board_slug}' not found", file=sys.stderr)
-                    sys.exit(1)
-
-                current_url = (board["jira_url"] or "").strip()
-                if new_url is not None:
-                    current_url = new_url.strip()
-                    conn.execute(
-                        "UPDATE boards SET jira_url = ?, updated_at = ? WHERE slug = ?",
-                        (current_url, int(time.time()), board_slug),
-                    )
-                    print(
-                        f"\n✓ Updated Jira URL for board '{board_slug}': {current_url}"
-                    )
-
-            client = JiraIssueClient(base_url=current_url, board_slug=board_slug)
-            status = client.check_connection()
-            print(f"\nJira Connection Status for board '{board_slug}':")
-            print(f"  Configured URL : {status.get('base_url') or '(none)'}")
-            print(
-                f"  Reachable      : {'✓ Yes' if status.get('connected') else '✗ No'}"
-            )
-            print(
-                f"  Authenticated  : {'✓ Yes' if status.get('authenticated') else '⚪ No (Token/Email required for private issues)'}"
-            )
-            print(f"  Message        : {status.get('message')}\n")
-            return
 
         elif action == "move":
             actor = (
@@ -1596,7 +1440,6 @@ def register(ctx: Any):
                     architecture=getattr(args, "architecture", "") or "",
                     target_branch=getattr(args, "target_branch", "") or "",
                     auto_setup_precommit=getattr(args, "setup_precommit", False),
-                    jira_url=getattr(args, "jira_url", "") or "",
                 )
                 res = _create_board(req)
                 slug = res.get("slug")
@@ -1612,8 +1455,6 @@ def register(ctx: Any):
                     up_kwargs["description"] = args.description
                 if getattr(args, "target_branch", None) is not None:
                     up_kwargs["target_branch"] = args.target_branch
-                if getattr(args, "jira_url", None) is not None:
-                    up_kwargs["jira_url"] = args.jira_url
                 if getattr(args, "architecture", None) is not None:
                     up_kwargs["architecture"] = args.architecture
                 res = _update_board(args.slug, _BoardUpdate(**up_kwargs))

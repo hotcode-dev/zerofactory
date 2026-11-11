@@ -50,8 +50,38 @@ router = APIRouter()
 
 
 def _get_cron_helpers():
-    """No-op stub following removal of custom cron subsystem."""
-    return (None, None, None, None, None, None, None)
+    """Return cron helper functions from dashboard/routes/cron.py."""
+    try:
+        from .cron import (
+            ensure_builtin_cron_jobs,
+            list_builtin_jobs,
+            reset_builtin_job,
+            toggle_builtin_job,
+            trigger_builtin_job,
+            update_builtin_job,
+        )
+    except (ImportError, ValueError):
+        from routes.cron import (  # type: ignore
+            ensure_builtin_cron_jobs,
+            list_builtin_jobs,
+            reset_builtin_job,
+            toggle_builtin_job,
+            trigger_builtin_job,
+            update_builtin_job,
+        )
+
+    def prune_cron(slug: str) -> None:
+        pass
+
+    return (
+        ensure_builtin_cron_jobs,
+        prune_cron,
+        trigger_builtin_job,
+        list_builtin_jobs,
+        update_builtin_job,
+        toggle_builtin_job,
+        reset_builtin_job,
+    )
 
 
 @router.get("/boards")

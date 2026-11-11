@@ -267,6 +267,7 @@ try:
     from .routes import (
         agents_router,
         boards_router,
+        cron_router,
         dispatch_router,
         memories_router,
         router,
@@ -282,6 +283,17 @@ try:
         list_boards,
         test_clone_board,
         update_board,
+    )
+    from .routes.cron import (
+        ensure_builtin_cron_jobs,
+        get_builtin_cron_jobs,
+        list_builtin_jobs,
+        reset_builtin_cron_job,
+        run_builtin_cron_job,
+        sync_builtin_cron_jobs,
+        toggle_builtin_cron_job,
+        toggle_cron_scheduler,
+        update_builtin_cron_job,
     )
     from .routes.dispatch import (
         get_dispatch_status,
@@ -335,6 +347,7 @@ except (ImportError, ValueError):
     from routes import (  # type: ignore
         agents_router,
         boards_router,
+        cron_router,
         dispatch_router,
         memories_router,
         router,
@@ -350,6 +363,17 @@ except (ImportError, ValueError):
         list_boards,
         test_clone_board,
         update_board,
+    )
+    from routes.cron import (  # type: ignore
+        ensure_builtin_cron_jobs,
+        get_builtin_cron_jobs,
+        list_builtin_jobs,
+        reset_builtin_cron_job,
+        run_builtin_cron_job,
+        sync_builtin_cron_jobs,
+        toggle_builtin_cron_job,
+        toggle_cron_scheduler,
+        update_builtin_cron_job,
     )
     from routes.dispatch import (  # type: ignore
         get_dispatch_status,

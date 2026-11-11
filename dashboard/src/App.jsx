@@ -149,7 +149,6 @@ export function ZeroFactoryKanbanApp() {
       auto_record_memory: true,
       automerge: false,
       additional_reviewer_usernames: "",
-      jira_url: "",
       auto_setup_precommit: true
     });
 
@@ -163,8 +162,7 @@ export function ZeroFactoryKanbanApp() {
       max_concurrent_running: 1,
       auto_record_memory: true,
       automerge: false,
-      additional_reviewer_usernames: "",
-      jira_url: ""
+      additional_reviewer_usernames: ""
     });
 
     const [precommitStatus, setPrecommitStatus] = useState(null);
@@ -182,9 +180,6 @@ export function ZeroFactoryKanbanApp() {
     const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
     const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
     const [isSyncingIssues, setIsSyncingIssues] = useState(false);
-
-    const [isSettingUpJira, setIsSettingUpJira] = useState(false);
-    const [isTestingJira, setIsTestingJira] = useState(false);
 
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
@@ -570,54 +565,6 @@ export function ZeroFactoryKanbanApp() {
         showToast("Error syncing issues: " + (err.message || String(err)), "error");
       } finally {
         setIsSyncingIssues(false);
-      }
-    };
-
-    const handleTriggerJiraSetup = async (boardSlug, jiraUrl) => {
-      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoard;
-      if (!bSlug || bSlug === "all") return;
-      setIsSettingUpJira(true);
-      try {
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-jira", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jira_url: jiraUrl !== undefined ? jiraUrl : (editBoardForm.jira_url || "") })
-        });
-        if (res && res.ok) {
-          setEditBoardForm((prev) => ({ ...prev, jira_url: res.jira_url || "" }));
-          const conn = res.connection || {};
-          const msg = conn.message || res.message || "Jira Cloud link configured";
-          showToast(msg, conn.connected ? "success" : "info");
-          await loadBoards();
-        } else {
-          showToast((res && (res.detail || res.error || res.message)) || "Failed to configure Jira", "error");
-        }
-      } catch (err) {
-        showToast("Error configuring Jira: " + (err.message || String(err)), "error");
-      } finally {
-        setIsSettingUpJira(false);
-      }
-    };
-
-    const handleTriggerJiraTest = async (boardSlug) => {
-      const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoard;
-      if (!bSlug || bSlug === "all") return;
-      setIsTestingJira(true);
-      try {
-        const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/test-jira", {
-          method: "POST"
-        });
-        if (res && res.ok) {
-          const conn = res.connection || {};
-          const msg = conn.message || res.message || "Jira tested";
-          showToast(msg, conn.connected ? "success" : "warning");
-        } else {
-          showToast((res && (res.detail || res.error || res.message)) || "Jira test failed", "error");
-        }
-      } catch (err) {
-        showToast("Error testing Jira: " + (err.message || String(err)), "error");
-      } finally {
-        setIsTestingJira(false);
       }
     };
 
@@ -1520,7 +1467,6 @@ export function ZeroFactoryKanbanApp() {
             max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
             automerge: Boolean(newBoardForm.automerge),
-            jira_url: (newBoardForm.jira_url || "").trim(),
             auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false),
             repositories: formattedRepos.length > 0 ? formattedRepos : [{
               repo_alias: targetSlug,
@@ -1546,7 +1492,6 @@ export function ZeroFactoryKanbanApp() {
           auto_record_memory: true,
           automerge: false,
           additional_reviewer_usernames: "",
-          jira_url: "",
           auto_setup_precommit: true
         });
         setCreateBoardError("");
@@ -1605,8 +1550,7 @@ export function ZeroFactoryKanbanApp() {
           max_concurrent_running: (typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1) ? curr.max_concurrent_running : 1,
           auto_record_memory: curr.auto_record_memory !== false,
           automerge: Boolean(curr.automerge),
-          additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : "",
-          jira_url: curr.jira_url || ""
+          additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
         });
         (curr.repositories || []).forEach((r) => {
           loadPrecommitStatus(curr.slug, r.repo_alias);
@@ -1644,7 +1588,6 @@ export function ZeroFactoryKanbanApp() {
             max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
             auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
             automerge: Boolean(editBoardForm.automerge),
-            jira_url: (editBoardForm.jira_url || "").trim(),
             repositories: formattedRepos
           })
         });
@@ -2046,10 +1989,6 @@ export function ZeroFactoryKanbanApp() {
         ghIssuesStatus,
         isSettingUpGhIssues,
         handleTriggerGhIssuesSetup,
-        isSettingUpJira,
-        handleTriggerJiraSetup,
-        isTestingJira,
-        handleTriggerJiraTest,
         handleAddBoardRepo,
         handleDeleteBoardRepo
       }),

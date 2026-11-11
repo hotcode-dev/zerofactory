@@ -1726,10 +1726,6 @@ var ZeroFactoryDashboard = (function(exports) {
 						{
 							cmd: "hermes zerofactory import-gh-issue --sync",
 							desc: "Batch import open issues requested for AI investigation"
-						},
-						{
-							cmd: "hermes zerofactory import-jira-issue <key-or-url> [--board <slug>]",
-							desc: "Import Jira Cloud issue into human-gated Triage task"
 						}
 					]
 				},
@@ -1759,10 +1755,6 @@ var ZeroFactoryDashboard = (function(exports) {
 						{
 							cmd: "hermes zerofactory setup-gh-issues --board <slug>",
 							desc: "Create P0 setup task to generate GitHub Issue templates & labels"
-						},
-						{
-							cmd: "hermes zerofactory setup-jira --board <slug> [--url <jira_url>]",
-							desc: "Configure Jira Cloud instance link and test connectivity for a board"
 						},
 						{
 							cmd: "hermes zerofactory stats",
@@ -3057,15 +3049,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...newBoardForm,
 				description: e.target.value
 			})
-		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"), React.createElement("input", {
-			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
-			placeholder: "https://your-domain.atlassian.net or project link",
-			value: newBoardForm.jira_url || "",
-			onChange: (e) => setNewBoardForm({
-				...newBoardForm,
-				jira_url: e.target.value
-			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link your Jira Cloud instance or project to this board for Jira issue references and triage.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"), React.createElement("input", {
+		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"), React.createElement("input", {
 			type: "number",
 			min: 1,
 			step: 1,
@@ -3113,7 +3097,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/modals/EditBoardModal.jsx
 	function EditBoardModal(props) {
-		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatuses = {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatuses = {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {}, ghIssuesStatuses = {}, ghIssuesStatus = null, isSettingUpGhIssues = false, handleTriggerGhIssuesSetup = () => {}, isSettingUpJira = false, handleTriggerJiraSetup = () => {}, isTestingJira = false, handleTriggerJiraTest = () => {}, handleAddBoardRepo = () => {}, handleDeleteBoardRepo = () => {} } = props;
+		const { showEditBoardModal, setShowEditBoardModal, editBoardForm, setEditBoardForm, handleUpdateBoard, handleUpdateBoardSubmit = handleUpdateBoard, handleDeleteBoard, isSubmittingBoard, isTestingClone = false, handleTestClone = () => {}, cloneTestResult = null, setCloneTestResult = () => {}, precommitStatuses = {}, precommitStatus = null, isSettingUpPrecommit = false, handleTriggerPrecommitSetup = () => {}, openwikiStatuses = {}, openwikiStatus = null, isSettingUpOpenwiki = false, handleTriggerOpenwikiSetup = () => {}, ghIssuesStatuses = {}, ghIssuesStatus = null, isSettingUpGhIssues = false, handleTriggerGhIssuesSetup = () => {}, handleAddBoardRepo = () => {}, handleDeleteBoardRepo = () => {} } = props;
 		const [newRepoAlias, setNewRepoAlias] = React.useState("");
 		const [newRepoUrl, setNewRepoUrl] = React.useState("");
 		const [newRepoBranch, setNewRepoBranch] = React.useState("main");
@@ -3269,20 +3253,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				...editBoardForm,
 				description: e.target.value
 			})
-		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"), editBoardForm.jira_url && React.createElement("a", {
-			href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
-			target: "_blank",
-			rel: "noreferrer",
-			className: "text-[11px] font-medium text-sky-400 hover:text-sky-300 cursor-pointer flex items-center gap-1 transition-colors"
-		}, "↗ Open Jira Cloud")), React.createElement("input", {
-			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
-			placeholder: "https://your-domain.atlassian.net or project link",
-			value: editBoardForm.jira_url || "",
-			onChange: (e) => setEditBoardForm({
-				...editBoardForm,
-				jira_url: e.target.value
-			})
-		}), React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link your Jira Cloud instance or project to this board for Jira issue references and triage.")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"), React.createElement("input", {
+		})), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Max Concurrent Running (Default: 1)"), React.createElement("input", {
 			type: "number",
 			min: 1,
 			step: 1,
@@ -4073,7 +4044,6 @@ var ZeroFactoryDashboard = (function(exports) {
 			auto_record_memory: true,
 			automerge: false,
 			additional_reviewer_usernames: "",
-			jira_url: "",
 			auto_setup_precommit: true
 		});
 		const [editBoardForm, setEditBoardForm] = useState({
@@ -4086,8 +4056,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			max_concurrent_running: 1,
 			auto_record_memory: true,
 			automerge: false,
-			additional_reviewer_usernames: "",
-			jira_url: ""
+			additional_reviewer_usernames: ""
 		});
 		const [precommitStatus, setPrecommitStatus] = useState(null);
 		const [precommitStatuses, setPrecommitStatuses] = useState({});
@@ -4102,8 +4071,6 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
 		const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
 		const [isSyncingIssues, setIsSyncingIssues] = useState(false);
-		const [isSettingUpJira, setIsSettingUpJira] = useState(false);
-		const [isTestingJira, setIsTestingJira] = useState(false);
 		const [createBoardError, setCreateBoardError] = useState("");
 		const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
 		const [isSubmittingTask, setIsSubmittingTask] = useState(false);
@@ -4448,49 +4415,6 @@ var ZeroFactoryDashboard = (function(exports) {
 				showToast("Error syncing issues: " + (err.message || String(err)), "error");
 			} finally {
 				setIsSyncingIssues(false);
-			}
-		};
-		const handleTriggerJiraSetup = async (boardSlug, jiraUrl) => {
-			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoard;
-			if (!bSlug || bSlug === "all") return;
-			setIsSettingUpJira(true);
-			try {
-				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/setup-jira", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ jira_url: jiraUrl !== void 0 ? jiraUrl : editBoardForm.jira_url || "" })
-				});
-				if (res && res.ok) {
-					setEditBoardForm((prev) => ({
-						...prev,
-						jira_url: res.jira_url || ""
-					}));
-					const conn = res.connection || {};
-					const msg = conn.message || res.message || "Jira Cloud link configured";
-					showToast(msg, conn.connected ? "success" : "info");
-					await loadBoards();
-				} else showToast(res && (res.detail || res.error || res.message) || "Failed to configure Jira", "error");
-			} catch (err) {
-				showToast("Error configuring Jira: " + (err.message || String(err)), "error");
-			} finally {
-				setIsSettingUpJira(false);
-			}
-		};
-		const handleTriggerJiraTest = async (boardSlug) => {
-			const bSlug = typeof boardSlug === "string" && boardSlug ? boardSlug : selectedBoard;
-			if (!bSlug || bSlug === "all") return;
-			setIsTestingJira(true);
-			try {
-				const res = await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(bSlug) + "/test-jira", { method: "POST" });
-				if (res && res.ok) {
-					const conn = res.connection || {};
-					const msg = conn.message || res.message || "Jira tested";
-					showToast(msg, conn.connected ? "success" : "warning");
-				} else showToast(res && (res.detail || res.error || res.message) || "Jira test failed", "error");
-			} catch (err) {
-				showToast("Error testing Jira: " + (err.message || String(err)), "error");
-			} finally {
-				setIsTestingJira(false);
 			}
 		};
 		const loadTasksAndStats = useCallback(async (boardSlug) => {
@@ -5353,7 +5277,6 @@ var ZeroFactoryDashboard = (function(exports) {
 						max_concurrent_running: Math.max(1, parseInt(newBoardForm.max_concurrent_running, 10) || 1),
 						auto_record_memory: Boolean(newBoardForm.auto_record_memory !== false),
 						automerge: Boolean(newBoardForm.automerge),
-						jira_url: (newBoardForm.jira_url || "").trim(),
 						auto_setup_precommit: Boolean(newBoardForm.auto_setup_precommit !== false),
 						repositories: formattedRepos.length > 0 ? formattedRepos : [{
 							repo_alias: targetSlug,
@@ -5382,7 +5305,6 @@ var ZeroFactoryDashboard = (function(exports) {
 					auto_record_memory: true,
 					automerge: false,
 					additional_reviewer_usernames: "",
-					jira_url: "",
 					auto_setup_precommit: true
 				});
 				setCreateBoardError("");
@@ -5450,8 +5372,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					max_concurrent_running: typeof curr.max_concurrent_running === "number" && curr.max_concurrent_running >= 1 ? curr.max_concurrent_running : 1,
 					auto_record_memory: curr.auto_record_memory !== false,
 					automerge: Boolean(curr.automerge),
-					additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : "",
-					jira_url: curr.jira_url || ""
+					additional_reviewer_usernames: Array.isArray(curr.additional_reviewer_usernames) ? curr.additional_reviewer_usernames.join(", ") : ""
 				});
 				(curr.repositories || []).forEach((r) => {
 					loadPrecommitStatus(curr.slug, r.repo_alias);
@@ -5483,7 +5404,6 @@ var ZeroFactoryDashboard = (function(exports) {
 						max_concurrent_running: Math.max(1, parseInt(editBoardForm.max_concurrent_running, 10) || 1),
 						auto_record_memory: Boolean(editBoardForm.auto_record_memory !== false),
 						automerge: Boolean(editBoardForm.automerge),
-						jira_url: (editBoardForm.jira_url || "").trim(),
 						repositories: formattedRepos
 					})
 				});
@@ -5833,10 +5753,6 @@ var ZeroFactoryDashboard = (function(exports) {
 			ghIssuesStatus,
 			isSettingUpGhIssues,
 			handleTriggerGhIssuesSetup,
-			isSettingUpJira,
-			handleTriggerJiraSetup,
-			isTestingJira,
-			handleTriggerJiraTest,
 			handleAddBoardRepo,
 			handleDeleteBoardRepo
 		}), React.createElement(SettingsModal, {

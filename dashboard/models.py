@@ -449,3 +449,38 @@ class MemoryUpdate(BaseModel):
     tags: list[str] | None = None
     author: str | None = None
     task_id: str | None = None
+
+
+class CronToggleRequest(BaseModel):
+    enabled: bool | None = Field(
+        default=None,
+        description="Toggle status: true to enable/activate, false to pause",
+    )
+
+
+class CronJobUpdate(BaseModel):
+    enabled: bool | None = None
+    scan_on_idle: bool | None = Field(
+        default=None,
+        description="Whether to scan when the board is idle and capacity is available",
+    )
+    idle_scan_cooldown_minutes: int | None = Field(
+        default=None, ge=1, le=10080, description="Minimum minutes between idle scans"
+    )
+    idle_scan_max_todo: int | None = Field(
+        default=None,
+        ge=1,
+        le=50,
+        description="Max todo tasks before pausing idle scans",
+    )
+    minutes: int | None = Field(default=None, ge=1, description="Interval in minutes")
+    cron_expr: str | None = Field(
+        default=None, description="Standard cron expression (min hr dom mon dow)"
+    )
+    schedule_kind: str | None = Field(
+        default=None, description="Schedule type: interval, cron, or idle"
+    )
+    prompt: str | None = Field(default=None, description="Task execution prompt")
+    model: str | None = Field(default=None, description="LLM model override")
+    workdir: str | None = Field(default=None, description="Working directory path")
+    name: str | None = Field(default=None, description="Display name of the job")

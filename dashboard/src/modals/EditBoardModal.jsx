@@ -28,10 +28,6 @@ export function EditBoardModal(props) {
     ghIssuesStatus = null,
     isSettingUpGhIssues = false,
     handleTriggerGhIssuesSetup = () => {},
-    isSettingUpJira = false,
-    handleTriggerJiraSetup = () => {},
-    isTestingJira = false,
-    handleTriggerJiraTest = () => {},
     handleAddBoardRepo = () => {},
     handleDeleteBoardRepo = () => {}
   } = props;
@@ -454,35 +450,6 @@ export function EditBoardModal(props) {
             value: editBoardForm.description || "",
             onChange: (e) => setEditBoardForm({ ...editBoardForm, description: e.target.value })
           })
-        ),
-
-        // Jira Cloud Integration
-        React.createElement(
-          "div",
-          { className: "space-y-1.5" },
-          React.createElement(
-            "div",
-            { className: "flex items-center justify-between" },
-            React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Jira Cloud Link (Optional)"),
-            editBoardForm.jira_url &&
-              React.createElement(
-                "a",
-                {
-                  href: editBoardForm.jira_url.startsWith("http") ? editBoardForm.jira_url : `https://${editBoardForm.jira_url}`,
-                  target: "_blank",
-                  rel: "noreferrer",
-                  className: "text-[11px] font-medium text-sky-400 hover:text-sky-300 cursor-pointer flex items-center gap-1 transition-colors"
-                },
-                "↗ Open Jira Cloud"
-              )
-          ),
-          React.createElement("input", {
-            className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono",
-            placeholder: "https://your-domain.atlassian.net or project link",
-            value: editBoardForm.jira_url || "",
-            onChange: (e) => setEditBoardForm({ ...editBoardForm, jira_url: e.target.value })
-          }),
-          React.createElement("p", { className: "text-[10px] text-slate-500 m-0" }, "Link your Jira Cloud instance or project to this board for Jira issue references and triage.")
         ),
 
         // Max Concurrent Running
