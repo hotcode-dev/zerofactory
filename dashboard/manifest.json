@@ -1,7 +1,7 @@
 {
   "name": "zerofactory",
   "label": "Zero Factory",
-  "description": "Durable Kanban board tailored for Zero Factory multi-agent workflows",
+  "description": "Durable Kanban board tailored for Zero Factory multi-agent workflows with self-healing recovery",
   "icon": "Package",
   "version": "1.3.0",
   "tab": {
