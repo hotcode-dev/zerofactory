@@ -868,7 +868,7 @@ export function ZeroFactoryKanbanApp() {
       }
     }, [fetchJSON]);
 
-    // Load 3 Specialist Agents Status
+    // Load Specialist Agents Status
     const loadAgents = useCallback(async (boardSlug) => {
       const bSlug = (typeof boardSlug === "string" && boardSlug) ? boardSlug : selectedBoardRef.current;
       try {

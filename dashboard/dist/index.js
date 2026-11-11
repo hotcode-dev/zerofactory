@@ -21,7 +21,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#region dashboard/src/constants.js
 	var API_BASE = "/api/plugins/zerofactory";
 	var ZEROFACTORY_REPO = "hotcode-dev/zerofactory";
-	var ZEROFACTORY_GITHUB_URL = `https://github.com/${ZEROFACTORY_REPO}`;
+	`${ZEROFACTORY_REPO}`;
 	`${ZEROFACTORY_REPO}`;
 	var COLUMNS = [
 		{
@@ -274,13 +274,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				}
 			},
 			title: "Global Zero Factory configuration (WIP limits, worker caps)"
-		}, "⚙️ Settings"), React.createElement("a", {
-			href: ZEROFACTORY_GITHUB_URL,
-			target: "_blank",
-			rel: "noopener noreferrer",
-			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer no-underline",
-			title: "View Zero Factory source repository on GitHub"
-		}, "🐙 GitHub"), React.createElement("button", {
+		}, "⚙️ Settings"), React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
 			onClick: handleRunDispatcher || handleDispatch,
 			disabled: isDispatching || boards.length === 0,
@@ -1034,6 +1028,11 @@ var ZeroFactoryDashboard = (function(exports) {
 				count: boardFilteredSessions.filter((s) => s.agent === "zf-orchestrator").length
 			},
 			{
+				id: "zf-goldfish",
+				label: "🐟 Goldfish",
+				count: boardFilteredSessions.filter((s) => s.agent === "zf-goldfish").length
+			},
+			{
 				id: "zf-builder",
 				label: "🔨 Builder",
 				count: boardFilteredSessions.filter((s) => s.agent === "zf-builder").length
@@ -1091,12 +1090,18 @@ var ZeroFactoryDashboard = (function(exports) {
 				loadMemories(selectedBoard);
 			},
 			disabled: sessionsLoading || agentsLoading || memoriesLoading
-		}, sessionsLoading || agentsLoading || memoriesLoading ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "🔄", " Refresh"))), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4" }, [
+		}, sessionsLoading || agentsLoading || memoriesLoading ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "🔄", " Refresh"))), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" }, [
 			{
 				id: "zf-orchestrator",
 				label: "Orchestrator",
 				icon: "🧭",
 				role: "Planning, Triage & Improvement Scans"
+			},
+			{
+				id: "zf-goldfish",
+				label: "Goldfish",
+				icon: "🐟",
+				role: "Spec Audit, Gatekeeping & Acceptance Criteria"
 			},
 			{
 				id: "zf-builder",
@@ -1361,7 +1366,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				{
 					icon: "🔍",
 					title: "Thematic Code Review",
-					desc: "Layered code review (Correctness ➔ Performance ➔ Clean Code / Ponytail), capped at up to 3 rounds before human merge."
+					desc: "Layered code review (Correctness & Tests ➔ Verification & Polish), capped at up to 2 focused rounds before human merge."
 				},
 				{
 					icon: "⚡",
@@ -1376,27 +1381,27 @@ var ZeroFactoryDashboard = (function(exports) {
 			].map((card, idx) => React.createElement("div", {
 				key: idx,
 				className: "bg-slate-900/80 border border-slate-700/80 rounded-xl p-5 space-y-2 hover:border-slate-600 transition-colors shadow-sm"
-			}, React.createElement("div", { className: "text-2xl mb-1" }, card.icon), React.createElement("h3", { className: "text-sm font-bold text-white m-0 tracking-wide" }, card.title), React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, card.desc)))), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-6 shadow-md" }, React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" }, React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0 flex items-center gap-2" }, "🏗️ High-Level Architecture & Workflow"), React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "5 Kanban States • 3 Specialist Agents • HITL Merge Gate")), React.createElement("div", { className: "space-y-3" }, React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "Kanban Column States & Roles"), React.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs" }, [
+			}, React.createElement("div", { className: "text-2xl mb-1" }, card.icon), React.createElement("h3", { className: "text-sm font-bold text-white m-0 tracking-wide" }, card.title), React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, card.desc)))), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-6 shadow-md" }, React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" }, React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0 flex items-center gap-2" }, "🏗️ High-Level Architecture & Workflow"), React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "5 Kanban States • 4 Specialist Agents • HITL Merge Gate")), React.createElement("div", { className: "space-y-3" }, React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "Kanban Column States & Roles"), React.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs" }, [
 				{
 					step: "1. Triage",
 					color: "bg-indigo-950/90 border-indigo-500/70 text-indigo-100",
 					role: "Intake & Epics",
-					actor: "User / Operator",
-					desc: "Raw user goals and high-level feature epics. Ignored by dispatcher until decomposed into Todo."
+					actor: "Orchestrator / Goldfish",
+					desc: "Raw user goals or epics. Drafted by zf-orchestrator, audited by zf-goldfish, and promoted to Todo on human approval."
 				},
 				{
 					step: "2. Todo",
 					color: "bg-sky-950/90 border-sky-500/70 text-sky-100",
 					role: "Actionable Queue",
 					actor: "Queue",
-					desc: "Prioritized, actionable tasks ready for autonomous execution. Isolated Git worktree provisioned on pickup."
+					desc: "Prioritized, approved tasks ready for autonomous execution. Isolated Git worktree provisioned on pickup."
 				},
 				{
 					step: "3. Running",
 					color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100",
 					role: "Autonomous AI",
-					actor: "zf-builder / reviewer",
-					desc: "Subprocess actively executing. zf-builder coding or zf-reviewer evaluating PR across continuous review rounds."
+					actor: "zf-builder / zf-reviewer",
+					desc: "Subprocess actively executing. zf-builder coding & testing, or zf-reviewer evaluating PR across continuous review rounds."
 				},
 				{
 					step: "4. Blocked",
@@ -1421,42 +1426,42 @@ var ZeroFactoryDashboard = (function(exports) {
 					title: "Goal Ingestion",
 					badge: "Triage",
 					bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
-					desc: "User submits high-level goals or epics via CLI or dashboard UI. Raw triage goals are unrefined and ignored by the dispatcher."
+					desc: "User submits high-level goals, epics, or synced GitHub issues via CLI or UI (parked under human assignee with 0 GPU tokens until activated)."
 				},
 				{
 					num: "2",
-					title: "Decompose & Scan",
-					badge: "Todo",
-					bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
-					desc: "zf-orchestrator decomposes Triage epics AND scans the codebase project on idle to create actionable TODO tasks."
+					title: "Sequential Triage",
+					badge: "Triage",
+					bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
+					desc: "zf-orchestrator drafts technical spec and system contracts, then zf-goldfish performs zero-context adversarial audit enforcing the Ponytail ladder."
 				},
 				{
 					num: "3",
-					title: "Worktree & Launch",
-					badge: "Running",
-					bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-					desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/.zerofactory/workspaces/<board>/worktrees/<task_id>), and spawns zf-builder in Running."
+					title: "Human Release Gate",
+					badge: "Triage ➔ Todo",
+					bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
+					desc: "Operator approves via UI or CLI (approve [--split]), promoting single-repo tasks to Todo or atomically decomposing multi-repo epics."
 				},
 				{
 					num: "4",
-					title: "Code & Tests",
+					title: "Worktree & Launch",
 					badge: "Running",
 					bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-					desc: "zf-builder inspects OpenWiki/AGENTS.md, writes code & tests applying the Ponytail Ladder of Laziness, and executes .zerofactory/precommit.sh."
+					desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/.zerofactory/workspaces/<board>/worktrees/<task_id>), and spawns zf-builder."
 				},
 				{
 					num: "5",
-					title: "Precommit & PR",
+					title: "Code & Tests",
 					badge: "Running",
 					bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-					desc: "Dispatcher runs precommit (format ➔ build ➔ tests), stages formatted files, self-heals any test regressions, opens GitHub PR, and routes to zf-reviewer."
+					desc: "zf-builder inspects OpenWiki/AGENTS.md, writes surgical code & tests applying the Ponytail Ladder of Laziness, and executes .zerofactory/precommit.sh."
 				},
 				{
 					num: "6",
-					title: "Thematic Review",
+					title: "Precommit & Review",
 					badge: "Running",
 					bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-					desc: "zf-reviewer runs in Running (Correctness ➔ Performance ➔ Ponytail / Clean Code, up to 3 rounds). Requests changes or approves."
+					desc: "Dispatcher runs precommit (format ➔ build ➔ tests, up to 3 retries), opens GitHub PR, and routes to zf-reviewer for thematic review (up to 2 rounds)."
 				},
 				{
 					num: "7",
@@ -1468,17 +1473,18 @@ var ZeroFactoryDashboard = (function(exports) {
 			].map((step, idx) => React.createElement("div", {
 				key: idx,
 				className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-3.5 flex flex-col justify-between space-y-2 relative group hover:border-slate-500 transition-colors shadow-sm"
-			}, React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between gap-1" }, React.createElement("span", { className: "w-6 h-6 rounded-full bg-indigo-900/90 text-indigo-100 font-mono font-bold text-xs flex items-center justify-center shrink-0 border border-indigo-500/60 shadow-xs" }, step.num), React.createElement("span", { className: "text-xs font-mono px-2 py-0.5 rounded border font-bold truncate shadow-xs " + step.bcolor }, step.badge)), React.createElement("div", { className: "text-xs font-bold text-white leading-tight pt-0.5" }, step.title), React.createElement("p", { className: "text-xs text-slate-200 leading-snug m-0 font-normal" }, step.desc)))))), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2" }, React.createElement("div", { className: "p-4.5 bg-purple-950/50 border border-purple-600/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-purple-200 text-sm" }, "↩️ Reviewer Feedback Loop:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, "When ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-reviewer"), " requests changes during rounds 1-3 in ", React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "Running"), ", the dispatcher routes the ticket back to ", React.createElement("span", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"), " assigned to ", React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "zf-builder"), ". The builder updates code and tests on the same branch, triggering automatic re-review.")), React.createElement("div", { className: "p-4.5 bg-amber-950/40 border border-amber-600/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-amber-200 text-sm" }, "🛡️ Human-in-the-Loop (HITL) Safety Gates:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, React.createElement("strong", { className: "text-amber-200 font-bold" }, "PR Merge Gate: "), "Agents NEVER auto-merge to main. Every task produces an isolated PR; approved tasks pause in ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"), " until a human reviews and merges on GitHub. ", React.createElement("strong", { className: "text-amber-200 font-bold" }, "Escalation Gate: "), "Crashed workers, timeouts, or unresolvable merge conflicts route directly to ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"), " for operator resolution.")))));
+			}, React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between gap-1" }, React.createElement("span", { className: "w-6 h-6 rounded-full bg-indigo-900/90 text-indigo-100 font-mono font-bold text-xs flex items-center justify-center shrink-0 border border-indigo-500/60 shadow-xs" }, step.num), React.createElement("span", { className: "text-xs font-mono px-2 py-0.5 rounded border font-bold truncate shadow-xs " + step.bcolor }, step.badge)), React.createElement("div", { className: "text-xs font-bold text-white leading-tight pt-0.5" }, step.title), React.createElement("p", { className: "text-xs text-slate-200 leading-snug m-0 font-normal" }, step.desc)))))), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2" }, React.createElement("div", { className: "p-4.5 bg-purple-950/50 border border-purple-600/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-purple-200 text-sm" }, "↩️ Reviewer Feedback Loop:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, "When ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-reviewer"), " requests changes during review rounds in ", React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "Running"), ", the dispatcher routes the ticket back to ", React.createElement("span", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"), " assigned to ", React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "zf-builder"), ". The builder updates code and tests on the same branch, triggering automatic re-review.")), React.createElement("div", { className: "p-4.5 bg-amber-950/40 border border-amber-600/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-amber-200 text-sm" }, "🛡️ Human-in-the-Loop (HITL) Safety Gates:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, React.createElement("strong", { className: "text-amber-200 font-bold" }, "PR Merge Gate: "), "Agents NEVER auto-merge to main. Every task produces an isolated PR; approved tasks pause in ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"), " until a human reviews and merges on GitHub. ", React.createElement("strong", { className: "text-amber-200 font-bold" }, "Escalation Gate: "), "Crashed workers, timeouts, or unresolvable merge conflicts route directly to ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"), " for operator resolution.")))));
 		};
 		const renderSpecialistsSection = () => {
-			return React.createElement("div", { className: "grid grid-cols-1 lg:grid-cols-3 gap-5" }, [
+			return React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-5" }, [
 				{
 					name: "zf-orchestrator",
-					title: "Pipeline Overseer & Coordinator",
+					title: "Pipeline Overseer & Elephant Planner",
 					color: "border-indigo-500/70 bg-indigo-950/40 text-indigo-100",
 					badge: "Indigo Profile (Pipeline Overseer)",
-					desc: "Supervises the Kanban board, decomposes user epics into atomic tickets, schedules task execution, and detects stuck or hung worker processes.",
+					desc: "Supervises the Kanban board, drafts technical specifications in triage, decomposes user epics into atomic tickets, schedules task execution, and detects stuck or hung worker processes.",
 					responsibilities: [
+						"Drafts end-to-end technical specifications, system contracts, and acceptance criteria in Triage",
 						"Autonomously scans projects via Codebase Improvement Scanner using the Ponytail ladder of laziness to create actionable TODO tasks",
 						"Audits repository for dead code (Rung 1), stdlib reuse (Rungs 2-3), and anti-overengineering (Rung 6)",
 						"Decomposes high-level goals into structured sub-tasks using kanban_decomposer",
@@ -1487,6 +1493,21 @@ var ZeroFactoryDashboard = (function(exports) {
 						"Monitors queue health via zero-factory-task-queue-check"
 					],
 					dir: "~/.hermes/profiles/zf-orchestrator/"
+				},
+				{
+					name: "zf-goldfish",
+					title: "Spec Auditor & Gatekeeper",
+					color: "border-amber-500/70 bg-amber-950/40 text-amber-100",
+					badge: "Amber Profile (Spec Auditor)",
+					desc: "Conducts zero-context adversarial reviews on drafted specifications during sequential triage, enforcing the Ponytail 7-Rung Ladder of Laziness and concrete testability criteria.",
+					responsibilities: [
+						"Performs zero-context adversarial audits on specifications drafted by zf-orchestrator",
+						"Enforces Ponytail 7-rung Ladder of Laziness: stdlib-first, surgical minimal diffs, zero package bloat",
+						"Verifies explicit acceptance criteria, clear contract boundaries, and edge-case coverage",
+						"Flags architectural ambiguities and unmitigated risks before human sign-off",
+						"Surfaces blockers and actionable nits back to the operator or planner"
+					],
+					dir: "~/.hermes/profiles/zf-goldfish/"
 				},
 				{
 					name: "zf-builder",
@@ -1508,11 +1529,10 @@ var ZeroFactoryDashboard = (function(exports) {
 					title: "Quality Gatekeeper",
 					color: "border-purple-500/70 bg-purple-950/40 text-purple-100",
 					badge: "Purple Profile (Quality Gatekeeper)",
-					desc: "Conducts thematic code reviews on open Pull Requests. Capped strictly at 3 progressive rounds (Correctness ➔ Performance ➔ Ponytail / Clean Code) to eliminate infinite loops.",
+					desc: "Conducts thematic code reviews on open Pull Requests. Capped strictly at 2 progressive rounds (Correctness & Tests ➔ Verification & Polish) before human merge.",
 					responsibilities: [
 						"Round 1: Testing coverage, edge cases, and functional correctness",
-						"Round 2: Performance, memory overhead, and algorithmic efficiency",
-						"Round 3: Clean code & Ponytail anti-overengineering review (vetoing dependency bloat, diff creep, and premature abstractions)",
+						"Round 2: Verification, polish, clean code & Ponytail anti-overengineering review",
 						"Pre-digested git diff and commit history provided directly in prompt context to minimize redundant exploration",
 						"Approves PR and moves task to Blocked (assigned to human) for merge"
 					],
@@ -1531,19 +1551,19 @@ var ZeroFactoryDashboard = (function(exports) {
 				{
 					id: "triage",
 					title: "Triage",
-					desc: "Incoming raw user goals, feature requests, or epics awaiting decomposition.",
+					desc: "Incoming raw user goals, feature requests, or epics. zf-orchestrator drafts specs, audited by zf-goldfish before human release gate.",
 					trigger: "Submitted via CLI or Board UI"
 				},
 				{
 					id: "todo",
 					title: "Todo",
-					desc: "Actionable backlog: Decomposed tickets from Triage, improvement tasks filed by scanner, or reviewer rework.",
-					trigger: "zf-orchestrator decomposes or scans"
+					desc: "Actionable backlog: Approved tickets from Triage, improvement tasks filed by scanner, or reviewer rework.",
+					trigger: "Approved by human or scanner files"
 				},
 				{
 					id: "running",
 					title: "Running",
-					desc: "Dedicated worker executing inside isolated Git worktree. zf-builder coding or zf-reviewer reviewing PR diff.",
+					desc: "Dedicated worker executing inside isolated Git worktree. zf-builder coding & testing, or zf-reviewer reviewing PR diff.",
 					trigger: "Autonomous pickup by dispatcher"
 				},
 				{
@@ -1708,8 +1728,28 @@ var ZeroFactoryDashboard = (function(exports) {
 							desc: "Create a new ticket"
 						},
 						{
+							cmd: "hermes zerofactory approve <task_id> [--split]",
+							desc: "Approve triage specification and promote/split to Todo"
+						},
+						{
+							cmd: "hermes zerofactory reject <task_id> --feedback \"...\"",
+							desc: "Request spec revision back to zf-orchestrator"
+						},
+						{
+							cmd: "hermes zerofactory split <task_id> [--repos api,web]",
+							desc: "Decompose multi-repo triage into sibling Todo tasks"
+						},
+						{
 							cmd: "hermes zerofactory move <task_id> running",
 							desc: "Transition ticket status"
+						},
+						{
+							cmd: "hermes zerofactory recover <task_id> [--guidance \"...\"]",
+							desc: "Recover stuck task to Todo with builder advice"
+						},
+						{
+							cmd: "hermes zerofactory report-bug --task <task_id> --title \"...\"",
+							desc: "Report internal Zero Factory defect to GitHub issues"
 						},
 						{
 							cmd: "hermes zerofactory block <task_id> --reason \"<reason>\"",
@@ -1836,7 +1876,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-5 space-y-3 shadow-md"
 			}, React.createElement("div", { className: "flex flex-col md:flex-row md:items-center justify-between gap-2.5" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, job.title), React.createElement("span", { className: "text-xs font-mono text-indigo-200 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-700 font-bold select-all inline-block" }, job.id)), React.createElement("div", { className: "flex items-center gap-2.5 flex-wrap" }, React.createElement("span", { className: "text-xs font-bold px-3 py-1 rounded-full bg-emerald-900/90 text-emerald-100 border border-emerald-500/70 font-mono shadow-xs" }, job.tokens), React.createElement("span", { className: "text-xs font-bold px-3 py-1 rounded-full bg-slate-800 text-slate-100 border border-slate-600 font-mono shadow-xs" }, job.interval))), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, job.desc))));
 		};
-		return React.createElement("div", { className: "space-y-6 pb-12 max-w-[1400px] mx-auto" }, React.createElement("div", { className: "relative overflow-hidden bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-purple-950/60 border border-slate-700/90 rounded-2xl p-6 md:p-8 shadow-2xl" }, React.createElement("div", { className: "flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10" }, React.createElement("div", { className: "space-y-3.5" }, React.createElement("div", { className: "flex items-center gap-2.5 flex-wrap" }, React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-950/80 text-amber-300 border border-amber-600/70 font-mono shadow-xs" }, "⚡ Active Beta"), React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 text-indigo-100 border border-indigo-500/60 font-mono shadow-xs" }, "Hermes Plugin"), React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-900/80 text-emerald-100 border border-emerald-500/60 font-mono shadow-xs" }, "Zero-Token Idle Watchdogs"), React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/80 text-purple-100 border border-purple-500/60 font-mono shadow-xs" }, "Thematic Review")), React.createElement("h2", { className: "text-2xl md:text-3xl font-extrabold text-white tracking-tight m-0" }, "Zero Factory Architecture & User Guide"), React.createElement("p", { className: "text-xs md:text-sm text-slate-200 max-w-2xl leading-relaxed m-0 font-normal" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Three specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")), React.createElement("div", { className: "flex items-center gap-3 shrink-0" }, React.createElement("button", {
+		return React.createElement("div", { className: "space-y-6 pb-12 max-w-[1400px] mx-auto" }, React.createElement("div", { className: "relative overflow-hidden bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-purple-950/60 border border-slate-700/90 rounded-2xl p-6 md:p-8 shadow-2xl" }, React.createElement("div", { className: "flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10" }, React.createElement("div", { className: "space-y-3.5" }, React.createElement("div", { className: "flex items-center gap-2.5 flex-wrap" }, React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-950/80 text-amber-300 border border-amber-600/70 font-mono shadow-xs" }, "⚡ Active Beta"), React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-900/80 text-indigo-100 border border-indigo-500/60 font-mono shadow-xs" }, "Hermes Plugin"), React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-900/80 text-emerald-100 border border-emerald-500/60 font-mono shadow-xs" }, "Zero-Token Idle Watchdogs"), React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/80 text-purple-100 border border-purple-500/60 font-mono shadow-xs" }, "Thematic Review")), React.createElement("h2", { className: "text-2xl md:text-3xl font-extrabold text-white tracking-tight m-0" }, "Zero Factory Architecture & User Guide"), React.createElement("p", { className: "text-xs md:text-sm text-slate-200 max-w-2xl leading-relaxed m-0 font-normal" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Four specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")), React.createElement("div", { className: "flex items-center gap-3 shrink-0" }, React.createElement("button", {
 			type: "button",
 			className: "inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/40 transition-all duration-150 cursor-pointer",
 			onClick: () => setActiveView("board")

@@ -1,6 +1,6 @@
 # Zero Factory
 
-A 24/7 AI multi-agent orchestration system built as a native **Hermes Agent Plugin**. Three specialized agents form an autonomous software factory — from goal decomposition to implementation, testing, and continuous code review.
+A 24/7 AI multi-agent orchestration system built as a native **Hermes Agent Plugin**. Four specialized agents form an autonomous software factory — from goal decomposition to implementation, testing, and continuous code review.
 
 > [!WARNING]
 > **Active Beta & High-Frequency Changes**  
@@ -11,13 +11,15 @@ graph TD
     classDef kanban fill:#f9d0c4,stroke:#333,stroke-width:2px,color:#000;
     
     User([User / Goal]) --> Triage[Kanban: Triage]:::kanban
-    Triage -->|zf-orchestrator decomposes| Todo[Kanban: Todo]:::kanban
+    Triage -->|zf-orchestrator drafts spec| Goldfish["zf-goldfish (Spec Audit)"]
+    Goldfish -->|Approved| HumanGate[Human Approval Gate]
+    HumanGate -->|hermes zerofactory approve| Todo[Kanban: Todo]:::kanban
     Scanner["zf-orchestrator (Improvement Scanner)"] -->|Scans Project & Creates Task| Todo
     Todo -->|Dispatcher Assigns, Provisions Worktree & Dispatches| Running[Kanban: Running]:::kanban
     
-    subgraph Zero Factory Agents
+    subgraph Zero Factory Autonomous Agents
         Running --> Builder["zf-builder (Code & Tests)"]
-        Running --> Reviewer["zf-reviewer (Review Rounds)"]
+        Running --> Reviewer["zf-reviewer (Thematic Review)"]
     end
     
     Builder -->|Work Done| PR[Dispatcher Pushes & Opens PR]
@@ -40,7 +42,7 @@ graph TD
 | **Anti-Overengineering & Simplicity** | Built-in Ponytail philosophy ("Ladder of Laziness"): favors standard libraries, minimal surgical diffs, dead code elimination, and zero speculative bloat across all roles. |
 | **Multi-Repository Project Workspaces** | Project boards link one or more equal Git repositories side-by-side with explicit board slugs, cross-service architecture prompts, and per-repository precommit/OpenWiki tooling. |
 | **Plugin-First Architecture** | Self-contained Hermes plugin with zero external Node.js or `hermes-profile-manager` dependencies. |
-| **Isolated Profiles** | Profiles are cleanly namespaced (`zf-orchestrator`, `zf-builder`, `zf-reviewer`) in `~/.hermes/profiles/` and never clash with personal user profiles. |
+| **Isolated Profiles** | Profiles are cleanly namespaced (`zf-orchestrator`, `zf-goldfish`, `zf-builder`, `zf-reviewer`) in `~/.hermes/profiles/` and never clash with personal user profiles. |
 | **Isolated Git Worktrees** | Every task runs in its own dedicated Git worktree (`~/.zerofactory/workspaces/<board>/worktrees/<task_id>`). Sibling repositories on the board check out side-by-side. Agents never touch `main` directly. |
 | **Thematic Continuous Review** | Layered code review capping at 2 focused rounds (Correctness & Tests → Verification & Polish) before handing off to human merge. |
 | **Deterministic Precommit Gate** | Standardized format ➔ build ➔ test pipeline (`.zerofactory/precommit.sh`) ensuring zero broken builds or lint errors before PRs. |
@@ -269,7 +271,7 @@ Zero Factory features an intelligent hybrid memory architecture powered by **Mem
 
 ### Integrated "Agents" Dashboard
 The dashboard navigation tab features an integrated **`Agents`** center:
-- **3 Specialist Agent Cards**: Real-time status (`🟢 Active` vs `⚪ Idle`), live execution activity, active session model & duration, and direct links to active Kanban tasks.
+- **4 Specialist Agent Cards**: Real-time status (`🟢 Active` vs `⚪ Idle`), live execution activity, active session model & duration, and direct links to active Kanban tasks.
 - **Sub-Tab Switcher**: Seamlessly switch between `💬 AI Sessions` (full execution history & chat resume links) and `🧠 Repository Memory` (knowledge cards with search, category filtering, and modal CRUD).
 
 ### Memory CLI Commands
@@ -449,6 +451,7 @@ zerofactory/
 │   └── zf-reviewer-ponytail/       # PR gatekeeping playbook (diff bloat & dependency veto)
 └── templates/                   # Version-controlled profile templates
     ├── zf-orchestrator/
+    ├── zf-goldfish/
     ├── zf-builder/
     └── zf-reviewer/
 ```

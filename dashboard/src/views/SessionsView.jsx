@@ -105,6 +105,7 @@ export function SessionsView(props) {
       const agentTabs = [
         { id: "all", label: "All Agents", count: totalCount },
         { id: "zf-orchestrator", label: "🧭 Orchestrator", count: boardFilteredSessions.filter(s => s.agent === "zf-orchestrator").length },
+        { id: "zf-goldfish", label: "🐟 Goldfish", count: boardFilteredSessions.filter(s => s.agent === "zf-goldfish").length },
         { id: "zf-builder", label: "🔨 Builder", count: boardFilteredSessions.filter(s => s.agent === "zf-builder").length },
         { id: "zf-reviewer", label: "🔍 Reviewer", count: boardFilteredSessions.filter(s => s.agent === "zf-reviewer").length },
       ];
@@ -120,6 +121,7 @@ export function SessionsView(props) {
 
       const agentMetas = [
         { id: "zf-orchestrator", label: "Orchestrator", icon: "🧭", role: "Planning, Triage & Improvement Scans" },
+        { id: "zf-goldfish", label: "Goldfish", icon: "🐟", role: "Spec Audit, Gatekeeping & Acceptance Criteria" },
         { id: "zf-builder", label: "Builder", icon: "🔨", role: "Implementation, Bug Fixing & Pull Requests" },
         { id: "zf-reviewer", label: "Reviewer", icon: "🔍", role: "Code Review, Testing & Quality Verification" },
       ];
@@ -170,10 +172,10 @@ export function SessionsView(props) {
           )
         ),
 
-        // Section 1: 3 Specialist Agent Cards
+        // Section 1: 4 Specialist Agent Cards
         React.createElement(
           "div",
-          { className: "grid grid-cols-1 md:grid-cols-3 gap-4" },
+          { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" },
           agentMetas.map((meta) => {
             const agentInfo = agentsList.find(a => a.name === meta.id) || {};
             const agentSessions = boardFilteredSessions.filter(s => s.agent === meta.id);

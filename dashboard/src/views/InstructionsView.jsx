@@ -23,7 +23,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             {
               icon: "🔍",
               title: "Thematic Code Review",
-              desc: "Layered code review (Correctness ➔ Performance ➔ Clean Code / Ponytail), capped at up to 3 rounds before human merge."
+              desc: "Layered code review (Correctness & Tests ➔ Verification & Polish), capped at up to 2 focused rounds before human merge."
             },
             {
               icon: "⚡",
@@ -52,7 +52,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
             React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0 flex items-center gap-2" }, "🏗️ High-Level Architecture & Workflow"),
-            React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "5 Kanban States • 3 Specialist Agents • HITL Merge Gate")
+            React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "5 Kanban States • 4 Specialist Agents • HITL Merge Gate")
           ),
 
           // 1. The 5 Kanban Status Columns
@@ -64,9 +64,9 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
               "div",
               { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs" },
               [
-                { step: "1. Triage", color: "bg-indigo-950/90 border-indigo-500/70 text-indigo-100", role: "Intake & Epics", actor: "User / Operator", desc: "Raw user goals and high-level feature epics. Ignored by dispatcher until decomposed into Todo." },
-                { step: "2. Todo", color: "bg-sky-950/90 border-sky-500/70 text-sky-100", role: "Actionable Queue", actor: "Queue", desc: "Prioritized, actionable tasks ready for autonomous execution. Isolated Git worktree provisioned on pickup." },
-                { step: "3. Running", color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100", role: "Autonomous AI", actor: "zf-builder / reviewer", desc: "Subprocess actively executing. zf-builder coding or zf-reviewer evaluating PR across continuous review rounds." },
+                { step: "1. Triage", color: "bg-indigo-950/90 border-indigo-500/70 text-indigo-100", role: "Intake & Epics", actor: "Orchestrator / Goldfish", desc: "Raw user goals or epics. Drafted by zf-orchestrator, audited by zf-goldfish, and promoted to Todo on human approval." },
+                { step: "2. Todo", color: "bg-sky-950/90 border-sky-500/70 text-sky-100", role: "Actionable Queue", actor: "Queue", desc: "Prioritized, approved tasks ready for autonomous execution. Isolated Git worktree provisioned on pickup." },
+                { step: "3. Running", color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100", role: "Autonomous AI", actor: "zf-builder / zf-reviewer", desc: "Subprocess actively executing. zf-builder coding & testing, or zf-reviewer evaluating PR across continuous review rounds." },
                 { step: "4. Blocked", color: "bg-purple-950/90 border-purple-500/70 text-purple-100", role: "Human Action (HITL)", actor: "Human Operator", desc: "Action required: PR approved waiting for human merge, crashed worker retry, or merge conflict resolution." },
                 { step: "5. Done", color: "bg-slate-900 border-emerald-500/70 text-emerald-200", role: "PR Merged & Pruned", actor: "System (Closed)", desc: "PR merged on GitHub. Worktree pruned and metrics recorded." }
               ].map((col, idx) =>
@@ -96,42 +96,42 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                   title: "Goal Ingestion",
                   badge: "Triage",
                   bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
-                  desc: "User submits high-level goals or epics via CLI or dashboard UI. Raw triage goals are unrefined and ignored by the dispatcher."
+                  desc: "User submits high-level goals, epics, or synced GitHub issues via CLI or UI (parked under human assignee with 0 GPU tokens until activated)."
                 },
                 {
                   num: "2",
-                  title: "Decompose & Scan",
-                  badge: "Todo",
-                  bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
-                  desc: "zf-orchestrator decomposes Triage epics AND scans the codebase project on idle to create actionable TODO tasks."
+                  title: "Sequential Triage",
+                  badge: "Triage",
+                  bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
+                  desc: "zf-orchestrator drafts technical spec and system contracts, then zf-goldfish performs zero-context adversarial audit enforcing the Ponytail ladder."
                 },
                 {
                   num: "3",
-                  title: "Worktree & Launch",
-                  badge: "Running",
-                  bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/.zerofactory/workspaces/<board>/worktrees/<task_id>), and spawns zf-builder in Running."
+                  title: "Human Release Gate",
+                  badge: "Triage ➔ Todo",
+                  bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
+                  desc: "Operator approves via UI or CLI (approve [--split]), promoting single-repo tasks to Todo or atomically decomposing multi-repo epics."
                 },
                 {
                   num: "4",
-                  title: "Code & Tests",
+                  title: "Worktree & Launch",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "zf-builder inspects OpenWiki/AGENTS.md, writes code & tests applying the Ponytail Ladder of Laziness, and executes .zerofactory/precommit.sh."
+                  desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/.zerofactory/workspaces/<board>/worktrees/<task_id>), and spawns zf-builder."
                 },
                 {
                   num: "5",
-                  title: "Precommit & PR",
+                  title: "Code & Tests",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "Dispatcher runs precommit (format ➔ build ➔ tests), stages formatted files, self-heals any test regressions, opens GitHub PR, and routes to zf-reviewer."
+                  desc: "zf-builder inspects OpenWiki/AGENTS.md, writes surgical code & tests applying the Ponytail Ladder of Laziness, and executes .zerofactory/precommit.sh."
                 },
                 {
                   num: "6",
-                  title: "Thematic Review",
+                  title: "Precommit & Review",
                   badge: "Running",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "zf-reviewer runs in Running (Correctness ➔ Performance ➔ Ponytail / Clean Code, up to 3 rounds). Requests changes or approves."
+                  desc: "Dispatcher runs precommit (format ➔ build ➔ tests, up to 3 retries), opens GitHub PR, and routes to zf-reviewer for thematic review (up to 2 rounds)."
                 },
                 {
                   num: "7",
@@ -175,7 +175,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                 { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" },
                 "When ",
                 React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-reviewer"),
-                " requests changes during rounds 1-3 in ",
+                " requests changes during review rounds in ",
                 React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "Running"),
                 ", the dispatcher routes the ticket back to ",
                 React.createElement("span", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"),
@@ -211,11 +211,12 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
       const specialists = [
         {
           name: "zf-orchestrator",
-          title: "Pipeline Overseer & Coordinator",
+          title: "Pipeline Overseer & Elephant Planner",
           color: "border-indigo-500/70 bg-indigo-950/40 text-indigo-100",
           badge: "Indigo Profile (Pipeline Overseer)",
-          desc: "Supervises the Kanban board, decomposes user epics into atomic tickets, schedules task execution, and detects stuck or hung worker processes.",
+          desc: "Supervises the Kanban board, drafts technical specifications in triage, decomposes user epics into atomic tickets, schedules task execution, and detects stuck or hung worker processes.",
           responsibilities: [
+            "Drafts end-to-end technical specifications, system contracts, and acceptance criteria in Triage",
             "Autonomously scans projects via Codebase Improvement Scanner using the Ponytail ladder of laziness to create actionable TODO tasks",
             "Audits repository for dead code (Rung 1), stdlib reuse (Rungs 2-3), and anti-overengineering (Rung 6)",
             "Decomposes high-level goals into structured sub-tasks using kanban_decomposer",
@@ -224,6 +225,21 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             "Monitors queue health via zero-factory-task-queue-check"
           ],
           dir: "~/.hermes/profiles/zf-orchestrator/"
+        },
+        {
+          name: "zf-goldfish",
+          title: "Spec Auditor & Gatekeeper",
+          color: "border-amber-500/70 bg-amber-950/40 text-amber-100",
+          badge: "Amber Profile (Spec Auditor)",
+          desc: "Conducts zero-context adversarial reviews on drafted specifications during sequential triage, enforcing the Ponytail 7-Rung Ladder of Laziness and concrete testability criteria.",
+          responsibilities: [
+            "Performs zero-context adversarial audits on specifications drafted by zf-orchestrator",
+            "Enforces Ponytail 7-rung Ladder of Laziness: stdlib-first, surgical minimal diffs, zero package bloat",
+            "Verifies explicit acceptance criteria, clear contract boundaries, and edge-case coverage",
+            "Flags architectural ambiguities and unmitigated risks before human sign-off",
+            "Surfaces blockers and actionable nits back to the operator or planner"
+          ],
+          dir: "~/.hermes/profiles/zf-goldfish/"
         },
         {
           name: "zf-builder",
@@ -245,11 +261,10 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
           title: "Quality Gatekeeper",
           color: "border-purple-500/70 bg-purple-950/40 text-purple-100",
           badge: "Purple Profile (Quality Gatekeeper)",
-          desc: "Conducts thematic code reviews on open Pull Requests. Capped strictly at 3 progressive rounds (Correctness ➔ Performance ➔ Ponytail / Clean Code) to eliminate infinite loops.",
+          desc: "Conducts thematic code reviews on open Pull Requests. Capped strictly at 2 progressive rounds (Correctness & Tests ➔ Verification & Polish) before human merge.",
           responsibilities: [
             "Round 1: Testing coverage, edge cases, and functional correctness",
-            "Round 2: Performance, memory overhead, and algorithmic efficiency",
-            "Round 3: Clean code & Ponytail anti-overengineering review (vetoing dependency bloat, diff creep, and premature abstractions)",
+            "Round 2: Verification, polish, clean code & Ponytail anti-overengineering review",
             "Pre-digested git diff and commit history provided directly in prompt context to minimize redundant exploration",
             "Approves PR and moves task to Blocked (assigned to human) for merge"
           ],
@@ -259,7 +274,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
 
       return React.createElement(
         "div",
-        { className: "grid grid-cols-1 lg:grid-cols-3 gap-5" },
+        { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-5" },
         specialists.map((agent, i) =>
           React.createElement(
             "div",
@@ -297,9 +312,9 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
 
     const renderLifecycleSection = () => {
       const columns = [
-        { id: "triage", title: "Triage", desc: "Incoming raw user goals, feature requests, or epics awaiting decomposition.", trigger: "Submitted via CLI or Board UI" },
-        { id: "todo", title: "Todo", desc: "Actionable backlog: Decomposed tickets from Triage, improvement tasks filed by scanner, or reviewer rework.", trigger: "zf-orchestrator decomposes or scans" },
-        { id: "running", title: "Running", desc: "Dedicated worker executing inside isolated Git worktree. zf-builder coding or zf-reviewer reviewing PR diff.", trigger: "Autonomous pickup by dispatcher" },
+        { id: "triage", title: "Triage", desc: "Incoming raw user goals, feature requests, or epics. zf-orchestrator drafts specs, audited by zf-goldfish before human release gate.", trigger: "Submitted via CLI or Board UI" },
+        { id: "todo", title: "Todo", desc: "Actionable backlog: Approved tickets from Triage, improvement tasks filed by scanner, or reviewer rework.", trigger: "Approved by human or scanner files" },
+        { id: "running", title: "Running", desc: "Dedicated worker executing inside isolated Git worktree. zf-builder coding & testing, or zf-reviewer reviewing PR diff.", trigger: "Autonomous pickup by dispatcher" },
         { id: "blocked", title: "Blocked", desc: "Human action required: PR approved waiting for human merge, worker crash retry, or merge conflict resolution.", trigger: "Awaiting Human Merge, Crash, or Conflict" },
         { id: "done", title: "Done", desc: "Completed and merged tickets. Worktrees pruned and metrics updated.", trigger: "PR merged on GitHub" }
       ];
@@ -816,7 +831,12 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             { cmd: "hermes zerofactory list", desc: "List all active tickets across all boards" },
             { cmd: "hermes zerofactory list --board <slug> --status running", desc: "Filter tickets by board and status" },
             { cmd: "hermes zerofactory create \"<title>\" --description \"<desc>\" --board <slug> --priority P1", desc: "Create a new ticket" },
+            { cmd: "hermes zerofactory approve <task_id> [--split]", desc: "Approve triage specification and promote/split to Todo" },
+            { cmd: "hermes zerofactory reject <task_id> --feedback \"...\"", desc: "Request spec revision back to zf-orchestrator" },
+            { cmd: "hermes zerofactory split <task_id> [--repos api,web]", desc: "Decompose multi-repo triage into sibling Todo tasks" },
             { cmd: "hermes zerofactory move <task_id> running", desc: "Transition ticket status" },
+            { cmd: "hermes zerofactory recover <task_id> [--guidance \"...\"]", desc: "Recover stuck task to Todo with builder advice" },
+            { cmd: "hermes zerofactory report-bug --task <task_id> --title \"...\"", desc: "Report internal Zero Factory defect to GitHub issues" },
             { cmd: "hermes zerofactory block <task_id> --reason \"<reason>\"", desc: "Mark ticket as blocked with explanation" },
             { cmd: "hermes zerofactory comment <task_id> \"<message>\"", desc: "Post a comment to a ticket" },
             { cmd: "hermes zerofactory import-gh-issue <issue> [--force]", desc: "Import GitHub issue into human-gated Triage task" },
@@ -964,7 +984,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                 React.createElement("span", { className: "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-900/80 text-purple-100 border border-purple-500/60 font-mono shadow-xs" }, "Thematic Review")
               ),
               React.createElement("h2", { className: "text-2xl md:text-3xl font-extrabold text-white tracking-tight m-0" }, "Zero Factory Architecture & User Guide"),
-              React.createElement("p", { className: "text-xs md:text-sm text-slate-200 max-w-2xl leading-relaxed m-0 font-normal" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Three specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")
+              React.createElement("p", { className: "text-xs md:text-sm text-slate-200 max-w-2xl leading-relaxed m-0 font-normal" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Four specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")
             ),
             React.createElement(
               "div",
