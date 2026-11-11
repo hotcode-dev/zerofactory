@@ -134,6 +134,7 @@ try:
         TaskRejectRequest,
         TaskReportBugRequest,
         TaskSplitRequest,
+        TaskTriageRequest,
         TaskUpdate,
     )
 except (ImportError, ValueError):
@@ -159,6 +160,7 @@ except (ImportError, ValueError):
         TaskRejectRequest,
         TaskReportBugRequest,
         TaskSplitRequest,
+        TaskTriageRequest,
         TaskUpdate,
     )
 
@@ -341,6 +343,7 @@ try:
         remove_dependency,
         report_task_bug,
         split_task,
+        triage_task,
         update_task,
     )
 except (ImportError, ValueError):
@@ -421,6 +424,7 @@ except (ImportError, ValueError):
         remove_dependency,
         report_task_bug,
         split_task,
+        triage_task,
         update_task,
     )
 

@@ -222,7 +222,7 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 elif curr_asgn == "zf-orchestrator" and (
                     meta.get("triage_phase") == "elephant_drafting"
                     or meta.get("egm")
-                    or meta.get("specification")
+                    or (meta.get("specification") and meta.get("egm") is not False)
                 ):
                     target_status = "todo"
                     target_asgn = "zf-goldfish"

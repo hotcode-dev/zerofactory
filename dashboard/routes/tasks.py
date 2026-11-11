@@ -57,6 +57,7 @@ try:
         TaskRejectRequest,
         TaskReportBugRequest,
         TaskSplitRequest,
+        TaskTriageRequest,
         TaskUpdate,
         normalize_assignee,
         normalize_blocked_reason_type,
@@ -91,6 +92,7 @@ except (ImportError, ValueError):
         TaskRejectRequest,
         TaskReportBugRequest,
         TaskSplitRequest,
+        TaskTriageRequest,
         TaskUpdate,
         normalize_assignee,
         normalize_blocked_reason_type,
@@ -1266,10 +1268,21 @@ def remove_dependency(task_id: str, parent_id: str):
 
 
 @router.post("/tasks/{task_id}/triage")
-def triage_task(task_id: str):
-    """Trigger Grill-with-Docs triage dispatch for a task by zf-orchestrator."""
+def triage_task(
+    task_id: str,
+    req: TaskTriageRequest | None = None,
+    mode: str | None = None,
+):
+    """Trigger Grill-with-Docs or Sequential EGM triage dispatch for a task by zf-orchestrator."""
     init_db()
     now = int(time.time())
+    effective_mode = (mode or (req.mode if req else None) or "grill").strip().lower()
+    actor = (
+        (req.actor if req and req.actor else None)
+        or os.environ.get("HERMES_PROFILE")
+        or "user"
+    )
+
     with get_db_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
@@ -1288,6 +1301,20 @@ def triage_task(task_id: str):
         target_status = "triage"
         assignee = "zf-orchestrator"
 
+        if effective_mode == "egm":
+            meta["egm"] = True
+            meta["triage_phase"] = "elephant_drafting"
+            meta.pop("awaiting_interview", None)
+            meta.pop("specification", None)
+            activity_desc = "Dispatched task to zf-orchestrator for Sequential EGM spec drafting"
+            msg = "Task queued for Sequential EGM spec drafting by zf-orchestrator."
+        else:
+            meta["egm"] = False
+            meta.pop("triage_phase", None)
+            meta.pop("awaiting_interview", None)
+            activity_desc = "Dispatched task to zf-orchestrator for Grill-with-Docs triage"
+            msg = "Task queued for Grill-with-Docs triage by zf-orchestrator."
+
         cursor.execute(
             "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
             (target_status, assignee, json.dumps(meta), now, task_id),
@@ -1295,9 +1322,9 @@ def triage_task(task_id: str):
         log_activity(
             conn,
             task_id,
-            "user",
+            actor,
             "triage_dispatched",
-            "Dispatched task to zf-orchestrator for Grill-with-Docs triage",
+            activity_desc,
         )
         conn.commit()
 
@@ -1309,9 +1336,10 @@ def triage_task(task_id: str):
     return {
         "ok": True,
         "task_id": task_id,
+        "mode": effective_mode,
         "status": target_status,
         "assignee": assignee,
-        "message": "Task queued for Grill-with-Docs triage by zf-orchestrator.",
+        "message": msg,
     }
 
 

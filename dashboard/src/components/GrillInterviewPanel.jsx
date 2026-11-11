@@ -20,14 +20,17 @@ export function GrillInterviewPanel({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDispatchingTriage, setIsDispatchingTriage] = useState(false);
 
-  // Trigger Grill-with-Docs triage dispatch
-  const handleStartTriage = async () => {
-    setIsDispatchingTriage(true);
+  // Trigger Grill-with-Docs or Sequential EGM triage dispatch
+  const handleStartTriage = async (mode = "grill") => {
+    setIsDispatchingTriage(mode);
     try {
       await fetchJSON(`${API_BASE}/tasks/${task.id}/triage`, {
-        method: "POST"
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode })
       });
-      showToast("🧭 Grill-with-Docs triage dispatched to zf-orchestrator", "success");
+      const label = mode === "egm" ? "🐘 Sequential EGM spec drafting" : "🧭 Grill-with-Docs triage";
+      showToast(`${label} dispatched to zf-orchestrator`, "success");
       await loadTaskDetails(task.id);
       loadTasksAndStats();
     } catch (err) {
@@ -356,13 +359,13 @@ export function GrillInterviewPanel({
     );
   }
 
-  // If in Triage and no interview has been requested yet: show Quick Triage Dispatch CTA
+  // If in Triage and no interview has been requested yet: show Triage Dispatch CTAs
   if (isTriage) {
     return React.createElement(
       "div",
       {
         className:
-          "rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3.5 flex items-center justify-between gap-3 flex-wrap"
+          "rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3.5 space-y-3"
       },
       React.createElement(
         "div",
@@ -370,26 +373,82 @@ export function GrillInterviewPanel({
         React.createElement(
           "div",
           { className: "text-xs font-semibold text-indigo-300 flex items-center gap-1.5" },
-          React.createElement("span", null, "🧭"),
-          React.createElement("span", null, "Grill-with-Docs Triage Available")
+          React.createElement("span", null, "🎯"),
+          React.createElement("span", null, "Triage Action Required")
         ),
         React.createElement(
           "div",
           { className: "text-[0.6875rem] text-slate-400 leading-snug" },
-          "Dispatch zf-orchestrator to inspect repo docs, interview trade-offs, and formulate acceptance criteria for zf-builder."
+          "Choose a triage protocol to analyze this task before implementation by zf-builder:"
         )
       ),
       React.createElement(
-        "button",
-        {
-          type: "button",
-          onClick: handleStartTriage,
-          disabled: isDispatchingTriage,
-          className:
-            "shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-xs shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
-        },
-        React.createElement("span", null, "🧭"),
-        React.createElement("span", null, isDispatchingTriage ? "Dispatching..." : "Triage with Grill-with-Docs")
+        "div",
+        { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5" },
+        // Option 1: Grill Me (Small task)
+        React.createElement(
+          "div",
+          { className: "p-3 rounded-lg bg-slate-900/80 border border-indigo-900/40 flex flex-col justify-between gap-2.5" },
+          React.createElement(
+            "div",
+            { className: "space-y-1" },
+            React.createElement(
+              "div",
+              { className: "text-xs font-semibold text-indigo-300 flex items-center gap-1.5" },
+              React.createElement("span", null, "🧭"),
+              React.createElement("span", null, "Grill Me (Small Task)")
+            ),
+            React.createElement(
+              "div",
+              { className: "text-[0.6875rem] text-slate-400 leading-relaxed" },
+              "Fast 1-turn clarification & trade-offs interview. Formulates acceptance criteria directly for zf-builder."
+            )
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              onClick: () => handleStartTriage("grill"),
+              disabled: Boolean(isDispatchingTriage),
+              className:
+                "w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-xs shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+            },
+            React.createElement("span", null, "🧭"),
+            React.createElement("span", null, isDispatchingTriage === "grill" ? "Dispatching..." : "Grill Me")
+          )
+        ),
+        // Option 2: Run EGM Spec (Epic task)
+        React.createElement(
+          "div",
+          { className: "p-3 rounded-lg bg-slate-900/80 border border-purple-900/40 flex flex-col justify-between gap-2.5" },
+          React.createElement(
+            "div",
+            { className: "space-y-1" },
+            React.createElement(
+              "div",
+              { className: "text-xs font-semibold text-purple-300 flex items-center gap-1.5" },
+              React.createElement("span", null, "🐘"),
+              React.createElement("span", null, "Run EGM Spec (Epic Task)")
+            ),
+            React.createElement(
+              "div",
+              { className: "text-[0.6875rem] text-slate-400 leading-relaxed" },
+              "Sequential EGM: Elephant drafts technical specification, Goldfish audits for YAGNI bloat, then pauses for human sign-off."
+            )
+          ),
+          React.createElement(
+            "button",
+            {
+              type: "button",
+              onClick: () => handleStartTriage("egm"),
+              disabled: Boolean(isDispatchingTriage),
+              className:
+                "w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 transition-colors shadow-xs shadow-purple-600/30 cursor-pointer disabled:opacity-50"
+            },
+            React.createElement("span", null, "🐘"),
+            React.createElement("span", null, isDispatchingTriage === "egm" ? "Dispatching..." : "Run EGM Spec")
+          )
+        )
       )
     );
   }

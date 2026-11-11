@@ -214,23 +214,56 @@ export function TaskDetailModal(props) {
               "🔀 Split into Todo"
             ),
           selectedTask.status === "triage" &&
+            !Boolean(taskMeta && (taskMeta.awaiting_approval || taskMeta.triage_phase === "human_approval")) &&
             React.createElement(
-              "button",
-              {
-                type: "button",
-                className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
-                onClick: async () => {
-                  try {
-                    await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/triage", { method: "POST" });
-                    showToast("🧭 Grill-with-Docs triage dispatched to zf-orchestrator", "success");
-                    loadTaskDetails(selectedTask.id);
-                    loadTasksAndStats();
-                  } catch (err) {
-                    showToast("Triage dispatch failed: " + err.message, "error");
+              React.Fragment,
+              null,
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+                  title: "Grill Me: fast 1-turn clarification & trade-offs interview",
+                  onClick: async () => {
+                    try {
+                      await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/triage", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ mode: "grill" })
+                      });
+                      showToast("🧭 Grill-with-Docs triage dispatched to zf-orchestrator", "success");
+                      loadTaskDetails(selectedTask.id);
+                      loadTasksAndStats();
+                    } catch (err) {
+                      showToast("Triage dispatch failed: " + err.message, "error");
+                    }
                   }
-                }
-              },
-              "🧭 Grill Triage"
+                },
+                "🧭 Grill Me"
+              ),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "px-3 py-1.5 rounded-lg text-xs font-semibold text-purple-300 hover:text-white bg-purple-950/70 hover:bg-purple-900 border border-purple-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+                  title: "Run EGM Spec: 2-stage spec drafting and adversarial audit",
+                  onClick: async () => {
+                    try {
+                      await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/triage", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ mode: "egm" })
+                      });
+                      showToast("🐘 Sequential EGM spec drafting dispatched to zf-orchestrator", "success");
+                      loadTaskDetails(selectedTask.id);
+                      loadTasksAndStats();
+                    } catch (err) {
+                      showToast("Triage dispatch failed: " + err.message, "error");
+                    }
+                  }
+                },
+                "🐘 Run EGM Spec"
+              )
             ),
           (selectedTask.status === "blocked" || selectedTask.status === "running") &&
             React.createElement(

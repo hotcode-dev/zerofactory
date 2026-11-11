@@ -16,7 +16,8 @@ export function KanbanBoard(props) {
     currentBoard,
     stoppingSessionId,
     handleStopTaskSession,
-    handleAdvanceTask
+    handleAdvanceTask,
+    handleTriageTask
   } = props;
 
   return (
@@ -330,6 +331,43 @@ export function KanbanBoard(props) {
                                         { className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + badgeClass },
                                         React.createElement("span", { className: "w-2 h-2 rounded-full shrink-0 " + dotClass }),
                                         React.createElement("span", { className: "text-[0.6875rem] truncate font-medium" }, labelText)
+                                      );
+                                    })(),
+                                    // Direct Triage Actions on Triage cards
+                                    t.status === "triage" &&
+                                    !t.worker_pid &&
+                                    t.assignee !== "zf-orchestrator" &&
+                                    t.assignee !== "zf-goldfish" &&
+                                    (() => {
+                                      const mStr = typeof t.metadata === "string" ? t.metadata : JSON.stringify(t.metadata || {});
+                                      const isSpecAppr = mStr.includes("human_approval") || mStr.includes("awaiting_approval");
+                                      const isGrill = mStr.includes("awaiting_interview") || mStr.includes("Grill-with-Docs");
+                                      if (isSpecAppr || isGrill) return null;
+                                      return React.createElement(
+                                        "div",
+                                        { className: "flex items-center gap-1.5 pt-1 border-t border-slate-700/40" },
+                                        React.createElement(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            onClick: (e) => handleTriageTask && handleTriageTask(t.id, "grill", e),
+                                            className: "flex-1 py-1 px-1.5 rounded text-[10px] font-semibold text-indigo-300 hover:text-white bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-500/30 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs",
+                                            title: "Grill Me: fast 1-turn clarification & trade-offs interview"
+                                          },
+                                          React.createElement("span", null, "🧭"),
+                                          React.createElement("span", null, "Grill Me")
+                                        ),
+                                        React.createElement(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            onClick: (e) => handleTriageTask && handleTriageTask(t.id, "egm", e),
+                                            className: "flex-1 py-1 px-1.5 rounded text-[10px] font-semibold text-purple-300 hover:text-white bg-purple-950/60 hover:bg-purple-900 border border-purple-500/30 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs",
+                                            title: "Run EGM Spec: 2-stage spec drafting and adversarial audit"
+                                          },
+                                          React.createElement("span", null, "🐘"),
+                                          React.createElement("span", null, "Run EGM Spec")
+                                        )
                                       );
                                     })(),
                                     React.createElement(

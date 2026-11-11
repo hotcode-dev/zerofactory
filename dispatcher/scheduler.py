@@ -345,17 +345,22 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                             task_orig_status == "triage"
                             and assignee == "zf-orchestrator"
                         ):
-                            meta["triage_phase"] = "elephant_drafting"
                             target_repos_c = meta.get("target_repos") or []
-                            if (
+                            is_egm_task = bool(
                                 meta.get("egm")
                                 or (
                                     isinstance(target_repos_c, list)
                                     and len(target_repos_c) > 1
                                 )
                                 or meta.get("category") == "epic"
-                            ):
+                                or meta.get("triage_phase") == "elephant_drafting"
+                            )
+                            if is_egm_task:
                                 meta["egm"] = True
+                                meta["triage_phase"] = "elephant_drafting"
+                            else:
+                                meta["egm"] = False
+                                meta.pop("triage_phase", None)
                         elif assignee == "zf-goldfish":
                             meta["triage_phase"] = "goldfish_auditing"
 

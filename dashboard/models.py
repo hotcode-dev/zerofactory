@@ -254,6 +254,14 @@ class TaskMove(BaseModel):
     assignee: str | None = None
 
 
+class TaskTriageRequest(BaseModel):
+    mode: str | None = Field(
+        default="grill",
+        description="Triage mode: 'grill' (Grill-with-Docs) or 'egm' (Sequential Elephant-Goldfish Model)",
+    )
+    actor: str | None = Field(default="user", description="Actor triggering triage")
+
+
 class TaskSplitRequest(BaseModel):
     repos: list[str] | None = None
     tasks: list[dict[str, Any]] | None = None

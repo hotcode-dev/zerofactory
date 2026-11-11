@@ -37,6 +37,10 @@ try:
         recover_task as _recover_task,
         reject_task as _reject_task,
         report_task_bug as _report_task_bug,
+        triage_task as _triage_task,
+    )
+    from .dashboard.plugin_api import (
+        TaskTriageRequest as _TaskTriageRequest,
     )
     from .dashboard.plugin_api import (
         split_task as _split_task,
@@ -124,6 +128,10 @@ except ImportError:
         recover_task as _recover_task,
         reject_task as _reject_task,
         report_task_bug as _report_task_bug,
+        triage_task as _triage_task,
+    )
+    from plugin_api import (
+        TaskTriageRequest as _TaskTriageRequest,
     )
     from plugin_api import (
         split_task as _split_task,
@@ -578,6 +586,24 @@ def register(ctx: Any):
             "--actor",
             default=None,
             help="Author/actor requesting the revision",
+        )
+
+        # triage
+        p_triage = subparsers.add_parser(
+            "triage",
+            help="Dispatch a task in triage (grill for small tasks, egm for epics)",
+        )
+        p_triage.add_argument("task_id", help="Task ID to triage")
+        p_triage.add_argument(
+            "--mode",
+            choices=["grill", "egm"],
+            default="grill",
+            help="Triage mode: 'grill' (Grill-with-Docs) or 'egm' (Sequential EGM)",
+        )
+        p_triage.add_argument(
+            "--actor",
+            default=None,
+            help="Author/actor triggering triage",
         )
 
         # check-stuck
@@ -1189,6 +1215,18 @@ def register(ctx: Any):
             print(
                 f"\n✓ Revision requested for task {args.task_id} → status {res.get('status')} ({res.get('assignee')})\n"
             )
+
+        elif action == "triage":
+            actor = (
+                getattr(args, "actor", None)
+                or os.environ.get("HERMES_PROFILE")
+                or "user"
+            )
+            mode = getattr(args, "mode", "grill")
+            res = _triage_task(
+                args.task_id, _TaskTriageRequest(mode=mode, actor=actor)
+            )
+            print(f"\n✓ {res.get('message', 'Task dispatched for triage')}\n")
 
         elif action == "update":
             status_val = getattr(args, "status", None)

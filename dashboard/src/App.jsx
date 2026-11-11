@@ -1296,6 +1296,26 @@ export function ZeroFactoryKanbanApp() {
       }
     };
 
+    // Triage task (Grill-with-Docs or Sequential EGM)
+    const handleTriageTask = async (taskId, mode = "grill", e) => {
+      if (e) e.stopPropagation();
+      try {
+        await fetchJSON(API_BASE + "/tasks/" + taskId + "/triage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode })
+        });
+        const label = mode === "egm" ? "🐘 Sequential EGM spec drafting" : "🧭 Grill-with-Docs triage";
+        showToast(label + " dispatched to zf-orchestrator", "success");
+        loadTasksAndStats();
+        if (selectedTask && selectedTask.id === taskId) {
+          loadTaskDetails(taskId);
+        }
+      } catch (err) {
+        showToast("Triage dispatch failed: " + err.message, "error");
+      }
+    };
+
     // Task Details
     const loadTaskDetails = async (taskId) => {
       try {
@@ -1941,7 +1961,8 @@ export function ZeroFactoryKanbanApp() {
                     currentBoard: boards.find(b => b.slug === selectedBoard),
                     stoppingSessionId,
                     handleStopTaskSession,
-                    handleAdvanceTask
+                    handleAdvanceTask,
+                    handleTriageTask
                   })
                 ),
       React.createElement(TaskDetailModal, {
@@ -1962,7 +1983,8 @@ export function ZeroFactoryKanbanApp() {
         selectedSessionIdx,
         setSelectedSessionIdx,
         refreshSessionProgress,
-        handleAdvanceTask
+        handleAdvanceTask,
+        handleTriageTask
       }),
       React.createElement(NewTaskModal, {
         showNewTaskModal,

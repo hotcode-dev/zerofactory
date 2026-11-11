@@ -453,7 +453,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/KanbanBoard.jsx
 	function KanbanBoard(props) {
-		const { tasksByColumn, dragOverCol, handleDragOver, handleDragLeave, handleDrop, handleDragStart, loadTaskDetails, selectedBoard, currentBoard, stoppingSessionId, handleStopTaskSession, handleAdvanceTask } = props;
+		const { tasksByColumn, dragOverCol, handleDragOver, handleDragLeave, handleDrop, handleDragStart, loadTaskDetails, selectedBoard, currentBoard, stoppingSessionId, handleStopTaskSession, handleAdvanceTask, handleTriageTask } = props;
 		return React.createElement("div", { className: "overflow-x-auto pb-4 -mx-1 px-1 zfk-scrollbar" }, React.createElement("div", {
 			className: "grid grid-cols-5 gap-3.5 items-start min-w-[1100px] w-full",
 			style: {
@@ -598,6 +598,22 @@ var ZeroFactoryDashboard = (function(exports) {
 						labelText = "🛑 Action Required / Stuck";
 					} else return null;
 					return React.createElement("div", { className: "flex items-center gap-2 p-1.5 rounded-md border text-xs " + badgeClass }, React.createElement("span", { className: "w-2 h-2 rounded-full shrink-0 " + dotClass }), React.createElement("span", { className: "text-[0.6875rem] truncate font-medium" }, labelText));
+				})(), t.status === "triage" && !t.worker_pid && t.assignee !== "zf-orchestrator" && t.assignee !== "zf-goldfish" && (() => {
+					const mStr = typeof t.metadata === "string" ? t.metadata : JSON.stringify(t.metadata || {});
+					const isSpecAppr = mStr.includes("human_approval") || mStr.includes("awaiting_approval");
+					const isGrill = mStr.includes("awaiting_interview") || mStr.includes("Grill-with-Docs");
+					if (isSpecAppr || isGrill) return null;
+					return React.createElement("div", { className: "flex items-center gap-1.5 pt-1 border-t border-slate-700/40" }, React.createElement("button", {
+						type: "button",
+						onClick: (e) => handleTriageTask && handleTriageTask(t.id, "grill", e),
+						className: "flex-1 py-1 px-1.5 rounded text-[10px] font-semibold text-indigo-300 hover:text-white bg-indigo-950/60 hover:bg-indigo-900 border border-indigo-500/30 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs",
+						title: "Grill Me: fast 1-turn clarification & trade-offs interview"
+					}, React.createElement("span", null, "🧭"), React.createElement("span", null, "Grill Me")), React.createElement("button", {
+						type: "button",
+						onClick: (e) => handleTriageTask && handleTriageTask(t.id, "egm", e),
+						className: "flex-1 py-1 px-1.5 rounded text-[10px] font-semibold text-purple-300 hover:text-white bg-purple-950/60 hover:bg-purple-900 border border-purple-500/30 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs",
+						title: "Run EGM Spec: 2-stage spec drafting and adversarial audit"
+					}, React.createElement("span", null, "🐘"), React.createElement("span", null, "Run EGM Spec")));
 				})(), React.createElement("div", { className: "flex items-center justify-between pt-1 border-t border-slate-700/40 text-[0.6875rem] text-slate-400" }, React.createElement("span", { className: "text-[0.6875rem] text-slate-500" }, timeAgo(t.updated_at || t.created_at)), React.createElement("div", { className: "flex items-center gap-1.5" }, t.comment_count > 0 && React.createElement("span", {
 					className: "inline-flex items-center px-1.5 py-0.5 rounded text-[0.6875rem] bg-slate-700/50 text-slate-300 hover:text-white cursor-pointer",
 					title: t.comment_count + " comments"
@@ -2194,11 +2210,15 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [submittingKey, setSubmittingKey] = useState(null);
 		const [isSubmitting, setIsSubmitting] = useState(false);
 		const [isDispatchingTriage, setIsDispatchingTriage] = useState(false);
-		const handleStartTriage = async () => {
-			setIsDispatchingTriage(true);
+		const handleStartTriage = async (mode = "grill") => {
+			setIsDispatchingTriage(mode);
 			try {
-				await fetchJSON(`${API_BASE}/tasks/${task.id}/triage`, { method: "POST" });
-				showToast("🧭 Grill-with-Docs triage dispatched to zf-orchestrator", "success");
+				await fetchJSON(`${API_BASE}/tasks/${task.id}/triage`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ mode })
+				});
+				showToast(`${mode === "egm" ? "🐘 Sequential EGM spec drafting" : "🧭 Grill-with-Docs triage"} dispatched to zf-orchestrator`, "success");
 				await loadTaskDetails(task.id);
 				loadTasksAndStats();
 			} catch (err) {
@@ -2289,12 +2309,17 @@ var ZeroFactoryDashboard = (function(exports) {
 			disabled: isSubmitting || !customNotes.trim(),
 			className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 active:bg-slate-800 border border-slate-700 transition-colors cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 		}, isSubmitting && submittingKey === "custom" ? "Submitting..." : "Submit Custom Answer →")))));
-		if (isTriage) return React.createElement("div", { className: "rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3.5 flex items-center justify-between gap-3 flex-wrap" }, React.createElement("div", { className: "space-y-0.5 min-w-0" }, React.createElement("div", { className: "text-xs font-semibold text-indigo-300 flex items-center gap-1.5" }, React.createElement("span", null, "🧭"), React.createElement("span", null, "Grill-with-Docs Triage Available")), React.createElement("div", { className: "text-[0.6875rem] text-slate-400 leading-snug" }, "Dispatch zf-orchestrator to inspect repo docs, interview trade-offs, and formulate acceptance criteria for zf-builder.")), React.createElement("button", {
+		if (isTriage) return React.createElement("div", { className: "rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3.5 space-y-3" }, React.createElement("div", { className: "space-y-0.5 min-w-0" }, React.createElement("div", { className: "text-xs font-semibold text-indigo-300 flex items-center gap-1.5" }, React.createElement("span", null, "🎯"), React.createElement("span", null, "Triage Action Required")), React.createElement("div", { className: "text-[0.6875rem] text-slate-400 leading-snug" }, "Choose a triage protocol to analyze this task before implementation by zf-builder:")), React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5" }, React.createElement("div", { className: "p-3 rounded-lg bg-slate-900/80 border border-indigo-900/40 flex flex-col justify-between gap-2.5" }, React.createElement("div", { className: "space-y-1" }, React.createElement("div", { className: "text-xs font-semibold text-indigo-300 flex items-center gap-1.5" }, React.createElement("span", null, "🧭"), React.createElement("span", null, "Grill Me (Small Task)")), React.createElement("div", { className: "text-[0.6875rem] text-slate-400 leading-relaxed" }, "Fast 1-turn clarification & trade-offs interview. Formulates acceptance criteria directly for zf-builder.")), React.createElement("button", {
 			type: "button",
-			onClick: handleStartTriage,
-			disabled: isDispatchingTriage,
-			className: "shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-xs shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
-		}, React.createElement("span", null, "🧭"), React.createElement("span", null, isDispatchingTriage ? "Dispatching..." : "Triage with Grill-with-Docs")));
+			onClick: () => handleStartTriage("grill"),
+			disabled: Boolean(isDispatchingTriage),
+			className: "w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-xs shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+		}, React.createElement("span", null, "🧭"), React.createElement("span", null, isDispatchingTriage === "grill" ? "Dispatching..." : "Grill Me"))), React.createElement("div", { className: "p-3 rounded-lg bg-slate-900/80 border border-purple-900/40 flex flex-col justify-between gap-2.5" }, React.createElement("div", { className: "space-y-1" }, React.createElement("div", { className: "text-xs font-semibold text-purple-300 flex items-center gap-1.5" }, React.createElement("span", null, "🐘"), React.createElement("span", null, "Run EGM Spec (Epic Task)")), React.createElement("div", { className: "text-[0.6875rem] text-slate-400 leading-relaxed" }, "Sequential EGM: Elephant drafts technical specification, Goldfish audits for YAGNI bloat, then pauses for human sign-off.")), React.createElement("button", {
+			type: "button",
+			onClick: () => handleStartTriage("egm"),
+			disabled: Boolean(isDispatchingTriage),
+			className: "w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-500 transition-colors shadow-xs shadow-purple-600/30 cursor-pointer disabled:opacity-50"
+		}, React.createElement("span", null, "🐘"), React.createElement("span", null, isDispatchingTriage === "egm" ? "Dispatching..." : "Run EGM Spec")))));
 		return null;
 	}
 	//#endregion
@@ -2442,12 +2467,17 @@ var ZeroFactoryDashboard = (function(exports) {
 						showToast("Split failed: " + err.message, "error");
 					}
 				}
-			}, "🔀 Split into Todo"), selectedTask.status === "triage" && React.createElement("button", {
+			}, "🔀 Split into Todo"), selectedTask.status === "triage" && !Boolean(taskMeta && (taskMeta.awaiting_approval || taskMeta.triage_phase === "human_approval")) && React.createElement(React.Fragment, null, React.createElement("button", {
 				type: "button",
-				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+				className: "px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+				title: "Grill Me: fast 1-turn clarification & trade-offs interview",
 				onClick: async () => {
 					try {
-						await fetchJSON("/api/plugins/zerofactory/tasks/" + selectedTask.id + "/triage", { method: "POST" });
+						await fetchJSON("/api/plugins/zerofactory/tasks/" + selectedTask.id + "/triage", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ mode: "grill" })
+						});
 						showToast("🧭 Grill-with-Docs triage dispatched to zf-orchestrator", "success");
 						loadTaskDetails(selectedTask.id);
 						loadTasksAndStats();
@@ -2455,7 +2485,25 @@ var ZeroFactoryDashboard = (function(exports) {
 						showToast("Triage dispatch failed: " + err.message, "error");
 					}
 				}
-			}, "🧭 Grill Triage"), (selectedTask.status === "blocked" || selectedTask.status === "running") && React.createElement("button", {
+			}, "🧭 Grill Me"), React.createElement("button", {
+				type: "button",
+				className: "px-3 py-1.5 rounded-lg text-xs font-semibold text-purple-300 hover:text-white bg-purple-950/70 hover:bg-purple-900 border border-purple-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
+				title: "Run EGM Spec: 2-stage spec drafting and adversarial audit",
+				onClick: async () => {
+					try {
+						await fetchJSON("/api/plugins/zerofactory/tasks/" + selectedTask.id + "/triage", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({ mode: "egm" })
+						});
+						showToast("🐘 Sequential EGM spec drafting dispatched to zf-orchestrator", "success");
+						loadTaskDetails(selectedTask.id);
+						loadTasksAndStats();
+					} catch (err) {
+						showToast("Triage dispatch failed: " + err.message, "error");
+					}
+				}
+			}, "🐘 Run EGM Spec")), (selectedTask.status === "blocked" || selectedTask.status === "running") && React.createElement("button", {
 				type: "button",
 				className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-amber-300 hover:text-white bg-amber-950/70 hover:bg-amber-900 border border-amber-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
 				title: "Reset failure counters and retry task in Todo",
@@ -5179,6 +5227,21 @@ var ZeroFactoryDashboard = (function(exports) {
 				showToast("Error advancing task: " + err.message, "error");
 			}
 		};
+		const handleTriageTask = async (taskId, mode = "grill", e) => {
+			if (e) e.stopPropagation();
+			try {
+				await fetchJSON(API_BASE + "/tasks/" + taskId + "/triage", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ mode })
+				});
+				showToast((mode === "egm" ? "🐘 Sequential EGM spec drafting" : "🧭 Grill-with-Docs triage") + " dispatched to zf-orchestrator", "success");
+				loadTasksAndStats();
+				if (selectedTask && selectedTask.id === taskId) loadTaskDetails(taskId);
+			} catch (err) {
+				showToast("Triage dispatch failed: " + err.message, "error");
+			}
+		};
 		const loadTaskDetails = async (taskId) => {
 			try {
 				const res = await fetchJSON(API_BASE + "/tasks/" + taskId);
@@ -5743,7 +5806,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			currentBoard: boards.find((b) => b.slug === selectedBoard),
 			stoppingSessionId,
 			handleStopTaskSession,
-			handleAdvanceTask
+			handleAdvanceTask,
+			handleTriageTask
 		})), React.createElement(TaskDetailModal, {
 			selectedTask,
 			setSelectedTask,
@@ -5762,7 +5826,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			selectedSessionIdx,
 			setSelectedSessionIdx,
 			refreshSessionProgress,
-			handleAdvanceTask
+			handleAdvanceTask,
+			handleTriageTask
 		}), React.createElement(NewTaskModal, {
 			showNewTaskModal,
 			setShowNewTaskModal,

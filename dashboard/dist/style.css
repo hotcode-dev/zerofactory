@@ -974,6 +974,12 @@
     border-color: color-mix(in oklab, var(--color-indigo-800) 60%, transparent);
   }
 }
+.border-indigo-900\/40 {
+  border-color: color-mix(in srgb, oklch(35.9% 0.144 278.697) 40%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in oklab, var(--color-indigo-900) 40%, transparent);
+  }
+}
 .border-indigo-900\/50 {
   border-color: color-mix(in srgb, oklch(35.9% 0.144 278.697) 50%, transparent);
   @supports (color: color-mix(in lab, red, red)) {
@@ -1053,6 +1059,12 @@
   border-color: color-mix(in srgb, oklch(43.8% 0.218 303.724) 60%, transparent);
   @supports (color: color-mix(in lab, red, red)) {
     border-color: color-mix(in oklab, var(--color-purple-800) 60%, transparent);
+  }
+}
+.border-purple-900\/40 {
+  border-color: color-mix(in srgb, oklch(38.1% 0.176 304.987) 40%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in oklab, var(--color-purple-900) 40%, transparent);
   }
 }
 .border-red-500\/30 {
@@ -1596,6 +1608,18 @@
   background-color: color-mix(in srgb, oklch(29.1% 0.149 302.717) 50%, transparent);
   @supports (color: color-mix(in lab, red, red)) {
     background-color: color-mix(in oklab, var(--color-purple-950) 50%, transparent);
+  }
+}
+.bg-purple-950\/60 {
+  background-color: color-mix(in srgb, oklch(29.1% 0.149 302.717) 60%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background-color: color-mix(in oklab, var(--color-purple-950) 60%, transparent);
+  }
+}
+.bg-purple-950\/70 {
+  background-color: color-mix(in srgb, oklch(29.1% 0.149 302.717) 70%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    background-color: color-mix(in oklab, var(--color-purple-950) 70%, transparent);
   }
 }
 .bg-purple-950\/80 {
@@ -2452,6 +2476,10 @@
   --tw-shadow: 0 25px 50px -12px var(--tw-shadow-color, rgb(0 0 0 / 0.25));
   box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
 }
+.shadow-2xs {
+  --tw-shadow: 0 1px var(--tw-shadow-color, rgb(0 0 0 / 0.05));
+  box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+}
 .shadow-inner {
   --tw-shadow: inset 0 2px 4px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.05));
   box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
@@ -2795,6 +2823,9 @@
   }
   .hover\:bg-purple-800:hover {
     background-color: var(--color-purple-800);
+  }
+  .hover\:bg-purple-900:hover {
+    background-color: var(--color-purple-900);
   }
   .hover\:bg-rose-500\/20:hover {
     background-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 20%, transparent);

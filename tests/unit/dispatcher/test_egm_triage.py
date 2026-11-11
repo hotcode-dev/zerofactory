@@ -14,8 +14,9 @@ from dashboard.db import init_db
 from dashboard.models import (
     TaskApproveRequest,
     TaskRejectRequest,
+    TaskTriageRequest,
 )
-from dashboard.routes.tasks import approve_task, reject_task
+from dashboard.routes.tasks import approve_task, reject_task, triage_task
 from dispatcher.config import _active_workers
 from dispatcher.reaper import reap_active_workers
 from dispatcher.scheduler import run_dispatch_cycle
@@ -499,3 +500,84 @@ def test_goldfish_prompt_generation(tmp_path: Path):
         assert "Ponytail 7-Rung Ladder of Laziness" in prompt
         assert "SPEC AUDIT: APPROVED" in prompt
         assert "SPEC AUDIT: REVISION REQUESTED" in prompt
+
+
+def test_triage_task_grill_mode(test_db: Path):
+    """Triggering triage with mode='grill' sets up Grill triage without egm or elephant_drafting."""
+    now = int(time.time())
+    with sqlite3.connect(str(test_db)) as conn:
+        conn.execute(
+            """
+            INSERT INTO tasks (id, title, status, assignee, priority, metadata, created_at, updated_at)
+            VALUES ('task-grill-1', 'Small Fix', 'triage', 'human', 'P2', '{}', ?, ?)
+            """,
+            (now, now),
+        )
+        conn.commit()
+
+    res = triage_task("task-grill-1", TaskTriageRequest(mode="grill"))
+    assert res["ok"] is True
+    assert res["mode"] == "grill"
+    assert res["status"] == "triage"
+    assert res["assignee"] == "zf-orchestrator"
+
+    with sqlite3.connect(str(test_db)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM tasks WHERE id = 'task-grill-1'").fetchone()
+        meta = json.loads(row["metadata"])
+        assert meta.get("egm") is False
+        assert "triage_phase" not in meta
+
+    with patch.object(dispatcher, "spawn_agent_worker", return_value=(888, "sess-grill")):
+        run_res = run_dispatch_cycle(db_path=test_db)
+        assert run_res.get("ok")
+
+    with sqlite3.connect(str(test_db)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM tasks WHERE id = 'task-grill-1'").fetchone()
+        assert row["status"] == "running"
+        assert row["assignee"] == "zf-orchestrator"
+        meta = json.loads(row["metadata"])
+        assert meta.get("egm") is False
+        assert "triage_phase" not in meta
+
+
+def test_triage_task_egm_mode(test_db: Path):
+    """Triggering triage with mode='egm' sets up Sequential EGM with elephant_drafting phase."""
+    now = int(time.time())
+    with sqlite3.connect(str(test_db)) as conn:
+        conn.execute(
+            """
+            INSERT INTO tasks (id, title, status, assignee, priority, metadata, created_at, updated_at)
+            VALUES ('task-egm-mode-1', 'Epic Initiative', 'triage', 'human', 'P1', '{}', ?, ?)
+            """,
+            (now, now),
+        )
+        conn.commit()
+
+    res = triage_task("task-egm-mode-1", TaskTriageRequest(mode="egm"))
+    assert res["ok"] is True
+    assert res["mode"] == "egm"
+    assert res["status"] == "triage"
+    assert res["assignee"] == "zf-orchestrator"
+
+    with sqlite3.connect(str(test_db)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM tasks WHERE id = 'task-egm-mode-1'").fetchone()
+        meta = json.loads(row["metadata"])
+        assert meta.get("egm") is True
+        assert meta.get("triage_phase") == "elephant_drafting"
+
+    with patch.object(dispatcher, "spawn_agent_worker", return_value=(777, "sess-egm")):
+        run_res = run_dispatch_cycle(db_path=test_db)
+        assert run_res.get("ok")
+
+    with sqlite3.connect(str(test_db)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM tasks WHERE id = 'task-egm-mode-1'").fetchone()
+        assert row["status"] == "running"
+        assert row["assignee"] == "zf-orchestrator"
+        meta = json.loads(row["metadata"])
+        assert meta.get("egm") is True
+        assert meta.get("triage_phase") == "elephant_drafting"
+
