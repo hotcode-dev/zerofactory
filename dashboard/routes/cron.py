@@ -160,24 +160,24 @@ def _list_builtin_jobs_with_conn(conn: sqlite3.Connection) -> List[Dict[str, Any
                 scanner_cfg = get_scanner_cron_config(slug, cursor=cursor)
             except Exception:
                 scanner_cfg = {
-                    "enabled": True,
-                    "scan_on_idle": True,
+                    "enabled": False,
+                    "scan_on_idle": False,
                     "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
                     "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
                     "last_run_timestamp": 0,
                 }
         else:
             scanner_cfg = {
-                "enabled": True,
-                "scan_on_idle": True,
+                "enabled": False,
+                "scan_on_idle": False,
                 "idle_scan_cooldown_minutes": DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
                 "idle_scan_max_todo": DEFAULT_IDLE_SCAN_MAX_TODO,
                 "last_run_timestamp": 0,
             }
 
         is_running = slug in active_pids or slug in _active_scanners
-        is_enabled = scanner_cfg.get("enabled", True) and scanner_cfg.get(
-            "scan_on_idle", True
+        is_enabled = scanner_cfg.get("enabled", False) and scanner_cfg.get(
+            "scan_on_idle", False
         )
         last_run = scanner_cfg.get("last_run_timestamp") or None
         cooldown = scanner_cfg.get(
@@ -194,7 +194,7 @@ def _list_builtin_jobs_with_conn(conn: sqlite3.Connection) -> List[Dict[str, Any
                 "schedule": {"kind": "idle", "minutes": cooldown},
                 "schedule_display": f"On Idle ({cooldown}m cooldown)",
                 "enabled": is_enabled,
-                "scan_on_idle": scanner_cfg.get("scan_on_idle", True),
+                "scan_on_idle": scanner_cfg.get("scan_on_idle", False),
                 "idle_scan_cooldown_minutes": cooldown,
                 "idle_scan_max_todo": max_todo,
                 "state": "running"

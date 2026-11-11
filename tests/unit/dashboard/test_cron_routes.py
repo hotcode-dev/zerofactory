@@ -31,7 +31,8 @@ def test_get_cron_jobs(api_client: TestClient, default_board: str):
     )
     assert scanner is not None
     assert scanner["category"] == "scanner"
-    assert scanner["scan_on_idle"] is True
+    assert scanner["scan_on_idle"] is False
+    assert scanner["enabled"] is False
 
 
 def test_toggle_scheduler(api_client: TestClient):

@@ -149,19 +149,20 @@ def get_scanner_cron_config(board_slug: str, cursor: Any = None) -> dict[str, An
         except Exception:
             pass
 
-    is_board_disabled = (
-        raw_settings.get(
-            f"cron_enabled_zero-factory-improvement-scanner-{board_slug}", "true"
-        )
-        .strip()
-        .lower()
-        in ("0", "false", "no")
-        or raw_settings.get(f"scan_on_idle_{board_slug}", "true").strip().lower()
-        in ("0", "false", "no")
-        or raw_settings.get("scan_on_idle", "true").strip().lower()
-        in ("0", "false", "no")
+    # Check board-specific or global override (disabled by default)
+    setting_val = raw_settings.get(
+        f"cron_enabled_zero-factory-improvement-scanner-{board_slug}"
     )
-    scan_on_idle = not is_board_disabled
+    if setting_val is None:
+        setting_val = raw_settings.get(f"scan_on_idle_{board_slug}")
+    if setting_val is None:
+        setting_val = raw_settings.get("scan_on_idle")
+
+    if setting_val is not None:
+        scan_on_idle = setting_val.strip().lower() in ("1", "true", "yes")
+    else:
+        scan_on_idle = False
+
     env_soi = os.environ.get("ZEROFACTORY_SCAN_ON_IDLE")
     if env_soi is not None:
         scan_on_idle = env_soi.strip().lower() in ("1", "true", "yes")
