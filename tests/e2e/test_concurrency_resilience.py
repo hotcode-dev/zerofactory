@@ -191,23 +191,25 @@ class TestConcurrencyAndResilienceE2E(unittest.TestCase):
                 profile_manager, "get_hermes_home", return_value=hermes_fake
             ):
                 profile_manager.sync_langfuse_profiles(enable_settings)
+                self.assertFalse((hermes_fake / ".env").exists())
                 self.assertIn(
                     "HERMES_LANGFUSE_SECRET_KEY=«redacted:sk-…»",
-                    (hermes_fake / ".env").read_text(encoding="utf-8"),
+                    (profiles_dir / ".env").read_text(encoding="utf-8"),
                 )
                 profile_manager.sync_langfuse_profiles(
                     dict(enable_settings, langfuse_enabled=False)
                 )
-                for d in (hermes_fake, profiles_dir):
-                    env_text = (d / ".env").read_text(encoding="utf-8")
-                    for k in (
-                        "HERMES_LANGFUSE_SECRET_KEY",
-                        "HERMES_LANGFUSE_PUBLIC_KEY",
-                        "HERMES_LANGFUSE_BASE_URL",
-                        "HERMES_LANGFUSE_CAPTURE",
-                        "HERMES_LANGFUSE_ENV",
-                    ):
-                        self.assertNotIn(k, env_text, f"stale {k} left in {d / '.env'}")
+                env_text = (profiles_dir / ".env").read_text(encoding="utf-8")
+                for k in (
+                    "HERMES_LANGFUSE_SECRET_KEY",
+                    "HERMES_LANGFUSE_PUBLIC_KEY",
+                    "HERMES_LANGFUSE_BASE_URL",
+                    "HERMES_LANGFUSE_CAPTURE",
+                    "HERMES_LANGFUSE_ENV",
+                ):
+                    self.assertNotIn(
+                        k, env_text, f"stale {k} left in {profiles_dir / '.env'}"
+                    )
 
 
 if __name__ == "__main__":

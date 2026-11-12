@@ -41,6 +41,53 @@ def trigger_dispatch():
     return run_dispatch_cycle(get_db_path())
 
 
+@router.get("/setup/status")
+def get_setup_status():
+    """Read-only prerequisite status for the dashboard Setup Wizard."""
+    import fcntl
+
+    try:
+        from ...profile_manager import check_setup_status
+        from ...dispatcher.config import get_dispatcher_lock_path
+    except (ImportError, ValueError):
+        from profile_manager import check_setup_status  # type: ignore
+        from dispatcher.config import get_dispatcher_lock_path  # type: ignore
+
+    status = check_setup_status(use_cache=True)
+    dispatcher_running = False
+    try:
+        from ...dispatcher import scheduler as _sched
+    except (ImportError, ValueError):
+        try:
+            from dispatcher import scheduler as _sched  # type: ignore
+        except Exception:
+            _sched = None
+
+    if _sched is not None:
+        thread = getattr(_sched, "_dispatcher_thread", None)
+        if thread is not None and thread.is_alive():
+            dispatcher_running = True
+
+    if not dispatcher_running:
+        lock_path = get_dispatcher_lock_path()
+        if lock_path.exists():
+            try:
+                with open(lock_path, "a+", encoding="utf-8") as lf:
+                    try:
+                        fcntl.flock(lf.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+                    except BlockingIOError:
+                        dispatcher_running = True
+            except OSError:
+                pass
+
+    return {
+        "ok": True,
+        **status,
+        "dispatcher_running": dispatcher_running,
+    }
+
+
 @router.get("/dispatch/status")
 def get_dispatch_status():
     """Get active worktree directories and dispatcher status."""

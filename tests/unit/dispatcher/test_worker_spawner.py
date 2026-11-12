@@ -111,7 +111,8 @@ def test_spawn_agent_worker_cmd_and_session_isolation():
             cmd = args[0]
             env = kwargs.get("env", {})
 
-            assert "--yolo" in cmd
+            assert "--yolo" not in cmd
+            assert "--accept-hooks" not in cmd
             assert cmd[0] == "sh"
             assert cmd[1] == "-c"
             assert "zf-runner" in cmd

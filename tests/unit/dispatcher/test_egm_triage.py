@@ -528,7 +528,9 @@ def test_triage_task_grill_mode(test_db: Path):
         assert meta.get("egm") is False
         assert "triage_phase" not in meta
 
-    with patch.object(dispatcher, "spawn_agent_worker", return_value=(888, "sess-grill")):
+    with patch.object(
+        dispatcher, "spawn_agent_worker", return_value=(888, "sess-grill")
+    ):
         run_res = run_dispatch_cycle(db_path=test_db)
         assert run_res.get("ok")
 
@@ -563,7 +565,9 @@ def test_triage_task_egm_mode(test_db: Path):
 
     with sqlite3.connect(str(test_db)) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM tasks WHERE id = 'task-egm-mode-1'").fetchone()
+        row = conn.execute(
+            "SELECT * FROM tasks WHERE id = 'task-egm-mode-1'"
+        ).fetchone()
         meta = json.loads(row["metadata"])
         assert meta.get("egm") is True
         assert meta.get("triage_phase") == "elephant_drafting"
@@ -574,10 +578,11 @@ def test_triage_task_egm_mode(test_db: Path):
 
     with sqlite3.connect(str(test_db)) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM tasks WHERE id = 'task-egm-mode-1'").fetchone()
+        row = conn.execute(
+            "SELECT * FROM tasks WHERE id = 'task-egm-mode-1'"
+        ).fetchone()
         assert row["status"] == "running"
         assert row["assignee"] == "zf-orchestrator"
         meta = json.loads(row["metadata"])
         assert meta.get("egm") is True
         assert meta.get("triage_phase") == "elephant_drafting"
-

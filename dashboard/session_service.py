@@ -470,8 +470,13 @@ def resolve_task_session_progress(
         except (OSError, ValueError):
             is_alive = False
 
+    try:
+        from ..paths import get_hermes_home
+    except (ImportError, ValueError):
+        from paths import get_hermes_home  # type: ignore
+
     log_tail = ""
-    log_path = Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
+    log_path = get_hermes_home() / "logs" / f"worker_{task_id}.log"
     if log_path.exists():
         try:
             # Bounded tail: read only the last TAIL_BYTES instead of the

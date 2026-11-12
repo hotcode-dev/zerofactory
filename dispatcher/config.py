@@ -118,7 +118,9 @@ def get_dispatcher_lock_path() -> Path:
     env_lock = os.environ.get("ZEROFACTORY_LOCK_PATH")
     if env_lock:
         return Path(env_lock)
-    return Path.home() / ".hermes" / "zerofactory_dispatcher.lock"
+    from paths import get_hermes_home
+
+    return get_hermes_home() / "zerofactory_dispatcher.lock"
 
 
 def is_worker_or_child_process() -> bool:

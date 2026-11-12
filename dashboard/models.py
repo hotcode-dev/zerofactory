@@ -412,6 +412,14 @@ class SettingsUpdate(BaseModel):
         default=None,
         description="Automatically file GitHub issues on hotcode-dev/zerofactory when internal platform defects are reported",
     )
+    allow_unattended_approvals: bool | None = Field(
+        default=None,
+        description="Allow workers/scanners to pass --yolo and --accept-hooks unattended",
+    )
+    auto_start_dispatcher: bool | None = Field(
+        default=None,
+        description="Automatically start the background dispatcher during plugin register()",
+    )
 
 
 class LangfuseTestRequest(BaseModel):

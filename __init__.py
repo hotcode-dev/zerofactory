@@ -249,17 +249,40 @@ except ImportError:
         ZEROFACTORY_ISSUES_URL = f"https://github.com/{ZEROFACTORY_REPO}/issues"
 
 
-def register(ctx: Any):
-    """Register plugin CLI commands, profiles bootstrap, and lifecycle hooks with Hermes."""
-
-    # Initialize DB, pre-create agent profiles, sync builtin crons, and start dispatcher
+def _should_auto_start_dispatcher() -> bool:
+    """Return True only when zerofactory.db exists and auto_start_dispatcher is enabled."""
+    if os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") or os.environ.get(
+        "ZEROFACTORY_DISABLE_DISPATCHER"
+    ):
+        return False
     try:
-        init_db()
-        ensure_zf_profiles()
-        ensure_builtin_cron_jobs()
-        if not os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") and not os.environ.get(
-            "ZEROFACTORY_DISABLE_DISPATCHER"
-        ):
+        import sqlite3
+
+        try:
+            from .dashboard.db import get_db_path
+            from .settings import load_settings
+        except (ImportError, ValueError):
+            from dashboard.db import get_db_path  # type: ignore
+            from settings import load_settings  # type: ignore
+
+        db_path = get_db_path()
+        if not db_path.exists():
+            return False
+        with sqlite3.connect(str(db_path), timeout=2.0) as conn:
+            conn.row_factory = sqlite3.Row
+            return bool(load_settings(conn).get("auto_start_dispatcher", False))
+    except Exception:
+        return False
+
+
+def register(ctx: Any):
+    """Register plugin CLI commands and lifecycle hooks with Hermes."""
+
+    # Passive registration: never mutate profiles or start background threads unless opted in.
+    try:
+        if _should_auto_start_dispatcher():
+            init_db()
+            ensure_builtin_cron_jobs()
             start_background_dispatcher()
     except Exception as e:
         print(f"[zerofactory] Initialization error: {e}")
@@ -280,12 +303,18 @@ def register(ctx: Any):
         # setup profiles
         p_setup = subparsers.add_parser(
             "setup",
-            help="Verify and bootstrap Zero Factory agent profiles (zf-orchestrator, zf-builder, zf-reviewer)",
+            help="Verify and bootstrap Zero Factory agent profiles (zf-orchestrator, zf-builder, zf-reviewer, zf-goldfish)",
         )
         p_setup.add_argument(
             "--force",
             action="store_true",
             help="Force overwrite existing profiles with templates",
+        )
+
+        # start dispatcher
+        subparsers.add_parser(
+            "start",
+            help="Start the Zero Factory dispatcher loop (requires 'hermes zerofactory setup')",
         )
 
         # sync-profiles
@@ -845,6 +874,12 @@ def register(ctx: Any):
         if action == "setup":
             force = getattr(args, "force", False)
             res = ensure_zf_profiles(force=force)
+            try:
+                from .profile_manager import check_gh_auth_status, get_hermes_home
+            except (ImportError, ValueError):
+                from profile_manager import check_gh_auth_status, get_hermes_home  # type: ignore
+
+            profiles_dir = get_hermes_home() / "profiles"
             print("\nZero Factory Profiles Setup:")
             if res["created"]:
                 print(f"  ✓ Created:  {', '.join(res['created'])}")
@@ -852,7 +887,48 @@ def register(ctx: Any):
                 print(f"  ✓ Updated:  {', '.join(res['updated'])}")
             if res["existing"]:
                 print(f"  ✓ Verified: {', '.join(res['existing'])}")
-            print("All Zero Factory profiles are ready in ~/.hermes/profiles/.\n")
+            print(f"All Zero Factory profiles are ready in {profiles_dir}/.")
+            if not check_gh_auth_status(use_cache=False):
+                print(
+                    "  ! GitHub CLI is not authenticated. Run 'gh auth login' or set GH_TOKEN in your zf-* profile .env files."
+                )
+            else:
+                print("  ✓ GitHub CLI authentication verified.")
+            print(
+                f"  (Configure LLM API keys in {profiles_dir}/zf-*/.env if not inherited globally.)\n"
+            )
+
+        elif action == "start":
+            try:
+                from .profile_manager import check_setup_status
+            except (ImportError, ValueError):
+                from profile_manager import check_setup_status  # type: ignore
+
+            status = check_setup_status(use_cache=False)
+            if not status.get("profiles_ready"):
+                missing = ", ".join(status.get("missing_profiles") or [])
+                print(
+                    f"Zero Factory profiles are not set up ({missing}). Run 'hermes zerofactory setup' first."
+                )
+                sys.exit(1)
+
+            import signal
+            import time
+
+            ensure_builtin_cron_jobs()
+            start_background_dispatcher()
+            stop_requested = False
+
+            def _handle_stop(signum, frame):
+                nonlocal stop_requested
+                stop_requested = True
+
+            signal.signal(signal.SIGINT, _handle_stop)
+            signal.signal(signal.SIGTERM, _handle_stop)
+            print("Zero Factory dispatcher started (foreground). Press Ctrl+C to stop.")
+            while not stop_requested:
+                time.sleep(1.0)
+            print("Zero Factory dispatcher stopped.")
 
         elif action == "sync-profiles":
             force = getattr(args, "force", False)
@@ -1223,9 +1299,7 @@ def register(ctx: Any):
                 or "user"
             )
             mode = getattr(args, "mode", "grill")
-            res = _triage_task(
-                args.task_id, _TaskTriageRequest(mode=mode, actor=actor)
-            )
+            res = _triage_task(args.task_id, _TaskTriageRequest(mode=mode, actor=actor))
             print(f"\n✓ {res.get('message', 'Task dispatched for triage')}\n")
 
         elif action == "update":

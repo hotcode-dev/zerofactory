@@ -155,6 +155,8 @@ def import_external_issue(
     ]
     for lbl in issue.labels:
         clean_lbl = re.sub(r"[^a-zA-Z0-9_-]", "-", lbl.strip().lower())
+        if clean_lbl in ("automerge", "yolo"):
+            continue
         if clean_lbl and f"tag:{clean_lbl}" not in tags:
             tags.append(f"tag:{clean_lbl}")
 

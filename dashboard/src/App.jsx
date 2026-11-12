@@ -180,6 +180,7 @@ export function ZeroFactoryKanbanApp() {
     const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
     const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
     const [isSyncingIssues, setIsSyncingIssues] = useState(false);
+    const [setupStatus, setSetupStatus] = useState(null);
 
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
@@ -1017,7 +1018,10 @@ export function ZeroFactoryKanbanApp() {
       loadSessions();
       loadAgents();
       loadMemories("all");
-    }, [loadBoards, loadTasksAndStats, loadCronJobs, loadSettings, loadActivities, loadSessions, loadAgents, loadMemories]);
+      fetchJSON(API_BASE + "/setup/status").then((res) => {
+        if (res && res.ok) setSetupStatus(res);
+      }).catch(() => {});
+    }, [loadBoards, loadTasksAndStats, loadCronJobs, loadSettings, loadActivities, loadSessions, loadAgents, loadMemories, fetchJSON]);
 
     // On selectedBoard change: reload board-specific data (tasks, stats, memories, sessions, agents)
     const prevSelectedBoard = useRef(selectedBoard);
@@ -1939,6 +1943,7 @@ export function ZeroFactoryKanbanApp() {
                   }),
                   React.createElement(SetupBanners, {
                     selectedBoard,
+                    setupStatus,
                     precommitStatus,
                     openwikiStatus,
                     ghIssuesStatus,

@@ -47,11 +47,14 @@ def _mark_scanner_task_created(board_slug: str, repo_alias: str | None = None) -
         return False
 
     state_override = os.environ.get("ZEROFACTORY_SCANNER_STATE")
-    state_file = (
-        Path(state_override)
-        if state_override
-        else (Path.home() / ".hermes" / "scanner_state.json")
-    )
+    if state_override:
+        state_file = Path(state_override)
+    else:
+        try:
+            from ..paths import get_hermes_home
+        except (ImportError, ValueError):
+            from paths import get_hermes_home  # type: ignore
+        state_file = get_hermes_home() / "scanner_state.json"
     try:
         state_file.parent.mkdir(parents=True, exist_ok=True)
         lock_path = state_file.with_name(state_file.name + ".lock")
@@ -108,7 +111,11 @@ def get_db_path() -> Path:
     override = os.environ.get("ZEROFACTORY_DB")
     if override:
         return Path(override)
-    return DEFAULT_DB_PATH
+    try:
+        from ..paths import get_hermes_home
+    except (ImportError, ValueError):
+        from paths import get_hermes_home  # type: ignore
+    return get_hermes_home() / "zerofactory.db"
 
 
 @contextmanager

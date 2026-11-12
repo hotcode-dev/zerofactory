@@ -75,6 +75,12 @@ DEFAULT_ENABLE_CRON_SCHEDULER = True
 # Automatically create a public GitHub issue on hotcode-dev/zerofactory when internal defects are reported.
 DEFAULT_AUTO_CREATE_GITHUB_ISSUES = False
 
+# Allow workers/scanners to pass --yolo and --accept-hooks unattended (default: False).
+DEFAULT_ALLOW_UNATTENDED_APPROVALS = False
+
+# Automatically start the background dispatcher during plugin register() (default: False).
+DEFAULT_AUTO_START_DISPATCHER = False
+
 # Langfuse observability settings
 DEFAULT_LANGFUSE_ENABLED = False
 DEFAULT_LANGFUSE_BASE_URL = "https://cloud.langfuse.com"
@@ -126,6 +132,8 @@ SETTING_KEYS = (
     "mem0_embedder_provider",
     "mem0_embedder_model",
     "auto_create_github_issues",
+    "allow_unattended_approvals",
+    "auto_start_dispatcher",
 )
 
 # Seed values for the settings table, derived from the constants above (NOT
@@ -140,6 +148,10 @@ DEFAULT_SETTING_VALUES: dict[str, str] = {
     "auto_create_github_issues": "true"
     if DEFAULT_AUTO_CREATE_GITHUB_ISSUES
     else "false",
+    "allow_unattended_approvals": "true"
+    if DEFAULT_ALLOW_UNATTENDED_APPROVALS
+    else "false",
+    "auto_start_dispatcher": "true" if DEFAULT_AUTO_START_DISPATCHER else "false",
     "langfuse_enabled": "true" if DEFAULT_LANGFUSE_ENABLED else "false",
     "langfuse_base_url": DEFAULT_LANGFUSE_BASE_URL,
     "langfuse_public_key": DEFAULT_LANGFUSE_PUBLIC_KEY,
@@ -204,6 +216,8 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
         "mem0_embedder_provider": DEFAULT_MEM0_EMBEDDER_PROVIDER,
         "mem0_embedder_model": DEFAULT_MEM0_EMBEDDER_MODEL,
         "auto_create_github_issues": DEFAULT_AUTO_CREATE_GITHUB_ISSUES,
+        "allow_unattended_approvals": DEFAULT_ALLOW_UNATTENDED_APPROVALS,
+        "auto_start_dispatcher": DEFAULT_AUTO_START_DISPATCHER,
     }
     try:
         rows = conn_or_cursor.execute("SELECT key, value FROM settings").fetchall()
@@ -285,5 +299,9 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
                 settings["mem0_embedder_model"] = str(v).strip()
         elif k == "auto_create_github_issues":
             settings["auto_create_github_issues"] = _parse_bool(v)
+        elif k == "allow_unattended_approvals":
+            settings["allow_unattended_approvals"] = _parse_bool(v)
+        elif k == "auto_start_dispatcher":
+            settings["auto_start_dispatcher"] = _parse_bool(v)
 
     return settings

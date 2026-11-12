@@ -35,11 +35,9 @@ mcp_servers:
     command: npx
     args:
       - -y
-      - openwiki
+      - openwiki@0.9.0
       - mcp
       - --host=hermes
     enabled: true
-security:
-  protected_instruction_files: false
 default:
   temperature: 0.1

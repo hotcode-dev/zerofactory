@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from paths import get_hermes_home
+
 from .config import (
     DEFAULT_IDLE_SCAN_COOLDOWN_MINUTES,
     DEFAULT_IDLE_SCAN_MAX_TODO,
@@ -25,13 +27,13 @@ from .process_manager import (
     is_pid_alive,
     terminate_process_group,
 )
-from .worker_spawner import _inject_langfuse_env
+from .worker_spawner import build_minimal_child_env, is_unattended_approvals_enabled
 
 
 def get_active_scanner_pids() -> dict[str, int]:
     """Return mapping of board_slug -> active scanner PID across all processes."""
     active: dict[str, int] = {}
-    logs_dir = Path.home() / ".hermes" / "logs"
+    logs_dir = get_hermes_home() / "logs"
     if logs_dir.exists():
         for pf in logs_dir.glob("scanner_*.pid"):
             slug = pf.stem.replace("scanner_", "")
@@ -57,7 +59,7 @@ def kill_board_scanner(board_slug: str) -> bool:
             terminate_process_group(proc, proc.pid)
         except Exception:
             pass
-    logs_dir = Path.home() / ".hermes" / "logs"
+    logs_dir = get_hermes_home() / "logs"
     pid_file = logs_dir / f"scanner_{board_slug}.pid"
     if pid_file.exists():
         try:
@@ -84,7 +86,7 @@ def kill_board_scanner(board_slug: str) -> bool:
 def reap_active_scanners() -> int:
     """Clean up finished or exited scanner worker processes."""
     reaped = 0
-    logs_dir = Path.home() / ".hermes" / "logs"
+    logs_dir = get_hermes_home() / "logs"
     for slug, proc in list(_active_scanners.items()):
         task_ref = f"scanner_{slug}"
         exit_code = get_process_exit_code(task_ref)
@@ -217,17 +219,10 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
         f"Scan repository for board '{board_slug}' for improvements and "
         "technical debt following Ponytail ladder of laziness."
     )
-    cmd = [
-        hermes_bin,
-        "-p",
-        "zf-orchestrator",
-        "--yolo",
-        "--cli",
-        "--accept-hooks",
-        "chat",
-        "-q",
-        prompt,
-    ]
+    cmd = [hermes_bin, "-p", "zf-orchestrator"]
+    if is_unattended_approvals_enabled():
+        cmd.extend(["--yolo", "--accept-hooks"])
+    cmd.extend(["--cli", "chat", "-q", prompt])
 
     task_ref = f"scanner_{board_slug}"
     exit_file = get_exit_file_path(task_ref)
@@ -235,19 +230,17 @@ def spawn_board_scanner(board_slug: str, repo_path: Path | None = None) -> int |
         exit_file.unlink(missing_ok=True)
     wrapped_cmd = build_shell_wrapper(cmd, exit_file)
 
-    log_dir = Path.home() / ".hermes" / "logs"
+    log_dir = get_hermes_home() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file_path = log_dir / f"scanner_{board_slug}.log"
 
-    env = os.environ.copy()
-    env["HERMES_PROFILE"] = "zf-orchestrator"
-    profile_home = Path.home() / ".hermes" / "profiles" / "zf-orchestrator"
-    if profile_home.exists():
-        env["HERMES_HOME"] = str(profile_home)
-    env["PYTHONUNBUFFERED"] = "1"
-    env["ZEROFACTORY_IDLE_SCAN"] = "1"
-    env["ZEROFACTORY_DISABLE_DISPATCHER"] = "1"
-    _inject_langfuse_env(env)
+    env = build_minimal_child_env(
+        {
+            "HERMES_PROFILE": "zf-orchestrator",
+            "ZEROFACTORY_IDLE_SCAN": "1",
+            "ZEROFACTORY_DISABLE_DISPATCHER": "1",
+        }
+    )
 
     workdir = str(repo_path) if repo_path and repo_path.exists() else os.getcwd()
 
@@ -303,7 +296,7 @@ def reset_idle_scanner_state() -> None:
         if proc is not None and proc.poll() is None:
             terminate_process_group(proc, proc.pid)
         cleanup_process_artifacts(f"scanner_{slug}")
-    logs_dir = Path.home() / ".hermes" / "logs"
+    logs_dir = get_hermes_home() / "logs"
     if logs_dir.exists():
         for pf in logs_dir.glob("scanner_*.pid"):
             pf.unlink(missing_ok=True)

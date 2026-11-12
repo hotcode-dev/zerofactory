@@ -395,8 +395,24 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/SetupBanners.jsx
 	function SetupBanners(props) {
-		const { selectedBoard, precommitStatus, openwikiStatus, ghIssuesStatus, isSettingUpPrecommit, handleTriggerPrecommitSetup, isSettingUpOpenwiki, handleTriggerOpenwikiSetup, isSettingUpGhIssues, handleTriggerGhIssuesSetup } = props;
-		return React.createElement(React.Fragment, null, Boolean(selectedBoard && selectedBoard !== "all" && precommitStatus && !precommitStatus.has_precommit) && React.createElement("div", { className: "mb-3.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs" }, React.createElement("div", { className: "flex items-center gap-2.5 text-amber-200" }, React.createElement("span", { className: "text-base" }, precommitStatus.pending_task_id ? "⚡" : "⚠️"), React.createElement("div", null, React.createElement("div", { className: "font-semibold text-slate-100" }, precommitStatus.pending_task_id ? "Precommit Setup Task in Progress" : "Precommit Verification Not Configured"), React.createElement("div", { className: "text-slate-400 text-[11px]" }, precommitStatus.pending_task_id ? "Task " + precommitStatus.pending_task_id + " (" + precommitStatus.pending_task_status + ") is generating .zerofactory/precommit.sh" : "This board lacks .zerofactory/precommit.sh. Set up standard automated test, build, and format verification for commits."))), !precommitStatus.pending_task_id && React.createElement("button", {
+		const { selectedBoard, setupStatus, precommitStatus, openwikiStatus, ghIssuesStatus, isSettingUpPrecommit, handleTriggerPrecommitSetup, isSettingUpOpenwiki, handleTriggerOpenwikiSetup, isSettingUpGhIssues, handleTriggerGhIssuesSetup } = props;
+		const missingSetupSteps = [];
+		if (setupStatus && !setupStatus.profiles_ready) missingSetupSteps.push({
+			label: "Initialize Zero Factory profiles",
+			cmd: "hermes zerofactory setup"
+		});
+		if (setupStatus && !setupStatus.gh_authenticated) missingSetupSteps.push({
+			label: "Authenticate GitHub CLI",
+			cmd: "gh auth login"
+		});
+		if (setupStatus && !setupStatus.dispatcher_running) missingSetupSteps.push({
+			label: "Start the dispatcher",
+			cmd: "hermes zerofactory start"
+		});
+		return React.createElement(React.Fragment, null, missingSetupSteps.length > 0 && React.createElement("div", { className: "mb-3.5 px-4 py-3 rounded-xl border border-indigo-500/30 bg-indigo-950/25 backdrop-blur-md text-xs" }, React.createElement("div", { className: "font-semibold text-slate-100 mb-1" }, "Zero Factory Setup Checklist"), React.createElement("div", { className: "text-slate-400 text-[11px] mb-2" }, "Run the following CLI commands to complete setup:"), React.createElement("div", { className: "flex flex-col gap-1.5" }, missingSetupSteps.map((step) => React.createElement("div", {
+			key: step.cmd,
+			className: "flex flex-wrap items-center justify-between gap-2 bg-slate-900/60 px-2.5 py-1.5 rounded-lg border border-slate-800/80"
+		}, React.createElement("span", { className: "text-slate-300" }, step.label), React.createElement("code", { className: "font-mono text-[11px] text-indigo-300 select-all" }, step.cmd))))), Boolean(selectedBoard && selectedBoard !== "all" && precommitStatus && !precommitStatus.has_precommit) && React.createElement("div", { className: "mb-3.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs" }, React.createElement("div", { className: "flex items-center gap-2.5 text-amber-200" }, React.createElement("span", { className: "text-base" }, precommitStatus.pending_task_id ? "⚡" : "⚠️"), React.createElement("div", null, React.createElement("div", { className: "font-semibold text-slate-100" }, precommitStatus.pending_task_id ? "Precommit Setup Task in Progress" : "Precommit Verification Not Configured"), React.createElement("div", { className: "text-slate-400 text-[11px]" }, precommitStatus.pending_task_id ? "Task " + precommitStatus.pending_task_id + " (" + precommitStatus.pending_task_status + ") is generating .zerofactory/precommit.sh" : "This board lacks .zerofactory/precommit.sh. Set up standard automated test, build, and format verification for commits."))), !precommitStatus.pending_task_id && React.createElement("button", {
 			type: "button",
 			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all duration-150 cursor-pointer disabled:opacity-50",
 			disabled: isSettingUpPrecommit,
@@ -4187,6 +4203,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [isLoadingGhIssues, setIsLoadingGhIssues] = useState(false);
 		const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
 		const [isSyncingIssues, setIsSyncingIssues] = useState(false);
+		const [setupStatus, setSetupStatus] = useState(null);
 		const [createBoardError, setCreateBoardError] = useState("");
 		const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
 		const [isSubmittingTask, setIsSubmittingTask] = useState(false);
@@ -4932,6 +4949,9 @@ var ZeroFactoryDashboard = (function(exports) {
 			loadSessions();
 			loadAgents();
 			loadMemories("all");
+			fetchJSON(API_BASE + "/setup/status").then((res) => {
+				if (res && res.ok) setSetupStatus(res);
+			}).catch(() => {});
 		}, [
 			loadBoards,
 			loadTasksAndStats,
@@ -4940,7 +4960,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			loadActivities,
 			loadSessions,
 			loadAgents,
-			loadMemories
+			loadMemories,
+			fetchJSON
 		]);
 		const prevSelectedBoard = useRef(selectedBoard);
 		useEffect(() => {
@@ -5813,6 +5834,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			onSyncIssues: () => handleSyncIssues()
 		}), React.createElement(SetupBanners, {
 			selectedBoard,
+			setupStatus,
 			precommitStatus,
 			openwikiStatus,
 			ghIssuesStatus,

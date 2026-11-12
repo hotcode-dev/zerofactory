@@ -1306,13 +1306,17 @@ def triage_task(
             meta["triage_phase"] = "elephant_drafting"
             meta.pop("awaiting_interview", None)
             meta.pop("specification", None)
-            activity_desc = "Dispatched task to zf-orchestrator for Sequential EGM spec drafting"
+            activity_desc = (
+                "Dispatched task to zf-orchestrator for Sequential EGM spec drafting"
+            )
             msg = "Task queued for Sequential EGM spec drafting by zf-orchestrator."
         else:
             meta["egm"] = False
             meta.pop("triage_phase", None)
             meta.pop("awaiting_interview", None)
-            activity_desc = "Dispatched task to zf-orchestrator for Grill-with-Docs triage"
+            activity_desc = (
+                "Dispatched task to zf-orchestrator for Grill-with-Docs triage"
+            )
             msg = "Task queued for Grill-with-Docs triage by zf-orchestrator."
 
         cursor.execute(

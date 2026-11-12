@@ -45,7 +45,7 @@ def test_is_task_automerge_enabled_hitl_override_wins():
 
 
 def test_is_task_automerge_enabled_jira_labels():
-    """Jira external_issue labels control auto-merge resolution."""
+    """External issue automerge labels are ignored; hitl/manual-review still opt out."""
     board_off = {"automerge": False}
     board_on = {"automerge": True}
 
@@ -53,7 +53,7 @@ def test_is_task_automerge_enabled_jira_labels():
         "tags": [],
         "metadata": {"external_issue": {"labels": ["automerge", "backend"]}},
     }
-    assert is_task_automerge_enabled(task_yolo, board_off) is True
+    assert is_task_automerge_enabled(task_yolo, board_off) is False
 
     task_hitl = {
         "tags": [],

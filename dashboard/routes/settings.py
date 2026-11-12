@@ -176,6 +176,18 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('auto_create_github_issues', ?, ?)",
                 (val, now),
             )
+        if req.allow_unattended_approvals is not None:
+            val = "true" if req.allow_unattended_approvals else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('allow_unattended_approvals', ?, ?)",
+                (val, now),
+            )
+        if req.auto_start_dispatcher is not None:
+            val = "true" if req.auto_start_dispatcher else "false"
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('auto_start_dispatcher', ?, ?)",
+                (val, now),
+            )
         conn.commit()
 
     res = get_settings()

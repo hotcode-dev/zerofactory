@@ -15,6 +15,7 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -39,19 +40,16 @@ LANGFUSE_ENV_KEYS: set[str] = {
 
 
 def get_hermes_root() -> Path:
-    """Return the base ~/.hermes directory, stripping any active profile path."""
-    env_home = os.environ.get("HERMES_HOME")
-    if env_home:
-        p = Path(env_home).expanduser().resolve()
-        if "profiles" in p.parts:
-            idx = p.parts.index("profiles")
-            return Path(*p.parts[:idx])
-        return p
-    return (Path.home() / ".hermes").resolve()
+    """Return the active Hermes home directory without stripping ``profiles/``."""
+    try:
+        from .paths import get_hermes_home as _paths_get_hermes_home
+    except (ImportError, ValueError):
+        from paths import get_hermes_home as _paths_get_hermes_home  # type: ignore
+    return _paths_get_hermes_home()
 
 
 def get_hermes_home() -> Path:
-    """Return the base Hermes home directory (~/.hermes)."""
+    """Return the active Hermes home directory."""
     return get_hermes_root()
 
 
@@ -165,25 +163,8 @@ def ensure_zf_profiles(
     templates_dir = plugin_root / "templates"
 
     root_model = get_root_model_config()
-    res = {"created": [], "updated": [], "existing": []}
-
-    # Ensure all plugin skills are available in root ~/.hermes/skills/
-    root_skills = hermes_home / "skills"
     skills_dir = plugin_root / "skills"
-    if skills_dir.exists() and root_skills.exists():
-        for skill_dir in skills_dir.iterdir():
-            if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
-                dst = root_skills / skill_dir.name
-                if dst.is_symlink() and not dst.exists():
-                    try:
-                        dst.unlink()
-                    except Exception:
-                        pass
-                if not dst.exists() and not dst.is_symlink():
-                    try:
-                        dst.symlink_to(skill_dir, target_is_directory=True)
-                    except Exception:
-                        pass
+    res = {"created": [], "updated": [], "existing": []}
 
     for role in ZF_PROFILES:
         target_dir = profiles_dir / role
@@ -388,11 +369,7 @@ def ensure_plugin_symlinks() -> dict[str, Any]:
         except Exception as e:
             _log.warning("Could not update plugins.enabled in %s: %s", cfg_path, e)
 
-    # 1. Root ~/.hermes/plugins and ~/.hermes/config.yaml
-    _link_in_dir(hermes_home / "plugins")
-    _enable_in_config(hermes_home / "config.yaml")
-
-    # 2. ZF profiles
+    # ZF profiles only (never touch root ~/.hermes or other user profiles)
     for role in ZF_PROFILES:
         prof_dir = profiles_dir / role
         if prof_dir.exists():
@@ -417,9 +394,7 @@ def ensure_script_files() -> dict[str, Any]:
     if not src_scripts_dir.is_dir():
         return {"copied": []}
 
-    target_script_dirs = [hermes_home / "scripts"]
-    for role in ZF_PROFILES:
-        target_script_dirs.append(profiles_dir / role / "scripts")
+    target_script_dirs = [profiles_dir / role / "scripts" for role in ZF_PROFILES]
 
     copied: list[str] = []
     for script_file in src_scripts_dir.glob("*.py"):
@@ -557,16 +532,11 @@ def sync_langfuse_profiles(settings: dict[str, Any] | None = None) -> dict[str, 
     hermes_home = get_hermes_home()
     profiles_dir = hermes_home / "profiles"
 
-    target_dirs: list[Path] = [hermes_home]
-    if profiles_dir.is_dir():
-        for child in sorted(profiles_dir.iterdir()):
-            if child.is_dir() and not child.name.startswith("."):
-                target_dirs.append(child)
-
-    # Ensure all canonical ZF profiles are included if they exist
+    # Scope strictly to canonical ZF profiles (never touch root or other user profiles)
+    target_dirs: list[Path] = []
     for role in ZF_PROFILES:
         r_dir = profiles_dir / role
-        if r_dir.exists() and r_dir not in target_dirs:
+        if r_dir.exists():
             target_dirs.append(r_dir)
 
     is_enabled = bool(settings.get("langfuse_enabled"))
@@ -605,3 +575,69 @@ def sync_langfuse_profiles(settings: dict[str, Any] | None = None) -> dict[str, 
             synced_targets.append(str(target))
 
     return {"enabled": is_enabled, "synced": synced_targets}
+
+
+_GH_AUTH_CACHE: dict[str, Any] = {"ts": 0.0, "ok": False}
+_GH_AUTH_CACHE_TTL_SECONDS = 30.0
+
+
+def _has_gh_token_in_zf_envs(profiles_dir: Path) -> bool:
+    """Return True if any zf-* profile .env defines a non-empty GH_TOKEN or GITHUB_TOKEN."""
+    for role in ZF_PROFILES:
+        env_path = profiles_dir / role / ".env"
+        if not env_path.is_file():
+            continue
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                k, _, v = stripped.partition("=")
+                if k.strip() in ("GH_TOKEN", "GITHUB_TOKEN") and v.strip().strip("'\""):
+                    return True
+        except Exception:
+            pass
+    return False
+
+
+def check_gh_auth_status(*, use_cache: bool = True) -> bool:
+    """Check whether GitHub CLI is authenticated or GH_TOKEN is set in zf-* .env."""
+    profiles_dir = get_hermes_home() / "profiles"
+    if _has_gh_token_in_zf_envs(profiles_dir):
+        return True
+    now = time.monotonic()
+    if use_cache and (now - _GH_AUTH_CACHE["ts"]) < _GH_AUTH_CACHE_TTL_SECONDS:
+        return bool(_GH_AUTH_CACHE["ok"])
+    ok = False
+    try:
+        proc = subprocess.run(
+            ["gh", "auth", "status"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        ok = proc.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        ok = False
+    _GH_AUTH_CACHE["ts"] = now
+    _GH_AUTH_CACHE["ok"] = ok
+    return ok
+
+
+def check_setup_status(*, use_cache: bool = True) -> dict[str, Any]:
+    """Read-only check of Zero Factory profile readiness and GitHub auth status."""
+    profiles_dir = get_hermes_home() / "profiles"
+    missing_profiles: list[str] = []
+    for role in ZF_PROFILES:
+        prof_dir = profiles_dir / role
+        if (
+            not (prof_dir / "config.yaml").exists()
+            or not (prof_dir / "plugins" / "zerofactory").exists()
+        ):
+            missing_profiles.append(role)
+    return {
+        "profiles_ready": len(missing_profiles) == 0,
+        "missing_profiles": missing_profiles,
+        "gh_authenticated": check_gh_auth_status(use_cache=use_cache),
+    }

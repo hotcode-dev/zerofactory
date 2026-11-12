@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
+from paths import get_hermes_home
+
 from .config import _active_workers, _log
 
 
@@ -33,15 +35,15 @@ def build_shell_wrapper(cmd: list[str], exit_prefix: Path | str) -> list[str]:
 
 
 def get_exit_file_path(task_id: str) -> Path:
-    """Return standard .exit file path for a task worker in ~/.hermes/logs."""
-    logs_dir = Path.home() / ".hermes" / "logs"
+    """Return standard .exit file path for a task worker in <HERMES_HOME>/logs."""
+    logs_dir = get_hermes_home() / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     return logs_dir / f"worker_{task_id}.exit"
 
 
 def cleanup_process_artifacts(task_id: str) -> None:
     """Unlink lingering .exit and .exit.tmp files for task_id."""
-    logs_dir = Path.home() / ".hermes" / "logs"
+    logs_dir = get_hermes_home() / "logs"
     for name in (f"worker_{task_id}.exit", f"worker_{task_id}.exit.tmp"):
         p = logs_dir / name
         try:

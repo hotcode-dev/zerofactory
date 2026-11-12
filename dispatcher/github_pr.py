@@ -576,8 +576,6 @@ def is_task_automerge_enabled(
     ]
     if any(l in ("hitl", "manual-review") for l in issue_labels):
         return False
-    if any(l in ("automerge", "yolo") for l in issue_labels):
-        return True
 
     # Fall back to board-level setting
     if board:

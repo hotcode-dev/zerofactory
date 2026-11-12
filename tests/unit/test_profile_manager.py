@@ -31,17 +31,23 @@ class TestProfileManagerUnit(unittest.TestCase):
                     self.assertTrue((p_dir / "config.yaml").exists())
 
     def test_ensure_plugin_symlinks(self):
-        """Creates symlink to zerofactory in ~/.hermes/plugins."""
+        """Creates symlink to zerofactory only in zf-* profiles (never root)."""
         with tempfile.TemporaryDirectory() as td:
             fake_home = Path(td)
             with patch("profile_manager.get_hermes_home", return_value=fake_home):
+                PM.ensure_zf_profiles()
                 res = PM.ensure_plugin_symlinks()
                 self.assertIsInstance(res, dict)
-                root_plugins = fake_home / "plugins"
-                self.assertTrue((root_plugins / "zerofactory").is_symlink())
+                self.assertFalse((fake_home / "plugins").exists())
+                for role in PM.ZF_PROFILES:
+                    self.assertTrue(
+                        (
+                            fake_home / "profiles" / role / "plugins" / "zerofactory"
+                        ).is_symlink()
+                    )
 
     def test_ensure_script_files(self):
-        """Copies background scripts as real files (not symlinks) for Hermes security check."""
+        """Copies background scripts as real files only into zf-* profile scripts/."""
         with tempfile.TemporaryDirectory() as td:
             fake_home = Path(td)
             with patch("profile_manager.get_hermes_home", return_value=fake_home):
@@ -51,19 +57,13 @@ class TestProfileManagerUnit(unittest.TestCase):
                 self.assertIsInstance(res, dict)
                 copied = res.get("copied", [])
                 self.assertGreater(len(copied), 0)
+                self.assertFalse((fake_home / "scripts").exists())
 
                 expected_scripts = [
                     "zf_daily_stats.py",
                     "zf_openwiki_gate.py",
                 ]
                 for s in expected_scripts:
-                    root_s = fake_home / "scripts" / s
-                    self.assertTrue(root_s.exists(), f"Missing {root_s}")
-                    self.assertTrue(root_s.is_file())
-                    self.assertFalse(
-                        root_s.is_symlink(), f"{root_s} should not be a symlink"
-                    )
-
                     for role in PM.ZF_PROFILES:
                         prof_s = fake_home / "profiles" / role / "scripts" / s
                         self.assertTrue(prof_s.exists(), f"Missing {prof_s}")

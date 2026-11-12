@@ -25,6 +25,54 @@ from .config import (
 from .process_manager import build_shell_wrapper, cleanup_process_artifacts
 
 
+def build_minimal_child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """Build a minimal whitelisted environment for spawned Hermes child processes."""
+    from paths import get_hermes_home
+
+    env: dict[str, str] = {}
+    for key in (
+        "PATH",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "TMPDIR",
+        "SSH_AUTH_SOCK",
+        "XDG_CONFIG_HOME",
+    ):
+        val = os.environ.get(key)
+        if val is not None:
+            env[key] = val
+    for key, val in os.environ.items():
+        if key.startswith("ZEROFACTORY_"):
+            env[key] = val
+    env["HERMES_HOME"] = str(get_hermes_home())
+    env["PYTHONUNBUFFERED"] = "1"
+    try:
+        db_path = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
+        if db_path.exists():
+            env["ZEROFACTORY_DB"] = str(db_path)
+    except Exception:
+        pass
+    if extra:
+        env.update(extra)
+    return env
+
+
+def is_unattended_approvals_enabled() -> bool:
+    """Return True only when allow_unattended_approvals is explicitly enabled in settings."""
+    try:
+        db_path = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
+        if db_path.exists():
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                conn.row_factory = sqlite3.Row
+                return bool(
+                    load_settings(conn).get("allow_unattended_approvals", False)
+                )
+    except Exception:
+        pass
+    return False
+
+
 def _inject_langfuse_env(env: dict[str, str], conn_or_cursor: Any = None) -> None:
     """Inject active Langfuse credentials and configuration into worker subprocess environment."""
     try:
@@ -676,39 +724,25 @@ def spawn_agent_worker(
                 f"{goal_instructions}"
             )
 
-    cmd = [
-        hermes_bin,
-        "-p",
-        assignee,
-        "--yolo",
-        "--cli",
-        "--accept-hooks",
-        "chat",
-        "-q",
-        prompt,
-    ]
+    from paths import get_hermes_home
 
-    log_dir = Path.home() / ".hermes" / "logs"
+    cmd = [hermes_bin, "-p", assignee]
+    if is_unattended_approvals_enabled():
+        cmd.extend(["--yolo", "--accept-hooks"])
+    cmd.extend(["--cli", "chat", "-q", prompt])
+
+    log_dir = get_hermes_home() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file_path = log_dir / f"worker_{task_id}.log"
 
-    env = os.environ.copy()
-    env.pop("HERMES_KANBAN_TASK", None)
-    env["HERMES_KANBAN_STOP_NUDGE"] = "0"
-    env["HERMES_KANBAN_WORKSPACE"] = str(workdir)
-    env["TERMINAL_CWD"] = str(workdir)
-    env["HERMES_PROFILE"] = assignee
-    profile_home = Path.home() / ".hermes" / "profiles" / assignee
-    if profile_home.exists():
-        env["HERMES_HOME"] = str(profile_home)
-    env["PYTHONUNBUFFERED"] = "1"
-    try:
-        _db_path = Path(os.environ.get("ZEROFACTORY_DB") or get_db_path())
-        if _db_path.exists():
-            env["ZEROFACTORY_DB"] = str(_db_path)
-    except Exception:
-        pass
-    _d()._inject_langfuse_env(env)
+    env = build_minimal_child_env(
+        {
+            "HERMES_KANBAN_STOP_NUDGE": "0",
+            "HERMES_KANBAN_WORKSPACE": str(workdir),
+            "TERMINAL_CWD": str(workdir),
+            "HERMES_PROFILE": assignee,
+        }
+    )
 
     try:
         cleanup_process_artifacts(task_id)

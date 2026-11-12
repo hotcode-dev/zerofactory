@@ -75,14 +75,19 @@ hermes plugins install hotcode-dev/zerofactory
 ```
 *(Alternatively, clone this repository directly into `~/.hermes/plugins/zerofactory`)*
 
-### 2. Verify or Pre-Create Profiles
-The plugin automatically bootstraps the required profiles on first run, inheriting your default LLM settings from `~/.hermes/config.yaml`. You can also manually inspect or create them anytime:
+### 2. Initialize Profiles & GitHub Auth
+Create the `zf-*` agent profiles (`zf-orchestrator`, `zf-goldfish`, `zf-builder`, `zf-reviewer`) and verify GitHub CLI authentication:
 ```bash
 hermes zerofactory setup
 ```
+Configure LLM API keys (and optional `GH_TOKEN`) in `$HERMES_HOME/profiles/zf-*/.env` if not inherited globally.
 
-### 3. Open the Kanban Dashboard
-Start the Hermes Gateway or dashboard:
+### 3. Start the Dispatcher & Open the Kanban Dashboard
+The dispatcher is opt-in (disabled by default on plugin load). Start it explicitly in a terminal (or enable `auto_start_dispatcher` in Settings):
+```bash
+hermes zerofactory start
+```
+Workers run with normal profile approval settings by default (`allow_unattended_approvals: false`). Start the Hermes Gateway or dashboard in another terminal:
 ```bash
 hermes dashboard
 ```
@@ -124,6 +129,7 @@ hermes zerofactory setup-repo --board <slug> [--repo <alias>]          # File P0
 hermes zerofactory setup-openwiki --board <slug> [--repo <alias>]      # File P0 setup task to generate openwiki/ agent documentation
 
 # Dispatcher & Background Crons
+hermes zerofactory start                          # Start foreground dispatcher loop (requires setup)
 hermes zerofactory dispatch                       # Trigger an immediate dispatch cycle
 hermes zerofactory check-stuck                    # Audit long-running or hung worker processes
 hermes zerofactory cron list                      # View active periodic health & scanner jobs

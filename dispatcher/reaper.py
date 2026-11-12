@@ -25,7 +25,38 @@ from .state_machine import transition_task
 
 def _worker_log_path(task_id: str) -> Path:
     """Return the canonical worker log path for a task."""
-    return Path.home() / ".hermes" / "logs" / f"worker_{task_id}.log"
+    from paths import get_hermes_home
+
+    return get_hermes_home() / "logs" / f"worker_{task_id}.log"
+
+
+_APPROVAL_FAILURE_MARKERS = (
+    "approval required",
+    "command requires approval",
+    "requires user approval",
+    "interactive approval",
+    "eof when reading a line",
+)
+
+
+def _is_unattended_approval_failure(task_id: str) -> bool:
+    """Return True when unattended approvals are off and worker log indicates an approval prompt."""
+    from .worker_spawner import is_unattended_approvals_enabled
+
+    if is_unattended_approvals_enabled():
+        return False
+    log_path = _worker_log_path(task_id)
+    if not log_path.is_file():
+        return False
+    try:
+        size = log_path.stat().st_size
+        with open(log_path, "rb") as f:
+            if size > 4096:
+                f.seek(size - 4096)
+            tail = f.read().decode("utf-8", errors="ignore").lower()
+        return any(marker in tail for marker in _APPROVAL_FAILURE_MARKERS)
+    except OSError:
+        return False
 
 
 # Ad-hoc reaper DB connections match the dispatcher convention
@@ -281,6 +312,34 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     continue
 
                 meta = _d()._mark_task_session_ended(meta, now, "failed")
+                if _is_unattended_approval_failure(task_id):
+                    reason = (
+                        "Worker stopped on an approval prompt while unattended approvals are disabled. "
+                        "Configure command allowlists in zf-*/config.yaml or enable allow_unattended_approvals."
+                    )
+                    meta["blocked_reason"] = reason
+                    meta["blocked_reason_type"] = "human-gate"
+                    transition_task(
+                        conn,
+                        task_id,
+                        "blocked",
+                        blocked_reason=reason,
+                        metadata_patch=meta,
+                        actor="dispatcher",
+                        comment=f"Blocked: {reason}",
+                    )
+                    cursor.execute(
+                        "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_approval_blocked', ?, ?)",
+                        (task_id, reason, now),
+                    )
+                    _log.warning(
+                        "Worker for task %s blocked on unattended approval prompt (code %d)",
+                        task_id,
+                        retcode,
+                    )
+                    reaped += 1
+                    continue
+
                 fail_retries = int(meta.get("worker_failure_retries", 0)) + 1
                 meta["worker_failure_retries"] = fail_retries
                 meta["last_worker_failure"] = {"retcode": retcode, "failed_at": now}

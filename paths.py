@@ -34,6 +34,7 @@ stuck on a previously resolved value (the same class of bug the sibling
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # --- Canonical repository metadata (source of truth) -----------------------
@@ -109,9 +110,21 @@ def normalize_blocked_reason_type(reason: str | None) -> str:
     return raw if raw in BLOCKED_REASON_TYPES else BLOCKED_REASON_TYPE_HUMAN_GATE
 
 
+def get_hermes_home() -> Path:
+    """Return the active Hermes home directory.
+
+    Uses ``HERMES_HOME`` directly (without stripping ``profiles/``) when set,
+    falling back to ``~/.hermes`` otherwise.
+    """
+    env_home = os.environ.get("HERMES_HOME")
+    if env_home and env_home.strip():
+        return Path(env_home.strip()).expanduser().resolve()
+    return (Path.home() / ".hermes").resolve()
+
+
 def _hermes_profiles_root() -> Path:
     """Root directory holding per-profile state directories."""
-    return Path.home() / ".hermes" / "profiles"
+    return get_hermes_home() / "profiles"
 
 
 def _plugin_profiles_root() -> Path | None:
@@ -162,7 +175,7 @@ def resolve_profile_state_db(assignee: str) -> Path | None:
             pass
 
     # 3. Global/default Hermes state database (last resort).
-    p4 = Path.home() / ".hermes" / "state.db"
+    p4 = get_hermes_home() / "state.db"
     if p4.exists():
         return p4
 

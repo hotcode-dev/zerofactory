@@ -3,6 +3,7 @@ import React from "react";
 export function SetupBanners(props) {
   const {
     selectedBoard,
+    setupStatus,
     precommitStatus,
     openwikiStatus,
     ghIssuesStatus,
@@ -14,9 +15,65 @@ export function SetupBanners(props) {
     handleTriggerGhIssuesSetup
   } = props;
 
+  const missingSetupSteps = [];
+  if (setupStatus && !setupStatus.profiles_ready) {
+    missingSetupSteps.push({
+      label: "Initialize Zero Factory profiles",
+      cmd: "hermes zerofactory setup"
+    });
+  }
+  if (setupStatus && !setupStatus.gh_authenticated) {
+    missingSetupSteps.push({
+      label: "Authenticate GitHub CLI",
+      cmd: "gh auth login"
+    });
+  }
+  if (setupStatus && !setupStatus.dispatcher_running) {
+    missingSetupSteps.push({
+      label: "Start the dispatcher",
+      cmd: "hermes zerofactory start"
+    });
+  }
+
   return React.createElement(
     React.Fragment,
     null,
+                    missingSetupSteps.length > 0 &&
+                    React.createElement(
+                      "div",
+                      {
+                        className: "mb-3.5 px-4 py-3 rounded-xl border border-indigo-500/30 bg-indigo-950/25 backdrop-blur-md text-xs"
+                      },
+                      React.createElement(
+                        "div",
+                        { className: "font-semibold text-slate-100 mb-1" },
+                        "Zero Factory Setup Checklist"
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "text-slate-400 text-[11px] mb-2" },
+                        "Run the following CLI commands to complete setup:"
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex flex-col gap-1.5" },
+                        missingSetupSteps.map((step) =>
+                          React.createElement(
+                            "div",
+                            {
+                              key: step.cmd,
+                              className: "flex flex-wrap items-center justify-between gap-2 bg-slate-900/60 px-2.5 py-1.5 rounded-lg border border-slate-800/80"
+                            },
+                            React.createElement("span", { className: "text-slate-300" }, step.label),
+                            React.createElement(
+                              "code",
+                              { className: "font-mono text-[11px] text-indigo-300 select-all" },
+                              step.cmd
+                            )
+                          )
+                        )
+                      )
+                    ),
                     Boolean(selectedBoard && selectedBoard !== "all" && precommitStatus && !precommitStatus.has_precommit) &&
                     React.createElement(
                       "div",
