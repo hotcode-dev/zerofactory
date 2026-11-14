@@ -192,7 +192,7 @@ Zero Factory implements a **Session-per-Handoff (Stateless Workers, Stateful Sub
 ### How Sessions Work Across Handoffs
 
 1. **Initial Implementation (`zf-builder`)**:
-   - The dispatcher provisions an isolated Git worktree and executes `hermes -p zf-builder --yolo --cli --accept-hooks chat -q <prompt>`.
+   - The dispatcher provisions an isolated Git worktree and executes `hermes -p zf-builder --cli --accept-hooks chat -q <prompt>` (adding `--yolo` only when `allow_unattended_approvals` is explicitly enabled in Settings).
    - Hermes initializes a dedicated session recorded in `~/.hermes/profiles/zf-builder/state.db` and tracked in task metadata (`metadata["sessions"]`).
 2. **Review Handoff (`zf-reviewer`)**:
    - When implementation finishes, the dispatcher terminates the builder process (`SIGTERM`/`SIGKILL`), commits the branch, opens a GitHub Pull Request, and routes the ticket to `zf-reviewer`.
@@ -261,7 +261,7 @@ Project Board: checkout-platform
 
 ## Mem0 Vector Memory & Agents Dashboard
 
-Zero Factory features an intelligent hybrid memory architecture powered by **Mem0** and an embedded **Qdrant** vector database, alongside a durable SQLite `kanban.db` substrate. This allows specialist agents and developers to persist conventions, gotchas, architecture decisions, and rejected paths scoped per board with semantic similarity retrieval.
+Zero Factory features an intelligent hybrid memory architecture powered by optional **Mem0** (`mem0ai`, `fastembed`, `qdrant-client`) and an embedded **Qdrant** vector database, alongside a durable SQLite `kanban.db` substrate. Mem0 is opt-in (`mem0_enabled: false` by default) and `mem0` is an optional import — when `mem0` is not installed or disabled, Zero Factory falls back cleanly to SQLite `board_memories` without losing persistence. This allows specialist agents and developers to persist conventions, gotchas, architecture decisions, and rejected paths scoped per board with semantic similarity retrieval.
 
 ### Why Mem0 Vector Memory?
 1. **Semantic Vector Search**: Memories are vectorized and queried via cosine similarity (`filters={"user_id": board_slug}`), ensuring agents retrieve the most semantically relevant conventions and historical gotchas even if phrasing differs.

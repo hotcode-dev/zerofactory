@@ -12,6 +12,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 # Disable PostHog telemetry in Mem0 to avoid network hangs and extra migration vector stores
 os.environ["MEM0_TELEMETRY"] = "false"
@@ -55,6 +56,30 @@ def get_mem0_dir() -> Path:
     return p
 
 
+def _is_openai_official_url(base_url: str) -> bool:
+    """Return True only when base_url is empty or targets https://api.openai.com."""
+    cleaned = (base_url or "").strip()
+    if not cleaned:
+        return True
+    parsed = urlparse(cleaned)
+    return parsed.scheme == "https" and parsed.hostname == "api.openai.com"
+
+
+def _resolve_api_key_for_url(
+    base_url: str,
+    explicit_key: str = "",
+    *,
+    allow_dummy_for_custom: bool = True,
+) -> str:
+    """Resolve an API key without ever leaking OPENAI_API_KEY to non-OpenAI hosts."""
+    key = (explicit_key or "").strip() or os.environ.get("MEM0_API_KEY", "").strip()
+    if key:
+        return key
+    if _is_openai_official_url(base_url):
+        return os.environ.get("OPENAI_API_KEY", "").strip()
+    return "dummy-key" if allow_dummy_for_custom else ""
+
+
 def get_hermes_model_defaults() -> tuple[str, str, str]:
     """Retrieve default (model, base_url, api_key) inherited from the Hermes agent setup."""
     hermes_model = ""
@@ -74,7 +99,12 @@ def get_hermes_model_defaults() -> tuple[str, str, str]:
         if not hermes_model or not hermes_base_url:
             import yaml
 
-            hermes_cfg_file = Path.home() / ".hermes" / "config.yaml"
+            try:
+                from ..paths import get_hermes_home  # type: ignore
+            except (ImportError, ValueError):
+                from paths import get_hermes_home  # type: ignore
+
+            hermes_cfg_file = get_hermes_home() / "config.yaml"
             if hermes_cfg_file.exists():
                 data = yaml.safe_load(hermes_cfg_file.read_text(encoding="utf-8")) or {}
                 m = data.get("model", {})
@@ -88,19 +118,15 @@ def get_hermes_model_defaults() -> tuple[str, str, str]:
         hermes_model
         or os.environ.get("MEM0_LLM_MODEL")
         or os.environ.get("OPENAI_MODEL")
-        or "RadixArk/Qwen3.8-27B-NVFP4"
+        or ""
     )
     base_url = (
         hermes_base_url
         or os.environ.get("MEM0_BASE_URL")
         or os.environ.get("OPENAI_BASE_URL")
-        or "https://spark.ntsd.dev:8001/v1"
+        or ""
     )
-    api_key = (
-        os.environ.get("MEM0_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-        or "dummy-key"
-    )
+    api_key = _resolve_api_key_for_url(base_url, allow_dummy_for_custom=False)
     return model, base_url, api_key
 
 
@@ -126,16 +152,18 @@ def get_mem0_client(conn: sqlite3.Connection | None = None):
         except Exception:
             pass
 
-    if not settings.get("mem0_enabled", True):
+    if not settings.get("mem0_enabled", False):
         return None
 
-    def_model, def_base_url, def_api_key = get_hermes_model_defaults()
+    def_model, def_base_url, _def_api_key = get_hermes_model_defaults()
 
-    api_key = (
-        settings.get("mem0_api_key") or os.environ.get("MEM0_API_KEY") or def_api_key
-    )
     base_url = (
         settings.get("mem0_base_url") or os.environ.get("MEM0_BASE_URL") or def_base_url
+    )
+    api_key = _resolve_api_key_for_url(
+        base_url,
+        explicit_key=settings.get("mem0_api_key") or "",
+        allow_dummy_for_custom=True,
     )
     llm_model = (
         settings.get("mem0_model") or os.environ.get("MEM0_LLM_MODEL") or def_model
@@ -156,13 +184,15 @@ def get_mem0_client(conn: sqlite3.Connection | None = None):
             or os.environ.get("MEM0_EMBEDDER_MODEL")
             or "text-embedding-3-small"
         )
+        embedder_cfg: dict[str, Any] = {
+            "api_key": api_key,
+            "model": embedder_model,
+        }
+        if base_url:
+            embedder_cfg["openai_base_url"] = base_url
         embedder_config = {
             "provider": "openai",
-            "config": {
-                "api_key": api_key,
-                "openai_base_url": base_url,
-                "model": embedder_model,
-            },
+            "config": embedder_cfg,
         }
         collection_name = "zerofactory_memories_openai"
         dims = 1536
@@ -194,7 +224,7 @@ def get_mem0_client(conn: sqlite3.Connection | None = None):
     try:
         from mem0 import Memory
 
-        config = {
+        config: dict[str, Any] = {
             "vector_store": {
                 "provider": "qdrant",
                 "config": {
@@ -203,17 +233,24 @@ def get_mem0_client(conn: sqlite3.Connection | None = None):
                     "embedding_model_dims": dims,
                 },
             },
-            "llm": {
-                "provider": "openai",
-                "config": {
-                    "api_key": api_key,
-                    "openai_base_url": base_url,
-                    "model": llm_model,
-                },
-            },
             "embedder": embedder_config,
             "history_db_path": history_db_path,
         }
+
+        has_llm_endpoint = bool(base_url) or bool(
+            _is_openai_official_url(base_url) and api_key
+        )
+        if llm_model and has_llm_endpoint:
+            llm_cfg: dict[str, Any] = {
+                "api_key": api_key,
+                "model": llm_model,
+            }
+            if base_url:
+                llm_cfg["openai_base_url"] = base_url
+            config["llm"] = {
+                "provider": "openai",
+                "config": llm_cfg,
+            }
 
         _mem0_client = Memory.from_config(config)
         _mem0_client_config = current_config
@@ -519,6 +556,7 @@ def extract_and_record_memory(
                 client.add(
                     clean_content,
                     user_id=board_slug,
+                    infer=False,
                     metadata={
                         "memory_id": mem_id,
                         "category": cat,

@@ -290,9 +290,17 @@ def register(ctx: Any):
     # Register tick hook if supported by Hermes
     if hasattr(ctx, "register_hook"):
         try:
-            ctx.register_hook(
-                "on_kanban_dispatch_tick", lambda *a, **kw: run_dispatch_cycle()
-            )
+
+            def _on_kanban_dispatch_tick(*_a, **_kw):
+                if not _should_auto_start_dispatcher():
+                    return {
+                        "ok": True,
+                        "skipped": True,
+                        "reason": "dispatcher_disabled",
+                    }
+                return run_dispatch_cycle()
+
+            ctx.register_hook("on_kanban_dispatch_tick", _on_kanban_dispatch_tick)
         except Exception:
             pass
 

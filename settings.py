@@ -93,10 +93,10 @@ DEFAULT_LANGFUSE_ENV = "zerofactory"
 # When enabled, reviewer feedback and rejections with gotchas/conventions are automatically
 # persisted to board_memories for that repository.
 DEFAULT_AUTO_RECORD_MEMORY = True
-DEFAULT_MEM0_ENABLED = True
+DEFAULT_MEM0_ENABLED = False
 DEFAULT_MEM0_BASE_URL = ""
 DEFAULT_MEM0_API_KEY = ""
-DEFAULT_MEM0_MODEL = "RadixArk/Qwen3.8-27B-NVFP4"
+DEFAULT_MEM0_MODEL = ""
 DEFAULT_MEM0_EMBEDDER_PROVIDER = "fastembed"
 DEFAULT_MEM0_EMBEDDER_MODEL = "BAAI/bge-small-en-v1.5"
 

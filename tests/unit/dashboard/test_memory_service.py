@@ -140,3 +140,89 @@ def test_mem0_disabled_setting():
 
     client = get_mem0_client(conn)
     assert client is None
+
+
+def test_mem0_default_disabled_and_no_private_defaults(monkeypatch, tmp_path):
+    """Mem0 defaults to disabled, with no private host or model fallbacks."""
+    import settings as S
+    from dashboard.memory_service import get_hermes_model_defaults, get_mem0_client
+
+    assert S.DEFAULT_MEM0_ENABLED is False
+    assert S.DEFAULT_MEM0_MODEL == ""
+
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    for var in (
+        "MEM0_LLM_MODEL",
+        "OPENAI_MODEL",
+        "MEM0_BASE_URL",
+        "OPENAI_BASE_URL",
+        "MEM0_API_KEY",
+        "OPENAI_API_KEY",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    model, base_url, api_key = get_hermes_model_defaults()
+    assert model == ""
+    assert base_url == ""
+    assert api_key == ""
+    assert "spark.ntsd.dev" not in base_url
+    assert "RadixArk" not in model
+
+    conn = _init_memory_db()
+    assert get_mem0_client(conn) is None
+
+
+def test_openai_api_key_isolated_from_custom_base_url(monkeypatch):
+    """OPENAI_API_KEY is only sent to https://api.openai.com or empty base_url."""
+    from dashboard.memory_service import (
+        _is_openai_official_url,
+        _resolve_api_key_for_url,
+    )
+
+    assert _is_openai_official_url("") is True
+    assert _is_openai_official_url("https://api.openai.com/v1") is True
+    assert _is_openai_official_url("http://api.openai.com/v1") is False
+    assert _is_openai_official_url("api.openai.com") is False
+    assert _is_openai_official_url("https://custom.example.com/v1") is False
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-openai")
+    monkeypatch.delenv("MEM0_API_KEY", raising=False)
+
+    assert _resolve_api_key_for_url("https://api.openai.com/v1") == "sk-secret-openai"
+    assert (
+        _resolve_api_key_for_url("https://custom.example.com/v1") != "sk-secret-openai"
+    )
+    assert (
+        _resolve_api_key_for_url(
+            "https://custom.example.com/v1", allow_dummy_for_custom=False
+        )
+        == ""
+    )
+
+
+def test_extract_and_record_memory_passes_infer_false(monkeypatch):
+    """extract_and_record_memory passes infer=False to client.add."""
+    import dashboard.memory_service as ms
+
+    calls = []
+
+    class _FakeClient:
+        def add(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+    monkeypatch.setattr(ms, "get_mem0_client", lambda conn=None: _FakeClient())
+
+    conn = _init_memory_db()
+    conn.execute(
+        "INSERT INTO boards (slug, auto_record_memory) VALUES ('test-board', 1)"
+    )
+    conn.commit()
+
+    recorded = ms.extract_and_record_memory(
+        conn, "test-board", "GOTCHA: Always pass infer=False.", task_id="t-1"
+    )
+    assert len(recorded) == 1
+    assert len(calls) == 1
+    assert calls[0][1].get("infer") is False

@@ -80,7 +80,6 @@ _log = logging.getLogger(__name__)
 try:
     from .db import (
         ACTIVITY_PRUNE_INTERVAL_SECONDS,
-        DEFAULT_DB_PATH,
         _DB_INITIALIZED_PATHS,
         _mark_scanner_task_created,
         derive_board_code,
@@ -96,7 +95,6 @@ try:
 except (ImportError, ValueError):
     from db import (  # type: ignore
         ACTIVITY_PRUNE_INTERVAL_SECONDS,
-        DEFAULT_DB_PATH,
         _DB_INITIALIZED_PATHS,
         _mark_scanner_task_created,
         derive_board_code,

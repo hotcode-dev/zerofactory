@@ -29,9 +29,16 @@ from typing import Any
 
 # Ensure ZeroFactory root is in sys.path
 SCRIPT_DIR = Path(__file__).resolve().parent
+_hermes_home_env = os.environ.get("HERMES_HOME")
+_hermes_home_path = (
+    Path(_hermes_home_env).expanduser().resolve()
+    if _hermes_home_env
+    else Path.home() / ".hermes"
+)
+
 candidate_roots = [
     SCRIPT_DIR.parent,
-    Path.home() / ".hermes" / "plugins" / "zerofactory",
+    _hermes_home_path / "plugins" / "zerofactory",
     Path.home() / "git" / "hotcode-dev" / "zerofactory",
 ]
 if os.environ.get("ZEROFACTORY_ROOT"):
@@ -45,8 +52,18 @@ for candidate in candidate_roots:
     except Exception:
         pass
 
-STATE_FILE = Path.home() / ".hermes" / "openwiki_state.json"
-DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
+from paths import get_hermes_home  # noqa: E402
+
+
+def _get_state_file() -> Path:
+    return get_hermes_home() / "openwiki_state.json"
+
+
+def _get_db_path() -> Path:
+    env_path = os.environ.get("ZEROFACTORY_DB")
+    if env_path:
+        return Path(env_path)
+    return get_hermes_home() / "zerofactory.db"
 
 
 def create_openwiki_task(
@@ -95,7 +112,7 @@ def create_openwiki_task(
         return task
     except Exception:
         # Fallback to direct SQLite insertion if plugin_api unavailable
-        db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+        db_path = _get_db_path()
         if db_path.exists():
             try:
                 from dashboard.db import generate_task_id
@@ -168,7 +185,7 @@ def _run_cmd(cmd: list[str], cwd: Path | None = None) -> str:
 
 def get_state_file() -> Path:
     env_override = os.environ.get("ZEROFACTORY_OPENWIKI_STATE")
-    return Path(env_override) if env_override else STATE_FILE
+    return Path(env_override) if env_override else _get_state_file()
 
 
 def load_state() -> dict[str, Any]:
@@ -199,7 +216,7 @@ def resolve_board_slug(repo_dir: Path) -> str:
         if not arg.startswith("-"):
             return arg
 
-    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    db_path = _get_db_path()
     if db_path.exists():
         try:
             with sqlite3.connect(str(db_path), timeout=5.0) as conn:
@@ -282,7 +299,7 @@ def has_active_openwiki_task(
     board_slug: str, repo_alias: str | None = None
 ) -> tuple[bool, str]:
     """Check if an OpenWiki setup or update task is already active on the board."""
-    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    db_path = _get_db_path()
     if not db_path.exists():
         return False, ""
     try:
@@ -482,7 +499,7 @@ def check_openwiki_gate(
     except Exception:
         pass
 
-    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    db_path = _get_db_path()
     board_repos: list[dict[str, Any]] = []
     if db_path.exists():
         try:

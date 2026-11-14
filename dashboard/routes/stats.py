@@ -102,12 +102,20 @@ def get_stats(board: str | None = None):
         }
 
 
+def _get_orchestrator_executions_db_path() -> str:
+    try:
+        from ...paths import get_hermes_home  # type: ignore
+    except (ImportError, ValueError):
+        from paths import get_hermes_home  # type: ignore
+    return str(
+        get_hermes_home() / "profiles" / "zf-orchestrator" / "cron" / "executions.db"
+    )
+
+
 def get_orchestrator_scan_activities(
     board_slug: str | None = None, limit: int = 20
 ) -> list[dict[str, Any]]:
-    db_path = os.path.expanduser(
-        "~/.hermes/profiles/zf-orchestrator/cron/executions.db"
-    )
+    db_path = _get_orchestrator_executions_db_path()
     if not os.path.exists(db_path):
         return []
     try:
@@ -149,9 +157,7 @@ def get_orchestrator_scan_activities(
 
 
 def count_orchestrator_scans_today(board_slug: str | None = None) -> int:
-    db_path = os.path.expanduser(
-        "~/.hermes/profiles/zf-orchestrator/cron/executions.db"
-    )
+    db_path = _get_orchestrator_executions_db_path()
     if not os.path.exists(db_path):
         return 0
     try:

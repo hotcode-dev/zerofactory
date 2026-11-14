@@ -184,12 +184,12 @@ export function SettingsModal(props) {
                         {
                           type: "checkbox",
                           className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
-                          checked: Boolean(settingsForm.mem0_enabled !== false),
+                          checked: Boolean(settingsForm.mem0_enabled),
                           onChange: (e) => setSettingsForm({ ...settingsForm, mem0_enabled: e.target.checked })
                         }
                       )
                     ),
-                    Boolean(settingsForm.mem0_enabled !== false) && React.createElement(
+                    Boolean(settingsForm.mem0_enabled) && React.createElement(
                       "div",
                       { className: "space-y-3 pt-1 bg-slate-950/60 p-3 rounded-lg border border-slate-800/70 mt-1" },
                       React.createElement(
@@ -224,7 +224,7 @@ export function SettingsModal(props) {
                           ),
                           React.createElement("input", {
                             type: "text",
-                            placeholder: "RadixArk/Qwen3.8-27B-NVFP4 (inherited from ~/.hermes/config.yaml)",
+                            placeholder: "gpt-4o-mini (inherited from Hermes config.yaml)",
                             className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
                             value: settingsForm.mem0_model ?? "",
                             onChange: (e) => setSettingsForm({ ...settingsForm, mem0_model: e.target.value })
@@ -239,7 +239,7 @@ export function SettingsModal(props) {
                           ),
                           React.createElement("input", {
                             type: "text",
-                            placeholder: "https://spark.ntsd.dev:8001/v1 (inherited from ~/.hermes/config.yaml)",
+                            placeholder: "https://api.openai.com/v1 (inherited from Hermes config.yaml)",
                             className: "w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 font-mono",
                             value: settingsForm.mem0_base_url ?? "",
                             onChange: (e) => setSettingsForm({ ...settingsForm, mem0_base_url: e.target.value })

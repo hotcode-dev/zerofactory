@@ -236,7 +236,9 @@ def get_db_path() -> Path:
     env_path = os.environ.get("ZEROFACTORY_DB")
     if env_path:
         return Path(env_path)
-    return Path.home() / ".hermes" / "zerofactory.db"
+    from paths import get_hermes_home
+
+    return get_hermes_home() / "zerofactory.db"
 
 
 # --- Step logging: grep-able start/end markers for every pipeline step -------

@@ -18,7 +18,18 @@ import time
 from pathlib import Path
 from typing import Any
 
-DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
+_PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PLUGIN_ROOT not in sys.path:
+    sys.path.insert(0, _PLUGIN_ROOT)
+
+from paths import get_hermes_home  # noqa: E402
+
+
+def _get_db_path() -> Path:
+    env_path = os.environ.get("ZEROFACTORY_DB")
+    if env_path:
+        return Path(env_path)
+    return get_hermes_home() / "zerofactory.db"
 
 
 def _resolve_running_since(rt: dict[str, Any], now: int) -> int:
@@ -53,7 +64,7 @@ def _resolve_running_since(rt: dict[str, Any], now: int) -> int:
 
 
 def run_daily_stats() -> int:
-    db_path = Path(os.environ.get("ZEROFACTORY_DB") or DEFAULT_DB_PATH)
+    db_path = _get_db_path()
     if not db_path.exists():
         print("ZeroFactory database not found at", db_path)
         return 0

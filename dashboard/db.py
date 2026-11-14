@@ -104,8 +104,6 @@ def _mark_scanner_task_created(board_slug: str, repo_alias: str | None = None) -
 
 # --- Database Setup & Connection ---------------------------------------------
 
-DEFAULT_DB_PATH = Path.home() / ".hermes" / "zerofactory.db"
-
 
 def get_db_path() -> Path:
     override = os.environ.get("ZEROFACTORY_DB")

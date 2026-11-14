@@ -212,6 +212,42 @@ class TestPathsResolution(unittest.TestCase):
                         custom_ws.resolve() / "my-board" / "worktrees",
                     )
 
+    def test_hermes_home_respected_across_modules(self):
+        import os
+        import dispatcher.config as disp_cfg
+        import migrations.runner as mig_runner
+        import scripts.zf_daily_stats as daily_stats
+        import scripts.zf_openwiki_gate as ow_gate
+        import dashboard.routes.stats as stats_route
+
+        with tempfile.TemporaryDirectory() as td:
+            hermes_home = Path(td) / "custom_hermes"
+            hermes_home.mkdir()
+            with mock.patch.dict(
+                os.environ, {"HERMES_HOME": str(hermes_home)}, clear=False
+            ):
+                os.environ.pop("ZEROFACTORY_DB", None)
+                os.environ.pop("OPENWIKI_STATE_FILE", None)
+                expected_db = hermes_home.resolve() / "zerofactory.db"
+                self.assertEqual(disp_cfg.get_db_path(), expected_db)
+                self.assertEqual(mig_runner._resolve_default_db_path(), expected_db)
+                self.assertEqual(ow_gate._get_db_path(), expected_db)
+                self.assertEqual(
+                    ow_gate._get_state_file(),
+                    hermes_home.resolve() / "openwiki_state.json",
+                )
+                self.assertEqual(daily_stats._get_db_path(), expected_db)
+                self.assertEqual(
+                    stats_route._get_orchestrator_executions_db_path(),
+                    str(
+                        hermes_home.resolve()
+                        / "profiles"
+                        / "zf-orchestrator"
+                        / "cron"
+                        / "executions.db"
+                    ),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

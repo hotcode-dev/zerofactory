@@ -229,3 +229,32 @@ def test_setup_status_endpoint_is_read_only(tmp_path, monkeypatch):
     assert data["dispatcher_running"] is False
     # Read-only: must not have created profiles
     assert not (hermes_home / "profiles").exists()
+
+
+def test_on_kanban_dispatch_tick_gated_when_dispatcher_disabled(monkeypatch):
+    """on_kanban_dispatch_tick must skip run_dispatch_cycle when opt-in is off."""
+    import __init__ as plugin_init
+
+    hooks = {}
+
+    class _FakeCtx:
+        def register_cli_command(self, *args, **kwargs):
+            pass
+
+        def register_dashboard(self, *args, **kwargs):
+            pass
+
+        def register_hook(self, name, fn):
+            hooks[name] = fn
+
+    dispatched = []
+    monkeypatch.setattr(plugin_init, "_should_auto_start_dispatcher", lambda: False)
+    monkeypatch.setattr(
+        plugin_init, "run_dispatch_cycle", lambda: dispatched.append(True)
+    )
+
+    plugin_init.register(_FakeCtx())
+    assert "on_kanban_dispatch_tick" in hooks
+    result = hooks["on_kanban_dispatch_tick"]()
+    assert result == {"ok": True, "skipped": True, "reason": "dispatcher_disabled"}
+    assert dispatched == []
