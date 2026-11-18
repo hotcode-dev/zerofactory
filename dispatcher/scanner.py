@@ -89,7 +89,8 @@ def reap_active_scanners() -> int:
     logs_dir = get_hermes_home() / "logs"
     for slug, proc in list(_active_scanners.items()):
         task_ref = f"scanner_{slug}"
-        exit_code = get_process_exit_code(task_ref)
+        pid = proc.pid if proc is not None else None
+        _, exit_code = get_process_exit_code(task_ref, pid)
         proc_done = proc is not None and proc.poll() is not None
         if proc_done or exit_code is not None:
             _active_scanners.pop(slug, None)
