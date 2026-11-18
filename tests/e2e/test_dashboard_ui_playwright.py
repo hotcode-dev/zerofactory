@@ -30,7 +30,9 @@ def _find_chromium_executable() -> str | None:
     return None
 
 
-def _start_http_bridge(app: FastAPI) -> tuple[ThreadingHTTPServer, threading.Thread, int]:
+def _start_http_bridge(
+    app: FastAPI,
+) -> tuple[ThreadingHTTPServer, threading.Thread, int]:
     client = TestClient(app)
 
     class Handler(BaseHTTPRequestHandler):
@@ -50,7 +52,11 @@ def _start_http_bridge(app: FastAPI) -> tuple[ThreadingHTTPServer, threading.Thr
             )
             self.send_response(resp.status_code)
             for k, v in resp.headers.items():
-                if k.lower() not in ("content-length", "transfer-encoding", "content-encoding"):
+                if k.lower() not in (
+                    "content-length",
+                    "transfer-encoding",
+                    "content-encoding",
+                ):
                     self.send_header(k, v)
             self.send_header("Content-Length", str(len(resp.content)))
             self.end_headers()
@@ -180,7 +186,6 @@ def test_dashboard_setup_banner_new_task_and_settings_playwright(tmp_path, monke
 
     httpd, thread, port = _start_http_bridge(_build_test_app())
     try:
-
         with sync_api.sync_playwright() as p:
             launch_kwargs: dict[str, object] = {"headless": True}
             if chromium_bin:

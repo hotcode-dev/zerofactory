@@ -1,5 +1,5 @@
 import React from "react";
-import { COLUMNS } from "../constants.js";
+import { COLUMNS, STAGE_META } from "../constants.js";
 import { formatPrLabel, timeAgo } from "../utils/formatters.js";
 import { renderPrIcon } from "../utils/icons.js";
 
@@ -27,8 +27,8 @@ export function KanbanBoard(props) {
                       React.createElement(
                         "div",
                         {
-                          className: "grid grid-cols-5 gap-3.5 items-start min-w-[1100px] w-full",
-                          style: { display: "grid", gridTemplateColumns: "repeat(5, minmax(220px, 1fr))" }
+                          className: "grid grid-cols-4 gap-3.5 items-start min-w-[960px] w-full",
+                          style: { display: "grid", gridTemplateColumns: "repeat(4, minmax(220px, 1fr))" }
                         },
                         COLUMNS.map((col) => {
                           const colTasks = tasksByColumn[col.id] || [];
@@ -254,76 +254,29 @@ export function KanbanBoard(props) {
                                       }
                                       return null;
                                     })(),
-                                    // Status bar for tasks requiring human attention or blocked
+                                    // Stage badge for non-running tasks (and queued AI tasks)
                                     t.status !== "running" &&
+                                    t.status !== "done" &&
                                     (() => {
+                                      const stg = t.stage ? STAGE_META[t.stage] : null;
                                       const metaStr = typeof t.metadata === "string" ? t.metadata : JSON.stringify(t.metadata || {});
-                                      const descStr = typeof t.description === "string" ? t.description : "";
-                                      const titleStr = typeof t.title === "string" ? t.title : "";
-
-                                      const isGrillInterview =
-                                        metaStr.includes("Grill-with-Docs") ||
-                                        metaStr.includes("Awaiting Human Input") ||
-                                        metaStr.includes("awaiting_interview") ||
-                                        descStr.includes("Grill-with-Docs") ||
-                                        titleStr.toLowerCase().includes("grill");
-
-                                      const isSpecApproval =
-                                        metaStr.includes("human_approval") ||
-                                         metaStr.includes("awaiting_approval");
-
-                                      const isHumanTriage = t.status === "triage" && (t.assignee === "human" || isGrillInterview || isSpecApproval);
-                                      const hasPr = Boolean(t.pr_url && String(t.pr_url).trim().length > 0);
-                                      // "Awaiting merge" requires an actual PR URL; blocked without PR is a human gate or action item.
-                                      const isHumanReview = t.status === "blocked" && t.assignee === "human" && hasPr;
-                                      const isHumanBlockedNoPr = t.status === "blocked" && t.assignee === "human" && !hasPr;
-                                      const isBlocked = t.status === "blocked";
                                       const isMultiRepoTriage = t.status === "triage" && t.target_repos && t.target_repos.length > 1;
+                                      if (!stg && !isMultiRepoTriage) return null;
 
-                                      if (!isBlocked && !isHumanTriage && !isHumanReview && !isHumanBlockedNoPr && !isMultiRepoTriage) {
-                                        return null;
-                                      }
+                                      let badgeClass = stg ? stg.badgeClass : "bg-indigo-500/15 border-indigo-500/30 text-indigo-300";
+                                      let dotClass = stg ? stg.dotClass : "bg-indigo-400";
+                                      let labelText = stg ? (stg.icon + " " + stg.label) : "🔀 Multi-Repo Triage • Ready to Split";
 
-                                      let badgeClass = "";
-                                      let dotClass = "";
-                                      let labelText = "";
-
-                                      if (isSpecApproval) {
-                                        badgeClass = "bg-purple-500/20 border-purple-500/40 text-purple-200";
-                                        dotClass = "bg-purple-400 zfk-pulse-active";
-                                        labelText = "📋 Spec & Audit Ready • Awaiting Approval";
-                                      } else if (isGrillInterview || (t.status === "triage" && t.assignee === "human")) {
-                                        badgeClass = "bg-indigo-500/20 border-indigo-500/40 text-indigo-200";
-                                        dotClass = "bg-indigo-400 zfk-pulse-active";
-                                        labelText = isGrillInterview
-                                          ? "🎯 Waiting for Human Decision • Grill Interview"
-                                          : (isMultiRepoTriage ? "🔀 Multi-Repo Triage • Ready to Split" : "🎯 Waiting for Human Input");
-                                      } else if (isMultiRepoTriage) {
-                                        badgeClass = "bg-indigo-500/15 border-indigo-500/30 text-indigo-300";
-                                        dotClass = "bg-indigo-400";
+                                      if (t.stage === "triage" && isMultiRepoTriage) {
                                         labelText = "🔀 Multi-Repo Triage • Ready to Split";
-                                      } else if (metaStr.includes("\"conflict_retries\"")) {
+                                      } else if (t.stage === "blocked" && metaStr.includes("\"conflict_retries\"")) {
                                         badgeClass = "bg-amber-500/15 border-amber-500/30 text-amber-300";
                                         dotClass = "bg-amber-400";
                                         labelText = "🟠 Merge Conflict";
-                                      } else if (isHumanReview) {
-                                        badgeClass = "bg-teal-500/15 border-teal-500/30 text-teal-300";
-                                        dotClass = "bg-teal-400 zfk-pulse-active";
-                                        labelText = "🟢 Waiting for Human to Merge";
-                                      } else if (isHumanBlockedNoPr) {
-                                        badgeClass = "bg-amber-500/15 border-amber-500/30 text-amber-300";
-                                        dotClass = "bg-amber-400 zfk-pulse-active";
-                                        labelText = "🛑 Waiting for Human Action";
-                                      } else if (t.blocking_parent_count > 0) {
+                                      } else if (t.stage === "blocked" && t.blocking_parent_count > 0) {
                                         badgeClass = "bg-slate-800 border-slate-700 text-slate-300";
                                         dotClass = "bg-slate-400";
                                         labelText = "⏳ Blocked by Parent Task";
-                                      } else if (isBlocked) {
-                                        badgeClass = "bg-rose-500/15 border-rose-500/30 text-rose-300";
-                                        dotClass = "bg-rose-400 zfk-pulse-active";
-                                        labelText = "🛑 Action Required / Stuck";
-                                      } else {
-                                        return null;
                                       }
 
                                       return React.createElement(
@@ -334,14 +287,11 @@ export function KanbanBoard(props) {
                                       );
                                     })(),
                                     // Direct Triage Actions on Triage cards
-                                    t.status === "triage" &&
-                                    !t.worker_pid &&
-                                    t.assignee !== "zf-orchestrator" &&
-                                    t.assignee !== "zf-goldfish" &&
+                                    (t.stage === "triage" || (t.status === "triage" && !t.worker_pid && t.assignee !== "zf-orchestrator" && t.assignee !== "zf-goldfish")) &&
                                     (() => {
                                       const mStr = typeof t.metadata === "string" ? t.metadata : JSON.stringify(t.metadata || {});
-                                      const isSpecAppr = mStr.includes("human_approval") || mStr.includes("awaiting_approval");
-                                      const isGrill = mStr.includes("awaiting_interview") || mStr.includes("Grill-with-Docs");
+                                      const isSpecAppr = t.stage === "spec_approval" || mStr.includes("human_approval") || mStr.includes("awaiting_approval");
+                                      const isGrill = t.stage === "interview" || mStr.includes("awaiting_interview") || mStr.includes("Grill-with-Docs");
                                       if (isSpecAppr || isGrill) return null;
                                       return React.createElement(
                                         "div",

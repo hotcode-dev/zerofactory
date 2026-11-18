@@ -45,22 +45,26 @@ try:
         HUMAN,
         PROFILE_MAP,
         UNASSIGNED,
+        VALID_TODO_ASSIGNEES,
         get_board_repos_dir,
         get_board_worktrees_dir,
         get_workspaces_root,
         normalize_assignee,
         resolve_profile_state_db,
+        resolve_status_assignee,
     )
 except (ImportError, ValueError):
     from paths import (  # type: ignore
         HUMAN,
         PROFILE_MAP,
         UNASSIGNED,
+        VALID_TODO_ASSIGNEES,
         get_board_repos_dir,
         get_board_worktrees_dir,
         get_workspaces_root,
         normalize_assignee,
         resolve_profile_state_db,
+        resolve_status_assignee,
     )
 
 _log = logging.getLogger("zerofactory.kanban.dispatcher")

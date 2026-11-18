@@ -26,3 +26,27 @@ def test_generate_task_id():
 
     tid_none = generate_task_id(None)
     assert tid_none.startswith("zf-")
+
+
+def test_row_to_dict_populates_stage_and_ui_column():
+    """Verify row_to_dict computes stage and ui_column for task rows."""
+    import sqlite3
+    from dashboard.db import row_to_dict
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT 't1' AS id, 'triage' AS status, 'human' AS assignee, NULL AS pr_url, '{}' AS metadata"
+    )
+    d1 = row_to_dict(cur.fetchone())
+    assert d1["stage"] == "triage"
+    assert d1["ui_column"] == "human"
+
+    cur.execute(
+        "SELECT 't2' AS id, 'todo' AS status, 'zf-orchestrator' AS assignee, NULL AS pr_url, '{\"triage_phase\": \"recovery\"}' AS metadata"
+    )
+    d2 = row_to_dict(cur.fetchone())
+    assert d2["stage"] == "recovery"
+    assert d2["ui_column"] == "todo"
+    conn.close()

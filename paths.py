@@ -34,8 +34,10 @@ stuck on a previously resolved value (the same class of bug the sibling
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+from typing import Any
 
 # --- Canonical repository metadata (source of truth) -----------------------
 ZEROFACTORY_REPO = "hotcode-dev/zerofactory"
@@ -108,6 +110,183 @@ def normalize_blocked_reason_type(reason: str | None) -> str:
     """
     raw = (reason or "").strip().lower()
     return raw if raw in BLOCKED_REASON_TYPES else BLOCKED_REASON_TYPE_HUMAN_GATE
+
+
+VALID_TODO_ASSIGNEES = frozenset({"zf-builder", "zf-reviewer", "zf-goldfish"})
+VALID_TRIAGE_ASSIGNEES = frozenset({"human", "zf-orchestrator"})
+VALID_TASK_STAGES = (
+    "triage",
+    "interview",
+    "spec_approval",
+    "awaiting_merge",
+    "blocked",
+    "grill",
+    "spec_draft",
+    "spec_audit",
+    "building",
+    "review",
+    "recovery",
+    "packaging",
+    "done",
+)
+HUMAN_STAGES = frozenset(
+    {"triage", "interview", "spec_approval", "awaiting_merge", "blocked"}
+)
+
+
+def resolve_status_assignee(
+    target_status: str,
+    current_assignee: str | None = None,
+    target_assignee: str | None = None,
+    blocked_reason_type: str | None = None,
+    triage_phase: str | None = None,
+    metadata: dict[str, Any] | str | None = None,
+) -> str:
+    """Deterministically derive the canonical assignee for a target Kanban status."""
+    meta: dict[str, Any] = {}
+    if isinstance(metadata, dict):
+        meta = metadata
+    elif isinstance(metadata, str) and metadata.strip():
+        try:
+            parsed = json.loads(metadata)
+            if isinstance(parsed, dict):
+                meta = parsed
+        except Exception:
+            meta = {}
+    t_phase = (
+        triage_phase
+        if triage_phase is not None
+        else str(meta.get("triage_phase") or "").strip().lower()
+    )
+    b_type = (
+        blocked_reason_type
+        if blocked_reason_type is not None
+        else str(meta.get("blocked_reason_type") or "").strip().lower()
+    )
+    status = (target_status or "").strip().lower()
+    if status == "triage":
+        if target_assignee is not None:
+            cand = normalize_assignee(target_assignee)
+            return cand if cand in VALID_TRIAGE_ASSIGNEES else HUMAN
+        curr = normalize_assignee(current_assignee)
+        if curr == "zf-orchestrator" and t_phase != "recovery":
+            return "zf-orchestrator"
+        return HUMAN
+
+    if status == "todo":
+        cand = (
+            normalize_assignee(target_assignee)
+            if target_assignee is not None
+            else normalize_assignee(current_assignee)
+        )
+        if t_phase == "recovery" and cand == "zf-orchestrator":
+            return "zf-orchestrator"
+        return cand if cand in VALID_TODO_ASSIGNEES else "zf-builder"
+
+    if status == "running":
+        cand = normalize_assignee(
+            target_assignee if target_assignee is not None else current_assignee
+        )
+        return cand if cand in PROFILE_MAP else "zf-builder"
+
+    if status == "blocked":
+        if b_type == "changes-requested":
+            cand = normalize_assignee(
+                target_assignee if target_assignee is not None else current_assignee
+            )
+            return cand if cand in PROFILE_MAP else "zf-builder"
+        return HUMAN
+
+    if status == "done":
+        cand = normalize_assignee(
+            target_assignee if target_assignee is not None else current_assignee
+        )
+        return cand if (cand in PROFILE_MAP or cand == HUMAN) else "zf-builder"
+
+    cand = normalize_assignee(
+        target_assignee if target_assignee is not None else current_assignee
+    )
+    return cand if cand != UNASSIGNED else "zf-builder"
+
+
+def derive_task_stage(
+    status: str | None,
+    assignee: str | None,
+    pr_url: str | None = None,
+    metadata: dict[str, Any] | str | None = None,
+) -> str:
+    """Compute the canonical 13-stage identifier for a task."""
+    stat = (status or "triage").strip().lower()
+    if stat == "done":
+        return "done"
+
+    meta: dict[str, Any] = {}
+    if isinstance(metadata, dict):
+        meta = metadata
+    elif isinstance(metadata, str) and metadata.strip():
+        try:
+            parsed = json.loads(metadata)
+            if isinstance(parsed, dict):
+                meta = parsed
+        except Exception:
+            meta = {}
+
+    asgn = normalize_assignee(assignee)
+    t_phase = str(meta.get("triage_phase") or "").strip().lower()
+
+    if stat == "blocked":
+        has_pr = bool(pr_url and str(pr_url).strip())
+        b_type = str(meta.get("blocked_reason_type") or "").strip().lower()
+        if (
+            has_pr
+            and b_type not in ("changes-requested", "stuck")
+            and not meta.get("permanently_blocked")
+            and not meta.get("conflict_retries")
+            and not meta.get("precommit_retries")
+            and not meta.get("review_cap_reached")
+        ):
+            return "awaiting_merge"
+        return "blocked"
+
+    if stat == "triage":
+        if meta.get("awaiting_approval") or t_phase == "human_approval":
+            return "spec_approval"
+        if meta.get("awaiting_interview"):
+            return "interview"
+        if asgn == "zf-orchestrator":
+            if (
+                meta.get("egm") or t_phase == "elephant_drafting"
+            ) and t_phase != "recovery":
+                return "spec_draft"
+            return "grill"
+        return "triage"
+
+    if stat == "running" and meta.get("awaiting_pr"):
+        return "packaging"
+    if asgn == "zf-reviewer":
+        return "review"
+    if asgn == "zf-goldfish" or t_phase == "goldfish_auditing":
+        return "spec_audit"
+    if asgn == "zf-orchestrator":
+        if t_phase == "recovery":
+            return "recovery"
+        if meta.get("egm") or t_phase == "elephant_drafting":
+            return "spec_draft"
+        return "grill"
+    return "building"
+
+
+def derive_ui_column(status: str | None, stage: str | None) -> str:
+    """Map task status and stage onto the 4 actor-separated Kanban UI columns."""
+    stat = (status or "triage").strip().lower()
+    stg = (stage or "triage").strip().lower()
+    if stat == "done" or stg == "done":
+        return "done"
+    if stat == "running" or stg == "packaging":
+        return "running"
+    if stg in HUMAN_STAGES:
+        return "human"
+    return "todo"
 
 
 def get_hermes_home() -> Path:

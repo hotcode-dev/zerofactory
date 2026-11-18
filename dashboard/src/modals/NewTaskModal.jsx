@@ -1,5 +1,5 @@
 import React from "react";
-import { COLUMNS } from "../constants.js";
+import { COLUMNS, COLUMN_DEFAULT_PREVIEW } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
 
 export function NewTaskModal(props) {
@@ -209,23 +209,16 @@ export function NewTaskModal(props) {
             React.createElement(
               "div",
               { className: "space-y-1.5" },
-              React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"),
-              React.createElement(
-                "select",
-                {
-                  className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                  value: newTaskForm.assignee,
-                  onChange: (e) => setNewTaskForm({
-                    ...newTaskForm,
-                    assignee: e.target.value
-                  })
-                },
-                React.createElement("option", { value: "unassigned" }, "Unassigned (Auto-Assign)"),
-                React.createElement("option", { value: "human" }, "Human (Manual Action)"),
-                React.createElement("option", { value: "zf-builder" }, "ZF Builder"),
-                React.createElement("option", { value: "zf-reviewer" }, "ZF Reviewer"),
-                React.createElement("option", { value: "zf-orchestrator" }, "ZF Orchestrator")
-              )
+              React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Stage & Actor"),
+              (() => {
+                const preview = COLUMN_DEFAULT_PREVIEW[newTaskForm.status] || COLUMN_DEFAULT_PREVIEW.triage;
+                return React.createElement(
+                  "div",
+                  { className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 flex items-center justify-between" },
+                  React.createElement("span", { className: "font-semibold" }, preview.label),
+                  React.createElement("span", { className: "font-mono text-[11px] text-slate-400" }, preview.actor)
+                );
+              })()
             ),
             React.createElement(
               "div",
@@ -259,10 +252,10 @@ export function NewTaskModal(props) {
                 "select",
                 {
                   className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                  value: newTaskForm.status,
+                  value: newTaskForm.status === "triage" ? "human" : newTaskForm.status,
                   onChange: (e) => setNewTaskForm({
                     ...newTaskForm,
-                    status: e.target.value
+                    status: e.target.value === "human" ? "triage" : e.target.value
                   })
                 },
                 COLUMNS.map((c) => React.createElement("option", { key: c.id, value: c.id }, c.title))

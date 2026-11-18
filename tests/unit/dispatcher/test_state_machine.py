@@ -240,3 +240,46 @@ def test_transition_nonexistent_task(db_conn):
     """Verify transition on nonexistent task raises ValueError."""
     with pytest.raises(ValueError, match="not found"):
         transition_task(db_conn, "nonexistent", "todo")
+
+
+def test_transition_blocked_to_todo_without_target_assignee_assigns_builder(db_conn):
+    """Verify blocked(human) -> todo without target_assignee assigns zf-builder and clears unapproved triage flags."""
+    meta = json.dumps(
+        {
+            "awaiting_approval": True,
+            "triage_phase": "human_approval",
+        }
+    )
+    db_conn.execute(
+        """
+        INSERT INTO tasks (id, title, status, assignee, metadata, created_at, updated_at)
+        VALUES ('t7', 'Title 7', 'blocked', 'human', ?, 1000, 1000)
+        """,
+        (meta,),
+    )
+    db_conn.commit()
+
+    res = transition_task(db_conn, "t7", "todo")
+    assert res["status"] == "todo"
+    assert res["assignee"] == "zf-builder"
+    assert "awaiting_approval" not in res["metadata"]
+    assert "triage_phase" not in res["metadata"]
+
+
+def test_transition_recovery_to_blocked_records_recovery_count(db_conn):
+    """Verify transitioning from recovery to blocked clears triage_phase and sets orchestrator_recovery_count >= 1."""
+    meta = json.dumps({"triage_phase": "recovery"})
+    db_conn.execute(
+        """
+        INSERT INTO tasks (id, title, status, assignee, metadata, created_at, updated_at)
+        VALUES ('t8', 'Title 8', 'running', 'zf-orchestrator', ?, 1000, 1000)
+        """,
+        (meta,),
+    )
+    db_conn.commit()
+
+    res = transition_task(db_conn, "t8", "blocked", blocked_reason="needs credentials")
+    assert res["status"] == "blocked"
+    assert res["assignee"] == "human"
+    assert "triage_phase" not in res["metadata"]
+    assert res["metadata"]["orchestrator_recovery_count"] == 1

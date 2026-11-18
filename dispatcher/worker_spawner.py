@@ -340,6 +340,7 @@ def spawn_agent_worker(
         except Exception:
             task_meta = {}
         target_repos_val = task_meta.get("target_repos") or []
+        is_recovery = task_meta.get("triage_phase") == "recovery"
         is_egm = bool(
             task_meta.get("egm")
             or task_meta.get("triage_phase") == "elephant_drafting"
@@ -347,7 +348,28 @@ def spawn_agent_worker(
             or task_meta.get("category") == "epic"
         )
 
-        if is_egm:
+        if is_recovery:
+            failure_info = json.dumps(task_meta.get("last_worker_failure") or {})
+            precommit_err = str(task_meta.get("last_precommit_error") or "None")
+            blocked_rsn = str(task_meta.get("blocked_reason") or "Unknown failure")
+            goal_instructions = (
+                f"Your goal as Orchestrator (Autonomous Stuck-Task Recovery & Bug Reporting Protocol):\n"
+                f"Task {task_id} failed repeatedly during execution and was routed to you for one autonomous recovery check.\n"
+                f"- Failure Summary: {blocked_rsn}\n"
+                f"- Last Worker Failure: {failure_info}\n"
+                f"- Last Precommit Error:\n{precommit_err}\n\n"
+                f"Diagnose the root cause and execute EXACTLY ONE of the following CLI actions before exiting:\n"
+                f"1. RECOVERABLE PROJECT CODE / TEST FAILURE:\n"
+                f"   If zf-builder can fix this with concrete diagnostic guidance:\n"
+                f'   hermes zerofactory recover {task_id} --guidance "<exact root cause and fix instructions>"\n'
+                f"2. ZERO FACTORY INTERNAL PLATFORM BUG:\n"
+                f"   If the failure was caused by a defect in Zero Factory itself (dispatcher, worktree, CLI, state machine):\n"
+                f'   hermes zerofactory report-bug --task {task_id} --title "<bug summary>" --root-cause "<diagnosis>"\n'
+                f"3. EXTERNAL / INFRASTRUCTURE BLOCKER REQUIRING HUMAN:\n"
+                f"   If the task requires credentials, external infrastructure, or human intervention:\n"
+                f'   hermes zerofactory block {task_id} --reason "<clear explanation for the human operator>"\n'
+            )
+        elif is_egm:
             goal_instructions = (
                 f"Your goal as Orchestrator (Sequential EGM Triage - Elephant Drafting Protocol):\n"
                 f"You are the Elephant architect in the Sequential Elephant-Goldfish Model (EGM) triage pipeline.\n"

@@ -567,3 +567,60 @@ def test_move_task_preserves_title_without_mutating(
     assert task["status"] == "todo"
     assert task["assignee"] == "zf-builder"
     assert task["title"] == raw_title
+
+
+def test_4_column_move_human_and_stage_derivation(
+    api_client: TestClient, default_board: str
+):
+    """Verify 4-column UI drop ('human' / 'todo'), stage derivation, and assignee auto-normalization."""
+    create_res = api_client.post(
+        "/api/plugins/zerofactory/tasks",
+        json={
+            "title": "Stage Derivation Test",
+            "board_slug": default_board,
+            "status": "triage",
+        },
+    )
+    assert create_res.status_code == 200
+    task_id = create_res.json()["id"]
+
+    t0 = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()["task"]
+    assert t0["assignee"] == "human"
+    assert t0["stage"] == "triage"
+    assert t0["ui_column"] == "human"
+
+    # Move from triage(human) -> todo without assignee auto-assigns zf-builder
+    m1 = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "todo", "actor": "user"},
+    )
+    assert m1.status_code == 200
+    t1 = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()["task"]
+    assert t1["status"] == "todo"
+    assert t1["assignee"] == "zf-builder"
+    assert t1["stage"] == "building"
+    assert t1["ui_column"] == "todo"
+
+    # Drop onto 'human' column from todo maps to blocked(human)
+    m2 = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "human", "actor": "user"},
+    )
+    assert m2.status_code == 200
+    t2 = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()["task"]
+    assert t2["status"] == "blocked"
+    assert t2["assignee"] == "human"
+    assert t2["stage"] == "blocked"
+    assert t2["ui_column"] == "human"
+
+    # Drop from blocked(human) back onto 'todo' auto-assigns zf-builder
+    m3 = api_client.post(
+        f"/api/plugins/zerofactory/tasks/{task_id}/move",
+        json={"status": "todo", "actor": "user"},
+    )
+    assert m3.status_code == 200
+    t3 = api_client.get(f"/api/plugins/zerofactory/tasks/{task_id}").json()["task"]
+    assert t3["status"] == "todo"
+    assert t3["assignee"] == "zf-builder"
+    assert t3["stage"] == "building"
+    assert t3["ui_column"] == "todo"

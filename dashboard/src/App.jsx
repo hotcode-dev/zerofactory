@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { fetchJSON } from "./sdk.js";
-import { API_BASE, COLUMNS, NEXT_STATUS_MAP } from "./constants.js";
+import { API_BASE, COLUMNS, NEXT_STATUS_MAP, STAGE_META } from "./constants.js";
 import { Header } from "./components/Header.jsx";
 import { StatsBar } from "./components/StatsBar.jsx";
 import { FilterBar } from "./components/FilterBar.jsx";
@@ -1221,14 +1221,29 @@ export function ZeroFactoryKanbanApp() {
 
     // Tasks grouped by column
     const tasksByColumn = useMemo(() => {
-      const map = { triage: [], todo: [], running: [], blocked: [], done: [] };
+      const map = { human: [], todo: [], running: [], done: [] };
+      const prioOrder = { P0: 0, P1: 1, P2: 2, P3: 3 };
       filteredTasks.forEach((t) => {
-        let col = t.status || "triage";
+        const col = t.ui_column || (
+          (t.status === "blocked" || (t.status === "triage" && t.assignee === "human"))
+            ? "human"
+            : t.status === "triage"
+              ? "todo"
+              : (t.status || "human")
+        );
         if (map[col]) {
           map[col].push(t);
         } else {
-          map["triage"].push(t);
+          map["human"].push(t);
         }
+      });
+      map.human.sort((a, b) => {
+        const urgA = (STAGE_META[a.stage] && STAGE_META[a.stage].urgency !== undefined) ? STAGE_META[a.stage].urgency : 5;
+        const urgB = (STAGE_META[b.stage] && STAGE_META[b.stage].urgency !== undefined) ? STAGE_META[b.stage].urgency : 5;
+        if (urgA !== urgB) return urgA - urgB;
+        const pA = prioOrder[a.priority || "P2"] ?? 2;
+        const pB = prioOrder[b.priority || "P2"] ?? 2;
+        return pA - pB;
       });
       return map;
     }, [filteredTasks]);
@@ -1259,11 +1274,12 @@ export function ZeroFactoryKanbanApp() {
       if (!taskId) return;
 
       const current = tasks.find((t) => t.id === taskId);
-      if (current && current.status === targetStatus) return;
+      const currentCol = current ? (current.ui_column || current.status) : null;
+      if (current && currentCol === targetStatus) return;
 
       // Optimistic update
       setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, status: targetStatus } : t))
+        prev.map((t) => (t.id === taskId ? { ...t, ui_column: targetStatus } : t))
       );
 
       try {

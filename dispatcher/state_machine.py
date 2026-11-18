@@ -7,6 +7,7 @@ import sqlite3
 import time
 from typing import Any, Dict, Optional
 
+from .config import resolve_status_assignee
 from .process_manager import cleanup_process_artifacts, terminate_task_worker
 
 VALID_TRANSITIONS: dict[str, set[str]] = {
@@ -178,7 +179,27 @@ def transition_task(
         meta.pop("session_id", None)
         meta.pop("started_at", None)
 
-    new_assignee = target_assignee if target_assignee is not None else current_assignee
+    new_assignee = resolve_status_assignee(
+        target_status,
+        current_assignee=current_assignee,
+        target_assignee=target_assignee,
+        blocked_reason_type=meta.get("blocked_reason_type"),
+        triage_phase=meta.get("triage_phase"),
+    )
+    if target_status == "todo" and new_assignee == "zf-builder":
+        meta.pop("awaiting_approval", None)
+        if meta.get("triage_phase") in (
+            "elephant_drafting",
+            "goldfish_auditing",
+            "human_approval",
+            "recovery",
+        ):
+            meta.pop("triage_phase", None)
+    elif target_status == "blocked" and meta.get("triage_phase") == "recovery":
+        meta.pop("triage_phase", None)
+        meta["orchestrator_recovery_count"] = max(
+            1, int(meta.get("orchestrator_recovery_count", 0))
+        )
     now = int(time.time())
 
     try:

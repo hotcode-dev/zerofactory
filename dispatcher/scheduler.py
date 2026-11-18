@@ -20,6 +20,7 @@ from .config import (
     DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
     DEFAULT_MAX_CONCURRENT_WORKERS,
     DISPATCH_INTERVAL_SECONDS,
+    VALID_TODO_ASSIGNEES,
     _active_scanners,
     _active_workers,
     _dispatcher_lock,
@@ -183,7 +184,26 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                         proc = _active_workers.get(task_id)
                         if proc is not None and proc.poll() is None:
                             continue
+                        cand_meta = {}
+                        try:
+                            cand_meta = json.loads(row["metadata"] or "{}")
+                        except Exception:
+                            pass
                         assignee = normalize_assignee(row["assignee"] or "zf-builder")
+                        if (
+                            row["status"] == "todo"
+                            and assignee not in VALID_TODO_ASSIGNEES
+                            and not (
+                                assignee == "zf-orchestrator"
+                                and cand_meta.get("triage_phase") == "recovery"
+                            )
+                        ):
+                            assignee = "zf-builder"
+                            cursor.execute(
+                                "UPDATE tasks SET assignee = ?, updated_at = ? WHERE id = ?",
+                                (assignee, now, task_id),
+                            )
+                            conn.commit()
                         if assignee == "human":
                             continue
 
@@ -199,11 +219,6 @@ def run_dispatch_cycle(db_path: Path | None = None) -> dict[str, Any]:
                                 f"triage worker concurrency cap (1) reached ({running_triage_workers} active); will dispatch next cycle",
                             )
                             continue
-                        cand_meta = {}
-                        try:
-                            cand_meta = json.loads(row["metadata"] or "{}")
-                        except Exception:
-                            pass
                         cand_sessions = cand_meta.get("sessions")
                         if isinstance(cand_sessions, list) and any(
                             isinstance(s, dict) and s.get("status") == "ongoing"

@@ -120,17 +120,42 @@ def test_handle_precommit_failure_retries(initialized_db: Path, tmp_path: Path):
         meta = json.loads(cursor.fetchone()["metadata"])
         assert meta["precommit_retries"] == 3
 
-        # Attempt 4 (exceeding default 3 retries): Should move task to blocked
+        # Attempt 4 (exceeding default 3 retries, recovery_count == 0): Should route to todo (recovery) for zf-orchestrator
         _handle_precommit_failure(
             cursor, task_id, "feat: my task", str(tmp_path), "Syntax error 4", now
         )
         conn.commit()
-        cursor.execute("SELECT status, metadata FROM tasks WHERE id = ?", (task_id,))
+        cursor.execute(
+            "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
+        )
+        row = cursor.fetchone()
+        assert row["status"] == "todo"
+        assert row["assignee"] == "zf-orchestrator"
+        meta = json.loads(row["metadata"])
+        assert meta["triage_phase"] == "recovery"
+        assert meta["precommit_retries"] == 4
+
+        # Simulate post-recovery retry exhaustion (orchestrator_recovery_count == 1): Should move task to blocked (human)
+        meta["orchestrator_recovery_count"] = 1
+        meta["precommit_retries"] = 3
+        meta.pop("triage_phase", None)
+        cursor.execute(
+            "UPDATE tasks SET status = 'running', assignee = 'zf-builder', metadata = ? WHERE id = ?",
+            (json.dumps(meta), task_id),
+        )
+        conn.commit()
+        _handle_precommit_failure(
+            cursor, task_id, "feat: my task", str(tmp_path), "Syntax error 5", now
+        )
+        conn.commit()
+        cursor.execute(
+            "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
+        )
         row = cursor.fetchone()
         assert row["status"] == "blocked"
+        assert row["assignee"] == "human"
         meta = json.loads(row["metadata"])
         assert meta["blocked_reason_type"] == "stuck"
-        meta = json.loads(row["metadata"])
         assert meta["precommit_retries"] == 4
 
         # Verify comment was logged
@@ -140,7 +165,7 @@ def test_handle_precommit_failure_retries(initialized_db: Path, tmp_path: Path):
         )
         cmt = cursor.fetchone()["body"]
         assert "Deterministic Precommit Failed" in cmt
-        assert "Syntax error 4" in cmt
+        assert "Syntax error 5" in cmt
 
 
 def test_precommit_timeout_retry_clears_build(initialized_db: Path, tmp_path: Path):

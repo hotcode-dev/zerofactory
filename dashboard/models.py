@@ -16,20 +16,32 @@ from pydantic import BaseModel, Field, model_validator
 try:
     from ..paths import (  # type: ignore
         HUMAN,
+        HUMAN_STAGES,
         PROFILE_MAP,
         UNASSIGNED,
         VALID_ASSIGNEES,
+        VALID_TASK_STAGES,
+        VALID_TODO_ASSIGNEES,
+        derive_task_stage,
+        derive_ui_column,
         normalize_assignee,
         normalize_blocked_reason_type,
+        resolve_status_assignee,
     )
 except (ImportError, ValueError):
     from paths import (  # type: ignore
         HUMAN,
+        HUMAN_STAGES,
         PROFILE_MAP,
         UNASSIGNED,
         VALID_ASSIGNEES,
+        VALID_TASK_STAGES,
+        VALID_TODO_ASSIGNEES,
+        derive_task_stage,
+        derive_ui_column,
         normalize_assignee,
         normalize_blocked_reason_type,
+        resolve_status_assignee,
     )
 
 VALID_STATUSES = {"triage", "todo", "running", "blocked", "done"}
@@ -248,7 +260,7 @@ class TaskUpdate(BaseModel):
 
 
 class TaskMove(BaseModel):
-    status: str = Field(..., pattern="^(triage|todo|running|blocked|done)$")
+    status: str = Field(..., pattern="^(human|triage|todo|running|blocked|done)$")
     actor: str | None = "user"
     reason: str | None = None
     assignee: str | None = None

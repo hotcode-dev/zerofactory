@@ -440,8 +440,8 @@ def register(ctx: Any):
         )
         p_import_gh.add_argument(
             "--assignee",
-            default="zf-orchestrator",
-            help="Assignee (default: zf-orchestrator)",
+            default="human",
+            help="Assignee (default: human)",
         )
         p_import_gh.add_argument(
             "--label",

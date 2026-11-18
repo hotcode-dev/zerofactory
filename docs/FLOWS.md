@@ -80,15 +80,15 @@ Zero Factory organizes work into **Project Boards** that contain one or more equ
   - Every repository features independent configuration: custom target branch (default `main`), trusted reviewers, independent precommit verification (`.zerofactory/precommit.sh`), independent OpenWiki machine-readable docs (`openwiki/`), and GitHub issue templates.
   - Tasks declare both `board_slug` and `repo_alias`. Sibling repositories on the board check out side-by-side in workspaces for cross-repo inspection.
 
-### 2.2 Statuses (Kanban columns)
+### 2.2 Statuses, 4 Actor-Based UI Columns & 13 Stages
 
-| Status | Meaning | Who moves tasks here |
-|---|---|---|
-| `triage` | Goal/issue awaiting decomposition or human interview | importer, orchestrator, human |
-| `todo` | Atomic, actionable, ready to claim | orchestrator, human, dispatcher (review reroute / unblock) |
-| `running` | Worker active **or** dispatcher packaging (`awaiting_pr`) | dispatcher (atomic claim, packaging phase) |
-| `blocked` | **Human gate only**: awaiting merge, review cap, exhausted budgets, unverifiable state | reviewer, dispatcher (budgets exhausted), human |
-| `done` | Completed — **strictly terminal** | dispatcher (MERGED/CLOSED/no-diff), human, orchestrator |
+| Status (`tasks.status`) | Valid `tasks.assignee` | Derived UI Column (`ui_column`) | Meaning | Who moves tasks here |
+|---|---|---|---|---|
+| `triage` | `human`, `zf-orchestrator` | `human` (when `human`) or `todo` (when `zf-orchestrator`) | Goal/issue awaiting human triage, interview, spec approval, or queued for orchestrator triage (`grill` / `spec_draft`) | importer (`human`), orchestrator, human |
+| `todo` | `zf-builder`, `zf-reviewer`, `zf-goldfish`, `zf-orchestrator` (only when `triage_phase = "recovery"`) | `todo` | Atomic, actionable AI queue (`spec_audit`, `building`, `review`, `recovery`) ready for dispatcher pickup | orchestrator, human, dispatcher (review reroute / unblock / recovery) |
+| `running` | `zf-builder`, `zf-reviewer`, `zf-orchestrator`, `zf-goldfish` | `running` | Worker active **or** dispatcher packaging (`awaiting_pr`, `packaging` stage) | dispatcher (atomic claim, packaging phase) |
+| `blocked` | `human` | `human` | **Human gate only** (`awaiting_merge` or `blocked`): awaiting merge, review cap, or post-recovery escalation | reviewer, orchestrator, dispatcher, human |
+| `done` | Preserves prior assignee or `human` | `done` | Completed — **strictly terminal** | dispatcher (MERGED/CLOSED/no-diff), human, orchestrator |
 
 ### 2.3 Metadata flags & counters
 

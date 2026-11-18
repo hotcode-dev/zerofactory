@@ -278,12 +278,45 @@ def test_reap_active_workers_parks_exhausted_stuck_task(tmp_path: Path):
     row = conn.execute(
         "SELECT status, assignee, metadata FROM tasks WHERE id = 't-stuck2'"
     ).fetchone()
-    assert row["status"] == "blocked"
-    assert row["assignee"] == "zf-builder"
+    # First retry exhaustion (orchestrator_recovery_count == 0) routes to todo (recovery) for zf-orchestrator
+    assert row["status"] == "todo"
+    assert row["assignee"] == "zf-orchestrator"
     saved_meta = json.loads(row["metadata"])
-    assert saved_meta["permanently_blocked"] is True
+    assert saved_meta["triage_phase"] == "recovery"
     assert saved_meta["worker_failure_retries"] == 3
-    assert saved_meta["blocked_reason_type"] == "stuck"
+
+    # When orchestrator_recovery_count >= 1, retry exhaustion parks in blocked (human)
+    saved_meta["orchestrator_recovery_count"] = 1
+    saved_meta["worker_failure_retries"] = 2
+    saved_meta["started_at"] = started_at
+    saved_meta["worker_pid"] = 3333
+    saved_meta.pop("triage_phase", None)
+    saved_meta["sessions"] = [
+        {"session_id": "s2", "status": "ongoing", "started_at": started_at}
+    ]
+    conn.execute(
+        "UPDATE tasks SET status = 'running', assignee = 'zf-builder', metadata = ? WHERE id = 't-stuck2'",
+        (json.dumps(saved_meta),),
+    )
+    conn.commit()
+    mock_proc2 = MagicMock()
+    mock_proc2.pid = 3333
+    mock_proc2.poll.return_value = None
+    _active_workers["t-stuck2"] = mock_proc2
+    with patch.object(dispatcher, "terminate_worker_process") as mock_term2:
+        reaped2 = reap_active_workers(conn.cursor(), now=now)
+        conn.commit()
+    assert reaped2 == 1
+    mock_term2.assert_called_once_with(mock_proc2, 3333)
+    row2 = conn.execute(
+        "SELECT status, assignee, metadata FROM tasks WHERE id = 't-stuck2'"
+    ).fetchone()
+    assert row2["status"] == "blocked"
+    assert row2["assignee"] == "human"
+    saved_meta2 = json.loads(row2["metadata"])
+    assert saved_meta2["permanently_blocked"] is True
+    assert saved_meta2["worker_failure_retries"] == 3
+    assert saved_meta2["blocked_reason_type"] == "stuck"
 
 
 def _spawn_grace_conn(task_id: str, meta: dict, now: int) -> sqlite3.Connection:

@@ -957,3 +957,55 @@ def test_packaging_reprovisions_worktree_when_pr_url_is_none(tmp_path: Path):
         res = run_dispatch_cycle(db_path)
         assert res["ok"] is True
         assert len(called_setup) == 1
+
+
+def test_run_dispatch_cycle_repairs_todo_human_and_dispatches_recovery(tmp_path: Path):
+    """Verify todo task with assignee='human' is auto-repaired to 'zf-builder', while recovery todo task stays assigned to 'zf-orchestrator'."""
+    import dispatcher
+
+    db_path = tmp_path / "test_repair.db"
+    _init_test_db(db_path)
+    now = 1000
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO boards (slug, name, max_concurrent_running, created_at, updated_at) VALUES ('b1', 'B1', 5, ?, ?)",
+            (now, now),
+        )
+        conn.execute(
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-stray', 'Stray Todo', '', 'todo', 'human', 'P0', '{}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            (now, now),
+        )
+        conn.execute(
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-rec', 'Recovery Todo', '', 'todo', 'zf-orchestrator', 'P1', '{\"triage_phase\": \"recovery\"}', '[]', '', '', '', 'b1', '', '', ?, ?)",
+            (now, now + 1),
+        )
+        conn.commit()
+
+    lock_file = tmp_path / "dispatcher.lock"
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch.dict(
+            os.environ,
+            {"ZEROFACTORY_SKIP_WORKER_SPAWN": "1", "ZEROFACTORY_SKIP_GIT": "1"},
+        ),
+    ):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        r1 = conn.execute(
+            "SELECT status, assignee FROM tasks WHERE id = 't-stray'"
+        ).fetchone()
+        assert r1["status"] == "running"
+        assert r1["assignee"] == "zf-builder"
+
+        r2 = conn.execute(
+            "SELECT status, assignee FROM tasks WHERE id = 't-rec'"
+        ).fetchone()
+        assert r2["status"] == "running"
+        assert r2["assignee"] == "zf-orchestrator"

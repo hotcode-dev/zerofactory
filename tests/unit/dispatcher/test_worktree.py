@@ -207,11 +207,34 @@ def test_handle_local_merge_conflict_blocks_when_max_retries_exceeded():
     row = conn.execute(
         "SELECT status, assignee, metadata FROM tasks WHERE id = 't2'"
     ).fetchone()
-    assert row["status"] == "blocked"
-    assert row["assignee"] == "human"
+    assert row["status"] == "todo"
+    assert row["assignee"] == "zf-orchestrator"
     meta = json.loads(row["metadata"])
     assert meta["conflict_retries"] == 4
-    assert meta["blocked_reason_type"] == "stuck"
+    assert meta["triage_phase"] == "recovery"
+
+    # Once orchestrator_recovery_count >= 1, exceeding conflict retries moves to blocked (human)
+    meta["orchestrator_recovery_count"] = 1
+    meta["conflict_retries"] = 3
+    meta.pop("triage_phase", None)
+    conn.execute(
+        "UPDATE tasks SET status = 'running', assignee = 'zf-builder', metadata = ? WHERE id = 't2'",
+        (json.dumps(meta),),
+    )
+    conn.commit()
+    with patch.dict(os.environ, {"ZEROFACTORY_MAX_CONFLICT_RETRIES": "3"}):
+        _handle_local_merge_conflict(
+            cur, "t2", "Feature 2", "/fake/ws", ["file.py"], now=1002
+        )
+        conn.commit()
+    row2 = conn.execute(
+        "SELECT status, assignee, metadata FROM tasks WHERE id = 't2'"
+    ).fetchone()
+    assert row2["status"] == "blocked"
+    assert row2["assignee"] == "human"
+    meta2 = json.loads(row2["metadata"])
+    assert meta2["conflict_retries"] == 4
+    assert meta2["blocked_reason_type"] == "stuck"
 
 
 def test_resolve_task_repo_path_multi_repo(tmp_path: Path):

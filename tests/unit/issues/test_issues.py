@@ -296,7 +296,7 @@ class TestImporterIdempotencyAndDeterminism:
         assert res1["priority"] == "P0"
         assert res1["category"] == "bug-fix"
         assert res1["status"] == "triage"
-        assert res1["assignee"] == "zf-orchestrator"
+        assert res1["assignee"] == "human"
         assert res1["title"] == "[Triage] [Bug] [#42] Crash when parsing bad yaml"
 
         # 2. Second import of same issue: must deterministically return duplicate
@@ -337,7 +337,7 @@ class TestImporterIdempotencyAndDeterminism:
         assert res["ok"]
         assert res["title"] == "[Triage] [Feature] [#43] Add dark mode support"
         assert res["category"] == "feature"
-        assert res["assignee"] == "zf-orchestrator"
+        assert res["assignee"] == "human"
 
 
 class TestCliImportGhIssue:

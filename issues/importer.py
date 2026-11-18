@@ -115,7 +115,7 @@ def import_external_issue(
     board_slug: str | None = None,
     status: str = "triage",
     priority: str | None = None,
-    assignee: str = "zf-orchestrator",
+    assignee: str = "human",
     actor: str | None = None,
     require_ai_request: bool = False,
     db_path: Path | None = None,
@@ -178,7 +178,7 @@ def import_external_issue(
     if (
         not effective_assignee or effective_assignee == "unassigned"
     ) and status == "triage":
-        effective_assignee = "zf-orchestrator"
+        effective_assignee = "human"
 
     metadata: dict[str, Any] = {
         "external_issue": issue.to_metadata_dict(),

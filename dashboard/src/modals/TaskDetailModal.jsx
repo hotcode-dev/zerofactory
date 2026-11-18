@@ -1,7 +1,7 @@
 import React from "react";
 import { formatPrLabel, timeAgo } from "../utils/formatters.js";
 import { renderPrIcon } from "../utils/icons.js";
-import { API_BASE, COLUMNS } from "../constants.js";
+import { API_BASE, COLUMNS, STAGE_META } from "../constants.js";
 import { fetchJSON } from "../sdk.js";
 import { Modal } from "../components/Modal.jsx";
 import { GrillInterviewPanel } from "../components/GrillInterviewPanel.jsx";
@@ -402,12 +402,12 @@ export function TaskDetailModal(props) {
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Status"),
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Column"),
                     React.createElement(
                       "select",
                       {
                         className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                        value: selectedTask.status,
+                        value: selectedTask.ui_column || (selectedTask.status === "triage" || selectedTask.status === "blocked" ? "human" : selectedTask.status),
                         onChange: async (e) => {
                           const newStatus = e.target.value;
                           await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/move", {
@@ -425,33 +425,16 @@ export function TaskDetailModal(props) {
                   React.createElement(
                     "div",
                     { className: "space-y-1.5" },
-                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Assignee"),
-                    React.createElement(
-                      "select",
-                      {
-                        className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer",
-                        value: selectedTask.assignee || "unassigned",
-                        onChange: async (e) => {
-                          const newAssignee = e.target.value;
-                          await fetchJSON(API_BASE + "/tasks/" + selectedTask.id, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ assignee: newAssignee })
-                          });
-                          loadTaskDetails(selectedTask.id);
-                          loadTasksAndStats();
-                        }
-                      },
-                      [
-                        { id: "unassigned", label: "Unassigned" },
-                        { id: "human", label: "Human" },
-                        { id: "zf-builder", label: "ZF Builder" },
-                        { id: "zf-reviewer", label: "ZF Reviewer" },
-                        { id: "zf-orchestrator", label: "ZF Orchestrator" }
-                      ].map((r) =>
-                        React.createElement("option", { key: r.id, value: r.id }, r.label)
-                      )
-                    )
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-400 tracking-wide" }, "Stage & Actor"),
+                    (() => {
+                      const stg = (selectedTask.stage && STAGE_META[selectedTask.stage]) || STAGE_META.triage;
+                      return React.createElement(
+                        "div",
+                        { className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 flex items-center justify-between gap-2" },
+                        React.createElement("span", { className: "font-semibold truncate" }, stg.icon + " " + stg.label),
+                        React.createElement("span", { className: "font-mono text-[11px] text-slate-400 shrink-0" }, selectedTask.assignee || stg.actor)
+                      );
+                    })()
                   )
                 ),
 

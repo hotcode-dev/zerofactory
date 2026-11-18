@@ -73,6 +73,7 @@ from .config import (
     PROFILE_MAP,
     UNASSIGNED,
     VALID_PROFILES,
+    VALID_TODO_ASSIGNEES,
     _active_scanners,
     _active_workers,
     _dispatcher_lock,
@@ -93,6 +94,7 @@ from .config import (
     log_step_state,
     normalize_assignee,
     resolve_profile_state_db,
+    resolve_status_assignee,
 )
 from .context_builder import (
     digest_board_architecture_context,
@@ -193,6 +195,7 @@ __all__ = [
     "DEFAULT_IDLE_SCAN_COOLDOWN_SECONDS",
     "DEFAULT_IDLE_SCAN_MAX_TODO",
     "VALID_PROFILES",
+    "VALID_TODO_ASSIGNEES",
     "PROFILE_MAP",
     "UNASSIGNED",
     "HUMAN",
@@ -218,6 +221,7 @@ __all__ = [
     "log_step_state",
     "normalize_assignee",
     "resolve_profile_state_db",
+    "resolve_status_assignee",
     "load_settings",
     # Git Ops
     "GitConflictCheckError",

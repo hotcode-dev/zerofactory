@@ -44,7 +44,6 @@ try:
         normalize_file_path,
     )
     from ..models import (
-        VALID_ASSIGNEES,
         VALID_PRIORITIES,
         VALID_STATUSES,
         CommentCreate,
@@ -59,8 +58,8 @@ try:
         TaskSplitRequest,
         TaskTriageRequest,
         TaskUpdate,
-        normalize_assignee,
         normalize_blocked_reason_type,
+        resolve_status_assignee,
     )
     from ..session_service import resolve_task_session_progress
 except (ImportError, ValueError):
@@ -79,7 +78,6 @@ except (ImportError, ValueError):
         normalize_file_path,
     )
     from models import (  # type: ignore
-        VALID_ASSIGNEES,
         VALID_PRIORITIES,
         VALID_STATUSES,
         CommentCreate,
@@ -94,8 +92,8 @@ except (ImportError, ValueError):
         TaskSplitRequest,
         TaskTriageRequest,
         TaskUpdate,
-        normalize_assignee,
         normalize_blocked_reason_type,
+        resolve_status_assignee,
     )
     from session_service import resolve_task_session_progress  # type: ignore
 
@@ -287,10 +285,9 @@ def create_task(req: TaskCreate):
     now = int(time.time())
     status_val = req.status if req.status in VALID_STATUSES else "triage"
     priority_val = req.priority if req.priority in VALID_PRIORITIES else "P2"
-    assignee_val = (
-        normalize_assignee(req.assignee)
-        if req.assignee in VALID_ASSIGNEES
-        else "unassigned"
+    assignee_val = resolve_status_assignee(
+        status_val,
+        target_assignee=req.assignee,
     )
     tags_json = json.dumps(req.tags or [])
     metadata_json = "{}"
@@ -627,7 +624,10 @@ def stop_task_session(task_id: str, to_status: str | None = "blocked"):
             meta.pop("blocked_reason", None)
             meta.pop("blocked_reason_type", None)
 
-        assignee = "human" if target_status == "blocked" else None
+        assignee = resolve_status_assignee(
+            target_status,
+            current_assignee=task.get("assignee"),
+        )
         if transition_task:
             transition_task(
                 conn,
@@ -642,10 +642,9 @@ def stop_task_session(task_id: str, to_status: str | None = "blocked"):
                 comment="⏹ AI session manually stopped by user.",
             )
         else:
-            assignee_set = ", assignee = 'human'" if target_status == "blocked" else ""
             cursor.execute(
-                f"UPDATE tasks SET status = ?{assignee_set}, metadata = ?, updated_at = ? WHERE id = ?",
-                (target_status, json.dumps(meta), now, task_id),
+                "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                (target_status, assignee, json.dumps(meta), now, task_id),
             )
             cursor.execute(
                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'user', 'session_aborted', 'AI session stopped by user', ?)",
@@ -737,11 +736,6 @@ def update_task(task_id: str, req: TaskUpdate):
                 "so lifecycle side effects are applied"
             ),
         )
-    if req.assignee is not None:
-        asgn = normalize_assignee(req.assignee)
-        updates.append("assignee = ?")
-        params.append(asgn)
-        changes.append(f"assignee changed to {asgn}")
     if req.priority is not None:
         if req.priority not in VALID_PRIORITIES:
             raise HTTPException(
@@ -772,18 +766,34 @@ def update_task(task_id: str, req: TaskUpdate):
     meta_changes = False
     with get_db_conn() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT metadata FROM tasks WHERE id = ?", (task_id,))
+        cursor.execute(
+            "SELECT status, assignee, metadata FROM tasks WHERE id = ?",
+            (task_id,),
+        )
         m_row = cursor.fetchone()
         existing_meta = {}
-        if m_row and m_row[0]:
+        if m_row and m_row["metadata"]:
             try:
                 existing_meta = (
-                    json.loads(m_row[0])
-                    if isinstance(m_row[0], str)
-                    else dict(m_row[0])
+                    json.loads(m_row["metadata"])
+                    if isinstance(m_row["metadata"], str)
+                    else dict(m_row["metadata"])
                 )
             except Exception:
                 existing_meta = {}
+
+    if req.assignee is not None:
+        curr_status = m_row["status"] if m_row else "triage"
+        curr_assignee = m_row["assignee"] if m_row else "human"
+        asgn = resolve_status_assignee(
+            curr_status,
+            current_assignee=curr_assignee,
+            target_assignee=req.assignee,
+            metadata=existing_meta,
+        )
+        updates.append("assignee = ?")
+        params.append(asgn)
+        changes.append(f"assignee changed to {asgn}")
 
     if req.target_repos is not None:
         cleaned_target_repos = [
@@ -830,7 +840,7 @@ def update_task(task_id: str, req: TaskUpdate):
 def move_task(task_id: str, req: TaskMove):
     """Move a task to another status / column (e.g. via Drag and Drop)."""
     init_db()
-    if req.status not in VALID_STATUSES:
+    if req.status not in VALID_STATUSES and req.status != "human":
         raise HTTPException(status_code=400, detail=f"Invalid status: {req.status}")
 
     now = int(time.time())
@@ -857,7 +867,7 @@ def move_task(task_id: str, req: TaskMove):
     with get_db_conn() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT status, metadata, board_slug, title, pr_url FROM tasks WHERE id = ?",
+            "SELECT status, assignee, metadata, board_slug, title, pr_url FROM tasks WHERE id = ?",
             (task_id,),
         )
         curr = cursor.fetchone()
@@ -879,6 +889,26 @@ def move_task(task_id: str, req: TaskMove):
             pass
 
         meta_updated = False
+        if req.status == "human":
+            req.status = (
+                "triage"
+                if (
+                    prev_status == "triage"
+                    or meta.get("triage_phase")
+                    in ("elephant_drafting", "goldfish_auditing", "human_approval")
+                    or meta.get("awaiting_interview")
+                    or meta.get("awaiting_approval")
+                )
+                else "blocked"
+            )
+            req.assignee = "human"
+            if meta.get("triage_phase") in (
+                "elephant_drafting",
+                "goldfish_auditing",
+                "recovery",
+            ):
+                meta.pop("triage_phase", None)
+                meta_updated = True
         is_agent_actor = bool(req.actor and req.actor.startswith("zf-"))
         is_orchestrator_actor = req.actor == "zf-orchestrator"
 
@@ -1019,39 +1049,50 @@ def move_task(task_id: str, req: TaskMove):
                             _stw_err,
                         )
 
-        new_assignee = getattr(req, "assignee", None)
-        # 'blocked' is the human gate: every parked task belongs to the human
-        # queue (approved merges, escalations, manual gates). The sole exception
-        # is 'changes-requested', which is builder-bound feedback.
-        if (
-            not new_assignee
-            and req.status == "blocked"
-            and meta.get("blocked_reason_type") != "changes-requested"
-        ):
-            new_assignee = "human"
+        resolved_assignee = resolve_status_assignee(
+            new_status,
+            current_assignee=curr["assignee"],
+            target_assignee=getattr(req, "assignee", None),
+            metadata=meta,
+        )
+        if new_status == "todo" and resolved_assignee == "zf-builder":
+            if "awaiting_approval" in meta:
+                meta.pop("awaiting_approval", None)
+                meta_updated = True
+            if meta.get("triage_phase") in (
+                "elephant_drafting",
+                "goldfish_auditing",
+                "human_approval",
+                "recovery",
+            ):
+                meta.pop("triage_phase", None)
+                meta_updated = True
+        elif new_status == "blocked":
+            if meta.get("triage_phase") == "recovery":
+                meta.pop("triage_phase", None)
+                meta["orchestrator_recovery_count"] = max(
+                    1, int(meta.get("orchestrator_recovery_count", 0))
+                )
+                meta_updated = True
+        assignee_changed = resolved_assignee != curr["assignee"]
+        new_assignee = resolved_assignee
 
-        if prev_status != req.status or meta_updated or new_assignee:
+        if prev_status != req.status or meta_updated or assignee_changed:
             if transition_task and prev_status != new_status:
                 transition_task(
                     conn,
                     task_id,
                     new_status,
-                    target_assignee=new_assignee,
+                    target_assignee=resolved_assignee,
                     blocked_reason=req.reason if req.status == "blocked" else None,
                     metadata_patch=meta,
                     actor=req.actor or "user",
                 )
             else:
-                if new_assignee:
-                    cursor.execute(
-                        "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                        (new_status, new_assignee, json.dumps(meta), now, task_id),
-                    )
-                else:
-                    cursor.execute(
-                        "UPDATE tasks SET status = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                        (new_status, json.dumps(meta), now, task_id),
-                    )
+                cursor.execute(
+                    "UPDATE tasks SET status = ?, assignee = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                    (new_status, resolved_assignee, json.dumps(meta), now, task_id),
+                )
             if prev_status != req.status:
                 move_actor = req.actor or "user"
                 move_detail = (
@@ -1672,6 +1713,7 @@ def recover_task(task_id: str, req: TaskRecoverRequest | None = None):
         meta.pop("blocked_reason", None)
         meta.pop("blocked_reason_type", None)
         meta.pop("awaiting_pr", None)
+        meta.pop("triage_phase", None)
         meta["last_recovered_at"] = now
         meta["recovered_by"] = actor
 
@@ -1762,6 +1804,10 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
             meta = json.loads(raw_meta) if isinstance(raw_meta, str) else dict(raw_meta)
         except Exception:
             meta = {}
+        meta.pop("triage_phase", None)
+        meta["orchestrator_recovery_count"] = max(
+            1, int(meta.get("orchestrator_recovery_count", 0))
+        )
 
         task_title = task.get("title", "")
         board_slug = task.get("board_slug", "default")

@@ -1070,7 +1070,7 @@ def sync_board_gh_issues_endpoint(
             issue=iss,
             board_slug=slug,
             status="triage",
-            assignee="zf-orchestrator",
+            assignee="human",
             actor="user",
         )
         if res.get("duplicate"):
@@ -1146,7 +1146,7 @@ def import_board_gh_issue_endpoint(slug: str, req: dict[str, Any]):
         issue=issue,
         board_slug=slug,
         status="triage",
-        assignee="zf-orchestrator",
+        assignee="human",
         actor="user",
     )
     return res

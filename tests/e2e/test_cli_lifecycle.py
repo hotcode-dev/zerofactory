@@ -222,7 +222,7 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
         )
         self.assertIn(f"Added comment to task {task_id}", out_comment)
 
-        # 7. Move with --assignee
+        # 7. Move with --assignee (human in todo normalizes to zf-builder; valid AI assignee like zf-reviewer is preserved)
         out_move_assignee = self._run_cli(
             ["move", task_id, "todo", "--assignee", "human"]
         )
@@ -232,7 +232,7 @@ class TestZeroFactoryCLIE2E(unittest.TestCase):
                 "SELECT status, assignee FROM tasks WHERE id = ?", (task_id,)
             ).fetchone()
             self.assertEqual(r[0], "todo")
-            self.assertEqual(r[1], "human")
+            self.assertEqual(r[1], "zf-builder")
 
         # 8. Update command
         out_update = self._run_cli(

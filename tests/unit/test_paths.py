@@ -126,6 +126,131 @@ class TestPathsResolution(unittest.TestCase):
         self.assertEqual(P.normalize_assignee("antigravity"), "unassigned")
         self.assertEqual(P.normalize_assignee("some-custom-tool"), "unassigned")
 
+    def test_resolve_status_assignee_and_stage_derivation(self):
+        """Verify resolve_status_assignee, derive_task_stage (13 stages), and derive_ui_column (4 columns)."""
+        # resolve_status_assignee
+        self.assertEqual(P.resolve_status_assignee("triage"), "human")
+        self.assertEqual(
+            P.resolve_status_assignee("triage", target_assignee="zf-orchestrator"),
+            "zf-orchestrator",
+        )
+        self.assertEqual(
+            P.resolve_status_assignee("todo", current_assignee="human"), "zf-builder"
+        )
+        self.assertEqual(
+            P.resolve_status_assignee("todo", current_assignee="unassigned"),
+            "zf-builder",
+        )
+        self.assertEqual(
+            P.resolve_status_assignee("todo", target_assignee="zf-reviewer"),
+            "zf-reviewer",
+        )
+        self.assertEqual(
+            P.resolve_status_assignee(
+                "todo",
+                target_assignee="zf-orchestrator",
+                metadata={"triage_phase": "recovery"},
+            ),
+            "zf-orchestrator",
+        )
+        self.assertEqual(
+            P.resolve_status_assignee(
+                "todo",
+                target_assignee="zf-orchestrator",
+                metadata={"triage_phase": "elephant_drafting"},
+            ),
+            "zf-builder",
+        )
+        self.assertEqual(
+            P.resolve_status_assignee("blocked", current_assignee="zf-builder"), "human"
+        )
+
+        # derive_task_stage and derive_ui_column across all 13 stages
+        cases = [
+            ("triage", "human", None, {}, "triage", "human"),
+            (
+                "triage",
+                "human",
+                None,
+                {"awaiting_interview": True},
+                "interview",
+                "human",
+            ),
+            (
+                "triage",
+                "human",
+                None,
+                {"triage_phase": "human_approval"},
+                "spec_approval",
+                "human",
+            ),
+            ("triage", "zf-orchestrator", None, {}, "grill", "todo"),
+            (
+                "triage",
+                "zf-orchestrator",
+                None,
+                {"triage_phase": "elephant_drafting"},
+                "spec_draft",
+                "todo",
+            ),
+            (
+                "todo",
+                "zf-goldfish",
+                None,
+                {"triage_phase": "goldfish_auditing"},
+                "spec_audit",
+                "todo",
+            ),
+            ("todo", "zf-builder", None, {}, "building", "todo"),
+            (
+                "todo",
+                "zf-reviewer",
+                "https://github.com/o/r/pull/1",
+                {},
+                "review",
+                "todo",
+            ),
+            (
+                "todo",
+                "zf-orchestrator",
+                None,
+                {"triage_phase": "recovery"},
+                "recovery",
+                "todo",
+            ),
+            (
+                "running",
+                "zf-builder",
+                None,
+                {"awaiting_pr": True},
+                "packaging",
+                "running",
+            ),
+            ("running", "zf-builder", None, {}, "building", "running"),
+            (
+                "running",
+                "zf-orchestrator",
+                None,
+                {"triage_phase": "recovery"},
+                "recovery",
+                "running",
+            ),
+            (
+                "blocked",
+                "human",
+                "https://github.com/o/r/pull/1",
+                {},
+                "awaiting_merge",
+                "human",
+            ),
+            ("blocked", "human", None, {}, "blocked", "human"),
+            ("done", "zf-builder", None, {}, "done", "done"),
+        ]
+        for status, asgn, pr_url, meta, exp_stage, exp_col in cases:
+            stage = P.derive_task_stage(status, asgn, pr_url, meta)
+            self.assertEqual(stage, exp_stage)
+            self.assertEqual(P.derive_ui_column(status, stage), exp_col)
+
     def test_dispatcher_and_dashboard_agree(self):
         """The dispatcher's spawn-path resolver and dashboard's get_profile_state_db agree."""
         with tempfile.TemporaryDirectory() as td:

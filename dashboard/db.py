@@ -22,12 +22,14 @@ if _PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, _PLUGIN_ROOT)
 
 try:
+    from ..paths import derive_task_stage, derive_ui_column  # type: ignore
     from ..settings import (  # type: ignore
         DEFAULT_ACTIVITY_RETENTION_DAYS,
         DEFAULT_SETTING_VALUES,
         load_settings,
     )
 except (ImportError, ValueError):
+    from paths import derive_task_stage, derive_ui_column  # type: ignore
     from settings import (  # type: ignore
         DEFAULT_ACTIVITY_RETENTION_DAYS,
         DEFAULT_SETTING_VALUES,
@@ -289,6 +291,14 @@ def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
             d["target_repos"] = [d["repo_alias"]]
         else:
             d["target_repos"] = []
+    if "status" in d and "assignee" in d:
+        d["stage"] = derive_task_stage(
+            d.get("status"),
+            d.get("assignee"),
+            d.get("pr_url"),
+            d.get("metadata") if isinstance(d.get("metadata"), dict) else None,
+        )
+        d["ui_column"] = derive_ui_column(d.get("status"), d["stage"])
     return d
 
 

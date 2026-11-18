@@ -683,16 +683,29 @@ def _handle_local_merge_conflict(
         meta["blocked_reason"] = (
             f"Merge conflict resolution exceeded {max_conflict_retries} attempts{file_msg}"
         )
-        meta["blocked_reason_type"] = "stuck"
-        transition_task(
-            cursor.connection,
-            task_id,
-            "blocked",
-            target_assignee="human",
-            blocked_reason=meta["blocked_reason"],
-            metadata_patch=meta,
-            actor="dispatcher",
-        )
+        if int(meta.get("orchestrator_recovery_count", 0)) < 1:
+            meta.pop("awaiting_pr", None)
+            meta["triage_phase"] = "recovery"
+            transition_task(
+                cursor.connection,
+                task_id,
+                "todo",
+                target_assignee="zf-orchestrator",
+                blocked_reason=meta["blocked_reason"],
+                metadata_patch=meta,
+                actor="dispatcher",
+            )
+        else:
+            meta["blocked_reason_type"] = "stuck"
+            transition_task(
+                cursor.connection,
+                task_id,
+                "blocked",
+                target_assignee="human",
+                blocked_reason=meta["blocked_reason"],
+                metadata_patch=meta,
+                actor="dispatcher",
+            )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
             (
@@ -965,16 +978,29 @@ def _handle_pr_conflict_from_github(
         meta["blocked_reason"] = (
             f"GitHub PR conflict resolution exceeded {max_conflict_retries} attempts"
         )
-        meta["blocked_reason_type"] = "stuck"
-        transition_task(
-            cursor.connection,
-            task_id,
-            "blocked",
-            target_assignee="human",
-            blocked_reason=meta["blocked_reason"],
-            metadata_patch=meta,
-            actor="dispatcher",
-        )
+        if int(meta.get("orchestrator_recovery_count", 0)) < 1:
+            meta.pop("awaiting_pr", None)
+            meta["triage_phase"] = "recovery"
+            transition_task(
+                cursor.connection,
+                task_id,
+                "todo",
+                target_assignee="zf-orchestrator",
+                blocked_reason=meta["blocked_reason"],
+                metadata_patch=meta,
+                actor="dispatcher",
+            )
+        else:
+            meta["blocked_reason_type"] = "stuck"
+            transition_task(
+                cursor.connection,
+                task_id,
+                "blocked",
+                target_assignee="human",
+                blocked_reason=meta["blocked_reason"],
+                metadata_patch=meta,
+                actor="dispatcher",
+            )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'pr_conflict_failed', ?, ?)",
             (
@@ -1139,16 +1165,29 @@ def _handle_precommit_failure(
         meta["blocked_reason"] = (
             f"Deterministic precommit failed after {max_retries} attempts"
         )
-        meta["blocked_reason_type"] = "stuck"
-        transition_task(
-            cursor.connection,
-            task_id,
-            "blocked",
-            target_assignee="human",
-            blocked_reason=meta["blocked_reason"],
-            metadata_patch=meta,
-            actor="dispatcher",
-        )
+        if int(meta.get("orchestrator_recovery_count", 0)) < 1:
+            meta.pop("awaiting_pr", None)
+            meta["triage_phase"] = "recovery"
+            transition_task(
+                cursor.connection,
+                task_id,
+                "todo",
+                target_assignee="zf-orchestrator",
+                blocked_reason=meta["blocked_reason"],
+                metadata_patch=meta,
+                actor="dispatcher",
+            )
+        else:
+            meta["blocked_reason_type"] = "stuck"
+            transition_task(
+                cursor.connection,
+                task_id,
+                "blocked",
+                target_assignee="human",
+                blocked_reason=meta["blocked_reason"],
+                metadata_patch=meta,
+                actor="dispatcher",
+            )
         cursor.execute(
             "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'precommit_failed', ?, ?)",
             (

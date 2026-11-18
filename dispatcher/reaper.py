@@ -225,7 +225,10 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
 
                 is_triage_task = (
                     curr_stat == "triage"
-                    or curr_asgn in ("zf-orchestrator", "zf-goldfish")
+                    or (
+                        curr_asgn in ("zf-orchestrator", "zf-goldfish")
+                        and meta.get("triage_phase") != "recovery"
+                    )
                     or meta.get("triage_phase")
                     in ("elephant_drafting", "goldfish_auditing", "human_approval")
                     or bool(meta.get("awaiting_interview"))
@@ -234,7 +237,20 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 blocked_reason = str(meta.get("blocked_reason") or "").lower()
                 target_asgn = curr_asgn
 
-                if is_triage_task and (
+                if meta.get("triage_phase") == "recovery":
+                    if curr_stat == "running":
+                        meta["orchestrator_recovery_count"] = max(
+                            1, int(meta.get("orchestrator_recovery_count", 0))
+                        )
+                        meta["permanently_blocked"] = True
+                        meta["blocked_reason_type"] = "stuck"
+                        meta.pop("triage_phase", None)
+                        target_status = "blocked"
+                        target_asgn = "human"
+                    else:
+                        target_status = curr_stat
+                        target_asgn = curr_asgn
+                elif is_triage_task and (
                     "grill" in blocked_reason
                     or "interview" in blocked_reason
                     or "human" in blocked_reason
@@ -345,19 +361,36 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 meta["last_worker_failure"] = {"retcode": retcode, "failed_at": now}
                 max_worker_retries = _d().get_max_worker_retries()
                 if fail_retries >= max_worker_retries:
-                    meta["permanently_blocked"] = True
                     reason = f"Worker process failed {fail_retries} times (limit {max_worker_retries})"
                     meta["blocked_reason"] = reason
-                    meta["blocked_reason_type"] = "stuck"
-                    transition_task(
-                        conn,
-                        task_id,
-                        "blocked",
-                        blocked_reason=reason,
-                        metadata_patch=meta,
-                        actor="dispatcher",
-                        comment=f"Blocked: {reason}",
-                    )
+                    if (
+                        curr_asgn != "zf-orchestrator"
+                        and int(meta.get("orchestrator_recovery_count", 0)) < 1
+                    ):
+                        meta.pop("awaiting_pr", None)
+                        meta["triage_phase"] = "recovery"
+                        transition_task(
+                            conn,
+                            task_id,
+                            "todo",
+                            target_assignee="zf-orchestrator",
+                            blocked_reason=reason,
+                            metadata_patch=meta,
+                            actor="dispatcher",
+                        )
+                    else:
+                        meta["permanently_blocked"] = True
+                        meta["blocked_reason_type"] = "stuck"
+                        transition_task(
+                            conn,
+                            task_id,
+                            "blocked",
+                            target_assignee="human",
+                            blocked_reason=reason,
+                            metadata_patch=meta,
+                            actor="dispatcher",
+                            comment=f"Blocked: {reason}",
+                        )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed_permanently', ?, ?)",
                         (
@@ -377,7 +410,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta["blocked_reason"] = reason
                     retry_status = (
                         "triage"
-                        if (row_status == "running" and curr_asgn == "zf-orchestrator")
+                        if (
+                            row_status == "running"
+                            and curr_asgn == "zf-orchestrator"
+                            and meta.get("triage_phase") != "recovery"
+                        )
                         else ("todo" if row_status == "running" else "blocked")
                     )
                     transition_task(
@@ -419,21 +456,38 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 }
                 max_worker_retries = _d().get_max_worker_retries()
                 if fail_retries >= max_worker_retries:
-                    meta["permanently_blocked"] = True
                     reason = (
                         f"Worker lost {fail_retries} times (limit {max_worker_retries})"
                     )
                     meta["blocked_reason"] = reason
-                    meta["blocked_reason_type"] = "stuck"
-                    transition_task(
-                        conn,
-                        task_id,
-                        "blocked",
-                        blocked_reason=reason,
-                        metadata_patch=meta,
-                        actor="dispatcher",
-                        comment=f"Blocked: {reason}",
-                    )
+                    if (
+                        curr_asgn != "zf-orchestrator"
+                        and int(meta.get("orchestrator_recovery_count", 0)) < 1
+                    ):
+                        meta.pop("awaiting_pr", None)
+                        meta["triage_phase"] = "recovery"
+                        transition_task(
+                            conn,
+                            task_id,
+                            "todo",
+                            target_assignee="zf-orchestrator",
+                            blocked_reason=reason,
+                            metadata_patch=meta,
+                            actor="dispatcher",
+                        )
+                    else:
+                        meta["permanently_blocked"] = True
+                        meta["blocked_reason_type"] = "stuck"
+                        transition_task(
+                            conn,
+                            task_id,
+                            "blocked",
+                            target_assignee="human",
+                            blocked_reason=reason,
+                            metadata_patch=meta,
+                            actor="dispatcher",
+                            comment=f"Blocked: {reason}",
+                        )
                     cursor.execute(
                         "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_failed_permanently', ?, ?)",
                         (
@@ -447,7 +501,11 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     meta["blocked_reason"] = reason
                     retry_status = (
                         "triage"
-                        if (row_status == "running" and curr_asgn == "zf-orchestrator")
+                        if (
+                            row_status == "running"
+                            and curr_asgn == "zf-orchestrator"
+                            and meta.get("triage_phase") != "recovery"
+                        )
                         else ("todo" if row_status == "running" else "blocked")
                     )
                     transition_task(
@@ -488,14 +546,23 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     f"spawn in flight for {spawn_age}s (grace {_d().get_spawn_grace_seconds()}s); not an orphan yet",
                 )
                 continue
-            transition_task(conn, task_id, "todo", actor="dispatcher")
+            orphan_status = (
+                "triage"
+                if (
+                    curr_asgn == "zf-orchestrator"
+                    and meta.get("triage_phase") != "recovery"
+                )
+                else "todo"
+            )
+            transition_task(conn, task_id, orphan_status, actor="dispatcher")
             cursor.execute(
                 "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_recovered', 'Orphaned running task (no active worker process or session) recovered to todo', ?)",
                 (task_id, now),
             )
             _log.warning(
-                "Recovered orphaned running task %s to todo (no active worker or session, age %ds)",
+                "Recovered orphaned running task %s to %s (no active worker or session, age %ds)",
                 task_id,
+                orphan_status,
                 claim_age,
             )
             reaped += 1
@@ -526,19 +593,36 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             }
             max_worker_retries = _d().get_max_worker_retries()
             if fail_retries >= max_worker_retries:
-                meta["permanently_blocked"] = True
                 reason = f"Worker timeout/inactivity {fail_retries} times (limit {max_worker_retries}): {stuck_reason}"
                 meta["blocked_reason"] = reason
-                meta["blocked_reason_type"] = "stuck"
-                transition_task(
-                    conn,
-                    task_id,
-                    "blocked",
-                    blocked_reason=reason,
-                    metadata_patch=meta,
-                    actor="dispatcher",
-                    comment=f"Blocked: {reason}",
-                )
+                if (
+                    curr_asgn != "zf-orchestrator"
+                    and int(meta.get("orchestrator_recovery_count", 0)) < 1
+                ):
+                    meta.pop("awaiting_pr", None)
+                    meta["triage_phase"] = "recovery"
+                    transition_task(
+                        conn,
+                        task_id,
+                        "todo",
+                        target_assignee="zf-orchestrator",
+                        blocked_reason=reason,
+                        metadata_patch=meta,
+                        actor="dispatcher",
+                    )
+                else:
+                    meta["permanently_blocked"] = True
+                    meta["blocked_reason_type"] = "stuck"
+                    transition_task(
+                        conn,
+                        task_id,
+                        "blocked",
+                        target_assignee="human",
+                        blocked_reason=reason,
+                        metadata_patch=meta,
+                        actor="dispatcher",
+                        comment=f"Blocked: {reason}",
+                    )
                 cursor.execute(
                     "INSERT INTO task_activity (task_id, actor, action, details, created_at) VALUES (?, 'dispatcher', 'worker_timeout_permanently', ?, ?)",
                     (
@@ -550,7 +634,15 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
             else:
                 reason = f"{stuck_reason} (attempt {fail_retries}/{max_worker_retries})"
                 meta["blocked_reason"] = reason
-                retry_status = "todo" if row_status == "running" else "blocked"
+                retry_status = (
+                    "triage"
+                    if (
+                        row_status == "running"
+                        and curr_asgn == "zf-orchestrator"
+                        and meta.get("triage_phase") != "recovery"
+                    )
+                    else ("todo" if row_status == "running" else "blocked")
+                )
                 transition_task(
                     conn,
                     task_id,

@@ -10,23 +10,27 @@ A 24/7 AI multi-agent orchestration system built as a native **Hermes Agent Plug
 graph TD
     classDef kanban fill:#f9d0c4,stroke:#333,stroke-width:2px,color:#000;
     
-    User([User / Goal]) --> Triage[Kanban: Triage]:::kanban
-    Triage -->|zf-orchestrator drafts spec| Goldfish["zf-goldfish (Spec Audit)"]
-    Goldfish -->|Approved| HumanGate[Human Approval Gate]
-    HumanGate -->|hermes zerofactory approve| Todo[Kanban: Todo]:::kanban
+    User([User / Goal]) --> HumanTriage["Kanban: Human (triage / interview)"]:::kanban
+    HumanTriage -->|Grill Me or Run EGM Spec| TodoSpec["Kanban: Todo (grill / spec_draft)"]:::kanban
+    TodoSpec -->|Dispatcher Spawns zf-orchestrator| SpecAudit["Kanban: Todo/Running (zf-goldfish: spec_audit)"]
+    SpecAudit -->|Audited| HumanGate["Kanban: Human (spec_approval)"]:::kanban
+    HumanGate -->|hermes zerofactory approve| Todo["Kanban: Todo (building / review / recovery)"]:::kanban
     Scanner["zf-orchestrator (Improvement Scanner)"] -->|Scans Project & Creates Task| Todo
-    Todo -->|Dispatcher Assigns, Provisions Worktree & Dispatches| Running[Kanban: Running]:::kanban
+    Todo -->|Dispatcher Provisions Worktree & Spawns Agent| Running["Kanban: Running"]:::kanban
     
     subgraph Zero Factory Autonomous Agents
-        Running --> Builder["zf-builder (Code & Tests)"]
-        Running --> Reviewer["zf-reviewer (Thematic Review)"]
+        Running --> Builder["zf-builder (building & packaging)"]
+        Running --> Reviewer["zf-reviewer (review)"]
+        Running --> Recovery["zf-orchestrator (recovery)"]
     end
     
-    Builder -->|Work Done| PR[Dispatcher Pushes & Opens PR]
-    PR --> Reviewer
-    Reviewer -->|Changes Requested| Builder
-    Reviewer -->|Approved| Blocked[Kanban: Blocked / Human Action]:::kanban
-    Blocked -->|Human Merges PR| Done[Kanban: Done]:::kanban
+    Builder -->|Precommit & PR Opened| Reviewer
+    Builder -->|3x Retries Exhausted| Recovery
+    Recovery -->|recover --guidance| Todo
+    Recovery -->|report-bug / block| Blocked["Kanban: Human (awaiting_merge / blocked)"]:::kanban
+    Reviewer -->|Changes Requested| Todo
+    Reviewer -->|Approved| Blocked
+    Blocked -->|Human Merges PR| Done["Kanban: Done"]:::kanban
 ```
 
 > 📘 **Deep-dive reference**: every flow and its exact logic — deterministic engine and agentic workers — is documented step-by-step with Mermaid diagrams in [`docs/FLOWS.md`](docs/FLOWS.md).
@@ -141,46 +145,60 @@ hermes zerofactory cron run <job_id>              # Run a cron scanner immediate
 
 ## Task Lifecycle & Workflow
 
+Zero Factory organizes the Kanban dashboard into **4 Actor-Based Columns** (`Human`, `Todo`, `Running`, `Done`) backed by **13 Canonical Stages** with strict agent ownership:
+
+| UI Column | Purpose | Stages (`task.stage`) |
+|---|---|---|
+| **`Human`** | All human decision gates & escalations (0 LLM tokens, sorted by urgency) | `awaiting_merge` (PR ready to merge) ➔ `spec_approval` ➔ `interview` ➔ `blocked` ➔ `triage` |
+| **`Todo`** | AI execution queue waiting for concurrency slots | `grill` (`zf-orchestrator`), `spec_draft` (`zf-orchestrator`), `spec_audit` (`zf-goldfish`), `building` (`zf-builder`), `review` (`zf-reviewer`), `recovery` (`zf-orchestrator`) |
+| **`Running`** | Active AI worker sessions & deterministic packaging | `grill`, `spec_draft`, `spec_audit`, `building`, `packaging` (precommit & PR, 0 LLM tokens), `review`, `recovery` |
+| **`Done`** | Terminal completed & merged tasks | `done` |
+
 ```text
-       [Triage]
+   [Human: triage / interview / spec_approval]
           │
           ▼
-        [Todo]  ◄─────── (Changes Requested by Reviewer)
-          │     ◄─────── (Self-Recovery: Watchdog Reaper / zf-orchestrator)
+   [Todo: AI Queue] ◄─────── (Changes Requested by zf-reviewer)
+          │         ◄─────── (Self-Recovery: Reaper / zf-orchestrator recovery)
           │
-   (Dispatcher provisions worktree & launches zf-builder)
+   (Dispatcher provisions worktree & launches assigned zf-* agent)
           │
           ▼
-       [Running] (zf-builder: Code & Tests)
+   [Running: building] (zf-builder: Code & Tests)
           │
-   (zf-builder finishes; Dispatcher creates GitHub PR)
+          ▼
+   [Running: packaging] (Dispatcher: .zerofactory/precommit.sh ➔ GitHub PR)
           │
-       [Running] (zf-reviewer: Multi-round Review)
+          ▼
+   [Running: review] (zf-reviewer: Multi-round Thematic Review)
           │
        Approved?
-       ├── Yes ──► [Blocked] (Human Action: Review & Merge)
+       ├── Yes ──► [Human: awaiting_merge] (Human Action: Review & Merge)
        │                         │
        │                  (Merged on GitHub)
        │                         │
        │                         ▼
        │                      [Done]
        │
-       └── Changes Requested ──► [Todo] (Re-assigned to zf-builder)
+       └── Changes Requested ──► [Todo: building] (Re-assigned to zf-builder)
 ```
 
-1. **Goal Ingestion (`Triage`)**: Submit a high-level goal or feature request via CLI, web UI, or synchronized GitHub issues (parked under `human` assignee with 0 GPU tokens until activated).
-2. **Sequential EGM Triage Pipeline (`Triage` ➔ `Todo`)**:
-   - **Elephant Drafting (`zf-orchestrator`)**: Drafts an end-to-end technical specification, system contracts, and acceptance criteria. Pauses for operator clarification if ambiguities arise.
+1. **Goal Ingestion (`Human` ➔ `triage`)**: Submit a high-level goal or feature request via CLI, web UI, or synchronized GitHub issues (parked under `human` assignee with 0 GPU tokens until activated via **Grill Me** or **Run EGM Spec**).
+2. **Sequential EGM Triage Pipeline (`spec_draft` ➔ `spec_audit` ➔ `spec_approval`)**:
+   - **Elephant Drafting (`zf-orchestrator`)**: Drafts an end-to-end technical specification, system contracts, and acceptance criteria. Pauses in `Human` (`interview`) if operator clarification is needed.
    - **Goldfish Spec Audit (`zf-goldfish`)**: Performs an adversarial, zero-context review enforcing the Ponytail 7-Rung Ladder of Laziness and concrete testability criteria.
-   - **Human Release Gate**: A human operator approves the spec via web UI or CLI (`hermes zerofactory approve <task_id>`), promoting single-repo tasks directly to `Todo` for `zf-builder` or atomically decomposing multi-repo epics into sibling sub-tasks.
-3. **Autonomous Execution (`Running`)**: The dispatcher validates dependencies, provisions an isolated Git worktree, and launches `zf-builder` to write code and tests.
+   - **Human Release Gate (`spec_approval`)**: A human operator approves the spec via web UI or CLI (`hermes zerofactory approve <task_id>`), promoting single-repo tasks directly to `Todo` (`building`, `zf-builder`) or atomically decomposing multi-repo epics into sibling sub-tasks.
+3. **Autonomous Execution (`Running`)**: The dispatcher validates dependencies, enforces valid `(status, assignee)` invariants (`resolve_status_assignee()`), provisions an isolated Git worktree, and launches the stage's owning agent.
    - **Global LLM capacity**: Settings → Global Max Concurrent LLM Workers caps running task agents and in-flight improvement scanners across all boards. For example, with a cap of 3, two running tasks on one board and one on another leave no slot for further tasks or scanners. The per-board running limits and Max Active Tasks (task WIP) apply independently. No-Agent queue checks do not consume LLM capacity.
-4. **Deterministic Precommit & PR Creation (`Running`)**: When `zf-builder` finishes, the dispatcher executes `.zerofactory/precommit.sh` in the worktree (format ➔ build ➔ tests). Auto-formatted changes are staged, and if tests fail, the builder receives error logs to auto-fix (up to 3 retries). Once clean, the dispatcher commits, merges with latest main, pushes, opens a GitHub Pull Request, and routes it to `zf-reviewer` in `Running` for thematic review (Correctness & Tests ➔ Verification & Polish, up to 2 rounds).
-5. **Self-Healing & Autonomous Recovery**:
-   - **Deterministic Orphan Reaping (0 Tokens)**: If a worker process exits abruptly or an active session is lost, the periodic queue watchdog immediately reaps the dead subprocess and recovers the task to `Todo` (`worker_recovered`).
-   - **Autonomous Orchestrator Diagnosis**: When tasks fail repeatedly or get stuck in `Running`/`Blocked`, the watchdog awakens `zf-orchestrator` with pre-digested failure logs, precommit outputs, and error tails. If the defect is code- or test-related, the orchestrator issues `hermes zerofactory recover <task_id> --guidance "..."` with concrete, actionable diagnostic instructions for `zf-builder`.
-   - **1-Attempt Guardrail & Escalation**: Autonomous orchestrator recovery is strictly capped at **1 attempt** per task to eliminate infinite retry loops. If the task fails again, or suffers an unrecoverable external blocker (e.g., missing API credentials, environment infrastructure failure), it is escalated to `Blocked` for human operator inspection.
-6. **Human Action & Merge (`Blocked`)**: Approved PRs move to `Blocked` awaiting human merge. Human operators can also unblock or recover stuck tickets at any time using the dashboard's **"⚡ Recover Task"** button or CLI (`hermes zerofactory recover <task_id> [--guidance "..."]`).
+4. **Deterministic Precommit & PR Creation (`packaging` ➔ `review`)**: When `zf-builder` finishes, the task enters `packaging` (`status="running"`, `awaiting_pr=True`) while the dispatcher executes `.zerofactory/precommit.sh` in the worktree (format ➔ build ➔ tests). Auto-formatted changes are staged, and if tests fail, the builder receives error logs to auto-fix (up to 3 retries). Once clean, the dispatcher commits, merges with latest main, pushes, opens a GitHub Pull Request, and routes it to `zf-reviewer` for thematic review (Correctness & Tests ➔ Verification & Polish, up to 2 rounds).
+5. **Self-Healing & Autonomous Recovery (`recovery` stage)**:
+   - **Deterministic Orphan Reaping (0 Tokens)**: If a worker process exits abruptly or an active session is lost, the dispatcher reaper immediately reaps the dead subprocess and recovers the task to `Todo` (`worker_recovered`).
+   - **Autonomous Orchestrator Diagnosis (`recovery`)**: When a task exhausts its 3× retry budget (worker crash/timeout, precommit failure, or merge conflict) and `orchestrator_recovery_count < 1`, the dispatcher routes it to the `recovery` stage (`status="todo"`, `assignee="zf-orchestrator"`, `triage_phase="recovery"`) with pre-digested failure logs and precommit outputs. `zf-orchestrator` executes one of three actions:
+     1. **Recoverable project code/test issue**: `hermes zerofactory recover <task_id> --guidance "..."` (increments `orchestrator_recovery_count = 1` and returns to `Todo` for `zf-builder`).
+     2. **Zero Factory internal platform bug**: `hermes zerofactory report-bug --task <task_id> --title "..." --root-cause "..."` (files a sanitized issue on `hotcode-dev/zerofactory` and parks in `Human` / `blocked`).
+     3. **External / human blocker**: `hermes zerofactory block <task_id> --reason "..."` (parks in `Human` / `blocked`).
+   - **1-Attempt Guardrail & Escalation**: Autonomous orchestrator recovery is strictly capped at **1 attempt** per task. If a recovered task exhausts retries a second time, it moves directly to `Human` (`blocked`).
+6. **Human Action & Merge (`Human`: `awaiting_merge` / `blocked`)**: Approved PRs surface at the top of the `Human` column (`awaiting_merge`). Human operators can also unblock or recover stuck tickets at any time using the dashboard's **"⚡ Recover Task"** button or CLI (`hermes zerofactory recover <task_id> [--guidance "..."]`).
 7. **Completion (`Done`)**: The human merges the PR on GitHub, and the dispatcher automatically marks the ticket as `Done`, prunes the worktree, and triggers automated background repository memory extraction and vectorization via Mem0 (no separate manual task required).
 
 ---
@@ -321,12 +339,9 @@ Zero Factory automatically captures repository insights during developer and age
 
 Zero Factory is architected to drastically minimize LLM token consumption (up to 95% token savings) across periodic automation cycles using Hermes Agent's **No-Agent Mode (`no_agent: true`)**, **Wake-Gate Change Detection (`{"wakeAgent": false}`)**, and **Chained LLM Jobs (`context_from`)**:
 
-- **`zero-factory-task-queue-check`** (every 15m, **0 Tokens - No-Agent Mode**):
-  - Operates in Hermes **No-Agent Mode** via `scripts/zf_queue_watchdog.py`.
-  - Runs purely in Python (consuming 0 LLM tokens). Audits running workers, reaps stuck subprocesses, recovers orphaned tasks back to `Todo`, and triggers `run_dispatch_cycle()`.
-  - Detects failure-exhausted or hung tasks eligible for recovery, awakening **`zf-orchestrator`** with pre-digested failure context to run autonomous diagnostic recovery (strictly capped at 1 attempt).
-  - When the queue is healthy, emits `{"wakeAgent": false}` to silently exit without invoking any LLM.
-  - When bottlenecks occur, outputs a human-readable alert delivered to the operator.
+- **Dispatcher Loop & Reaper** (every 30s in background thread, **0 Tokens when Idle**):
+  - Runs purely in Python (consuming 0 LLM tokens). Audits running workers, reaps stuck subprocesses, recovers orphaned tasks back to `Todo`, repairs any invalid `(status, assignee)` pairs, and claims queued `Todo` tasks.
+  - Routes 3× failure-exhausted tasks (worker crashes/timeouts, precommit failures, or merge conflicts) into the `recovery` stage (`status="todo"`, `assignee="zf-orchestrator"`, `triage_phase="recovery"`) for one autonomous diagnostic recovery attempt before escalating to `Human` (`blocked`).
 - **`zero-factory-improvement-scanner-{board_slug}`** (on idle when active workers < 2, **0 Tokens when Busy / Cooldown**):
   - Exactly **1 cron job per board**, executed by **`zf-orchestrator`** with wake-gate change detection via `scripts/zf_scanner_gate.py` (`continuity: false`).
   - Evaluates all peer repositories on the board in a single pass. If all repositories are unchanged, or if the board is busy (`running >= 2` or `todo >= 2`) or in cooldown, suppresses execution with `{"wakeAgent": false}` (0 LLM tokens).
