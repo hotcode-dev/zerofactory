@@ -452,7 +452,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			"aria-current": activeView === "instructions" ? "page" : void 0,
 			className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all cursor-pointer " + (activeView === "instructions" ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
 			onClick: () => setActiveView("instructions")
-		}, "📖 Instructions"))), React.createElement("div", { className: "flex flex-wrap items-center gap-2.5" }, selectedBoard && selectedBoard !== "all" && React.createElement("button", {
+		}, "📖 Instructions"))), React.createElement("div", { className: "flex flex-wrap items-center justify-end gap-2.5 lg:ml-auto" }, selectedBoard && selectedBoard !== "all" && React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 shadow-sm transition-all duration-150 cursor-pointer",
 			onClick: handleOpenEditBoard || handleOpenEditBoardModal,
 			title: "Edit board settings and manage board"

@@ -135,7 +135,7 @@ export function Header(props) {
             ),
             React.createElement(
               "div",
-              { className: "flex flex-wrap items-center gap-2.5" },
+              { className: "flex flex-wrap items-center justify-end gap-2.5 lg:ml-auto" },
               selectedBoard && selectedBoard !== "all" &&
               React.createElement(
                 "button",
