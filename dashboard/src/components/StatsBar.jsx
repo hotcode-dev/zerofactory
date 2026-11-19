@@ -53,9 +53,11 @@ export function StatsBar(props) {
         )
       ),
       React.createElement(
-        "div",
+        "button",
         {
-          className: "bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm transition-all duration-150 cursor-pointer " + (prFilter === "has_pr" ? "ring-1 ring-purple-500/50 bg-purple-950/20" : ""),
+          type: "button",
+          "aria-pressed": prFilter === "has_pr",
+          className: "text-left bg-slate-900/60 backdrop-blur-md border border-slate-800/80 hover:border-slate-700/80 rounded-xl p-3 flex items-center gap-3 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 transition-all duration-150 cursor-pointer " + (prFilter === "has_pr" ? "ring-1 ring-purple-500/50 bg-purple-950/20" : ""),
           onClick: () => setPrFilter && setPrFilter(prFilter === "has_pr" ? "all" : "has_pr"),
           title: "Filter by tasks with Pull Requests"
         },

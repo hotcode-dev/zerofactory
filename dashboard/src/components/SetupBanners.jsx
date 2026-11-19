@@ -161,7 +161,7 @@ export function SetupBanners(props) {
                               : "Recommended: OpenWiki Architecture Docs Not Generated",
                             React.createElement(
                               "span",
-                              { className: "px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-sky-950/80 text-sky-300 border border-sky-800/60" },
+                              { className: "px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-950/80 text-sky-300 border border-sky-800/60" },
                               "Context Optimization"
                             )
                           ),
@@ -209,7 +209,7 @@ export function SetupBanners(props) {
                               : "Recommended: GitHub Issue Templates & AI Labels Not Configured",
                             React.createElement(
                               "span",
-                              { className: "px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" },
+                              { className: "px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" },
                               "AI Triage & Classification"
                             )
                           ),

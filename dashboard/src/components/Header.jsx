@@ -64,13 +64,14 @@ export function Header(props) {
               }),
               // Navigation Tabs: Board vs Activities vs Instructions
               React.createElement(
-                "div",
-                { className: "flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1" },
+                "nav",
+                { "aria-label": "Primary navigation", className: "flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 gap-1" },
                 React.createElement(
                   "button",
                   {
                     type: "button",
-                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
+                    "aria-current": activeView === "board" ? "page" : undefined,
+                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all cursor-pointer " +
                       (activeView === "board"
                         ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
                         : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
@@ -82,7 +83,8 @@ export function Header(props) {
                   "button",
                   {
                     type: "button",
-                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer relative " +
+                    "aria-current": activeView === "activities" ? "page" : undefined,
+                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all cursor-pointer relative " +
                       (activeView === "activities"
                         ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
                         : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
@@ -98,7 +100,8 @@ export function Header(props) {
                   "button",
                   {
                     type: "button",
-                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer relative " +
+                    "aria-current": (activeView === "sessions" || activeView === "agents") ? "page" : undefined,
+                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all cursor-pointer relative " +
                       (activeView === "sessions" || activeView === "agents"
                         ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
                         : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
@@ -119,7 +122,8 @@ export function Header(props) {
                   "button",
                   {
                     type: "button",
-                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer " +
+                    "aria-current": activeView === "instructions" ? "page" : undefined,
+                    className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all cursor-pointer " +
                       (activeView === "instructions"
                         ? "bg-indigo-600 text-white shadow-xs shadow-indigo-600/30"
                         : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"),
@@ -132,16 +136,6 @@ export function Header(props) {
             React.createElement(
               "div",
               { className: "flex flex-wrap items-center gap-2.5" },
-              (activeView === "instructions" || activeView === "activities" || activeView === "sessions" || activeView === "agents") &&
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer",
-                  onClick: () => setActiveView("board")
-                },
-                "← Back to Board"
-              ),
               selectedBoard && selectedBoard !== "all" &&
               React.createElement(
                 "button",

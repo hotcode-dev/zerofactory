@@ -443,7 +443,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             "Round 1: Testing coverage, edge cases, and functional correctness",
             "Round 2: Verification, polish, clean code & Ponytail anti-overengineering review",
             "Pre-digested git diff and commit history provided directly in prompt context to minimize redundant exploration",
-            "Approves PR and moves task to Blocked (assigned to human) for merge"
+            "Approves PR and moves task to Human (awaiting_merge) for merge"
           ],
           dir: "~/.hermes/profiles/zf-reviewer/"
         }
@@ -1220,19 +1220,6 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
               ),
               React.createElement("h2", { className: "text-2xl md:text-3xl font-extrabold text-white tracking-tight m-0" }, "Zero Factory Architecture & User Guide"),
               React.createElement("p", { className: "text-xs md:text-sm text-slate-200 max-w-2xl leading-relaxed m-0 font-normal" }, "A 24/7 autonomous multi-agent software engineering factory built natively for Hermes Agent. Four specialist agent profiles collaborate through a durable SQLite Kanban board to decompose goals, implement features inside isolated Git worktrees, and conduct thematic PR reviews.")
-            ),
-            React.createElement(
-              "div",
-              { className: "flex items-center gap-3 shrink-0" },
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/40 transition-all duration-150 cursor-pointer",
-                  onClick: () => setActiveView("board")
-                },
-                "📋 Return to Kanban Board"
-              )
             )
           )
         ),

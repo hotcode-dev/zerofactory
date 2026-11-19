@@ -155,8 +155,16 @@ export function EditBoardModal(props) {
                       {
                         type: "button",
                         className: "px-2 py-0.5 rounded text-xs font-medium text-rose-300 bg-rose-950/60 hover:bg-rose-900/60 border border-rose-800/60 transition-colors cursor-pointer",
-                        onClick: () => {
-                          if (window.confirm("Remove repository '" + r.repo_alias + "' from this board?")) {
+                        onClick: async () => {
+                          const ok = props.confirmAction
+                            ? await props.confirmAction({
+                                title: "Remove Repository",
+                                message: "Remove repository '" + r.repo_alias + "' from this board?",
+                                confirmLabel: "Remove Repo",
+                                variant: "danger"
+                              })
+                            : true;
+                          if (ok) {
                             handleDeleteBoardRepo(editBoardForm.slug, r.repo_alias);
                           }
                         },

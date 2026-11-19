@@ -175,7 +175,14 @@ export function TaskDetailModal(props) {
                 type: "button",
                 className: "px-3.5 py-1.5 rounded-lg text-xs font-semibold text-rose-300 hover:text-white bg-rose-950/70 hover:bg-rose-900 border border-rose-500/40 transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs",
                 onClick: async () => {
-                  const feedback = prompt("Enter revision feedback for zf-orchestrator:");
+                  const feedback = props.promptAction
+                    ? await props.promptAction({
+                        title: "Request Specification Revision",
+                        message: "Provide revision feedback for zf-orchestrator to address in the next drafting round.",
+                        placeholder: "Describe what needs to change in the specification...",
+                        confirmLabel: "Send Revision Feedback"
+                      })
+                    : null;
                   if (!feedback || !feedback.trim()) return;
                   try {
                     await fetchJSON(API_BASE + "/tasks/" + selectedTask.id + "/reject", {
@@ -323,7 +330,7 @@ export function TaskDetailModal(props) {
                             "div",
                             { className: "font-semibold text-slate-100 flex items-center gap-1.5" },
                             "Zero Factory Defect Tracked on GitHub",
-                            React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, "Upstream")
+                            React.createElement("span", { className: "px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" }, "Upstream")
                           ),
                           React.createElement("div", { className: "text-slate-400 text-[11px] truncate" }, bugReport.title || selectedTask.title)
                         )
@@ -355,7 +362,7 @@ export function TaskDetailModal(props) {
                           "div",
                           { className: "font-semibold text-slate-100 flex items-center gap-1.5" },
                           "Internal Zero Factory Defect (Recorded Locally)",
-                          React.createElement("span", { className: "px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60" }, "Local Only")
+                          React.createElement("span", { className: "px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60" }, "Local Only")
                         ),
                         React.createElement("div", { className: "text-slate-400 text-[11px] truncate" }, bugReport.title || selectedTask.title)
                       )
@@ -1104,7 +1111,7 @@ export function TaskDetailModal(props) {
                                   t.repo_alias &&
                                     React.createElement(
                                       "span",
-                                      { className: "px-1 py-0.2 rounded text-[10px] font-mono bg-slate-800 text-teal-300 border border-slate-700/60 shrink-0" },
+                                      { className: "px-1 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-teal-300 border border-slate-700/60 shrink-0" },
                                       t.repo_alias
                                     ),
                                   React.createElement("span", { className: "truncate" }, t.title)

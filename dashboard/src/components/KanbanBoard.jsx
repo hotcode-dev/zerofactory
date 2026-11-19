@@ -1,5 +1,5 @@
 import React from "react";
-import { COLUMNS, STAGE_META } from "../constants.js";
+import { AGENT_META, COLUMNS, STAGE_META } from "../constants.js";
 import { formatPrLabel, timeAgo } from "../utils/formatters.js";
 import { renderPrIcon } from "../utils/icons.js";
 
@@ -76,24 +76,28 @@ export function KanbanBoard(props) {
                                         ? "bg-slate-700/40 text-slate-400 border-slate-600/30"
                                         : "bg-sky-500/15 text-sky-300 border-sky-500/30";
 
-                                  const roleClass = t.assignee === "zf-builder"
-                                    ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                                    : t.assignee === "zf-reviewer"
-                                      ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
-                                      : t.assignee === "zf-orchestrator"
-                                        ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
-                                        : t.assignee === "human"
-                                          ? "bg-violet-500/15 text-violet-300 border-violet-500/30 font-semibold"
-                                          : "bg-slate-700/30 text-slate-400 border-slate-700/40";
+                                  const roleMeta = AGENT_META[t.assignee];
+                                  const roleClass = roleMeta
+                                    ? roleMeta.badgeClass
+                                    : "bg-slate-700/30 text-slate-400 border-slate-700/40";
 
                                   return React.createElement(
                                     "div",
                                     {
                                       key: t.id,
-                                      className: "group bg-slate-800/70 hover:bg-slate-800/95 border rounded-lg p-3 space-y-2.5 shadow-xs hover:shadow-md transition-all duration-150 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 " + (isRunning ? "border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]" : "border-slate-700/60 hover:border-slate-600"),
+                                      role: "button",
+                                      tabIndex: 0,
+                                      "aria-label": `Open task ${t.id}: ${t.title}`,
+                                      className: "group bg-slate-800/70 hover:bg-slate-800/95 border rounded-lg p-3 space-y-2.5 shadow-xs hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-all duration-150 cursor-grab active:cursor-grabbing hover:-translate-y-0.5 " + (isRunning ? "border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]" : "border-slate-700/60 hover:border-slate-600"),
                                       draggable: true,
                                       onDragStart: (e) => handleDragStart(e, t),
-                                      onClick: () => loadTaskDetails(t.id)
+                                      onClick: () => loadTaskDetails(t.id),
+                                      onKeyDown: (e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                          e.preventDefault();
+                                          loadTaskDetails(t.id);
+                                        }
+                                      }
                                     },
                                     React.createElement(
                                       "div",
@@ -190,18 +194,19 @@ export function KanbanBoard(props) {
                                         ? (tSessions.find(s => s.status === "ongoing" || s.is_active) || t.session_progress)
                                         : null;
                                       const activeAgent = t.assignee || (ongoingSess && ongoingSess.agent) || "zf-builder";
-                                      const agentIcon = activeAgent === "zf-reviewer" ? "🔍" : activeAgent === "zf-orchestrator" ? "🧭" : "🔨";
-                                      const agentLabel = activeAgent === "zf-reviewer" ? "Reviewing PR" : activeAgent === "zf-orchestrator" ? "Orchestrating" : "Implementing";
+                                      const activeMeta = AGENT_META[activeAgent] || AGENT_META["zf-builder"];
+                                      const agentIcon = activeMeta.icon;
+                                      const agentLabel = activeMeta.runningLabel;
 
                                       if (isRunning) {
                                         return React.createElement(
                                           "div",
-                                          { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border text-xs " + (activeAgent === "zf-reviewer" ? "bg-cyan-500/10 border-cyan-500/25 text-cyan-300" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300") },
+                                          { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border text-xs " + activeMeta.runningClass },
                                           React.createElement(
                                             "div",
                                             { className: "flex items-center gap-1.5 min-w-0" },
                                             React.createElement("span", {
-                                              className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? (activeAgent === "zf-reviewer" ? "bg-cyan-400 zfk-pulse-active" : "bg-emerald-400 zfk-pulse-active") : "bg-slate-500")
+                                              className: "w-2 h-2 rounded-full shrink-0 " + (t.session_progress && t.session_progress.is_alive ? (activeMeta.dotClass + " zfk-pulse-active") : "bg-slate-500")
                                             }),
                                             React.createElement(
                                               "span",
@@ -215,13 +220,14 @@ export function KanbanBoard(props) {
                                             "div",
                                             { className: "flex items-center gap-1 shrink-0" },
                                             tSessions.length > 1 &&
-                                            React.createElement("span", { className: "text-[0.625rem] font-mono px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-300 border border-slate-700/60" }, tSessions.length + " sess"),
+                                            React.createElement("span", { className: "text-[0.625rem] font-mono px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700/60" }, tSessions.length + " sess"),
                                             React.createElement(
                                               "button",
                                               {
                                                 type: "button",
+                                                "aria-label": "Stop running AI session",
                                                 disabled: stoppingSessionId === ((ongoingSess && ongoingSess.session_id) || t.id),
-                                                className: "p-0.5 px-1 rounded text-[10px] font-semibold bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 hover:border-rose-800/60 transition-colors cursor-pointer shadow-xs disabled:opacity-50",
+                                                className: "p-0.5 px-1.5 rounded text-[10px] font-semibold bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/70 hover:border-rose-800/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 transition-colors cursor-pointer shadow-xs disabled:opacity-50",
                                                 title: "Stop running AI session",
                                                 onClick: (e) => {
                                                   e.stopPropagation();
@@ -237,8 +243,7 @@ export function KanbanBoard(props) {
                                       // Completed sessions on non-running task
                                       if (tSessions.length > 0) {
                                         const uniqueAgents = Array.from(new Set(tSessions.map(s => s.agent || t.assignee)));
-                                        const iconMap = { "zf-reviewer": "🔍", "zf-orchestrator": "🧭", "zf-builder": "🔨" };
-                                        const iconsStr = uniqueAgents.map(a => iconMap[a] || "🤖").join(" ");
+                                        const iconsStr = uniqueAgents.map(a => (AGENT_META[a] && AGENT_META[a].icon) || "🤖").join(" ");
                                         return React.createElement(
                                           "div",
                                           { className: "flex items-center justify-between gap-1.5 p-1.5 rounded-md border border-slate-800/80 bg-slate-900/50 text-slate-400 text-xs" },
@@ -337,11 +342,13 @@ export function KanbanBoard(props) {
                                           { className: "inline-flex items-center px-1.5 py-0.5 rounded text-[0.6875rem] bg-slate-700/50 text-slate-300 hover:text-white cursor-pointer", title: t.comment_count + " comments" },
                                           "💬 " + t.comment_count
                                         ),
+                                        t.status !== "done" &&
                                         React.createElement(
                                           "button",
                                           {
                                             type: "button",
-                                            className: "inline-flex items-center justify-center w-5 h-5 rounded bg-slate-700/60 hover:bg-indigo-600 text-slate-300 hover:text-white transition-colors cursor-pointer text-xs leading-none font-bold",
+                                            "aria-label": `Advance task ${t.id} to next column`,
+                                            className: "inline-flex items-center justify-center w-7 h-7 rounded-md bg-slate-700/60 hover:bg-indigo-600 text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors cursor-pointer text-xs leading-none font-bold",
                                             onClick: (e) => handleAdvanceTask(t, e),
                                             title: "Move to next column"
                                           },

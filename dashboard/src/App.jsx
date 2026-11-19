@@ -8,6 +8,7 @@ import { SetupBanners } from "./components/SetupBanners.jsx";
 import { KanbanBoard } from "./components/KanbanBoard.jsx";
 import { EmptyBoardState } from "./components/EmptyBoardState.jsx";
 import { Toast } from "./components/Toast.jsx";
+import { ConfirmDialog } from "./components/ConfirmDialog.jsx";
 import { ActivitiesView } from "./views/ActivitiesView.jsx";
 import { SessionsView } from "./views/SessionsView.jsx";
 import { InstructionsView } from "./views/InstructionsView.jsx";
@@ -370,10 +371,36 @@ export function ZeroFactoryKanbanApp() {
       }
     };
 
-    // Toast helper
+    // Toast helper (clears previous timer so rapid actions don't dismiss the latest toast)
+    const toastTimerRef = useRef(null);
     const showToast = useCallback((msg, type = "info") => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       setToast({ message: msg, msg, type });
-      setTimeout(() => setToast(null), 3500);
+      toastTimerRef.current = setTimeout(() => {
+        setToast(null);
+        toastTimerRef.current = null;
+      }, 3500);
+    }, []);
+
+    // In-app Confirm / Prompt dialog replacing native window.confirm() and prompt()
+    const [confirmDialogState, setConfirmDialogState] = useState(null);
+    const confirmResolverRef = useRef(null);
+
+    const openDialog = useCallback((opts) => {
+      return new Promise((resolve) => {
+        confirmResolverRef.current = resolve;
+        setConfirmDialogState(opts);
+      });
+    }, []);
+
+    const confirmAction = useCallback((opts) => openDialog({ mode: "confirm", ...opts }), [openDialog]);
+    const promptAction = useCallback((opts) => openDialog({ mode: "prompt", ...opts }), [openDialog]);
+
+    const handleResolveDialog = useCallback((result) => {
+      const resolve = confirmResolverRef.current;
+      confirmResolverRef.current = null;
+      setConfirmDialogState(null);
+      if (resolve) resolve(result);
     }, []);
 
     // Load Boards
@@ -798,7 +825,13 @@ export function ZeroFactoryKanbanApp() {
     }, [cronEditForms, loadCronJobs, showToast]);
 
     const handleResetCronJob = useCallback(async (jobId) => {
-      if (!window.confirm("Reset this cron job configuration back to built-in defaults?")) return;
+      const ok = await confirmAction({
+        title: "Reset Cron Job",
+        message: "Reset this cron job configuration back to built-in defaults?",
+        confirmLabel: "Reset to Defaults",
+        variant: "danger"
+      });
+      if (!ok) return;
       try {
         const res = await fetchJSON(API_BASE + `/cron/${jobId}/reset`, {
           method: "POST"
@@ -968,23 +1001,30 @@ export function ZeroFactoryKanbanApp() {
     }, [fetchJSON]);
 
     const handleDeleteMemory = useCallback(async (memId) => {
-      if (!window.confirm("Are you sure you want to delete this repository memory?")) return;
+      const ok = await confirmAction({
+        title: "Delete Repository Memory",
+        message: "Are you sure you want to delete this repository memory?",
+        confirmLabel: "Delete Memory",
+        variant: "danger"
+      });
+      if (!ok) return;
       try {
         const res = await fetchJSON(API_BASE + "/memories/" + encodeURIComponent(memId), { method: "DELETE" });
         if (res && res.ok) {
           setBoardMemories(prev => prev.filter(m => m.id !== memId));
           setMemoriesTotal(prev => Math.max(0, prev - 1));
+          showToast("Repository memory deleted", "info");
         }
       } catch (err) {
         console.error("Failed to delete memory:", err);
-        window.alert("Failed to delete memory: " + (err.message || err));
+        showToast("Failed to delete memory: " + (err.message || err), "error");
       }
-    }, [fetchJSON]);
+    }, [fetchJSON, confirmAction, showToast]);
 
     const handleCreateMemorySubmit = useCallback(async (e) => {
       if (e && e.preventDefault) e.preventDefault();
       if (!newMemoryForm.content.trim()) {
-        window.alert("Memory content is required");
+        showToast("Memory content is required", "error");
         return;
       }
       try {
@@ -1010,14 +1050,15 @@ export function ZeroFactoryKanbanApp() {
           setMemoriesTotal(prev => prev + 1);
           setShowAddMemoryModal(false);
           setNewMemoryForm({ category: "general", content: "", tags: "", author: "user", task_id: "", board_slug: "" });
+          showToast("Repository memory saved", "success");
         }
       } catch (err) {
         console.error("Failed to create memory:", err);
-        window.alert("Failed to create memory: " + (err.message || err));
+        showToast("Failed to create memory: " + (err.message || err), "error");
       } finally {
         setSubmittingMemory(false);
       }
-    }, [fetchJSON, newMemoryForm, selectedBoard, boards]);
+    }, [fetchJSON, newMemoryForm, selectedBoard, boards, showToast]);
 
     // Initial load: mount only
     const initialLoadDone = useRef(false);
@@ -1717,13 +1758,13 @@ export function ZeroFactoryKanbanApp() {
     // Delete Board
     const handleDeleteBoard = async () => {
       if (!selectedBoard || selectedBoard === "all") return;
-      if (
-        !window.confirm(
-          "Are you sure you want to delete board \"" + selectedBoard + "\"?\n\nThis will permanently remove the board, all its tasks, and clear its scheduled improvement scanner job."
-        )
-      ) {
-        return;
-      }
+      const ok = await confirmAction({
+        title: "Delete Board",
+        message: "Are you sure you want to delete board \"" + selectedBoard + "\"?\n\nThis will permanently remove the board, all its tasks, and clear its scheduled improvement scanner job.",
+        confirmLabel: "Delete Board",
+        variant: "danger"
+      });
+      if (!ok) return;
 
       try {
         await fetchJSON(API_BASE + "/boards/" + encodeURIComponent(selectedBoard), {
@@ -1767,7 +1808,13 @@ export function ZeroFactoryKanbanApp() {
 
     // Delete Task
     const handleDeleteTask = async (taskId) => {
-      if (!window.confirm("Are you sure you want to delete task " + taskId + "?")) return;
+      const ok = await confirmAction({
+        title: "Delete Task",
+        message: "Are you sure you want to delete task " + taskId + "?",
+        confirmLabel: "Delete Task",
+        variant: "danger"
+      });
+      if (!ok) return;
       try {
         await fetchJSON(API_BASE + "/tasks/" + taskId, { method: "DELETE" });
         showToast("Task " + taskId + " deleted", "info");
@@ -1781,9 +1828,13 @@ export function ZeroFactoryKanbanApp() {
     // Stop / Abort AI Session
     const handleStopTaskSession = async (taskId, sessionId) => {
       const targetLabel = taskId ? ("Task " + taskId) : ("Session " + (sessionId ? sessionId.slice(0, 8) + "..." : ""));
-      if (!window.confirm("Are you sure you want to stop this running AI session for " + targetLabel + "? The active worker process group will be safely terminated.")) {
-        return;
-      }
+      const ok = await confirmAction({
+        title: "Stop AI Session",
+        message: "Are you sure you want to stop this running AI session for " + targetLabel + "? The active worker process group will be safely terminated.",
+        confirmLabel: "Stop Session",
+        variant: "danger"
+      });
+      if (!ok) return;
       const stopKey = sessionId || taskId;
       setStoppingSessionId(stopKey);
       try {
@@ -2051,7 +2102,8 @@ export function ZeroFactoryKanbanApp() {
         setSelectedSessionIdx,
         refreshSessionProgress,
         handleAdvanceTask,
-        handleTriageTask
+        handleTriageTask,
+        promptAction
       }),
       React.createElement(NewTaskModal, {
         showNewTaskModal,
@@ -2105,7 +2157,8 @@ export function ZeroFactoryKanbanApp() {
         isSettingUpGhIssues,
         handleTriggerGhIssuesSetup,
         handleAddBoardRepo,
-        handleDeleteBoardRepo
+        handleDeleteBoardRepo,
+        confirmAction
       }),
       React.createElement(SettingsModal, {
         showSettingsModal,
@@ -2157,6 +2210,10 @@ export function ZeroFactoryKanbanApp() {
         submittingMemory,
         selectedBoard,
         boards
+      }),
+      React.createElement(ConfirmDialog, {
+        dialog: confirmDialogState,
+        onResolve: handleResolveDialog
       }),
       React.createElement(Toast, { toast })
     )

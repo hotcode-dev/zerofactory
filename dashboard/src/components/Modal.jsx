@@ -24,17 +24,23 @@ export function Modal(props) {
     onSubmit
   } = props;
 
-  if (!isOpen) return null;
-
   useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const handleKeyDown = (e) => {
       if (e.key === "Escape" && onClose) {
         onClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
 
   return React.createElement(
     "div",
@@ -45,6 +51,9 @@ export function Modal(props) {
     React.createElement(
       onSubmit ? "form" : "div",
       {
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": typeof title === "string" ? title : "Dialog",
         onSubmit: onSubmit,
         className: `bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[92vh] flex flex-col overflow-hidden text-slate-100 ${className}`,
         onClick: (e) => e.stopPropagation()
@@ -82,7 +91,8 @@ export function Modal(props) {
                     "button",
                     {
                       type: "button",
-                      className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
+                      "aria-label": "Close dialog",
+                      className: "text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors text-lg leading-none cursor-pointer w-8 h-8 flex items-center justify-center",
                       onClick: onClose,
                       title: "Close"
                     },

@@ -28,6 +28,7 @@ export function FilterBar(props) {
                         React.createElement("span", { className: "text-xs text-slate-500 shrink-0" }, "🔍"),
                         React.createElement("input", {
                           type: "text",
+                          "aria-label": "Search tasks",
                           className: "bg-transparent text-xs text-slate-100 placeholder-slate-500 outline-none w-full",
                           placeholder: "Search tasks by title, description, ID or PR...",
                           value: searchQuery,
@@ -40,9 +41,10 @@ export function FilterBar(props) {
                         React.createElement("span", { className: "text-xs text-slate-400 mr-1" }, "Role:"),
                         [
                           { id: "all", label: "All" },
-                          { id: "zf-builder", label: "ZF Builder" },
-                          { id: "zf-reviewer", label: "ZF Reviewer" },
-                          { id: "zf-orchestrator", label: "ZF Orchestrator" },
+                          { id: "zf-orchestrator", label: "Orchestrator" },
+                          { id: "zf-goldfish", label: "Goldfish" },
+                          { id: "zf-builder", label: "Builder" },
+                          { id: "zf-reviewer", label: "Reviewer" },
                           { id: "human", label: "Human" },
                           { id: "unassigned", label: "Unassigned" }
                         ].map((roleObj) =>
@@ -105,7 +107,7 @@ export function FilterBar(props) {
                             item.id === "has_pr" && stats && stats.pr_count > 0 &&
                             React.createElement(
                               "span",
-                              { className: "px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" },
+                              { className: "px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60" },
                               stats.pr_count
                             )
                           )

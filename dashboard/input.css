@@ -70,3 +70,11 @@
   opacity: 0.4;
   transform: scale(0.98);
 }
+
+/* Respect OS reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .zfk-pulse-active,
+  .zfk-spinning {
+    animation: none !important;
+  }
+}

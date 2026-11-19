@@ -1,4 +1,5 @@
 import React from "react";
+import { AGENT_META } from "../constants.js";
 import { timeAgo } from "../utils/formatters.js";
 
 export function ActivitiesView(props) {
@@ -87,22 +88,11 @@ export function ActivitiesView(props) {
       };
 
       const getActorBadge = (actor) => {
-        if (actor === "zf-builder") {
-          return { label: "zf-builder", icon: "🔨", role: "Builder", color: "text-amber-300 bg-amber-500/10 border-amber-500/30" };
+        const meta = AGENT_META[actor];
+        if (meta) {
+          return { label: actor, icon: meta.icon, role: meta.role, color: meta.badgeClass };
         }
-        if (actor === "zf-reviewer") {
-          return { label: "zf-reviewer", icon: "🔍", role: "Reviewer", color: "text-purple-300 bg-purple-500/10 border-purple-500/30" };
-        }
-        if (actor === "zf-orchestrator") {
-          return { label: "zf-orchestrator", icon: "🎯", role: "Orchestrator", color: "text-indigo-300 bg-indigo-500/10 border-indigo-500/30" };
-        }
-        if (actor === "dispatcher") {
-          return { label: "dispatcher", icon: "⚙️", role: "Dispatcher Engine", color: "text-cyan-300 bg-cyan-500/10 border-cyan-500/30" };
-        }
-        if (actor === "user") {
-          return { label: "user", icon: "👤", role: "User", color: "text-sky-300 bg-sky-500/10 border-sky-500/30" };
-        }
-        return { label: "other", icon: "📦", role: "Other", color: "text-slate-400 bg-slate-700/30 border-slate-600/30" };
+        return { label: actor || "other", icon: "📦", role: "Other", color: "text-slate-400 bg-slate-700/30 border-slate-600/30" };
       };
 
       const hasActiveClientFilters = activityActorFilter !== "all" || activityActionFilter !== "all" || activityBoardFilter !== "all" || Boolean(activitySearchQuery.trim());
@@ -173,15 +163,6 @@ export function ActivitiesView(props) {
                   }
                 },
                 isDispatching ? "⏳ Running..." : "⚡ Run Dispatcher"
-              ),
-              React.createElement(
-                "button",
-                {
-                  type: "button",
-                  className: "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all cursor-pointer",
-                  onClick: () => setActiveView("board")
-                },
-                "📋 Kanban Board"
               )
             )
           ),

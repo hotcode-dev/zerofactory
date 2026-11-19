@@ -110,9 +110,11 @@ export function BoardSelector(props) {
       "button",
       {
         type: "button",
+        "aria-expanded": isOpen,
+        "aria-haspopup": "listbox",
         onClick: () => setIsOpen((prev) => !prev),
         className:
-          "group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900/90 hover:bg-slate-800/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 transition-all shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+          "group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900/90 hover:bg-slate-800/90 text-slate-200 border border-slate-700/80 hover:border-slate-600 transition-all shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
       },
       // Left Icon / Indicator
       isAll

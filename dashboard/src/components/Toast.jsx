@@ -5,6 +5,8 @@ export function Toast({ toast }) {
   return React.createElement(
     "div",
     {
+      role: toast.type === "error" ? "alert" : "status",
+      "aria-live": toast.type === "error" ? "assertive" : "polite",
       style: { zIndex: 999999 },
       className: "fixed top-6 right-6 px-4 py-3 rounded-xl font-semibold text-sm shadow-2xl flex items-center gap-2.5 transition-all duration-200 border pointer-events-auto " +
         (toast.type === "error"

@@ -36,6 +36,72 @@ export const STAGE_META = {
   done:           { label: "Done",               actor: "human",           icon: "✅", badgeClass: "bg-violet-500/15 border-violet-500/30 text-violet-300", dotClass: "bg-violet-400", urgency: 99 }
 };
 
+export const AGENT_META = {
+  "zf-orchestrator": {
+    label: "Orchestrator",
+    role: "Orchestrator",
+    icon: "🧭",
+    runningLabel: "Orchestrating",
+    badgeClass: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
+    runningClass: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300",
+    dotClass: "bg-indigo-400"
+  },
+  "zf-goldfish": {
+    label: "Goldfish",
+    role: "Spec Auditor",
+    icon: "🐟",
+    runningLabel: "Auditing Spec",
+    badgeClass: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+    runningClass: "bg-amber-500/10 border-amber-500/25 text-amber-300",
+    dotClass: "bg-amber-400"
+  },
+  "zf-builder": {
+    label: "Builder",
+    role: "Builder",
+    icon: "🔨",
+    runningLabel: "Implementing",
+    badgeClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    runningClass: "bg-emerald-500/10 border-emerald-500/25 text-emerald-300",
+    dotClass: "bg-emerald-400"
+  },
+  "zf-reviewer": {
+    label: "Reviewer",
+    role: "Reviewer",
+    icon: "🔍",
+    runningLabel: "Reviewing PR",
+    badgeClass: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+    runningClass: "bg-cyan-500/10 border-cyan-500/25 text-cyan-300",
+    dotClass: "bg-cyan-400"
+  },
+  "human": {
+    label: "Human",
+    role: "Human",
+    icon: "👤",
+    runningLabel: "Human Review",
+    badgeClass: "bg-violet-500/15 text-violet-300 border-violet-500/30 font-semibold",
+    runningClass: "bg-violet-500/10 border-violet-500/25 text-violet-300",
+    dotClass: "bg-violet-400"
+  },
+  "dispatcher": {
+    label: "dispatcher",
+    role: "Dispatcher Engine",
+    icon: "⚙️",
+    runningLabel: "Dispatching",
+    badgeClass: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+    runningClass: "bg-sky-500/10 border-sky-500/25 text-sky-300",
+    dotClass: "bg-sky-400"
+  },
+  "user": {
+    label: "user",
+    role: "User",
+    icon: "👤",
+    runningLabel: "User",
+    badgeClass: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+    runningClass: "bg-sky-500/10 border-sky-500/25 text-sky-300",
+    dotClass: "bg-sky-400"
+  }
+};
+
 export const COLUMN_DEFAULT_PREVIEW = {
   human:   { stage: "triage",   label: "📥 Triage",    actor: "human" },
   triage:  { stage: "triage",   label: "📥 Triage",    actor: "human" },

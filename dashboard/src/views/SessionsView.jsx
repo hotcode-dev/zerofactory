@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { timeAgo } from "../utils/formatters.js";
-import { API_BASE } from "../constants.js";
+import { AGENT_META, API_BASE } from "../constants.js";
 import { fetchJSON } from "../sdk.js";
 
 export function SessionsView(props) {
@@ -128,7 +128,7 @@ export function SessionsView(props) {
 
       return React.createElement(
         "div",
-        { className: "space-y-6 animate-fade-in" },
+        { className: "space-y-6" },
         // Top Header
         React.createElement(
           "div",
@@ -148,7 +148,7 @@ export function SessionsView(props) {
                   ongoingCount + " Active"
                 )
               ),
-              React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "Live status of 3 specialist agents, session telemetry, and persistent repository memory.")
+              React.createElement("p", { className: "text-xs text-slate-400 mt-0.5" }, "Live status of 4 specialist agents, session telemetry, and persistent repository memory.")
             )
           ),
           React.createElement(
@@ -430,7 +430,7 @@ export function SessionsView(props) {
                       onClick: () => setSessionsAgentFilter(tab.id)
                     },
                     tab.label,
-                    React.createElement("span", { className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " + (sessionsAgentFilter === tab.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400") }, tab.count)
+                    React.createElement("span", { className: "text-[0.625rem] px-1.5 py-0.5 rounded-full " + (sessionsAgentFilter === tab.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400") }, tab.count)
                   )
                 )
               ),
@@ -474,7 +474,7 @@ export function SessionsView(props) {
                     ? "No sessions match your filter criteria. Try resetting the filters."
                     : (selectedBoard && selectedBoard !== "all")
                       ? "No AI agent sessions recorded yet for board '" + selectedBoard + "'. Sessions will appear as tasks run on this board."
-                      : "AI agent sessions will appear here as Orchestrator, Builder, and Reviewer execute tasks."
+                      : "AI agent sessions will appear here as Orchestrator, Goldfish, Builder, and Reviewer execute tasks."
                 )
               )
               : React.createElement(
@@ -483,11 +483,12 @@ export function SessionsView(props) {
                 effectiveSessions.map((s) => {
                   const isOngoing = s.status === "ongoing" || s.is_active;
                   const agentRole = s.agent || "zf-builder";
-                  const agentBadge = agentRole === "zf-reviewer"
-                    ? { icon: "🔍", label: "Reviewer", border: "border-cyan-500/30", bg: "bg-cyan-500/10 text-cyan-300" }
-                    : agentRole === "zf-orchestrator"
-                      ? { icon: "🧭", label: "Orchestrator", border: "border-indigo-500/30", bg: "bg-indigo-500/10 text-indigo-300" }
-                      : { icon: "🔨", label: "Builder", border: "border-amber-500/30", bg: "bg-amber-500/10 text-amber-300" };
+                  const agentMeta = AGENT_META[agentRole] || AGENT_META["zf-builder"];
+                  const agentBadge = {
+                    icon: agentMeta.icon,
+                    label: agentMeta.label,
+                    badgeClass: agentMeta.badgeClass
+                  };
 
                   const lastUpdateTs = s.last_activity_at || s.ended_at || s.started_at;
                   const lastUpdateStr = lastUpdateTs ? timeAgo(lastUpdateTs) : null;
@@ -533,7 +534,7 @@ export function SessionsView(props) {
                           { className: "flex items-center gap-2" },
                           React.createElement(
                             "span",
-                            { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + agentBadge.bg + " " + agentBadge.border },
+                            { className: "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold border " + agentBadge.badgeClass },
                             agentBadge.icon + " " + (s.agent_label || agentBadge.label)
                           ),
                           React.createElement(
@@ -717,7 +718,7 @@ export function SessionsView(props) {
                     },
                     cat.icon + " " + cat.label,
                     React.createElement("span", {
-                      className: "text-[0.625rem] px-1.5 py-0.2 rounded-full " +
+                      className: "text-[0.625rem] px-1.5 py-0.5 rounded-full " +
                         (memoryCategoryFilter === cat.id ? "bg-indigo-700 text-indigo-100" : "bg-slate-700 text-slate-400")
                     }, cat.count)
                   )
