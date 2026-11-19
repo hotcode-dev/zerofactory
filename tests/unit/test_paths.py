@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -33,12 +35,21 @@ class TestPathsResolution(unittest.TestCase):
         p.touch(exist_ok=True)
         return p
 
+    @contextlib.contextmanager
     def _with_fake_home(self, home_root: Path, plugin_root):
-        """Context manager pointing paths.Path.home at home_root and plugin-relative root at plugin_root."""
-        return (
-            mock.patch("pathlib.Path.home", return_value=home_root),
-            mock.patch.object(P, "_plugin_profiles_root", return_value=plugin_root),
-        )
+        """Redirect paths.Path.home to home_root and the plugin-relative root
+        to plugin_root, and clear HERMES_HOME so paths.get_hermes_home() falls
+        back to the mocked Path.home(); an inherited HERMES_HOME would
+        otherwise win over the fake home and make resolution hit real
+        on-disk state.db files.
+        """
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch("pathlib.Path.home", return_value=home_root))
+            stack.enter_context(
+                mock.patch.object(P, "_plugin_profiles_root", return_value=plugin_root)
+            )
+            stack.enter_context(mock.patch.dict(os.environ, {"HERMES_HOME": ""}))
+            yield
 
     # --- state.db resolution strategy --------------------------------------
 
@@ -47,8 +58,7 @@ class TestPathsResolution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             home_root = Path(td) / "home"
             self._mk(home_root, ".hermes", "profiles", "zf-builder", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=None)
-            with home_ctx, plug_ctx:
+            with self._with_fake_home(home_root, plugin_root=None):
                 self.assertEqual(
                     P.resolve_profile_state_db("zf-builder"),
                     home_root / ".hermes" / "profiles" / "zf-builder" / "state.db",
@@ -60,10 +70,7 @@ class TestPathsResolution(unittest.TestCase):
             home_root = Path(td) / "home"
             plugin_root = Path(td) / "plugin_profiles"
             self._mk(plugin_root, "zf-builder", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(
-                home_root, plugin_root=plugin_root
-            )
-            with home_ctx, plug_ctx:
+            with self._with_fake_home(home_root, plugin_root=plugin_root):
                 self.assertEqual(
                     P.resolve_profile_state_db("zf-builder"),
                     plugin_root / "zf-builder" / "state.db",
@@ -74,8 +81,7 @@ class TestPathsResolution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             home_root = Path(td) / "home"
             self._mk(home_root, ".hermes", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=None)
-            with home_ctx, plug_ctx:
+            with self._with_fake_home(home_root, plugin_root=None):
                 self.assertEqual(
                     P.resolve_profile_state_db("zf-builder"),
                     home_root / ".hermes" / "state.db",
@@ -84,8 +90,7 @@ class TestPathsResolution(unittest.TestCase):
         # Nothing present -> None.
         with tempfile.TemporaryDirectory() as td:
             home_root = Path(td) / "home"
-            home_ctx, plug_ctx = self._with_fake_home(home_root, plugin_root=None)
-            with home_ctx, plug_ctx:
+            with self._with_fake_home(home_root, plugin_root=None):
                 self.assertIsNone(P.resolve_profile_state_db("zf-builder"))
 
     def test_state_db_priority(self):
@@ -96,17 +101,15 @@ class TestPathsResolution(unittest.TestCase):
             self._mk(home_root, ".hermes", "state.db")
             self._mk(plugin_root, "zf-builder", "state.db")
             self._mk(home_root, ".hermes", "profiles", "zf-builder", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(
-                home_root, plugin_root=plugin_root
-            )
-            with home_ctx, plug_ctx:
+            with self._with_fake_home(home_root, plugin_root=plugin_root):
                 self.assertEqual(
                     P.resolve_profile_state_db("zf-builder"),
                     home_root / ".hermes" / "profiles" / "zf-builder" / "state.db",
                 )
-            # Remove the canonical one; plugin-relative now wins over global.
-            (home_root / ".hermes" / "profiles" / "zf-builder" / "state.db").unlink()
-            with home_ctx, plug_ctx:
+                # Remove the canonical one; plugin-relative now wins over global.
+                (
+                    home_root / ".hermes" / "profiles" / "zf-builder" / "state.db"
+                ).unlink()
                 self.assertEqual(
                     P.resolve_profile_state_db("zf-builder"),
                     plugin_root / "zf-builder" / "state.db",
@@ -257,10 +260,7 @@ class TestPathsResolution(unittest.TestCase):
             home_root = Path(td) / "home"
             plugin_root = Path(td) / "plugin_profiles"
             self._mk(plugin_root, "zf-reviewer", "state.db")
-            home_ctx, plug_ctx = self._with_fake_home(
-                home_root, plugin_root=plugin_root
-            )
-            with home_ctx, plug_ctx:
+            with self._with_fake_home(home_root, plugin_root=plugin_root):
                 expected = plugin_root / "zf-reviewer" / "state.db"
                 self.assertEqual(D.resolve_profile_state_db("zf-reviewer"), expected)
                 self.assertEqual(get_profile_state_db("zf-reviewer"), expected)

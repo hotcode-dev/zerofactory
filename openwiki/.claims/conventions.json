@@ -1,46 +1,46 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9dbd15a92f5f79fc7402f35cd35a6b45645c7f15a32aaae5fb0868098cd7c5f2",
+  "pageVersion": "sha256:38fdf4c0db82a81dcfbfc84a66a07d3cd231f7d88262d513da3145845ef9f672",
   "claims": [
     {
       "id": "claim_f5049d3391c7479baf38776d89ce8a5a",
       "statement": "Every internal module that imports a sibling uses a try/except relative-to-absolute import fallback (try `from ..mod`, then `from mod  # type: ignore`), because code is loaded both as a plugin subpackage and as top-level modules when a script bootstraps sys.path; preserve this exact shape when adding cross-module imports.",
       "evidence": [
         {
-          "resource": "repo://dashboard/db.py#L24-L30",
-          "version": "repo-lines-v1:sha256:58e747869a85465860cf86397af60dfc102c027ce33e8dbb654a20ac936e10ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzFjNWFlYjViYzA2ODQwNGFhNWY0YjU1MDE3NDRjMzFiZTIyZDg1ZjY1NDhkYWYwYmI3NWU2OTEwODMyMmM2OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjMxZmUxMmExMmFiMWI0OWM5NmEzYjc5NDQ1NDQ3N2QwZDg1N2QxZDMzYzg0YWNhNWFlY2E0M2RlNmE5YmQyOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjllN2NhNzM3MWEwNmIzMzNmMGQ5MmZjMzE5NWJlMzNlZWM5OGU2YmQzZDFjNzJiYjg5ZTkyNjg5YzM2NzVkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGYyNDViZWYzZDUzYzAzMjFlYjQ2ZmEwYWYzNDY2ZWJmZjU0ZmRlYjFmZDU1MzM4Njc0MWVkNTY0MzM0ZmUxNiJ9"
+          "resource": "repo://dashboard/db.py#L24-L37",
+          "version": "repo-lines-v1:sha256:45c0ac23f6fa885edbb116f08c62815343f2cce65f70ab6cc96c0d42d38139a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxYzVhZWI1YmMwNjg0MDRhYTVmNGI1NTAxNzQ0YzMxYmUyMmQ4NWY2NTQ4ZGFmMGJiNzVlNjkxMDgzMjJjNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5ZTdjYTczNzFhMDZiMzMzZjBkOTJmYzMxOTViZTMzZWVjOThlNmJkM2QxYzcyYmI4OWU5MjY4OWMzNjc1ZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjMTEzODNhYjMwMjc0MDAzNzBjOTcwMTI0YWFlZjk0ZGNhYzI3ODA4YzIyMTAxNTcwNTZkM2E4MTNjNTY2YjEifQ"
         },
         {
-          "resource": "repo://dashboard/routes/__init__.py#L23-L46",
-          "version": "repo-lines-v1:sha256:14163b5616a4781c70589dddfc5f548dbb460710b5df57d593251d5bb6a5e7e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0MGNhNmRkMzU5NmEyOTVhNzgwZDk5ZDQ4ZjZkYzNkZWI3ZjkyYTk5MTY5NWQ4MDk0YzI4NWY1NmU1NzZlNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyNjA0MjYxYWM4MGM5ZDIzYjk2ZmNmMjZjOTVmNDNmMzMxZWY5NTU2NjJlNWYyNjY1ZmVhYmVjYjM4YzVmNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4MGM4MjlhYzRkY2RjOWZkMGVjMjJkNDZlNDg4MWVhMWFmMGI2ODRkYjEzNzY1MzFkNTUwNzUyMzg2OTZmNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiMTM2Zjk3ZjcwYmM2MjM0OGQ4MWU3YTgxODliM2RjMGY1NzMzNWU2YjVmZTAyZTZhNTQ3YTM3YTkxZTg5YTMifQ"
+          "resource": "repo://dashboard/routes/__init__.py#L17-L34",
+          "version": "repo-lines-v1:sha256:c0c0d4fa2c54159489807d30a0791115ba28f3f58c1b4bedccdc6dab4b416eab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxYzVhZWI1YmMwNjg0MDRhYTVmNGI1NTAxNzQ0YzMxYmUyMmQ4NWY2NTQ4ZGFmMGJiNzVlNjkxMDgzMjJjNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhODlkZmU4YjczMWUzMDM5Y2VhNzU0MDY0Mzg0YzRlZjMxNDc3ZDkzOWI3NzFhNTI4ODc3YTM2MTVmZjg5N2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxOTAxZTE3ZTQ3ZTdlNmEzYzAxMzIyNmViZjdiMTc1ZTFjYzQ4YzZhYjBkZWJmODlmN2IzYjk1MWMyYzUzZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlZWY1MDIzNzZmNGM4MTdkOTNkZWFiZDNhYjU1MzEwZGFlMDc4ZTJiOGU2MmYzZmM4Y2ExYzUwMmNmYmQ2OWYifQ"
         }
       ]
     },
     {
       "id": "claim_ace87e633ea142178e97dc9bc4d27fef",
-      "statement": "Modules that may be loaded directly (scripts, cron/definitions.py, dashboard/*) insert the plugin root onto sys.path before importing internal modules; ruff.toml ignores E402 specifically so this required import-before-top ordering is legal, and the test suite does the same in conftest.py.",
+      "statement": "Modules that may be loaded directly (the No-Agent Mode pre-run scripts such as scripts/zf_daily_stats.py, and the dashboard/* modules) insert the plugin root onto sys.path before importing internal modules; ruff.toml ignores E402 specifically so this required import-before-top ordering is legal, and the test suite does the same in conftest.py.",
       "evidence": [
-        {
-          "resource": "repo://cron/definitions.py#L14-L16",
-          "version": "repo-lines-v1:sha256:fff927f804ab7245ec09091d0d38c8668b395ae45a8a3b70efe3e6287136e772:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDlhOWRiNzc2N2JkMjA1OTMyNDI0NGJiZDk5MzVjZGNlZGIyMWMwM2VjNDZhNjdjOTE4NmI0MWQ1YzI5ZDdiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTQyZmVkNmRlMDJlMWU2ZjgyNmEzZTNiZTVjMTNlYTc2MzM4NzJjOTNhOWFjYTRkZjIxZmE0NDgwNjUxZDFhMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmM2NWQ5ZGQ3OTQyOTk0MjY0N2QxYzYwMWQ3MzA5OWRlMDc3MjZhMjM5M2VhYzc2NzE1MGJjNGVhNDFlNGIwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWZkOTE2ZDQzNTc4NzczMjE4Y2U2NGEzMGI2ZWIwOTZjOWE3YzcxMTI5Yjg0MTk1YTYzMjkzYzVkNTUwNjM1YSJ9"
-        },
         {
           "resource": "repo://ruff.toml#L14-L14",
           "version": "repo-lines-v1:sha256:aa4185279e29f64d29ae43909d2584613537737ac9910a605bbfc463eebc73a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE0MTg1Mjc5ZTI5ZjY0ZDI5YWU0MzkwOWQyNTg0NjEzNTM3NzM3YWM5OTEwYTYwNWJiZmM0NjNlZWJjNzNhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE0MTg1Mjc5ZTI5ZjY0ZDI5YWU0MzkwOWQyNTg0NjEzNTM3NzM3YWM5OTEwYTYwNWJiZmM0NjNlZWJjNzNhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjM4YjJkMGI2NzhjYWI5MGFiODlhYTM1NjJmZTg5ZThmNGNiY2FkNzc2NjYxYTc4MTYwNzUyNGYyYTE0YjMzOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzkzOWQ3NTU2OTNiOGI3OGEzNDIyM2Q5YjcyZjE5NTY5ZTI2YWVhYWQxNzQzNzNkYmE2ZjM3MmVhNzFmMDFmZiJ9"
         },
         {
+          "resource": "repo://scripts/zf_daily_stats.py#L21-L25",
+          "version": "repo-lines-v1:sha256:8c27937341a8520e3b6c829281f62502b5eae5b59029de4aff31dcb44784fb80:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDlhOWRiNzc2N2JkMjA1OTMyNDI0NGJiZDk5MzVjZGNlZGIyMWMwM2VjNDZhNjdjOTE4NmI0MWQ1YzI5ZDdiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDk2NjBlNmVjMmU4NWVmZDkzYzEwMGQ0YzFkOTliZjJlMzRkNzNkMGRlMTI3OTQ3MWFjMTY1ZTI3N2RhMzc3MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmM2NWQ5ZGQ3OTQyOTk0MjY0N2QxYzYwMWQ3MzA5OWRlMDc3MjZhMjM5M2VhYzc2NzE1MGJjNGVhNDFlNGIwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTBhYjhjZDFmMWU2ZTY1Njk2Y2FlYmFlNzEwMzgyZDNmMGNhNjNjYTJhMzY2MTQwYmZmMjIxNTU4YWI5NzNmNCJ9"
+        },
+        {
           "resource": "repo://tests/conftest.py#L13-L16",
-          "version": "repo-lines-v1:sha256:5f90a41cd2828d2e1081179ead633deb71053f53946be5d64a76925fc00f134b:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzc1ODI4NTJhYzIwMjA4NWU5NjMwZjY3NjJlNTZlNTRhY2E1ZTI5NjZhODNmMmYwMTFjMmIxZmUxM2FhYmFiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY1YTQzM2NmNGFjZTYwZjg5YjY0YjFmNjgwNDFjZGM3MGU0NWI5ZmMxZWNkMzE3MmE2ZjA1NGViZTE3OTU4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGY2OWM0MDQwZDg0NmFlYTM4OGVhNTY0YjNiMjc1MDMwZTU5ODcxMzAwMTVjNTM5ODkwMzgwY2M0M2M4MjRiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODIzOTZiNGVlNWFiYmM3NDFlZWU2YjQ3ZjhjZTA2YzJiODBjM2UzOGQ3OWQ2MjA4OWJiZTMwODAwNGMwY2NhZiJ9"
+          "version": "repo-lines-v1:sha256:5f90a41cd2828d2e1081179ead633deb71053f53946be5d64a76925fc00f134b:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzc1ODI4NTJhYzIwMjA4NWU5NjMwZjY3NjJlNTZlNTRhY2E1ZTI5NjZhODNmMmYwMTFjMmIxZmUxM2FhYmFiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY1YTQzM2NmNGFjZTYwZjg5YjY0YjFmNjgwNDFjZGM3MGU0NWI5ZmMxZWNkMzE3MmE2ZjA1NGViZTE3OTU4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGY2OWM0MDQwZDg0NmFlYTM4OGVhNTY0YjNiMjc1MDMwZTU5ODcxMzAwMTVjNTM5ODkwMzgwY2M0M2M4MjRiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzE2MDg5ZDhiOGUzMTUzZDcyYzgzZTcwYzQ2OGJjZjlhYmUwMzlmMDcwMTQ3MTIwNjZlZWU3OTkyMTRhMWRmYyJ9"
         }
       ]
     },
     {
       "id": "claim_f68da9f1e33c49fc9ce65a869db2c817",
-      "statement": "Loggers are namespaced under zerofactory.* per subsystem (e.g. zerofactory.cron, zerofactory.migrations) via logging.getLogger(\\\"zerofactory.<subsystem>\\\"); use the matching namespace for new modules rather than the root logger.",
+      "statement": "Loggers are namespaced under zerofactory.* per subsystem (e.g. zerofactory.kanban.dispatcher, zerofactory.migrations, zerofactory.issues.importer) via logging.getLogger(\\\"zerofactory.<subsystem>\\\"); use the matching namespace for new modules rather than the root logger.",
       "evidence": [
         {
-          "resource": "repo://cron/definitions.py#L29-L29",
-          "version": "repo-lines-v1:sha256:cec37842afb825f5988dc4ade60fc5e8711ca156acd7fc424e1f976989a15010:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2VjMzc4NDJhZmI4MjVmNTk4OGRjNGFkZTYwZmM1ZTg3MTFjYTE1NmFjZDdmYzQyNGUxZjk3Njk4OWExNTAxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2VjMzc4NDJhZmI4MjVmNTk4OGRjNGFkZTYwZmM1ZTg3MTFjYTE1NmFjZDdmYzQyNGUxZjk3Njk4OWExNTAxMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDYwMjcwMTEyNDgwZDYxZTkxMGU1YWNhY2I1MDllYzZhM2NhMzA0OGQ2NzFiMzAxNjg4NjZlNzU3YWM0YmYxOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDhmNWI3MjJhOTNjZjdjNDdmYTJiOGVkM2RlMmE4NWNiMjg1ODA4OTgwY2UxOTc4MjZkODAxNmMxMzc1MzFhYSJ9"
+          "resource": "repo://dispatcher/config.py#L70-L70",
+          "version": "repo-lines-v1:sha256:00fc378b06ef05da5726c37e16ce0c492e3ee66821c8368c0be118ef8d5a998e:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBmYzM3OGIwNmVmMDVkYTU3MjZjMzdlMTZjZTBjNDkyZTNlZTY2ODIxYzgzNjhjMGJlMTE4ZWY4ZDVhOTk4ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBmYzM3OGIwNmVmMDVkYTU3MjZjMzdlMTZjZTBjNDkyZTNlZTY2ODIxYzgzNjhjMGJlMTE4ZWY4ZDVhOTk4ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmRkODY1ZTNjMDU2YmU5NDFjNjJlNzkxM2I4YzZiZDk2Nzg2NDZhYTYwNDFhYmRmZmU2NWU0OTUwMTEzYjMyOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTNkZDZmOWM0NjRlOWIzNmVjODBjNjQ5ODliYjBkNmViZDY4YTA1YTM1MmI3MGY4ZmNiOWExYjg1MTIxMjU4ZiJ9"
         },
         {
           "resource": "repo://migrations/runner.py#L23-L23",
@@ -139,6 +139,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-07T14:59:48.283Z"
+    "at": "2026-11-19T13:45:16.591Z"
   }
 }

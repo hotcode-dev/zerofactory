@@ -27,7 +27,11 @@ def test_get_hermes_home_does_not_strip_profiles(tmp_path, monkeypatch):
 def test_register_is_passive_and_never_creates_profiles_or_starts_dispatcher(
     tmp_path, monkeypatch
 ):
-    import zerofactory
+    # The repository root is the plugin package itself; its __init__.py is
+    # importable as the top-level module `__init__` (conftest puts the repo
+    # root on sys.path), which is the same module an installed layout would
+    # expose as `zerofactory`.
+    import __init__ as zerofactory
 
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir()
