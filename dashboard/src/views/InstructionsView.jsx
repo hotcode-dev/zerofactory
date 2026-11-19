@@ -86,6 +86,174 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             )
           ),
 
+          // 1b. Interactive SVG State Machine Diagram (4 Columns • 13 Stages)
+          React.createElement(
+            "div",
+            { className: "space-y-3 pt-3 border-t border-slate-800" },
+            React.createElement(
+              "div",
+              { className: "flex items-center justify-between flex-wrap gap-2" },
+              React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "🗺️ State Machine Diagram (13 Stages & Transitions)"),
+              React.createElement(
+                "div",
+                { className: "flex items-center gap-3 flex-wrap text-[11px] font-mono text-slate-300" },
+                React.createElement("span", { className: "inline-flex items-center gap-1.5" }, React.createElement("span", { className: "w-2.5 h-2.5 rounded-sm bg-rose-500/80 border border-rose-300" }), "Human (0 tok)"),
+                React.createElement("span", { className: "inline-flex items-center gap-1.5" }, React.createElement("span", { className: "w-2.5 h-2.5 rounded-sm bg-emerald-500/80 border border-emerald-300" }), "Todo / Running (AI)"),
+                React.createElement("span", { className: "inline-flex items-center gap-1.5" }, React.createElement("span", { className: "w-2.5 h-2.5 rounded-sm bg-sky-500/80 border border-sky-300" }), "Dispatcher (0 tok)"),
+                React.createElement("span", { className: "inline-flex items-center gap-1.5" }, React.createElement("span", { className: "w-2.5 h-2.5 rounded-sm bg-violet-500/80 border border-violet-300" }), "Done")
+              )
+            ),
+            React.createElement(
+              "div",
+              { className: "w-full overflow-x-auto zfk-scrollbar bg-slate-950/90 border border-slate-800 rounded-xl p-4 shadow-inner" },
+              (() => {
+                const svgEl = React.createElement;
+                const node = (x, y, w, h, fill, stroke, title, subtitle, badge) =>
+                  svgEl(
+                    "g",
+                    { key: title + x + y },
+                    svgEl("rect", { x, y, width: w, height: h, rx: 10, fill, stroke, strokeWidth: 1.5 }),
+                    svgEl("text", { x: x + w / 2, y: y + 19, textAnchor: "middle", fill: "#f8fafc", fontSize: 12, fontWeight: "700", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }, title),
+                    svgEl("text", { x: x + w / 2, y: y + 35, textAnchor: "middle", fill: "#cbd5e1", fontSize: 10, fontFamily: "ui-sans-serif, system-ui, sans-serif" }, subtitle),
+                    badge && svgEl("text", { x: x + w / 2, y: y + 48, textAnchor: "middle", fill: "#94a3b8", fontSize: 9, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }, badge)
+                  );
+
+                const pill = (cx, cy, w, text, textColor = "#e2e8f0", borderColor = "#334155") =>
+                  svgEl(
+                    "g",
+                    { key: text + cx + cy },
+                    svgEl("rect", { x: cx - w / 2, y: cy - 9, width: w, height: 18, rx: 9, fill: "#020617", stroke: borderColor, strokeWidth: 1 }),
+                    svgEl("text", { x: cx, y: cy + 3, textAnchor: "middle", fill: textColor, fontSize: 9.5, fontWeight: "600", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }, text)
+                  );
+
+                return svgEl(
+                  "svg",
+                  {
+                    viewBox: "0 0 1160 572",
+                    className: "w-full min-w-[920px] h-auto block select-none",
+                    role: "img",
+                    "aria-label": "Zero Factory 13-stage state machine diagram across Human, Todo, Running, and Done columns"
+                  },
+                  svgEl(
+                    "defs",
+                    null,
+                    svgEl("marker", { id: "zfk-arrow", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" },
+                      svgEl("path", { d: "M 0 1 L 10 5 L 0 9 z", fill: "#94a3b8" })
+                    ),
+                    svgEl("marker", { id: "zfk-arrow-amber", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" },
+                      svgEl("path", { d: "M 0 1 L 10 5 L 0 9 z", fill: "#fbbf24" })
+                    ),
+                    svgEl("marker", { id: "zfk-arrow-emerald", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" },
+                      svgEl("path", { d: "M 0 1 L 10 5 L 0 9 z", fill: "#34d399" })
+                    ),
+                    svgEl("marker", { id: "zfk-arrow-rose", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" },
+                      svgEl("path", { d: "M 0 1 L 10 5 L 0 9 z", fill: "#fb7185" })
+                    )
+                  ),
+
+                  // Phase 1 Swimlane (y: 12..210)
+                  svgEl("rect", { x: 14, y: 12, width: 1132, height: 198, rx: 12, fill: "#0f172a", stroke: "#1e293b", strokeWidth: 1 }),
+                  svgEl("text", { x: 30, y: 31, fill: "#818cf8", fontSize: 10, fontWeight: "700", letterSpacing: "0.08em" }, "PHASE 1 • INTAKE & SEQUENTIAL EGM TRIAGE"),
+
+                  // Phase 2 Swimlane (y: 246..412)
+                  svgEl("rect", { x: 14, y: 246, width: 1132, height: 166, rx: 12, fill: "#0f172a", stroke: "#1e293b", strokeWidth: 1 }),
+                  svgEl("text", { x: 224, y: 265, fill: "#34d399", fontSize: 10, fontWeight: "700", letterSpacing: "0.08em" }, "PHASE 2 • AUTONOMOUS BUILD, PRECOMMIT, PR REVIEW & HUMAN MERGE"),
+
+                  // Phase 3 Swimlane (y: 446..562)
+                  svgEl("rect", { x: 14, y: 446, width: 1132, height: 116, rx: 12, fill: "#0f172a", stroke: "#1e293b", strokeWidth: 1 }),
+                  svgEl("text", { x: 500, y: 465, fill: "#fbbf24", fontSize: 10, fontWeight: "700", letterSpacing: "0.08em" }, "PHASE 3 • SELF-HEALING RECOVERY & HUMAN ESCALATION"),
+
+                  // --- PHASE 1 ARROWS (drawn behind pills/nodes where appropriate) ---
+                  // triage -> grill / spec_draft
+                  svgEl("path", { d: "M 182 100 L 244 100", stroke: "#94a3b8", strokeWidth: 1.5, fill: "none", markerEnd: "url(#zfk-arrow)" }),
+                  svgEl("text", { x: 213, y: 92, textAnchor: "middle", fill: "#cbd5e1", fontSize: 9 }, "Grill / EGM"),
+
+                  // grill/spec_draft <-> interview
+                  svgEl("path", { d: "M 320 128 L 320 150", stroke: "#94a3b8", strokeWidth: 1.4, strokeDasharray: "4 3", fill: "none", markerEnd: "url(#zfk-arrow)" }),
+                  svgEl("text", { x: 294, y: 143, textAnchor: "middle", fill: "#94a3b8", fontSize: 9 }, "ask Q"),
+                  svgEl("path", { d: "M 368 152 L 368 130", stroke: "#94a3b8", strokeWidth: 1.4, strokeDasharray: "4 3", fill: "none", markerEnd: "url(#zfk-arrow)" }),
+                  svgEl("text", { x: 396, y: 143, textAnchor: "middle", fill: "#94a3b8", fontSize: 9 }, "reply"),
+
+                  // grill / spec_draft -> spec_audit
+                  svgEl("path", { d: "M 442 100 L 506 100", stroke: "#94a3b8", strokeWidth: 1.5, fill: "none", markerEnd: "url(#zfk-arrow)" }),
+                  svgEl("text", { x: 474, y: 92, textAnchor: "middle", fill: "#cbd5e1", fontSize: 9 }, "spec ready"),
+
+                  // spec_audit -> spec_approval
+                  svgEl("path", { d: "M 686 100 L 752 100", stroke: "#94a3b8", strokeWidth: 1.5, fill: "none", markerEnd: "url(#zfk-arrow)" }),
+                  svgEl("text", { x: 719, y: 92, textAnchor: "middle", fill: "#cbd5e1", fontSize: 9 }, "audited"),
+
+                  // Reject loop: spec_approval -> spec_draft (dedicated top channel y=50)
+                  svgEl("path", { d: "M 847 72 L 847 50 L 344 50 L 344 70", stroke: "#fb7185", strokeWidth: 1.4, strokeDasharray: "4 3", fill: "none", markerEnd: "url(#zfk-arrow-rose)" }),
+                  pill(595, 50, 146, "reject (max 2 rounds)", "#fda4af", "#881337"),
+
+                  // Approve path: spec_approval -> building (dedicated inter-phase channel y=228)
+                  svgEl("path", { d: "M 847 128 L 847 228 L 119 228 L 119 300", stroke: "#34d399", strokeWidth: 1.8, fill: "none", markerEnd: "url(#zfk-arrow-emerald)" }),
+                  pill(495, 228, 224, "approve [--split] ➔ Todo (building)", "#6ee7b7", "#065f46"),
+
+                  // --- PHASE 1 NODES ---
+                  node(32, 72, 150, 56, "#3b0724", "#f43f5e", "triage", "Human Column", "human • 0 tokens"),
+                  node(246, 72, 196, 56, "#064e3b", "#10b981", "grill / spec_draft", "Todo ➔ Running", "zf-orchestrator"),
+                  node(246, 152, 196, 48, "#3b0724", "#f43f5e", "interview", "Human Column • Q&A", null),
+                  node(508, 72, 178, 56, "#064e3b", "#10b981", "spec_audit", "Todo ➔ Running", "zf-goldfish"),
+                  node(754, 72, 186, 56, "#3b0724", "#f43f5e", "spec_approval", "Human Column", "human • approve/reject"),
+
+                  // --- PHASE 2 ARROWS ---
+                  // building -> packaging
+                  svgEl("path", { d: "M 206 331 L 274 331", stroke: "#94a3b8", strokeWidth: 1.5, fill: "none", markerEnd: "url(#zfk-arrow)" }),
+                  svgEl("text", { x: 240, y: 323, textAnchor: "middle", fill: "#cbd5e1", fontSize: 9 }, "exit 0"),
+
+                  // packaging -> review
+                  svgEl("path", { d: "M 456 331 L 524 331", stroke: "#94a3b8", strokeWidth: 1.5, fill: "none", markerEnd: "url(#zfk-arrow)" }),
+                  svgEl("text", { x: 490, y: 323, textAnchor: "middle", fill: "#cbd5e1", fontSize: 9 }, "PR opened"),
+
+                  // review -> awaiting_merge
+                  svgEl("path", { d: "M 706 331 L 774 331", stroke: "#34d399", strokeWidth: 1.6, fill: "none", markerEnd: "url(#zfk-arrow-emerald)" }),
+                  svgEl("text", { x: 740, y: 323, textAnchor: "middle", fill: "#6ee7b7", fontSize: 9 }, "approved"),
+
+                  // awaiting_merge -> done
+                  svgEl("path", { d: "M 950 331 L 1008 331", stroke: "#34d399", strokeWidth: 1.6, fill: "none", markerEnd: "url(#zfk-arrow-emerald)" }),
+                  svgEl("text", { x: 979, y: 323, textAnchor: "middle", fill: "#6ee7b7", fontSize: 9 }, "merged"),
+
+                  // Precommit fail loop: packaging -> building (y=282)
+                  svgEl("path", { d: "M 366 302 L 366 282 L 166 282 L 166 300", stroke: "#fbbf24", strokeWidth: 1.4, strokeDasharray: "4 3", fill: "none", markerEnd: "url(#zfk-arrow-amber)" }),
+                  pill(266, 282, 134, "precommit fail (≤3x)", "#fde68a", "#78350f"),
+
+                  // Changes requested loop: review -> building (y=390)
+                  svgEl("path", { d: "M 616 360 L 616 390 L 162 390 L 162 362", stroke: "#fbbf24", strokeWidth: 1.4, strokeDasharray: "4 3", fill: "none", markerEnd: "url(#zfk-arrow-amber)" }),
+                  pill(505, 390, 198, "changes requested ➔ building", "#fde68a", "#78350f"),
+
+                  // --- PHASE 2->3 & PHASE 3 ARROWS ---
+                  // 3x retries exhausted: packaging -> recovery (inter-phase channel y=429)
+                  svgEl("path", { d: "M 366 360 L 366 429 L 465 429 L 465 474", stroke: "#fbbf24", strokeWidth: 1.6, fill: "none", markerEnd: "url(#zfk-arrow-amber)" }),
+                  pill(465, 429, 236, "3x retries exhausted (recovery = 0)", "#fde68a", "#78350f"),
+
+                  // Recovery -> building (recover --guidance, vertical at x=112, clear of headers)
+                  svgEl("path", { d: "M 340 504 L 112 504 L 112 362", stroke: "#34d399", strokeWidth: 1.6, fill: "none", markerEnd: "url(#zfk-arrow-emerald)" }),
+                  pill(226, 504, 134, "recover --guidance", "#6ee7b7", "#065f46"),
+
+                  // Recovery -> blocked
+                  svgEl("path", { d: "M 590 504 L 774 504", stroke: "#fb7185", strokeWidth: 1.6, fill: "none", markerEnd: "url(#zfk-arrow-rose)" }),
+                  pill(682, 504, 166, "report-bug / block / 2nd", "#fda4af", "#881337"),
+
+                  // Human override: blocked -> building (bottom channel y=549, vertical at x=62)
+                  svgEl("path", { d: "M 863 532 L 863 549 L 62 549 L 62 362", stroke: "#94a3b8", strokeWidth: 1.3, strokeDasharray: "4 3", fill: "none", markerEnd: "url(#zfk-arrow)" }),
+                  pill(465, 549, 224, "human ⚡ Recover Task ➔ building", "#cbd5e1", "#334155"),
+
+                  // --- PHASE 2 NODES ---
+                  node(32, 302, 174, 58, "#064e3b", "#10b981", "building", "Todo ➔ Running", "zf-builder"),
+                  node(276, 302, 180, 58, "#0c4a6e", "#38bdf8", "packaging", "Running (awaiting_pr)", "dispatcher • 0 tokens"),
+                  node(526, 302, 180, 58, "#064e3b", "#10b981", "review", "Todo ➔ Running", "zf-reviewer (≤2 rnds)"),
+                  node(776, 302, 174, 58, "#134e4a", "#14b8a6", "awaiting_merge", "Human Column (Top)", "human • PR ready"),
+                  node(1010, 302, 118, 58, "#2e1065", "#a78bfa", "done", "Done Column", "terminal • Mem0"),
+
+                  // --- PHASE 3 NODES ---
+                  node(340, 476, 250, 56, "#78350f", "#f59e0b", "recovery", "Todo ➔ Running (Max 1x)", "zf-orchestrator"),
+                  node(776, 476, 174, 56, "#4c0519", "#f43f5e", "blocked", "Human Column", "human • escalation")
+                );
+              })()
+            )
+          ),
+
           // 2. The 7-Step End-to-End Autonomous Lifecycle
           React.createElement(
             "div",
@@ -158,7 +326,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                       React.createElement("span", { className: "text-xs font-mono px-2 py-0.5 rounded border font-bold truncate shadow-xs " + step.bcolor }, step.badge)
                     ),
                     React.createElement("div", { className: "text-xs font-bold text-white leading-tight pt-0.5" }, step.title),
-                    React.createElement("p", { className: "text-xs text-slate-200 leading-snug m-0 font-normal" }, step.desc)
+                    React.createElement("p", { className: "text-xs text-slate-200 leading-snug m-0 font-normal break-words" }, step.desc)
                   )
                 )
               )
