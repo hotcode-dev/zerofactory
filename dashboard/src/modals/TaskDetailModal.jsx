@@ -91,8 +91,8 @@ export function TaskDetailModal(props) {
       onClose: () => setSelectedTask(null),
       title: React.createElement(
         "div",
-        { className: "flex items-center gap-3 min-w-0" },
-        React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60" }, selectedTask.id),
+        { className: "flex items-center gap-2 sm:gap-3 min-w-0" },
+        React.createElement("span", { className: "font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60 shrink-0" }, selectedTask.id),
         (() => {
           const tags = Array.isArray(selectedTask.tags) ? selectedTask.tags : (typeof selectedTask.tags === "string" ? selectedTask.tags.split(",") : []);
           const cleanTags = tags.map(x => String(x).trim().toLowerCase());
@@ -126,8 +126,8 @@ export function TaskDetailModal(props) {
         })(),
         React.createElement("h2", { className: "text-base font-semibold text-white truncate m-0" }, selectedTask.title)
       ),
-      bodyClassName: "p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1",
-      footerClassName: "flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
+      bodyClassName: "p-4 sm:p-6 space-y-5 overflow-y-auto zfk-scrollbar flex-1",
+      footerClassName: "flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
       footer: React.createElement(
         React.Fragment,
         null,
@@ -135,14 +135,14 @@ export function TaskDetailModal(props) {
           "button",
           {
             type: "button",
-            className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer",
+            className: "px-3.5 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer shrink-0",
             onClick: () => handleDeleteTask(selectedTask.id)
           },
           "Delete Task"
         ),
         React.createElement(
           "div",
-          { className: "flex items-center gap-2" },
+          { className: "flex flex-wrap items-center justify-end gap-2" },
           selectedTask.status === "triage" &&
             Boolean(taskMeta && (taskMeta.awaiting_approval || taskMeta.triage_phase === "human_approval")) &&
             React.createElement(

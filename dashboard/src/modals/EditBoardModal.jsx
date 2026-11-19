@@ -100,7 +100,7 @@ export function EditBoardModal(props) {
           { className: "space-y-3" },
           React.createElement(
             "div",
-            { className: "flex items-center justify-between" },
+            { className: "flex flex-wrap items-center justify-between gap-1" },
             React.createElement(
               "label",
               { className: "block text-xs font-bold text-slate-200 tracking-wide uppercase" },
@@ -180,7 +180,7 @@ export function EditBoardModal(props) {
                   { className: "space-y-1" },
                   React.createElement(
                     "div",
-                    { className: "flex items-center justify-between" },
+                    { className: "flex flex-wrap items-center justify-between gap-1" },
                     React.createElement("label", { className: "block text-[11px] font-semibold text-slate-300" }, "Remote Git URL"),
                     React.createElement(
                       "button",
@@ -500,7 +500,7 @@ export function EditBoardModal(props) {
           { className: "pt-2 border-t border-slate-800/60 flex flex-col gap-1.5" },
           React.createElement(
             "div",
-            { className: "flex items-center justify-between" },
+            { className: "flex flex-wrap items-center justify-between gap-1" },
             React.createElement(
               "div",
               null,
@@ -525,7 +525,7 @@ export function EditBoardModal(props) {
       // Footer
       React.createElement(
         "div",
-        { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+        { className: "flex flex-wrap items-center justify-end gap-2 sm:gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
         React.createElement(
           "button",
           {

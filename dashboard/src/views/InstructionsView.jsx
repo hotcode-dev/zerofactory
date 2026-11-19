@@ -52,7 +52,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         ),
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-6 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-6 shadow-md" },
           React.createElement(
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
@@ -261,7 +261,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "End-to-End Autonomous Execution Flow"),
             React.createElement(
               "div",
-              { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-2.5 text-xs" },
+              { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs" },
               [
                 {
                   num: "1",
@@ -500,7 +500,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         { className: "space-y-6" },
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-4 shadow-md" },
           React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, "🔄 4-Column Actor-Based Kanban Workflow"),
           React.createElement(
             "div",
@@ -528,7 +528,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         ),
         React.createElement(
           "div",
-          { className: "bg-gradient-to-br from-purple-950/50 via-slate-900/80 to-slate-900/80 border border-purple-600/70 rounded-2xl p-6 space-y-3 shadow-md" },
+          { className: "bg-gradient-to-br from-purple-950/50 via-slate-900/80 to-slate-900/80 border border-purple-600/70 rounded-2xl p-4 sm:p-6 space-y-3 shadow-md" },
           React.createElement(
             "div",
             { className: "flex items-center gap-3" },
@@ -545,7 +545,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         ),
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-4 shadow-md" },
           React.createElement(
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-800" },
@@ -603,7 +603,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         { className: "space-y-6" },
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-4 shadow-md" },
           React.createElement("h3", { className: "text-sm font-bold text-white m-0 tracking-wide" }, "🌳 The Git Worktree Isolation Model"),
           React.createElement(
             "p",
@@ -651,7 +651,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         // 1. Precommit Pipeline Card
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-5 shadow-md" },
           React.createElement(
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
@@ -732,7 +732,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         // 2. OpenWiki Context Optimization Card
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-5 shadow-md" },
           React.createElement(
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
@@ -823,7 +823,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         // 1. Architecture Hero Card
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-5 shadow-md" },
           React.createElement(
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
@@ -897,7 +897,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         // 2. Automated Background Recording Card
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-4 shadow-md" },
           React.createElement(
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
@@ -955,7 +955,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         // 3. Structured Taxonomy & Injection Card
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-4 shadow-md" },
           React.createElement("h3", { className: "text-base font-bold text-white m-0 flex items-center gap-2 tracking-wide" },
             React.createElement("span", null, "🏷️"),
             "Structured Taxonomy & Prompt Pre-Digestion"
@@ -999,7 +999,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         // 4. Configuration & Controls Card
         React.createElement(
           "div",
-          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
+          { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-4 sm:p-6 space-y-4 shadow-md" },
           React.createElement("h3", { className: "text-base font-bold text-white m-0 flex items-center gap-2 tracking-wide" },
             React.createElement("span", null, "⚙️"),
             "Configuration & Settings"
@@ -1119,7 +1119,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                   "div",
                   { key: cIdx, className: "flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-slate-950 border border-slate-800 rounded-xl hover:border-slate-700 transition-colors shadow-xs" },
                   React.createElement("span", { className: "text-xs font-mono text-emerald-300 font-bold bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 break-all select-all shadow-xs" }, item.cmd),
-                  React.createElement("span", { className: "text-xs text-slate-200 font-medium shrink-0" }, item.desc)
+                  React.createElement("span", { className: "text-xs text-slate-200 font-medium md:text-right" }, item.desc)
                 )
               )
             )
@@ -1170,7 +1170,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                 "div",
                 { className: "space-y-1.5" },
                 React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, job.title),
-                React.createElement("span", { className: "text-xs font-mono text-indigo-200 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-700 font-bold select-all inline-block" }, job.id)
+                React.createElement("span", { className: "text-xs font-mono text-indigo-200 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-700 font-bold select-all inline-block break-all" }, job.id)
               ),
               React.createElement(
                 "div",
@@ -1203,7 +1203,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         // Instruction Hero Banner
         React.createElement(
           "div",
-          { className: "relative overflow-hidden bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-purple-950/60 border border-slate-700/90 rounded-2xl p-6 md:p-8 shadow-2xl" },
+          { className: "relative overflow-hidden bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-purple-950/60 border border-slate-700/90 rounded-2xl p-4 sm:p-6 md:p-8 shadow-2xl" },
           React.createElement(
             "div",
             { className: "flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10" },
@@ -1247,7 +1247,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
               {
                 key: tab.id,
                 type: "button",
-                className: "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-150 cursor-pointer " +
+                className: "flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 transition-all duration-150 cursor-pointer " +
                   (instructionTab === tab.id
                     ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400"
                     : "bg-slate-900/80 text-slate-200 hover:text-white hover:bg-slate-800 border border-slate-700/80 font-medium"),

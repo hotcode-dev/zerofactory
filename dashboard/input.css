@@ -21,6 +21,11 @@
   --font-sans: var(--theme-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
 }
 
+/* Scoped border-box reset (Preflight is omitted to avoid leaking into host UI) */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 /* Custom Zero Factory keyframes and animations */
 @keyframes zfk-pulse {
   0%, 100% {

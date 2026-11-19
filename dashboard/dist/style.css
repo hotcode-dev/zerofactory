@@ -432,6 +432,9 @@
 .max-h-56 {
   max-height: calc(var(--spacing) * 56);
 }
+.max-h-\[92dvh\] {
+  max-height: 92dvh;
+}
 .max-h-\[92vh\] {
   max-height: 92vh;
 }
@@ -644,6 +647,9 @@
 }
 .items-start {
   align-items: flex-start;
+}
+.items-stretch {
+  align-items: stretch;
 }
 .justify-between {
   justify-content: space-between;
@@ -3301,17 +3307,35 @@
   .sm\:items-center {
     align-items: center;
   }
+  .sm\:gap-2\.5 {
+    gap: calc(var(--spacing) * 2.5);
+  }
+  .sm\:gap-3 {
+    gap: calc(var(--spacing) * 3);
+  }
   .sm\:p-4 {
     padding: calc(var(--spacing) * 4);
   }
   .sm\:p-6 {
     padding: calc(var(--spacing) * 6);
   }
+  .sm\:px-3 {
+    padding-inline: calc(var(--spacing) * 3);
+  }
+  .sm\:px-4 {
+    padding-inline: calc(var(--spacing) * 4);
+  }
   .sm\:px-6 {
     padding-inline: calc(var(--spacing) * 6);
   }
+  .sm\:py-2\.5 {
+    padding-block: calc(var(--spacing) * 2.5);
+  }
   .sm\:py-3\.5 {
     padding-block: calc(var(--spacing) * 3.5);
+  }
+  .sm\:py-4 {
+    padding-block: calc(var(--spacing) * 4);
   }
   .sm\:pl-8 {
     padding-left: calc(var(--spacing) * 8);
@@ -3345,6 +3369,9 @@
   .md\:pb-0 {
     padding-bottom: 0px;
   }
+  .md\:text-right {
+    text-align: right;
+  }
   .md\:text-3xl {
     font-size: var(--text-3xl);
     line-height: var(--tw-leading, var(--text-3xl--line-height));
@@ -3370,9 +3397,6 @@
   .lg\:grid-cols-5 {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
-  .lg\:grid-cols-7 {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-  }
   .lg\:flex-row {
     flex-direction: row;
   }
@@ -3390,6 +3414,9 @@
 }
 :scope, .zerofactory-root {
   --font-sans: var(--theme-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
 .zfk-pulse-active {

@@ -24,7 +24,7 @@ export function AddMemoryModal(props) {
       title: "Record Repository Memory",
       subtitle: "Persist decisions, conventions, and gotchas for " + (selectedBoard === "all" ? "all boards" : (selectedBoard || "board")),
       icon: "🧠",
-      footerClassName: "px-6 py-3.5 bg-slate-900/50 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0",
+      maxWidth: "max-w-xl",
       footer: React.createElement(
         React.Fragment,
         null,
@@ -113,7 +113,7 @@ export function AddMemoryModal(props) {
           // Author & Task ID
           React.createElement(
             "div",
-            { className: "grid grid-cols-2 gap-3" },
+            { className: "grid grid-cols-1 sm:grid-cols-2 gap-3" },
             React.createElement(
               "div",
               { className: "space-y-1.5" },

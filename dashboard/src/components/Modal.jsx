@@ -19,8 +19,8 @@ export function Modal(props) {
     maxWidth = "max-w-4xl",
     children,
     className = "",
-    bodyClassName = "p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1",
-    footerClassName = "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
+    bodyClassName = "p-4 sm:p-6 space-y-4 overflow-y-auto zfk-scrollbar flex-1",
+    footerClassName = "flex flex-wrap items-center justify-end gap-2 sm:gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
     onSubmit
   } = props;
 
@@ -45,7 +45,7 @@ export function Modal(props) {
   return React.createElement(
     "div",
     {
-      className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto",
+      className: "fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-2.5 sm:p-4 overflow-y-auto",
       onClick: () => onClose && onClose()
     },
     React.createElement(
@@ -55,7 +55,7 @@ export function Modal(props) {
         "aria-modal": "true",
         "aria-label": typeof title === "string" ? title : "Dialog",
         onSubmit: onSubmit,
-        className: `bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[92vh] flex flex-col overflow-hidden text-slate-100 ${className}`,
+        className: `bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl w-full ${maxWidth} max-h-[92vh] max-h-[92dvh] flex flex-col overflow-hidden text-slate-100 ${className}`,
         onClick: (e) => e.stopPropagation()
       },
       header !== undefined
@@ -63,7 +63,7 @@ export function Modal(props) {
         : (title || onClose
             ? React.createElement(
                 "div",
-                { className: "flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0 bg-slate-900/60" },
+                { className: "flex items-center justify-between gap-2 px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 shrink-0 bg-slate-900/60" },
                 React.createElement(
                   "div",
                   { className: "flex items-center gap-3 min-w-0 pr-2" },

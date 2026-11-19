@@ -32,8 +32,7 @@ export function SettingsModal(props) {
       title: "Zero Factory Global Settings",
       subtitle: "System-wide orchestration limits and defaults",
       icon: "⚙️",
-      bodyClassName: "p-6 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1",
-      footerClassName: "flex items-center justify-end gap-2.5 px-6 py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0",
+      bodyClassName: "p-4 sm:p-6 space-y-4 text-xs overflow-y-auto zfk-scrollbar flex-1",
       footer: React.createElement(
         React.Fragment,
         null,
@@ -271,7 +270,7 @@ export function SettingsModal(props) {
                         ),
                         React.createElement(
                           "div",
-                          { className: "grid grid-cols-2 gap-3" },
+                          { className: "grid grid-cols-1 sm:grid-cols-2 gap-3" },
                           React.createElement(
                             "div",
                             { className: "space-y-1" },

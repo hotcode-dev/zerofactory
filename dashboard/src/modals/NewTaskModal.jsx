@@ -307,7 +307,7 @@ export function NewTaskModal(props) {
         ),
         React.createElement(
           "div",
-          { className: "flex items-center justify-end gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
+          { className: "flex flex-wrap items-center justify-end gap-2 sm:gap-2.5 px-4 sm:px-6 py-3 sm:py-3.5 border-t border-slate-800 bg-slate-900/50 shrink-0" },
           React.createElement(
             "button",
             {
