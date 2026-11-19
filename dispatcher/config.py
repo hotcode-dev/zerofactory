@@ -239,12 +239,9 @@ def get_inactivity_timeout_seconds(conn_or_cursor: Any = None) -> int:
 
 def get_db_path() -> Path:
     """Return path to the Zero Factory SQLite database."""
-    env_path = os.environ.get("ZEROFACTORY_DB")
-    if env_path:
-        return Path(env_path)
-    from paths import get_hermes_home
+    from paths import get_zerofactory_db_path
 
-    return get_hermes_home() / "zerofactory.db"
+    return get_zerofactory_db_path()
 
 
 # --- Step logging: grep-able start/end markers for every pipeline step -------

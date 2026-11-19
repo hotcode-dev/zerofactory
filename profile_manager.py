@@ -509,12 +509,11 @@ def sync_langfuse_profiles(settings: dict[str, Any] | None = None) -> dict[str, 
 
             from settings import load_settings
 
-            db_override = os.environ.get("ZEROFACTORY_DB")
-            db_p = (
-                Path(db_override)
-                if db_override
-                else (get_hermes_home() / "zerofactory.db")
-            )
+            try:
+                from .paths import get_zerofactory_db_path
+            except (ImportError, ValueError):
+                from paths import get_zerofactory_db_path  # type: ignore
+            db_p = get_zerofactory_db_path()
             if db_p.exists():
                 with sqlite3.connect(str(db_p), timeout=2.0) as conn:
                     conn.row_factory = sqlite3.Row

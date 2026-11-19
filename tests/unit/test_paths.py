@@ -373,6 +373,50 @@ class TestPathsResolution(unittest.TestCase):
                     ),
                 )
 
+    def test_get_zerofactory_db_path_strips_only_zf_profiles(self):
+        import os
+        import dashboard.db as dash_db
+        import dispatcher.config as disp_cfg
+
+        with tempfile.TemporaryDirectory() as td:
+            hermes_root = Path(td) / "hermes"
+            zf_reviewer_home = hermes_root / "profiles" / "zf-reviewer"
+            work_profile_home = hermes_root / "profiles" / "work"
+            zf_reviewer_home.mkdir(parents=True)
+            work_profile_home.mkdir(parents=True)
+
+            # Specialist profile: resolves to shared root zerofactory.db
+            with mock.patch.dict(
+                os.environ, {"HERMES_HOME": str(zf_reviewer_home)}, clear=False
+            ):
+                os.environ.pop("ZEROFACTORY_DB", None)
+                expected = hermes_root.resolve() / "zerofactory.db"
+                self.assertEqual(P.get_zerofactory_db_path(), expected)
+                self.assertEqual(dash_db.get_db_path(), expected)
+                self.assertEqual(disp_cfg.get_db_path(), expected)
+
+            # Non-zf user profile: preserves HERMES_HOME verbatim
+            with mock.patch.dict(
+                os.environ, {"HERMES_HOME": str(work_profile_home)}, clear=False
+            ):
+                os.environ.pop("ZEROFACTORY_DB", None)
+                self.assertEqual(
+                    P.get_zerofactory_db_path(),
+                    work_profile_home.resolve() / "zerofactory.db",
+                )
+
+            # Explicit ZEROFACTORY_DB override always wins
+            override = Path(td) / "override.db"
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "HERMES_HOME": str(zf_reviewer_home),
+                    "ZEROFACTORY_DB": str(override),
+                },
+                clear=False,
+            ):
+                self.assertEqual(P.get_zerofactory_db_path(), override)
+
 
 if __name__ == "__main__":
     unittest.main()

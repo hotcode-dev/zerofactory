@@ -76,9 +76,9 @@ def _resolve_default_db_path() -> Path:
         return get_db_path()
     except Exception:
         try:
-            from paths import get_hermes_home
+            from paths import get_zerofactory_db_path
 
-            return get_hermes_home() / "zerofactory.db"
+            return get_zerofactory_db_path()
         except Exception:
             return Path.home() / ".hermes" / "zerofactory.db"
 

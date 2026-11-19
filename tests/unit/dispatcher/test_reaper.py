@@ -858,3 +858,92 @@ def test_reap_stuck_tasks_persistently_locked_db_fails_clean(
     assert res.get("reaped_count") == 0
     assert res.get("reaped_tasks") == []
     assert res.get("reaped") == []
+
+
+def test_reap_active_workers_reviewer_exit0_without_verdict_parks_blocked():
+    """If zf-reviewer exits 0 while the task is still 'running' (e.g. its
+    `block --reason ...` call failed), the reaper must park the task in
+    blocked (human-gate) instead of stamping awaiting_pr=True in running."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        """
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            status TEXT,
+            assignee TEXT,
+            metadata TEXT,
+            updated_at INTEGER,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            actor TEXT,
+            action TEXT,
+            details TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE task_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            author TEXT,
+            body TEXT,
+            created_at INTEGER
+        )
+        """
+    )
+
+    now = 6000
+    meta = json.dumps(
+        {
+            "worker_pid": 5151,
+            "session_id": "sess-rev",
+            "started_at": now - 100,
+            "sessions": [
+                {
+                    "session_id": "sess-rev",
+                    "agent": "zf-reviewer",
+                    "status": "ongoing",
+                    "started_at": now - 100,
+                }
+            ],
+        }
+    )
+    conn.execute(
+        "INSERT INTO tasks VALUES ('t-rev-exit0', 'Reviewed Task', 'running', 'zf-reviewer', ?, ?, ?)",
+        (meta, now - 100, now - 100),
+    )
+    conn.commit()
+
+    from dispatcher.config import _active_workers
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 5151
+    mock_proc.poll.return_value = 0
+    _active_workers["t-rev-exit0"] = mock_proc
+    try:
+        reaped = reap_active_workers(conn.cursor(), now=now)
+        conn.commit()
+    finally:
+        _active_workers.pop("t-rev-exit0", None)
+
+    assert reaped == 1
+    row = conn.execute(
+        "SELECT status, assignee, metadata FROM tasks WHERE id = 't-rev-exit0'"
+    ).fetchone()
+    assert row["status"] == "blocked"
+    assert row["assignee"] == "human"
+    saved_meta = json.loads(row["metadata"])
+    assert not saved_meta.get("awaiting_pr")
+    assert saved_meta.get("blocked_reason_type") == "human-gate"
+    assert "worker_pid" not in saved_meta

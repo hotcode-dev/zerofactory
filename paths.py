@@ -301,6 +301,26 @@ def get_hermes_home() -> Path:
     return (Path.home() / ".hermes").resolve()
 
 
+def get_zerofactory_db_path() -> Path:
+    """Return the canonical Zero Factory SQLite DB path.
+
+    Precedence:
+    1. ``ZEROFACTORY_DB`` environment override when set.
+    2. When ``HERMES_HOME`` points to a Zero Factory specialist profile
+       (``<base>/profiles/<zf-*>``), resolve to ``<base>/zerofactory.db`` so
+       worker CLIs share the dispatcher's database even if the terminal sandbox
+       strips ``ZEROFACTORY_DB``.
+    3. Otherwise ``get_hermes_home() / "zerofactory.db"``.
+    """
+    override = os.environ.get("ZEROFACTORY_DB")
+    if override:
+        return Path(override)
+    hermes_home = get_hermes_home()
+    if hermes_home.parent.name == "profiles" and hermes_home.name in PROFILE_MAP:
+        return hermes_home.parent.parent / "zerofactory.db"
+    return hermes_home / "zerofactory.db"
+
+
 def get_active_profile() -> str | None:
     """Return the active Hermes profile name from HERMES_PROFILE or HERMES_HOME.
 

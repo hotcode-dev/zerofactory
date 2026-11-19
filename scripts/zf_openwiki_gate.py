@@ -52,7 +52,7 @@ for candidate in candidate_roots:
     except Exception:
         pass
 
-from paths import get_hermes_home  # noqa: E402
+from paths import get_hermes_home, get_zerofactory_db_path  # noqa: E402
 
 
 def _get_state_file() -> Path:
@@ -60,10 +60,7 @@ def _get_state_file() -> Path:
 
 
 def _get_db_path() -> Path:
-    env_path = os.environ.get("ZEROFACTORY_DB")
-    if env_path:
-        return Path(env_path)
-    return get_hermes_home() / "zerofactory.db"
+    return get_zerofactory_db_path()
 
 
 def create_openwiki_task(

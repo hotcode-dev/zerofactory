@@ -278,6 +278,19 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                     target_status = curr_stat
                 elif is_triage_task:
                     target_status = "triage"
+                elif curr_asgn == "zf-reviewer":
+                    # Reviewer exited cleanly without recording a verdict via
+                    # `block --reason approved|changes-requested|human-gate`.
+                    # Never stamp awaiting_pr (builder-only packaging state);
+                    # park in blocked (human-gate) so pr_poll can still act on
+                    # GitHub review decisions/comments or a human can resolve it.
+                    target_status = "blocked"
+                    target_asgn = "human"
+                    meta.pop("awaiting_pr", None)
+                    meta["blocked_reason"] = (
+                        "Reviewer exited without recording a verdict; awaiting human review"
+                    )
+                    meta["blocked_reason_type"] = "human-gate"
                 else:
                     target_status = "running"
                     meta["awaiting_pr"] = True

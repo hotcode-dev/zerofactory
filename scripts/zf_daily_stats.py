@@ -11,7 +11,6 @@ Pre-computes ZeroFactory analytics and Kanban metrics deterministically:
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import sys
 import time
@@ -22,14 +21,11 @@ _PLUGIN_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PLUGIN_ROOT not in sys.path:
     sys.path.insert(0, _PLUGIN_ROOT)
 
-from paths import get_hermes_home  # noqa: E402
+from paths import get_zerofactory_db_path  # noqa: E402
 
 
 def _get_db_path() -> Path:
-    env_path = os.environ.get("ZEROFACTORY_DB")
-    if env_path:
-        return Path(env_path)
-    return get_hermes_home() / "zerofactory.db"
+    return get_zerofactory_db_path()
 
 
 def _resolve_running_since(rt: dict[str, Any], now: int) -> int:

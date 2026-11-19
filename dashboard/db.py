@@ -108,14 +108,11 @@ def _mark_scanner_task_created(board_slug: str, repo_alias: str | None = None) -
 
 
 def get_db_path() -> Path:
-    override = os.environ.get("ZEROFACTORY_DB")
-    if override:
-        return Path(override)
     try:
-        from ..paths import get_hermes_home
+        from ..paths import get_zerofactory_db_path
     except (ImportError, ValueError):
-        from paths import get_hermes_home  # type: ignore
-    return get_hermes_home() / "zerofactory.db"
+        from paths import get_zerofactory_db_path  # type: ignore
+    return get_zerofactory_db_path()
 
 
 @contextmanager
