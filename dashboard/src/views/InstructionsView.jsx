@@ -57,23 +57,22 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             "div",
             { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" },
             React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0 flex items-center gap-2" }, "🏗️ High-Level Architecture & Workflow"),
-            React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "5 Kanban States • 4 Specialist Agents • HITL Merge Gate")
+            React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "4 Actor Columns • 13 Stages • 4 Specialist Agents • HITL Gates")
           ),
 
-          // 1. The 5 Kanban Status Columns
+          // 1. The 4 Actor-Based Kanban Columns
           React.createElement(
             "div",
             { className: "space-y-3" },
-            React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "Kanban Column States & Roles"),
+            React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "4 Actor-Based Kanban Columns & 13 Stages"),
             React.createElement(
               "div",
-              { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs" },
+              { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs" },
               [
-                { step: "1. Triage", color: "bg-indigo-950/90 border-indigo-500/70 text-indigo-100", role: "Intake & Epics", actor: "Orchestrator / Goldfish", desc: "Raw user goals or epics. Drafted by zf-orchestrator, audited by zf-goldfish, and promoted to Todo on human approval." },
-                { step: "2. Todo", color: "bg-sky-950/90 border-sky-500/70 text-sky-100", role: "Actionable Queue", actor: "Queue", desc: "Prioritized, approved tasks ready for autonomous execution. Isolated Git worktree provisioned on pickup." },
-                { step: "3. Running", color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100", role: "Autonomous AI", actor: "zf-builder / zf-reviewer", desc: "Subprocess actively executing. zf-builder coding & testing, or zf-reviewer evaluating PR across continuous review rounds." },
-                { step: "4. Blocked", color: "bg-purple-950/90 border-purple-500/70 text-purple-100", role: "Human Action (HITL)", actor: "Human Operator", desc: "Action required: PR approved waiting for human merge, crashed worker retry, or merge conflict resolution." },
-                { step: "5. Done", color: "bg-slate-900 border-emerald-500/70 text-emerald-200", role: "PR Merged & Pruned", actor: "System (Closed)", desc: "PR merged on GitHub. Worktree pruned and metrics recorded." }
+                { step: "1. Human", color: "bg-rose-950/80 border-rose-500/70 text-rose-100", role: "All Human Gates (0 Tokens)", actor: "human", desc: "Sorted by urgency: awaiting_merge (PR ready), spec_approval, interview, blocked, and triage. Consumes zero LLM tokens until activated or merged." },
+                { step: "2. Todo", color: "bg-sky-950/90 border-sky-500/70 text-sky-100", role: "AI Execution Queue", actor: "zf-* (Queued)", desc: "Tasks waiting for concurrency slots across 6 AI stages: grill, spec_draft, spec_audit, building, review, and recovery." },
+                { step: "3. Running", color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100", role: "Active AI & Packaging", actor: "zf-* / dispatcher", desc: "Active worker subprocesses inside isolated Git worktrees (grill, spec_draft, spec_audit, building, review, recovery) plus deterministic packaging (precommit & PR)." },
+                { step: "4. Done", color: "bg-slate-900 border-violet-500/70 text-violet-200", role: "Terminal Completed", actor: "System (Closed)", desc: "PR merged on GitHub or task closed terminally. Worktree pruned and background Mem0 repository memory extracted." }
               ].map((col, idx) =>
                 React.createElement(
                   "div",
@@ -99,51 +98,51 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                 {
                   num: "1",
                   title: "Goal Ingestion",
-                  badge: "Triage",
+                  badge: "Human: triage",
                   bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
-                  desc: "User submits high-level goals, epics, or synced GitHub issues via CLI or UI (parked under human assignee with 0 GPU tokens until activated)."
+                  desc: "Submit goals, epics, or synced GitHub issues via CLI or UI. Parked in Human (triage) with 0 tokens until you click Grill Me or Run EGM Spec."
                 },
                 {
                   num: "2",
-                  title: "Sequential Triage",
-                  badge: "Triage",
-                  bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
-                  desc: "zf-orchestrator drafts technical spec and system contracts, then zf-goldfish performs zero-context adversarial audit enforcing the Ponytail ladder."
+                  title: "Sequential EGM",
+                  badge: "Todo ➔ Running",
+                  bcolor: "text-purple-100 bg-purple-900/90 border-purple-500/70",
+                  desc: "zf-orchestrator drafts the technical spec (spec_draft, pausing in Human: interview if needed), then zf-goldfish runs a zero-context audit (spec_audit)."
                 },
                 {
                   num: "3",
                   title: "Human Release Gate",
-                  badge: "Triage ➔ Todo",
+                  badge: "Human ➔ Todo",
                   bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
-                  desc: "Operator approves via UI or CLI (approve [--split]), promoting single-repo tasks to Todo or atomically decomposing multi-repo epics."
+                  desc: "Operator approves in Human (spec_approval) via UI or CLI (approve [--split]), promoting single-repo tasks to Todo (building) or splitting multi-repo epics."
                 },
                 {
                   num: "4",
-                  title: "Worktree & Launch",
-                  badge: "Running",
+                  title: "Worktree & Build",
+                  badge: "Running: building",
                   bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/.zerofactory/workspaces/<board>/worktrees/<task_id>), and spawns zf-builder."
+                  desc: "Dispatcher enforces capacity & (status, assignee) invariants, provisions ~/.zerofactory/workspaces/<board>/worktrees/<task_id>, and launches zf-builder."
                 },
                 {
                   num: "5",
-                  title: "Code & Tests",
-                  badge: "Running",
-                  bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "zf-builder inspects OpenWiki/AGENTS.md, writes surgical code & tests applying the Ponytail Ladder of Laziness, and executes .zerofactory/precommit.sh."
+                  title: "Precommit & PR",
+                  badge: "Running: packaging",
+                  bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
+                  desc: "Dispatcher runs .zerofactory/precommit.sh (format ➔ build ➔ tests, up to 3 retries), merges latest main, pushes, and opens a GitHub PR (0 LLM tokens)."
                 },
                 {
                   num: "6",
-                  title: "Precommit & Review",
-                  badge: "Running",
-                  bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-                  desc: "Dispatcher runs precommit (format ➔ build ➔ tests, up to 3 retries), opens GitHub PR, and routes to zf-reviewer for thematic review (up to 2 rounds)."
+                  title: "Thematic Review",
+                  badge: "Running: review",
+                  bcolor: "text-cyan-100 bg-cyan-900/90 border-cyan-500/70",
+                  desc: "zf-reviewer conducts up to 2 thematic rounds (Correctness & Tests ➔ Verification & Polish). Rework loops back to Todo (building); approval moves to Human."
                 },
                 {
                   num: "7",
                   title: "Human Merge",
-                  badge: "Blocked ➔ Done",
-                  bcolor: "text-rose-100 bg-rose-900/90 border-rose-500/70",
-                  desc: "Approved PR waits in Blocked. Once human merges on GitHub, dispatcher marks task Done, prunes worktree, and triggers automated background Mem0 memory extraction."
+                  badge: "Human ➔ Done",
+                  bcolor: "text-teal-100 bg-teal-900/90 border-teal-500/70",
+                  desc: "Approved PRs surface at the top of Human (awaiting_merge). Once merged on GitHub, dispatcher marks Done, prunes the worktree, and extracts Mem0 memory."
                 }
               ].map((step, idx) =>
                 React.createElement(
@@ -198,13 +197,17 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
                 "p",
                 { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" },
                 React.createElement("strong", { className: "text-amber-200 font-bold" }, "PR Merge Gate: "),
-                "Agents NEVER auto-merge to main. Every task produces an isolated PR; approved tasks pause in ",
-                React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"),
+                "Agents NEVER auto-merge to main. Every task produces an isolated PR; approved tasks surface at the top of ",
+                React.createElement("span", { className: "font-mono text-teal-200 bg-slate-900 px-1.5 py-0.5 rounded border border-teal-500/60 font-bold" }, "Human (awaiting_merge)"),
                 " until a human reviews and merges on GitHub. ",
-                React.createElement("strong", { className: "text-amber-200 font-bold" }, "Escalation Gate: "),
-                "Crashed workers, timeouts, or unresolvable merge conflicts route directly to ",
-                React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"),
-                " for operator resolution."
+                React.createElement("strong", { className: "text-amber-200 font-bold" }, "Autonomous Recovery & Escalation: "),
+                "3× failure-exhausted tasks route once to ",
+                React.createElement("span", { className: "font-mono text-amber-200 bg-slate-900 px-1.5 py-0.5 rounded border border-amber-500/60 font-bold" }, "Todo (recovery)"),
+                " for ",
+                React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-orchestrator"),
+                " diagnosis before escalating to ",
+                React.createElement("span", { className: "font-mono text-rose-200 bg-slate-900 px-1.5 py-0.5 rounded border border-rose-500/60 font-bold" }, "Human (blocked)"),
+                "."
               )
             )
           )
@@ -228,7 +231,7 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             "Diagnoses failure logs and executes autonomous self-recovery for stuck tasks (strictly capped at 1 attempt)",
             "Manages ticket handoffs between zf-builder and zf-reviewer",
             "Escalates unresolvable blockers and human reviews",
-            "Monitors queue health via zero-factory-task-queue-check"
+            "Monitors queue health & executes 1-shot autonomous recovery (recovery stage) on 3x failure-exhausted tasks"
           ],
           dir: "~/.hermes/profiles/zf-orchestrator/"
         },
@@ -318,11 +321,10 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
 
     const renderLifecycleSection = () => {
       const columns = [
-        { id: "triage", title: "Triage", desc: "Incoming raw user goals, feature requests, or epics. zf-orchestrator drafts specs, audited by zf-goldfish before human release gate.", trigger: "Submitted via CLI or Board UI" },
-        { id: "todo", title: "Todo", desc: "Actionable backlog: Approved tickets from Triage, improvement tasks filed by scanner, or reviewer rework.", trigger: "Approved by human or scanner files" },
-        { id: "running", title: "Running", desc: "Dedicated worker executing inside isolated Git worktree. zf-builder coding & testing, or zf-reviewer reviewing PR diff.", trigger: "Autonomous pickup by dispatcher" },
-        { id: "blocked", title: "Blocked", desc: "Human action required: PR approved waiting for human merge, worker crash retry, or merge conflict resolution.", trigger: "Awaiting Human Merge, Crash, or Conflict" },
-        { id: "done", title: "Done", desc: "Completed and merged tickets. Worktrees pruned and metrics updated.", trigger: "PR merged on GitHub" }
+        { id: "human", title: "Human", desc: "All human decision gates & escalations (0 LLM tokens), sorted by urgency: awaiting_merge, spec_approval, interview, blocked, triage.", trigger: "Goal created, PR approved, or escalation" },
+        { id: "todo", title: "Todo", desc: "AI execution queue waiting for concurrency slots across 6 stages: grill, spec_draft, spec_audit, building, review, and recovery.", trigger: "Activated by human, approved, scanner, or rework" },
+        { id: "running", title: "Running", desc: "Active AI worker sessions inside isolated Git worktrees plus deterministic packaging (precommit & PR, 0 LLM tokens).", trigger: "Autonomous pickup by dispatcher" },
+        { id: "done", title: "Done", desc: "Terminal completed & merged tickets. Worktrees pruned and background Mem0 repository memory extracted.", trigger: "PR merged on GitHub or closed" }
       ];
 
       return React.createElement(
@@ -331,10 +333,10 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
         React.createElement(
           "div",
           { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" },
-          React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, "🔄 Kanban Column Workflow"),
+          React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, "🔄 4-Column Actor-Based Kanban Workflow"),
           React.createElement(
             "div",
-            { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1" },
+            { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1" },
             columns.map((c) =>
               React.createElement(
                 "div",
@@ -393,21 +395,21 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
             [
               {
                 title: "1. Deterministic Reaper (0 Tokens)",
-                badge: "Python Watchdog",
+                badge: "Dispatcher Reaper",
                 badgeColor: "bg-emerald-950 border-emerald-500/70 text-emerald-200",
-                desc: "The background watchdog (scripts/zf_queue_watchdog.py) audits active processes without invoking LLMs. If a worker terminates abruptly or has no registered session, the orphaned claim is safely reaped and restored back to Todo (worker_recovered)."
+                desc: "The built-in dispatcher reaper (dispatcher/reaper.py) audits active processes every 30s without invoking LLMs. Dead or orphaned sessions are reaped and restored to Todo (worker_recovered), and invalid (status, assignee) pairs are auto-repaired."
               },
               {
-                title: "2. Autonomous Diagnosis (Max 1)",
+                title: "2. Autonomous Recovery Stage (Max 1)",
                 badge: "zf-orchestrator",
                 badgeColor: "bg-indigo-950 border-indigo-500/70 text-indigo-200",
-                desc: "Tasks stuck in failure exhaustion awaken zf-orchestrator with pre-digested failure logs, git diffs, and precommit error tails. For code or test defects, the orchestrator invokes recovery with tailored guidance for zf-builder (strictly capped at 1 autonomous try)."
+                desc: "When a task exhausts 3 retries (worker crash/timeout, precommit, or merge conflict) and orchestrator_recovery_count < 1, it routes to Todo (recovery). zf-orchestrator inspects failure logs and runs recover --guidance, report-bug, or block."
               },
               {
                 title: "3. Operator Rescue & HITL Gate",
-                badge: "Human Gate",
+                badge: "Human Column",
                 badgeColor: "bg-purple-950 border-purple-500/70 text-purple-200",
-                desc: "Repeated failures or unrecoverable environmental issues escalate directly to Blocked. Operators can inspect diagnostics and click '⚡ Recover Task' in the Task Detail modal or run the CLI with custom instructions to reset and re-dispatch."
+                desc: "Post-recovery failures or external blockers escalate to Human (blocked). Operators can inspect diagnostics and click '⚡ Recover Task' in the Task Detail modal or run hermes zerofactory recover <task_id> [--guidance] to re-dispatch."
               }
             ].map((tier, idx) =>
               React.createElement(
@@ -961,12 +963,12 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
     const renderCronsSection = () => {
       const crons = [
         {
-          id: "zero-factory-task-queue-check",
-          title: "Queue Health & Worker Watchdog",
-          interval: "Every 120 minutes",
-          tokens: "0 Tokens (No-Agent Mode)",
-          desc: "Runs purely in Python using Hermes No-Agent Mode via scripts/zf_queue_watchdog.py (0 LLM tokens). Audits running tasks, reaps hung worker subprocesses, recovers orphaned running tasks to Todo, and automatically triggers run_dispatch_cycle(). Eligible failure-exhausted tasks wake zf-orchestrator to diagnose failure logs and execute 1-shot autonomous recovery.",
-          badge: "No-Agent Mode"
+          id: "dispatcher-loop (built-in)",
+          title: "Dispatcher Loop, Process Reaper & Recovery Router",
+          interval: "Every 30 seconds",
+          tokens: "0 Tokens when Idle",
+          desc: "Runs purely in Python inside the dispatcher thread (0 LLM tokens). Audits running tasks, reaps crashed/timed-out subprocesses, recovers orphaned tasks, repairs invalid (status, assignee) pairs, and routes 3× failure-exhausted tasks into the recovery stage (zf-orchestrator, capped at 1 autonomous attempt).",
+          badge: "Deterministic Engine"
         },
         {
           id: "zero-factory-improvement-scanner-{slug}",
@@ -975,6 +977,14 @@ export function InstructionsView({ instructionTab, setInstructionTab, setActiveV
           tokens: "0 Tokens when Busy / Cooldown",
           desc: "Executed autonomously by zf-orchestrator inside the codebase workdir with wake-gate change detection (scripts/zf_scanner_gate.py) and independent sessions (continuity: false). When the pipeline is busy (running >= 2 or todo >= 2) or during the 15-minute cooldown, it emits {'wakeAgent': false} (0 tokens). When the board is idle, it wakes zf-orchestrator to audit the codebase for tech debt, refactoring, or missing tests, creating at most 1 actionable TODO task on the board assigned to zf-builder.",
           badge: "Wake-Gate • zf-orchestrator"
+        },
+        {
+          id: "zero-factory-openwiki-update-{slug}",
+          title: "OpenWiki Drift Detector & Refresh Gate",
+          interval: "Daily",
+          tokens: "0 Tokens (No-Agent Mode)",
+          desc: "Runs via scripts/zf_openwiki_gate.py. Synchronizes ~/.openwiki/wiki-workspaces.json across all sibling repositories on a board and checks commit drift against openwiki/ docs. When non-doc code changes accumulate, files a deterministic Todo refresh task for zf-builder.",
+          badge: "No-Agent Mode"
         }
       ];
 

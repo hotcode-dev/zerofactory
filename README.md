@@ -35,6 +35,13 @@ graph TD
 
 > 📘 **Deep-dive reference**: every flow and its exact logic — deterministic engine and agentic workers — is documented step-by-step with Mermaid diagrams in [`docs/FLOWS.md`](docs/FLOWS.md).
 > 🛠 **When something breaks**: follow the incident playbook in [`docs/DEBUGGING.md`](docs/DEBUGGING.md) — SQLite decision-trail queries, symptom-to-layer routing, and environment gotchas.
+>
+> [!IMPORTANT]
+> **Documentation Sync Rule (for Agents & Contributors)**
+> Whenever you change architecture, task lifecycle/states, CLI commands, API behavior, or UI workflows, you **must** update all three documentation surfaces in the same change:
+> 1. **`docs/`** (e.g., [`docs/FLOWS.md`](docs/FLOWS.md), [`docs/DEBUGGING.md`](docs/DEBUGGING.md), and relevant design docs)
+> 2. **`README.md`** (symlinked as `AGENTS.md`)
+> 3. **Dashboard Instruction Pages** ([`dashboard/src/views/InstructionsView.jsx`](dashboard/src/views/InstructionsView.jsx)) — and rebuild the bundle with `npm run build` (`dashboard/dist/index.js`, `dashboard/dist/style.css`).
 
 ---
 

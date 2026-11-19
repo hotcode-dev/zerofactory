@@ -343,7 +343,7 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/Header.jsx
 	function Header(props) {
-		const { activeView, setActiveView, hasActiveAgents, sessionsList = [], agentsList = [], loadSessions, loadAgents, loadMemories, boards = [], selectedBoard, setSelectedBoard, handleOpenEditBoard, handleOpenEditBoardModal, handleOpenNewBoardModal, handleOpenCronModal, setShowCronModal, loadCronJobs, cronSchedulerEnabled = true, cronJobs = [], handleOpenSettingsModal, setShowSettingsModal, loadSettings, setShowNewTaskModal, setNewTaskForm, isDispatching, handleRunDispatcher, handleDispatch, loadBoards, loadTasksAndStats } = props;
+		const { activeView, setActiveView, hasActiveAgents, sessionsList = [], agentsList = [], loadSessions, loadAgents, loadMemories, boards = [], selectedBoard, setSelectedBoard, handleOpenEditBoard, handleOpenEditBoardModal, handleOpenNewBoardModal, handleOpenCronModal, setShowCronModal, loadCronJobs, cronSchedulerEnabled = true, cronJobs = [], handleOpenSettingsModal, setShowSettingsModal, loadSettings, setShowNewTaskModal, setNewTaskForm, isDispatching, handleRunDispatcher, handleDispatch, setupStatus, isTogglingDispatcher, handleStartDispatcher, handleStopDispatcher, loadBoards, loadTasksAndStats } = props;
 		return React.createElement("header", { className: "space-y-4 pb-5 border-b border-slate-800/80" }, React.createElement("div", { className: "flex flex-col lg:flex-row lg:items-center justify-between gap-4" }, React.createElement("div", { className: "flex items-center gap-4 flex-wrap" }, React.createElement(BoardSelector, {
 			boards,
 			selectedBoard,
@@ -406,11 +406,20 @@ var ZeroFactoryDashboard = (function(exports) {
 				}
 			},
 			title: "Global Zero Factory configuration (WIP limits, worker caps)"
-		}, "⚙️ Settings"), React.createElement("button", {
+		}, "⚙️ Settings"), setupStatus && (handleStartDispatcher || handleStopDispatcher) && React.createElement("button", {
+			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border shadow-sm transition-all duration-150 " + (setupStatus.dispatcher_running ? setupStatus.dispatcher_in_process ? "bg-emerald-950/70 hover:bg-rose-950/70 text-emerald-300 hover:text-rose-200 border-emerald-700/60 hover:border-rose-700/70 cursor-pointer" : "bg-emerald-950/50 text-emerald-300 border-emerald-800/60 cursor-default" : "bg-slate-800/80 hover:bg-emerald-700/80 text-slate-200 hover:text-white border-slate-700/80 hover:border-emerald-600/80 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"),
+			onClick: () => {
+				if (setupStatus.dispatcher_running) {
+					if (setupStatus.dispatcher_in_process && handleStopDispatcher) handleStopDispatcher();
+				} else if (handleStartDispatcher) handleStartDispatcher();
+			},
+			disabled: Boolean(isTogglingDispatcher) || !setupStatus.dispatcher_running && !setupStatus.profiles_ready || setupStatus.dispatcher_running && !setupStatus.dispatcher_in_process,
+			title: setupStatus.dispatcher_running ? setupStatus.dispatcher_in_process ? "Background dispatcher loop is running in this server. Click to stop." : "Background dispatcher is running externally via 'hermes zerofactory start'." : !setupStatus.profiles_ready ? "Run 'hermes zerofactory setup' first to initialize profiles" : "Start the continuous background dispatcher loop (30s interval)"
+		}, React.createElement("span", { className: "w-2 h-2 rounded-full " + (setupStatus.dispatcher_running ? "bg-emerald-400 animate-pulse" : "bg-slate-500") }), isTogglingDispatcher ? setupStatus.dispatcher_running ? "Stopping..." : "Starting..." : setupStatus.dispatcher_running ? setupStatus.dispatcher_in_process ? "Dispatcher: ON" : "Dispatcher: CLI" : "Start Dispatcher"), React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
 			onClick: handleRunDispatcher || handleDispatch,
 			disabled: isDispatching || boards.length === 0,
-			title: boards.length === 0 ? "Create a board first" : "Trigger Zero Factory Dispatcher Cycle"
+			title: boards.length === 0 ? "Create a board first" : "Trigger a single Zero Factory Dispatcher Cycle now"
 		}, isDispatching ? React.createElement("span", { className: "zfk-spinning" }, "⏳") : "⚡", isDispatching ? " Dispatching..." : " Dispatch"), React.createElement("button", {
 			className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
 			onClick: () => {
@@ -527,24 +536,33 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/SetupBanners.jsx
 	function SetupBanners(props) {
-		const { selectedBoard, setupStatus, precommitStatus, openwikiStatus, ghIssuesStatus, isSettingUpPrecommit, handleTriggerPrecommitSetup, isSettingUpOpenwiki, handleTriggerOpenwikiSetup, isSettingUpGhIssues, handleTriggerGhIssuesSetup } = props;
+		const { selectedBoard, setupStatus, isTogglingDispatcher, handleStartDispatcher, precommitStatus, openwikiStatus, ghIssuesStatus, isSettingUpPrecommit, handleTriggerPrecommitSetup, isSettingUpOpenwiki, handleTriggerOpenwikiSetup, isSettingUpGhIssues, handleTriggerGhIssuesSetup } = props;
 		const missingSetupSteps = [];
 		if (setupStatus && !setupStatus.profiles_ready) missingSetupSteps.push({
+			id: "profiles",
 			label: "Initialize Zero Factory profiles",
 			cmd: "hermes zerofactory setup"
 		});
 		if (setupStatus && !setupStatus.gh_authenticated) missingSetupSteps.push({
+			id: "gh",
 			label: "Authenticate GitHub CLI",
 			cmd: "gh auth login"
 		});
 		if (setupStatus && !setupStatus.dispatcher_running) missingSetupSteps.push({
+			id: "dispatcher",
 			label: "Start the dispatcher",
 			cmd: "hermes zerofactory start"
 		});
 		return React.createElement(React.Fragment, null, missingSetupSteps.length > 0 && React.createElement("div", { className: "mb-3.5 px-4 py-3 rounded-xl border border-indigo-500/30 bg-indigo-950/25 backdrop-blur-md text-xs" }, React.createElement("div", { className: "font-semibold text-slate-100 mb-1" }, "Zero Factory Setup Checklist"), React.createElement("div", { className: "text-slate-400 text-[11px] mb-2" }, "Run the following CLI commands to complete setup:"), React.createElement("div", { className: "flex flex-col gap-1.5" }, missingSetupSteps.map((step) => React.createElement("div", {
 			key: step.cmd,
 			className: "flex flex-wrap items-center justify-between gap-2 bg-slate-900/60 px-2.5 py-1.5 rounded-lg border border-slate-800/80"
-		}, React.createElement("span", { className: "text-slate-300" }, step.label), React.createElement("code", { className: "font-mono text-[11px] text-indigo-300 select-all" }, step.cmd))))), Boolean(selectedBoard && selectedBoard !== "all" && precommitStatus && !precommitStatus.has_precommit) && React.createElement("div", { className: "mb-3.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs" }, React.createElement("div", { className: "flex items-center gap-2.5 text-amber-200" }, React.createElement("span", { className: "text-base" }, precommitStatus.pending_task_id ? "⚡" : "⚠️"), React.createElement("div", null, React.createElement("div", { className: "font-semibold text-slate-100" }, precommitStatus.pending_task_id ? "Precommit Setup Task in Progress" : "Precommit Verification Not Configured"), React.createElement("div", { className: "text-slate-400 text-[11px]" }, precommitStatus.pending_task_id ? "Task " + precommitStatus.pending_task_id + " (" + precommitStatus.pending_task_status + ") is generating .zerofactory/precommit.sh" : "This board lacks .zerofactory/precommit.sh. Set up standard automated test, build, and format verification for commits."))), !precommitStatus.pending_task_id && React.createElement("button", {
+		}, React.createElement("span", { className: "text-slate-300" }, step.label), React.createElement("div", { className: "flex items-center gap-2" }, React.createElement("code", { className: "font-mono text-[11px] text-indigo-300 select-all" }, step.cmd), step.id === "dispatcher" && handleStartDispatcher && React.createElement("button", {
+			type: "button",
+			onClick: handleStartDispatcher,
+			disabled: Boolean(isTogglingDispatcher) || !setupStatus.profiles_ready,
+			title: !setupStatus.profiles_ready ? "Run 'hermes zerofactory setup' first to initialize profiles" : "Start the background dispatcher loop in this dashboard server",
+			className: "px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+		}, isTogglingDispatcher ? "Starting..." : "▶ Start Dispatcher")))))), Boolean(selectedBoard && selectedBoard !== "all" && precommitStatus && !precommitStatus.has_precommit) && React.createElement("div", { className: "mb-3.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs" }, React.createElement("div", { className: "flex items-center gap-2.5 text-amber-200" }, React.createElement("span", { className: "text-base" }, precommitStatus.pending_task_id ? "⚡" : "⚠️"), React.createElement("div", null, React.createElement("div", { className: "font-semibold text-slate-100" }, precommitStatus.pending_task_id ? "Precommit Setup Task in Progress" : "Precommit Verification Not Configured"), React.createElement("div", { className: "text-slate-400 text-[11px]" }, precommitStatus.pending_task_id ? "Task " + precommitStatus.pending_task_id + " (" + precommitStatus.pending_task_status + ") is generating .zerofactory/precommit.sh" : "This board lacks .zerofactory/precommit.sh. Set up standard automated test, build, and format verification for commits."))), !precommitStatus.pending_task_id && React.createElement("button", {
 			type: "button",
 			className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all duration-150 cursor-pointer disabled:opacity-50",
 			disabled: isSettingUpPrecommit,
@@ -1519,41 +1537,34 @@ var ZeroFactoryDashboard = (function(exports) {
 			].map((card, idx) => React.createElement("div", {
 				key: idx,
 				className: "bg-slate-900/80 border border-slate-700/80 rounded-xl p-5 space-y-2 hover:border-slate-600 transition-colors shadow-sm"
-			}, React.createElement("div", { className: "text-2xl mb-1" }, card.icon), React.createElement("h3", { className: "text-sm font-bold text-white m-0 tracking-wide" }, card.title), React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, card.desc)))), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-6 shadow-md" }, React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" }, React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0 flex items-center gap-2" }, "🏗️ High-Level Architecture & Workflow"), React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "5 Kanban States • 4 Specialist Agents • HITL Merge Gate")), React.createElement("div", { className: "space-y-3" }, React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "Kanban Column States & Roles"), React.createElement("div", { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 text-xs" }, [
+			}, React.createElement("div", { className: "text-2xl mb-1" }, card.icon), React.createElement("h3", { className: "text-sm font-bold text-white m-0 tracking-wide" }, card.title), React.createElement("p", { className: "text-xs text-slate-200 leading-relaxed m-0 font-normal" }, card.desc)))), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-6 shadow-md" }, React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800" }, React.createElement("h3", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300 m-0 flex items-center gap-2" }, "🏗️ High-Level Architecture & Workflow"), React.createElement("span", { className: "text-xs font-mono text-indigo-100 bg-indigo-900/80 px-3 py-1 rounded-md border border-indigo-500/70 font-semibold shadow-xs" }, "4 Actor Columns • 13 Stages • 4 Specialist Agents • HITL Gates")), React.createElement("div", { className: "space-y-3" }, React.createElement("div", { className: "text-xs font-bold text-slate-200 uppercase tracking-wider" }, "4 Actor-Based Kanban Columns & 13 Stages"), React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs" }, [
 				{
-					step: "1. Triage",
-					color: "bg-indigo-950/90 border-indigo-500/70 text-indigo-100",
-					role: "Intake & Epics",
-					actor: "Orchestrator / Goldfish",
-					desc: "Raw user goals or epics. Drafted by zf-orchestrator, audited by zf-goldfish, and promoted to Todo on human approval."
+					step: "1. Human",
+					color: "bg-rose-950/80 border-rose-500/70 text-rose-100",
+					role: "All Human Gates (0 Tokens)",
+					actor: "human",
+					desc: "Sorted by urgency: awaiting_merge (PR ready), spec_approval, interview, blocked, and triage. Consumes zero LLM tokens until activated or merged."
 				},
 				{
 					step: "2. Todo",
 					color: "bg-sky-950/90 border-sky-500/70 text-sky-100",
-					role: "Actionable Queue",
-					actor: "Queue",
-					desc: "Prioritized, approved tasks ready for autonomous execution. Isolated Git worktree provisioned on pickup."
+					role: "AI Execution Queue",
+					actor: "zf-* (Queued)",
+					desc: "Tasks waiting for concurrency slots across 6 AI stages: grill, spec_draft, spec_audit, building, review, and recovery."
 				},
 				{
 					step: "3. Running",
 					color: "bg-emerald-950/90 border-emerald-500/70 text-emerald-100",
-					role: "Autonomous AI",
-					actor: "zf-builder / zf-reviewer",
-					desc: "Subprocess actively executing. zf-builder coding & testing, or zf-reviewer evaluating PR across continuous review rounds."
+					role: "Active AI & Packaging",
+					actor: "zf-* / dispatcher",
+					desc: "Active worker subprocesses inside isolated Git worktrees (grill, spec_draft, spec_audit, building, review, recovery) plus deterministic packaging (precommit & PR)."
 				},
 				{
-					step: "4. Blocked",
-					color: "bg-purple-950/90 border-purple-500/70 text-purple-100",
-					role: "Human Action (HITL)",
-					actor: "Human Operator",
-					desc: "Action required: PR approved waiting for human merge, crashed worker retry, or merge conflict resolution."
-				},
-				{
-					step: "5. Done",
-					color: "bg-slate-900 border-emerald-500/70 text-emerald-200",
-					role: "PR Merged & Pruned",
+					step: "4. Done",
+					color: "bg-slate-900 border-violet-500/70 text-violet-200",
+					role: "Terminal Completed",
 					actor: "System (Closed)",
-					desc: "PR merged on GitHub. Worktree pruned and metrics recorded."
+					desc: "PR merged on GitHub or task closed terminally. Worktree pruned and background Mem0 repository memory extracted."
 				}
 			].map((col, idx) => React.createElement("div", {
 				key: idx,
@@ -1562,56 +1573,56 @@ var ZeroFactoryDashboard = (function(exports) {
 				{
 					num: "1",
 					title: "Goal Ingestion",
-					badge: "Triage",
+					badge: "Human: triage",
 					bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
-					desc: "User submits high-level goals, epics, or synced GitHub issues via CLI or UI (parked under human assignee with 0 GPU tokens until activated)."
+					desc: "Submit goals, epics, or synced GitHub issues via CLI or UI. Parked in Human (triage) with 0 tokens until you click Grill Me or Run EGM Spec."
 				},
 				{
 					num: "2",
-					title: "Sequential Triage",
-					badge: "Triage",
-					bcolor: "text-indigo-100 bg-indigo-900/90 border-indigo-500/70",
-					desc: "zf-orchestrator drafts technical spec and system contracts, then zf-goldfish performs zero-context adversarial audit enforcing the Ponytail ladder."
+					title: "Sequential EGM",
+					badge: "Todo ➔ Running",
+					bcolor: "text-purple-100 bg-purple-900/90 border-purple-500/70",
+					desc: "zf-orchestrator drafts the technical spec (spec_draft, pausing in Human: interview if needed), then zf-goldfish runs a zero-context audit (spec_audit)."
 				},
 				{
 					num: "3",
 					title: "Human Release Gate",
-					badge: "Triage ➔ Todo",
+					badge: "Human ➔ Todo",
 					bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
-					desc: "Operator approves via UI or CLI (approve [--split]), promoting single-repo tasks to Todo or atomically decomposing multi-repo epics."
+					desc: "Operator approves in Human (spec_approval) via UI or CLI (approve [--split]), promoting single-repo tasks to Todo (building) or splitting multi-repo epics."
 				},
 				{
 					num: "4",
-					title: "Worktree & Launch",
-					badge: "Running",
+					title: "Worktree & Build",
+					badge: "Running: building",
 					bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-					desc: "Dispatcher verifies capacity & WIP limits, allocates isolated Git worktree (~/.zerofactory/workspaces/<board>/worktrees/<task_id>), and spawns zf-builder."
+					desc: "Dispatcher enforces capacity & (status, assignee) invariants, provisions ~/.zerofactory/workspaces/<board>/worktrees/<task_id>, and launches zf-builder."
 				},
 				{
 					num: "5",
-					title: "Code & Tests",
-					badge: "Running",
-					bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-					desc: "zf-builder inspects OpenWiki/AGENTS.md, writes surgical code & tests applying the Ponytail Ladder of Laziness, and executes .zerofactory/precommit.sh."
+					title: "Precommit & PR",
+					badge: "Running: packaging",
+					bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
+					desc: "Dispatcher runs .zerofactory/precommit.sh (format ➔ build ➔ tests, up to 3 retries), merges latest main, pushes, and opens a GitHub PR (0 LLM tokens)."
 				},
 				{
 					num: "6",
-					title: "Precommit & Review",
-					badge: "Running",
-					bcolor: "text-emerald-100 bg-emerald-900/90 border-emerald-500/70",
-					desc: "Dispatcher runs precommit (format ➔ build ➔ tests, up to 3 retries), opens GitHub PR, and routes to zf-reviewer for thematic review (up to 2 rounds)."
+					title: "Thematic Review",
+					badge: "Running: review",
+					bcolor: "text-cyan-100 bg-cyan-900/90 border-cyan-500/70",
+					desc: "zf-reviewer conducts up to 2 thematic rounds (Correctness & Tests ➔ Verification & Polish). Rework loops back to Todo (building); approval moves to Human."
 				},
 				{
 					num: "7",
 					title: "Human Merge",
-					badge: "Blocked ➔ Done",
-					bcolor: "text-rose-100 bg-rose-900/90 border-rose-500/70",
-					desc: "Approved PR waits in Blocked. Once human merges on GitHub, dispatcher marks task Done, prunes worktree, and triggers automated background Mem0 memory extraction."
+					badge: "Human ➔ Done",
+					bcolor: "text-teal-100 bg-teal-900/90 border-teal-500/70",
+					desc: "Approved PRs surface at the top of Human (awaiting_merge). Once merged on GitHub, dispatcher marks Done, prunes the worktree, and extracts Mem0 memory."
 				}
 			].map((step, idx) => React.createElement("div", {
 				key: idx,
 				className: "bg-slate-950/80 border border-slate-700/80 rounded-xl p-3.5 flex flex-col justify-between space-y-2 relative group hover:border-slate-500 transition-colors shadow-sm"
-			}, React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between gap-1" }, React.createElement("span", { className: "w-6 h-6 rounded-full bg-indigo-900/90 text-indigo-100 font-mono font-bold text-xs flex items-center justify-center shrink-0 border border-indigo-500/60 shadow-xs" }, step.num), React.createElement("span", { className: "text-xs font-mono px-2 py-0.5 rounded border font-bold truncate shadow-xs " + step.bcolor }, step.badge)), React.createElement("div", { className: "text-xs font-bold text-white leading-tight pt-0.5" }, step.title), React.createElement("p", { className: "text-xs text-slate-200 leading-snug m-0 font-normal" }, step.desc)))))), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2" }, React.createElement("div", { className: "p-4.5 bg-purple-950/50 border border-purple-600/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-purple-200 text-sm" }, "↩️ Reviewer Feedback Loop:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, "When ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-reviewer"), " requests changes during review rounds in ", React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "Running"), ", the dispatcher routes the ticket back to ", React.createElement("span", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"), " assigned to ", React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "zf-builder"), ". The builder updates code and tests on the same branch, triggering automatic re-review.")), React.createElement("div", { className: "p-4.5 bg-amber-950/40 border border-amber-600/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-amber-200 text-sm" }, "🛡️ Human-in-the-Loop (HITL) Safety Gates:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, React.createElement("strong", { className: "text-amber-200 font-bold" }, "PR Merge Gate: "), "Agents NEVER auto-merge to main. Every task produces an isolated PR; approved tasks pause in ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"), " until a human reviews and merges on GitHub. ", React.createElement("strong", { className: "text-amber-200 font-bold" }, "Escalation Gate: "), "Crashed workers, timeouts, or unresolvable merge conflicts route directly to ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "Blocked"), " for operator resolution.")))));
+			}, React.createElement("div", { className: "space-y-1.5" }, React.createElement("div", { className: "flex items-center justify-between gap-1" }, React.createElement("span", { className: "w-6 h-6 rounded-full bg-indigo-900/90 text-indigo-100 font-mono font-bold text-xs flex items-center justify-center shrink-0 border border-indigo-500/60 shadow-xs" }, step.num), React.createElement("span", { className: "text-xs font-mono px-2 py-0.5 rounded border font-bold truncate shadow-xs " + step.bcolor }, step.badge)), React.createElement("div", { className: "text-xs font-bold text-white leading-tight pt-0.5" }, step.title), React.createElement("p", { className: "text-xs text-slate-200 leading-snug m-0 font-normal" }, step.desc)))))), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2" }, React.createElement("div", { className: "p-4.5 bg-purple-950/50 border border-purple-600/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-purple-200 text-sm" }, "↩️ Reviewer Feedback Loop:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, "When ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-reviewer"), " requests changes during review rounds in ", React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "Running"), ", the dispatcher routes the ticket back to ", React.createElement("span", { className: "font-mono text-sky-200 bg-slate-900 px-1.5 py-0.5 rounded border border-sky-500/60 font-bold" }, "Todo"), " assigned to ", React.createElement("span", { className: "font-mono text-emerald-200 bg-slate-900 px-1.5 py-0.5 rounded border border-emerald-500/60 font-bold" }, "zf-builder"), ". The builder updates code and tests on the same branch, triggering automatic re-review.")), React.createElement("div", { className: "p-4.5 bg-amber-950/40 border border-amber-600/70 rounded-xl space-y-2 text-xs shadow-sm" }, React.createElement("div", { className: "font-bold flex items-center gap-2 text-amber-200 text-sm" }, "🛡️ Human-in-the-Loop (HITL) Safety Gates:"), React.createElement("p", { className: "text-slate-100 text-xs leading-relaxed m-0 font-normal" }, React.createElement("strong", { className: "text-amber-200 font-bold" }, "PR Merge Gate: "), "Agents NEVER auto-merge to main. Every task produces an isolated PR; approved tasks surface at the top of ", React.createElement("span", { className: "font-mono text-teal-200 bg-slate-900 px-1.5 py-0.5 rounded border border-teal-500/60 font-bold" }, "Human (awaiting_merge)"), " until a human reviews and merges on GitHub. ", React.createElement("strong", { className: "text-amber-200 font-bold" }, "Autonomous Recovery & Escalation: "), "3× failure-exhausted tasks route once to ", React.createElement("span", { className: "font-mono text-amber-200 bg-slate-900 px-1.5 py-0.5 rounded border border-amber-500/60 font-bold" }, "Todo (recovery)"), " for ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold" }, "zf-orchestrator"), " diagnosis before escalating to ", React.createElement("span", { className: "font-mono text-rose-200 bg-slate-900 px-1.5 py-0.5 rounded border border-rose-500/60 font-bold" }, "Human (blocked)"), ".")))));
 		};
 		const renderSpecialistsSection = () => {
 			return React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-5" }, [
@@ -1629,7 +1640,7 @@ var ZeroFactoryDashboard = (function(exports) {
 						"Diagnoses failure logs and executes autonomous self-recovery for stuck tasks (strictly capped at 1 attempt)",
 						"Manages ticket handoffs between zf-builder and zf-reviewer",
 						"Escalates unresolvable blockers and human reviews",
-						"Monitors queue health via zero-factory-task-queue-check"
+						"Monitors queue health & executes 1-shot autonomous recovery (recovery stage) on 3x failure-exhausted tasks"
 					],
 					dir: "~/.hermes/profiles/zf-orchestrator/"
 				},
@@ -1686,36 +1697,30 @@ var ZeroFactoryDashboard = (function(exports) {
 			}, r)))), React.createElement("div", { className: "pt-3 text-xs font-mono text-slate-300 border-t border-slate-700/70 flex items-center justify-between gap-2" }, React.createElement("span", { className: "font-semibold text-slate-300" }, "Profile Path:"), React.createElement("span", { className: "text-indigo-200 bg-slate-950 px-2 py-1 rounded-md border border-slate-700 font-bold select-all" }, agent.dir)))));
 		};
 		const renderLifecycleSection = () => {
-			return React.createElement("div", { className: "space-y-6" }, React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" }, React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, "🔄 Kanban Column Workflow"), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1" }, [
+			return React.createElement("div", { className: "space-y-6" }, React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" }, React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, "🔄 4-Column Actor-Based Kanban Workflow"), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-1" }, [
 				{
-					id: "triage",
-					title: "Triage",
-					desc: "Incoming raw user goals, feature requests, or epics. zf-orchestrator drafts specs, audited by zf-goldfish before human release gate.",
-					trigger: "Submitted via CLI or Board UI"
+					id: "human",
+					title: "Human",
+					desc: "All human decision gates & escalations (0 LLM tokens), sorted by urgency: awaiting_merge, spec_approval, interview, blocked, triage.",
+					trigger: "Goal created, PR approved, or escalation"
 				},
 				{
 					id: "todo",
 					title: "Todo",
-					desc: "Actionable backlog: Approved tickets from Triage, improvement tasks filed by scanner, or reviewer rework.",
-					trigger: "Approved by human or scanner files"
+					desc: "AI execution queue waiting for concurrency slots across 6 stages: grill, spec_draft, spec_audit, building, review, and recovery.",
+					trigger: "Activated by human, approved, scanner, or rework"
 				},
 				{
 					id: "running",
 					title: "Running",
-					desc: "Dedicated worker executing inside isolated Git worktree. zf-builder coding & testing, or zf-reviewer reviewing PR diff.",
+					desc: "Active AI worker sessions inside isolated Git worktrees plus deterministic packaging (precommit & PR, 0 LLM tokens).",
 					trigger: "Autonomous pickup by dispatcher"
-				},
-				{
-					id: "blocked",
-					title: "Blocked",
-					desc: "Human action required: PR approved waiting for human merge, worker crash retry, or merge conflict resolution.",
-					trigger: "Awaiting Human Merge, Crash, or Conflict"
 				},
 				{
 					id: "done",
 					title: "Done",
-					desc: "Completed and merged tickets. Worktrees pruned and metrics updated.",
-					trigger: "PR merged on GitHub"
+					desc: "Terminal completed & merged tickets. Worktrees pruned and background Mem0 repository memory extracted.",
+					trigger: "PR merged on GitHub or closed"
 				}
 			].map((c) => React.createElement("div", {
 				key: c.id,
@@ -1723,21 +1728,21 @@ var ZeroFactoryDashboard = (function(exports) {
 			}, React.createElement("div", { className: "flex items-center justify-between gap-2" }, React.createElement("span", { className: "text-sm font-bold uppercase tracking-wider text-indigo-300" }, c.title), React.createElement("span", { className: "text-xs font-mono font-semibold px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-200" }, c.id)), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, c.desc), React.createElement("div", { className: "text-xs text-slate-300 pt-2 border-t border-slate-800 font-medium flex items-center justify-between gap-2 flex-wrap" }, React.createElement("span", null, "Trigger:"), React.createElement("span", { className: "text-white font-semibold bg-slate-900 px-2 py-0.5 rounded border border-slate-700/80" }, c.trigger)))))), React.createElement("div", { className: "bg-gradient-to-br from-purple-950/50 via-slate-900/80 to-slate-900/80 border border-purple-600/70 rounded-2xl p-6 space-y-3 shadow-md" }, React.createElement("div", { className: "flex items-center gap-3" }, React.createElement("div", { className: "p-2.5 rounded-xl bg-purple-900/80 text-purple-200 border border-purple-500/50 shadow-xs" }, renderPrIcon("w-4 h-4")), React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, "Pull Request Tracking & Verification")), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "Tasks with active GitHub Pull Requests display an interactive PR link badge directly on the Kanban card. You can click the badge to jump straight to the GitHub review interface. Use the toolbar's ", React.createElement("span", { className: "font-mono text-purple-200 bg-slate-900 px-1.5 py-0.5 rounded border border-purple-500/60 font-bold text-xs" }, "Has PR"), " filter button to instantly isolate all tickets currently under active Pull Request review.")), React.createElement("div", { className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 shadow-md" }, React.createElement("div", { className: "flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-800" }, React.createElement("h3", { className: "text-sm font-bold text-white m-0 flex items-center gap-2 tracking-wide" }, "🛠️ Self-Healing, Process Reaping & Autonomous Recovery"), React.createElement("span", { className: "text-xs font-mono text-emerald-200 bg-emerald-950/80 px-3 py-1 rounded-md border border-emerald-500/60 font-semibold" }, "3-Tier Fault Tolerance")), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, "Tasks that fail build or test gates, hit worker crashes, or hang never get silently stranded. Zero Factory employs a three-tier recovery model combining deterministic zero-token process reaping, autonomous agent diagnosis, and human override gates:"), React.createElement("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 pt-1 text-xs" }, [
 				{
 					title: "1. Deterministic Reaper (0 Tokens)",
-					badge: "Python Watchdog",
+					badge: "Dispatcher Reaper",
 					badgeColor: "bg-emerald-950 border-emerald-500/70 text-emerald-200",
-					desc: "The background watchdog (scripts/zf_queue_watchdog.py) audits active processes without invoking LLMs. If a worker terminates abruptly or has no registered session, the orphaned claim is safely reaped and restored back to Todo (worker_recovered)."
+					desc: "The built-in dispatcher reaper (dispatcher/reaper.py) audits active processes every 30s without invoking LLMs. Dead or orphaned sessions are reaped and restored to Todo (worker_recovered), and invalid (status, assignee) pairs are auto-repaired."
 				},
 				{
-					title: "2. Autonomous Diagnosis (Max 1)",
+					title: "2. Autonomous Recovery Stage (Max 1)",
 					badge: "zf-orchestrator",
 					badgeColor: "bg-indigo-950 border-indigo-500/70 text-indigo-200",
-					desc: "Tasks stuck in failure exhaustion awaken zf-orchestrator with pre-digested failure logs, git diffs, and precommit error tails. For code or test defects, the orchestrator invokes recovery with tailored guidance for zf-builder (strictly capped at 1 autonomous try)."
+					desc: "When a task exhausts 3 retries (worker crash/timeout, precommit, or merge conflict) and orchestrator_recovery_count < 1, it routes to Todo (recovery). zf-orchestrator inspects failure logs and runs recover --guidance, report-bug, or block."
 				},
 				{
 					title: "3. Operator Rescue & HITL Gate",
-					badge: "Human Gate",
+					badge: "Human Column",
 					badgeColor: "bg-purple-950 border-purple-500/70 text-purple-200",
-					desc: "Repeated failures or unrecoverable environmental issues escalate directly to Blocked. Operators can inspect diagnostics and click '⚡ Recover Task' in the Task Detail modal or run the CLI with custom instructions to reset and re-dispatch."
+					desc: "Post-recovery failures or external blockers escalate to Human (blocked). Operators can inspect diagnostics and click '⚡ Recover Task' in the Task Detail modal or run hermes zerofactory recover <task_id> [--guidance] to re-dispatch."
 				}
 			].map((tier, idx) => React.createElement("div", {
 				key: idx,
@@ -2018,21 +2023,32 @@ var ZeroFactoryDashboard = (function(exports) {
 			}, React.createElement("span", { className: "text-xs font-mono text-emerald-300 font-bold bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 break-all select-all shadow-xs" }, item.cmd), React.createElement("span", { className: "text-xs text-slate-200 font-medium shrink-0" }, item.desc)))))));
 		};
 		const renderCronsSection = () => {
-			return React.createElement("div", { className: "space-y-5" }, [{
-				id: "zero-factory-task-queue-check",
-				title: "Queue Health & Worker Watchdog",
-				interval: "Every 120 minutes",
-				tokens: "0 Tokens (No-Agent Mode)",
-				desc: "Runs purely in Python using Hermes No-Agent Mode via scripts/zf_queue_watchdog.py (0 LLM tokens). Audits running tasks, reaps hung worker subprocesses, recovers orphaned running tasks to Todo, and automatically triggers run_dispatch_cycle(). Eligible failure-exhausted tasks wake zf-orchestrator to diagnose failure logs and execute 1-shot autonomous recovery.",
-				badge: "No-Agent Mode"
-			}, {
-				id: "zero-factory-improvement-scanner-{slug}",
-				title: "Codebase Improvement Scanner (zf-orchestrator)",
-				interval: "On Idle (Active < 2)",
-				tokens: "0 Tokens when Busy / Cooldown",
-				desc: "Executed autonomously by zf-orchestrator inside the codebase workdir with wake-gate change detection (scripts/zf_scanner_gate.py) and independent sessions (continuity: false). When the pipeline is busy (running >= 2 or todo >= 2) or during the 15-minute cooldown, it emits {'wakeAgent': false} (0 tokens). When the board is idle, it wakes zf-orchestrator to audit the codebase for tech debt, refactoring, or missing tests, creating at most 1 actionable TODO task on the board assigned to zf-builder.",
-				badge: "Wake-Gate • zf-orchestrator"
-			}].map((job) => React.createElement("div", {
+			return React.createElement("div", { className: "space-y-5" }, [
+				{
+					id: "dispatcher-loop (built-in)",
+					title: "Dispatcher Loop, Process Reaper & Recovery Router",
+					interval: "Every 30 seconds",
+					tokens: "0 Tokens when Idle",
+					desc: "Runs purely in Python inside the dispatcher thread (0 LLM tokens). Audits running tasks, reaps crashed/timed-out subprocesses, recovers orphaned tasks, repairs invalid (status, assignee) pairs, and routes 3× failure-exhausted tasks into the recovery stage (zf-orchestrator, capped at 1 autonomous attempt).",
+					badge: "Deterministic Engine"
+				},
+				{
+					id: "zero-factory-improvement-scanner-{slug}",
+					title: "Codebase Improvement Scanner (zf-orchestrator)",
+					interval: "On Idle (Active < 2)",
+					tokens: "0 Tokens when Busy / Cooldown",
+					desc: "Executed autonomously by zf-orchestrator inside the codebase workdir with wake-gate change detection (scripts/zf_scanner_gate.py) and independent sessions (continuity: false). When the pipeline is busy (running >= 2 or todo >= 2) or during the 15-minute cooldown, it emits {'wakeAgent': false} (0 tokens). When the board is idle, it wakes zf-orchestrator to audit the codebase for tech debt, refactoring, or missing tests, creating at most 1 actionable TODO task on the board assigned to zf-builder.",
+					badge: "Wake-Gate • zf-orchestrator"
+				},
+				{
+					id: "zero-factory-openwiki-update-{slug}",
+					title: "OpenWiki Drift Detector & Refresh Gate",
+					interval: "Daily",
+					tokens: "0 Tokens (No-Agent Mode)",
+					desc: "Runs via scripts/zf_openwiki_gate.py. Synchronizes ~/.openwiki/wiki-workspaces.json across all sibling repositories on a board and checks commit drift against openwiki/ docs. When non-doc code changes accumulate, files a deterministic Todo refresh task for zf-builder.",
+					badge: "No-Agent Mode"
+				}
+			].map((job) => React.createElement("div", {
 				key: job.id,
 				className: "bg-slate-900/70 border border-slate-700/80 rounded-2xl p-5 space-y-3 shadow-md"
 			}, React.createElement("div", { className: "flex flex-col md:flex-row md:items-center justify-between gap-2.5" }, React.createElement("div", { className: "space-y-1.5" }, React.createElement("h3", { className: "text-base font-bold text-white m-0 tracking-wide" }, job.title), React.createElement("span", { className: "text-xs font-mono text-indigo-200 bg-slate-950 px-2.5 py-1 rounded-md border border-slate-700 font-bold select-all inline-block" }, job.id)), React.createElement("div", { className: "flex items-center gap-2.5 flex-wrap" }, React.createElement("span", { className: "text-xs font-bold px-3 py-1 rounded-full bg-emerald-900/90 text-emerald-100 border border-emerald-500/70 font-mono shadow-xs" }, job.tokens), React.createElement("span", { className: "text-xs font-bold px-3 py-1 rounded-full bg-slate-800 text-slate-100 border border-slate-600 font-mono shadow-xs" }, job.interval))), React.createElement("p", { className: "text-xs text-slate-100 leading-relaxed m-0 font-normal" }, job.desc))));
@@ -3560,6 +3576,14 @@ var ZeroFactoryDashboard = (function(exports) {
 				...settingsForm,
 				auto_record_memory: e.target.checked
 			})
+		})), React.createElement("div", { className: "flex items-center justify-between pt-1" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🚀"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Start Dispatcher on Load")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically start the background dispatcher polling loop when Hermes loads the Zero Factory plugin.")), React.createElement("input", {
+			type: "checkbox",
+			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+			checked: Boolean(settingsForm.auto_start_dispatcher),
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				auto_start_dispatcher: e.target.checked
+			})
 		})), React.createElement("div", { className: "flex items-center justify-between pt-1" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🐙"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Create GitHub Defect Issues")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically publish GitHub issues on hotcode-dev/zerofactory when internal platform defects are reported.")), React.createElement("input", {
 			type: "checkbox",
 			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
@@ -4148,7 +4172,8 @@ var ZeroFactoryDashboard = (function(exports) {
 			mem0_model: "",
 			mem0_embedder_provider: "fastembed",
 			mem0_embedder_model: "",
-			auto_create_github_issues: false
+			auto_create_github_issues: false,
+			auto_start_dispatcher: false
 		});
 		const [isSavingSettings, setIsSavingSettings] = useState(false);
 		const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
@@ -4267,6 +4292,13 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
 		const [isSyncingIssues, setIsSyncingIssues] = useState(false);
 		const [setupStatus, setSetupStatus] = useState(null);
+		const [isTogglingDispatcher, setIsTogglingDispatcher] = useState(false);
+		const loadSetupStatus = useCallback(async () => {
+			try {
+				const res = await fetchJSON(API_BASE + "/setup/status");
+				if (res && res.ok) setSetupStatus(res);
+			} catch (e) {}
+		}, [fetchJSON]);
 		const [createBoardError, setCreateBoardError] = useState("");
 		const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
 		const [isSubmittingTask, setIsSubmittingTask] = useState(false);
@@ -4310,7 +4342,8 @@ var ZeroFactoryDashboard = (function(exports) {
 						mem0_model: data.settings.mem0_model ?? "",
 						mem0_embedder_provider: data.settings.mem0_embedder_provider ?? "fastembed",
 						mem0_embedder_model: data.settings.mem0_embedder_model ?? "",
-						auto_create_github_issues: Boolean(data.settings.auto_create_github_issues)
+						auto_create_github_issues: Boolean(data.settings.auto_create_github_issues),
+						auto_start_dispatcher: Boolean(data.settings.auto_start_dispatcher)
 					});
 					setCronSchedulerEnabled(isCronEnabled);
 				}
@@ -4340,7 +4373,8 @@ var ZeroFactoryDashboard = (function(exports) {
 					mem0_model: String(settingsForm.mem0_model || "").trim(),
 					mem0_embedder_provider: String(settingsForm.mem0_embedder_provider || "fastembed").trim().toLowerCase(),
 					mem0_embedder_model: String(settingsForm.mem0_embedder_model || "").trim(),
-					auto_create_github_issues: Boolean(settingsForm.auto_create_github_issues)
+					auto_create_github_issues: Boolean(settingsForm.auto_create_github_issues),
+					auto_start_dispatcher: Boolean(settingsForm.auto_start_dispatcher)
 				};
 				const res = await fetchJSON(API_BASE + "/settings", {
 					method: "PATCH",
@@ -4367,7 +4401,8 @@ var ZeroFactoryDashboard = (function(exports) {
 						mem0_model: res.settings.mem0_model ?? "",
 						mem0_embedder_provider: res.settings.mem0_embedder_provider ?? "fastembed",
 						mem0_embedder_model: res.settings.mem0_embedder_model ?? "",
-						auto_create_github_issues: Boolean(res.settings.auto_create_github_issues)
+						auto_create_github_issues: Boolean(res.settings.auto_create_github_issues),
+						auto_start_dispatcher: Boolean(res.settings.auto_start_dispatcher)
 					});
 				}
 				showToast("Global settings saved successfully!", "success");
@@ -5012,9 +5047,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			loadSessions();
 			loadAgents();
 			loadMemories("all");
-			fetchJSON(API_BASE + "/setup/status").then((res) => {
-				if (res && res.ok) setSetupStatus(res);
-			}).catch(() => {});
+			loadSetupStatus();
 		}, [
 			loadBoards,
 			loadTasksAndStats,
@@ -5024,7 +5057,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			loadSessions,
 			loadAgents,
 			loadMemories,
-			fetchJSON
+			loadSetupStatus
 		]);
 		const prevSelectedBoard = useRef(selectedBoard);
 		useEffect(() => {
@@ -5780,6 +5813,31 @@ var ZeroFactoryDashboard = (function(exports) {
 				setIsDispatching(false);
 			}
 		};
+		const handleStartDispatcher = async () => {
+			setIsTogglingDispatcher(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/dispatch/start", { method: "POST" });
+				showToast(res.message || "Background dispatcher started", "success");
+				await loadSetupStatus();
+				loadTasksAndStats();
+			} catch (err) {
+				showToast("Failed to start dispatcher: " + err.message, "error");
+			} finally {
+				setIsTogglingDispatcher(false);
+			}
+		};
+		const handleStopDispatcher = async () => {
+			setIsTogglingDispatcher(true);
+			try {
+				const res = await fetchJSON(API_BASE + "/dispatch/stop", { method: "POST" });
+				showToast(res.message || "Background dispatcher stopped", "info");
+				await loadSetupStatus();
+			} catch (err) {
+				showToast("Failed to stop dispatcher: " + err.message, "error");
+			} finally {
+				setIsTogglingDispatcher(false);
+			}
+		};
 		return React.createElement("div", { className: "zerofactory-root w-full" }, React.createElement("div", { className: "max-w-[1600px] mx-auto p-4 md:p-6 space-y-6 text-slate-100 font-sans antialiased min-h-screen" }, React.createElement(Header, {
 			activeView,
 			setActiveView,
@@ -5804,6 +5862,10 @@ var ZeroFactoryDashboard = (function(exports) {
 			setNewTaskForm,
 			isDispatching,
 			handleRunDispatcher,
+			setupStatus,
+			isTogglingDispatcher,
+			handleStartDispatcher,
+			handleStopDispatcher,
 			loadBoards,
 			loadTasksAndStats
 		}), activeView === "activities" ? React.createElement(ActivitiesView, {
@@ -5910,6 +5972,8 @@ var ZeroFactoryDashboard = (function(exports) {
 		}), React.createElement(SetupBanners, {
 			selectedBoard,
 			setupStatus,
+			isTogglingDispatcher,
+			handleStartDispatcher,
 			precommitStatus,
 			openwikiStatus,
 			ghIssuesStatus,

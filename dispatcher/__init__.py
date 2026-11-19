@@ -162,6 +162,7 @@ from .scheduler import (
     _dispatcher_loop,
     run_dispatch_cycle,
     start_background_dispatcher,
+    stop_background_dispatcher,
 )
 from .worker_spawner import (
     _inject_langfuse_env,
@@ -292,4 +293,5 @@ __all__ = [
     "run_dispatch_cycle",
     "_dispatcher_loop",
     "start_background_dispatcher",
+    "stop_background_dispatcher",
 ]

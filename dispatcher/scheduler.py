@@ -2388,28 +2388,36 @@ def _finalize_terminal_done(
     steps.end("ok")
 
 
+_dispatcher_stop_event = threading.Event()
+
+
 def _dispatcher_loop():
     """Background polling daemon thread for Kanban dispatch."""
-    while True:
+    while not _dispatcher_stop_event.is_set():
         try:
             run_dispatch_cycle()
         except Exception as e:
             _log.error("Unexpected error in background dispatcher loop: %s", e)
 
-        time.sleep(DISPATCH_INTERVAL_SECONDS)
+        if _dispatcher_stop_event.wait(DISPATCH_INTERVAL_SECONDS):
+            break
 
 
-def start_background_dispatcher():
-    """Start background dispatcher daemon thread if not already running."""
+def start_background_dispatcher() -> bool:
+    """Start background dispatcher daemon thread if not already running.
+
+    Returns True if a new thread was started, False if already running or skipped.
+    """
     if is_worker_or_child_process():
         _log.debug(
             "Skipping background dispatcher in worker/child process (profile=%s)",
             os.environ.get("HERMES_PROFILE"),
         )
-        return
+        return False
     global _dispatcher_thread
     with _dispatcher_lock:
         if _dispatcher_thread is None or not _dispatcher_thread.is_alive():
+            _dispatcher_stop_event.clear()
             _dispatcher_thread = threading.Thread(
                 target=_dispatcher_loop, name="ZeroFactoryKanbanDispatcher", daemon=True
             )
@@ -2418,3 +2426,24 @@ def start_background_dispatcher():
                 "Zero Factory Kanban background dispatcher started (interval: %ss)",
                 DISPATCH_INTERVAL_SECONDS,
             )
+            return True
+    return False
+
+
+def stop_background_dispatcher(timeout: float = 2.0) -> bool:
+    """Signal the in-process background dispatcher daemon thread to stop.
+
+    Returns True if a running thread was signalled to stop, False if none was running.
+    """
+    global _dispatcher_thread
+    with _dispatcher_lock:
+        thread = _dispatcher_thread
+        if thread is None or not thread.is_alive():
+            return False
+        _dispatcher_stop_event.set()
+    thread.join(timeout=timeout)
+    with _dispatcher_lock:
+        if _dispatcher_thread is thread and not thread.is_alive():
+            _dispatcher_thread = None
+    _log.info("Zero Factory Kanban background dispatcher stopped")
+    return True

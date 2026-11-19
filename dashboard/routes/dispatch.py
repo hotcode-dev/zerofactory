@@ -41,6 +41,63 @@ def trigger_dispatch():
     return run_dispatch_cycle(get_db_path())
 
 
+@router.post("/dispatch/start")
+def start_dispatcher():
+    """Start the in-process background dispatcher polling loop (explicit user opt-in)."""
+    try:
+        from ...profile_manager import check_setup_status
+        from ...cron import ensure_builtin_cron_jobs
+        from ...dispatcher import start_background_dispatcher
+    except (ImportError, ValueError):
+        from profile_manager import check_setup_status  # type: ignore
+        from cron import ensure_builtin_cron_jobs  # type: ignore
+        from dispatcher import start_background_dispatcher  # type: ignore
+
+    status = check_setup_status(use_cache=False)
+    if not status.get("profiles_ready"):
+        missing = ", ".join(status.get("missing_profiles") or [])
+        raise HTTPException(
+            status_code=400,
+            detail=f"Zero Factory profiles are not set up ({missing}). Run 'hermes zerofactory setup' first.",
+        )
+
+    ensure_builtin_cron_jobs()
+    started = bool(start_background_dispatcher())
+    return {
+        "ok": True,
+        "started": started,
+        "dispatcher_running": True,
+        "dispatcher_in_process": True,
+        "message": (
+            "Background dispatcher started."
+            if started
+            else "Background dispatcher is already running."
+        ),
+    }
+
+
+@router.post("/dispatch/stop")
+def stop_dispatcher():
+    """Stop the in-process background dispatcher polling loop."""
+    try:
+        from ...dispatcher import stop_background_dispatcher
+    except (ImportError, ValueError):
+        from dispatcher import stop_background_dispatcher  # type: ignore
+
+    stopped = bool(stop_background_dispatcher())
+    return {
+        "ok": True,
+        "stopped": stopped,
+        "dispatcher_running": False,
+        "dispatcher_in_process": False,
+        "message": (
+            "Background dispatcher stopped."
+            if stopped
+            else "No in-process background dispatcher was running."
+        ),
+    }
+
+
 @router.get("/setup/status")
 def get_setup_status():
     """Read-only prerequisite status for the dashboard Setup Wizard."""
@@ -55,6 +112,7 @@ def get_setup_status():
 
     status = check_setup_status(use_cache=True)
     dispatcher_running = False
+    dispatcher_in_process = False
     try:
         from ...dispatcher import scheduler as _sched
     except (ImportError, ValueError):
@@ -67,6 +125,7 @@ def get_setup_status():
         thread = getattr(_sched, "_dispatcher_thread", None)
         if thread is not None and thread.is_alive():
             dispatcher_running = True
+            dispatcher_in_process = True
 
     if not dispatcher_running:
         lock_path = get_dispatcher_lock_path()
@@ -85,6 +144,7 @@ def get_setup_status():
         "ok": True,
         **status,
         "dispatcher_running": dispatcher_running,
+        "dispatcher_in_process": dispatcher_in_process,
     }
 
 

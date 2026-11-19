@@ -63,7 +63,8 @@ export function ZeroFactoryKanbanApp() {
       mem0_model: "",
       mem0_embedder_provider: "fastembed",
       mem0_embedder_model: "",
-      auto_create_github_issues: false
+      auto_create_github_issues: false,
+      auto_start_dispatcher: false
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
@@ -181,6 +182,16 @@ export function ZeroFactoryKanbanApp() {
     const [isSettingUpGhIssues, setIsSettingUpGhIssues] = useState(false);
     const [isSyncingIssues, setIsSyncingIssues] = useState(false);
     const [setupStatus, setSetupStatus] = useState(null);
+    const [isTogglingDispatcher, setIsTogglingDispatcher] = useState(false);
+
+    const loadSetupStatus = useCallback(async () => {
+      try {
+        const res = await fetchJSON(API_BASE + "/setup/status");
+        if (res && res.ok) setSetupStatus(res);
+      } catch (e) {
+        // Ignore transient status fetch errors
+      }
+    }, [fetchJSON]);
 
     const [createBoardError, setCreateBoardError] = useState("");
     const [isSubmittingBoard, setIsSubmittingBoard] = useState(false);
@@ -227,7 +238,8 @@ export function ZeroFactoryKanbanApp() {
             mem0_model: data.settings.mem0_model ?? "",
             mem0_embedder_provider: data.settings.mem0_embedder_provider ?? "fastembed",
             mem0_embedder_model: data.settings.mem0_embedder_model ?? "",
-            auto_create_github_issues: Boolean(data.settings.auto_create_github_issues)
+            auto_create_github_issues: Boolean(data.settings.auto_create_github_issues),
+            auto_start_dispatcher: Boolean(data.settings.auto_start_dispatcher)
           });
           setCronSchedulerEnabled(isCronEnabled);
         }
@@ -258,7 +270,8 @@ export function ZeroFactoryKanbanApp() {
           mem0_model: String(settingsForm.mem0_model || "").trim(),
           mem0_embedder_provider: String(settingsForm.mem0_embedder_provider || "fastembed").trim().toLowerCase(),
           mem0_embedder_model: String(settingsForm.mem0_embedder_model || "").trim(),
-          auto_create_github_issues: Boolean(settingsForm.auto_create_github_issues)
+          auto_create_github_issues: Boolean(settingsForm.auto_create_github_issues),
+          auto_start_dispatcher: Boolean(settingsForm.auto_start_dispatcher)
         };
         const res = await fetchJSON(API_BASE + "/settings", {
           method: "PATCH",
@@ -285,7 +298,8 @@ export function ZeroFactoryKanbanApp() {
             mem0_model: res.settings.mem0_model ?? "",
             mem0_embedder_provider: res.settings.mem0_embedder_provider ?? "fastembed",
             mem0_embedder_model: res.settings.mem0_embedder_model ?? "",
-            auto_create_github_issues: Boolean(res.settings.auto_create_github_issues)
+            auto_create_github_issues: Boolean(res.settings.auto_create_github_issues),
+            auto_start_dispatcher: Boolean(res.settings.auto_start_dispatcher)
           });
         }
         showToast("Global settings saved successfully!", "success");
@@ -1018,10 +1032,8 @@ export function ZeroFactoryKanbanApp() {
       loadSessions();
       loadAgents();
       loadMemories("all");
-      fetchJSON(API_BASE + "/setup/status").then((res) => {
-        if (res && res.ok) setSetupStatus(res);
-      }).catch(() => {});
-    }, [loadBoards, loadTasksAndStats, loadCronJobs, loadSettings, loadActivities, loadSessions, loadAgents, loadMemories, fetchJSON]);
+      loadSetupStatus();
+    }, [loadBoards, loadTasksAndStats, loadCronJobs, loadSettings, loadActivities, loadSessions, loadAgents, loadMemories, loadSetupStatus]);
 
     // On selectedBoard change: reload board-specific data (tasks, stats, memories, sessions, agents)
     const prevSelectedBoard = useRef(selectedBoard);
@@ -1799,7 +1811,7 @@ export function ZeroFactoryKanbanApp() {
       }
     };
 
-    // Run Dispatcher
+    // Run Dispatcher (single cycle)
     const handleRunDispatcher = async () => {
       setIsDispatching(true);
       try {
@@ -1810,6 +1822,34 @@ export function ZeroFactoryKanbanApp() {
         showToast("Dispatch error: " + err.message, "error");
       } finally {
         setIsDispatching(false);
+      }
+    };
+
+    // Start / Stop continuous background dispatcher loop
+    const handleStartDispatcher = async () => {
+      setIsTogglingDispatcher(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/dispatch/start", { method: "POST" });
+        showToast(res.message || "Background dispatcher started", "success");
+        await loadSetupStatus();
+        loadTasksAndStats();
+      } catch (err) {
+        showToast("Failed to start dispatcher: " + err.message, "error");
+      } finally {
+        setIsTogglingDispatcher(false);
+      }
+    };
+
+    const handleStopDispatcher = async () => {
+      setIsTogglingDispatcher(true);
+      try {
+        const res = await fetchJSON(API_BASE + "/dispatch/stop", { method: "POST" });
+        showToast(res.message || "Background dispatcher stopped", "info");
+        await loadSetupStatus();
+      } catch (err) {
+        showToast("Failed to stop dispatcher: " + err.message, "error");
+      } finally {
+        setIsTogglingDispatcher(false);
       }
     };
 
@@ -1844,6 +1884,10 @@ export function ZeroFactoryKanbanApp() {
         setNewTaskForm,
         isDispatching,
         handleRunDispatcher,
+        setupStatus,
+        isTogglingDispatcher,
+        handleStartDispatcher,
+        handleStopDispatcher,
         loadBoards,
         loadTasksAndStats
       }),
@@ -1960,6 +2004,8 @@ export function ZeroFactoryKanbanApp() {
                   React.createElement(SetupBanners, {
                     selectedBoard,
                     setupStatus,
+                    isTogglingDispatcher,
+                    handleStartDispatcher,
                     precommitStatus,
                     openwikiStatus,
                     ghIssuesStatus,

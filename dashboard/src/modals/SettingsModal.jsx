@@ -150,6 +150,30 @@ export function SettingsModal(props) {
                         React.createElement(
                           "div",
                           { className: "flex items-center gap-1.5" },
+                          React.createElement("span", { className: "text-sm" }, "🚀"),
+                          React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Start Dispatcher on Load")
+                        ),
+                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically start the background dispatcher polling loop when Hermes loads the Zero Factory plugin.")
+                      ),
+                      React.createElement(
+                        "input",
+                        {
+                          type: "checkbox",
+                          className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
+                          checked: Boolean(settingsForm.auto_start_dispatcher),
+                          onChange: (e) => setSettingsForm({ ...settingsForm, auto_start_dispatcher: e.target.checked })
+                        }
+                      )
+                    ),
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center justify-between pt-1" },
+                      React.createElement(
+                        "div",
+                        null,
+                        React.createElement(
+                          "div",
+                          { className: "flex items-center gap-1.5" },
                           React.createElement("span", { className: "text-sm" }, "🐙"),
                           React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Create GitHub Defect Issues")
                         ),

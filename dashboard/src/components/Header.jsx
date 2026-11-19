@@ -30,6 +30,10 @@ export function Header(props) {
     isDispatching,
     handleRunDispatcher,
     handleDispatch,
+    setupStatus,
+    isTogglingDispatcher,
+    handleStartDispatcher,
+    handleStopDispatcher,
     loadBoards,
     loadTasksAndStats
   } = props;
@@ -197,13 +201,55 @@ export function Header(props) {
                 },
                 "⚙️ Settings"
               ),
+              setupStatus && (handleStartDispatcher || handleStopDispatcher) &&
+              React.createElement(
+                "button",
+                {
+                  className:
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border shadow-sm transition-all duration-150 " +
+                    (setupStatus.dispatcher_running
+                      ? setupStatus.dispatcher_in_process
+                        ? "bg-emerald-950/70 hover:bg-rose-950/70 text-emerald-300 hover:text-rose-200 border-emerald-700/60 hover:border-rose-700/70 cursor-pointer"
+                        : "bg-emerald-950/50 text-emerald-300 border-emerald-800/60 cursor-default"
+                      : "bg-slate-800/80 hover:bg-emerald-700/80 text-slate-200 hover:text-white border-slate-700/80 hover:border-emerald-600/80 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"),
+                  onClick: () => {
+                    if (setupStatus.dispatcher_running) {
+                      if (setupStatus.dispatcher_in_process && handleStopDispatcher) {
+                        handleStopDispatcher();
+                      }
+                    } else if (handleStartDispatcher) {
+                      handleStartDispatcher();
+                    }
+                  },
+                  disabled: Boolean(isTogglingDispatcher) || (!setupStatus.dispatcher_running && !setupStatus.profiles_ready) || (setupStatus.dispatcher_running && !setupStatus.dispatcher_in_process),
+                  title: setupStatus.dispatcher_running
+                    ? setupStatus.dispatcher_in_process
+                      ? "Background dispatcher loop is running in this server. Click to stop."
+                      : "Background dispatcher is running externally via 'hermes zerofactory start'."
+                    : !setupStatus.profiles_ready
+                      ? "Run 'hermes zerofactory setup' first to initialize profiles"
+                      : "Start the continuous background dispatcher loop (30s interval)"
+                },
+                React.createElement("span", {
+                  className:
+                    "w-2 h-2 rounded-full " +
+                    (setupStatus.dispatcher_running
+                      ? "bg-emerald-400 animate-pulse"
+                      : "bg-slate-500")
+                }),
+                isTogglingDispatcher
+                  ? (setupStatus.dispatcher_running ? "Stopping..." : "Starting...")
+                  : setupStatus.dispatcher_running
+                    ? (setupStatus.dispatcher_in_process ? "Dispatcher: ON" : "Dispatcher: CLI")
+                    : "Start Dispatcher"
+              ),
               React.createElement(
                 "button",
                 {
                   className: "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" + (isDispatching ? " opacity-70 cursor-wait" : ""),
                   onClick: handleRunDispatcher || handleDispatch,
                   disabled: isDispatching || boards.length === 0,
-                  title: boards.length === 0 ? "Create a board first" : "Trigger Zero Factory Dispatcher Cycle"
+                  title: boards.length === 0 ? "Create a board first" : "Trigger a single Zero Factory Dispatcher Cycle now"
                 },
                 isDispatching
                   ? React.createElement("span", { className: "zfk-spinning" }, "⏳")

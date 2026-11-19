@@ -4,6 +4,8 @@ export function SetupBanners(props) {
   const {
     selectedBoard,
     setupStatus,
+    isTogglingDispatcher,
+    handleStartDispatcher,
     precommitStatus,
     openwikiStatus,
     ghIssuesStatus,
@@ -18,18 +20,21 @@ export function SetupBanners(props) {
   const missingSetupSteps = [];
   if (setupStatus && !setupStatus.profiles_ready) {
     missingSetupSteps.push({
+      id: "profiles",
       label: "Initialize Zero Factory profiles",
       cmd: "hermes zerofactory setup"
     });
   }
   if (setupStatus && !setupStatus.gh_authenticated) {
     missingSetupSteps.push({
+      id: "gh",
       label: "Authenticate GitHub CLI",
       cmd: "gh auth login"
     });
   }
   if (setupStatus && !setupStatus.dispatcher_running) {
     missingSetupSteps.push({
+      id: "dispatcher",
       label: "Start the dispatcher",
       cmd: "hermes zerofactory start"
     });
@@ -66,9 +71,27 @@ export function SetupBanners(props) {
                             },
                             React.createElement("span", { className: "text-slate-300" }, step.label),
                             React.createElement(
-                              "code",
-                              { className: "font-mono text-[11px] text-indigo-300 select-all" },
-                              step.cmd
+                              "div",
+                              { className: "flex items-center gap-2" },
+                              React.createElement(
+                                "code",
+                                { className: "font-mono text-[11px] text-indigo-300 select-all" },
+                                step.cmd
+                              ),
+                              step.id === "dispatcher" && handleStartDispatcher &&
+                              React.createElement(
+                                "button",
+                                {
+                                  type: "button",
+                                  onClick: handleStartDispatcher,
+                                  disabled: Boolean(isTogglingDispatcher) || !setupStatus.profiles_ready,
+                                  title: !setupStatus.profiles_ready
+                                    ? "Run 'hermes zerofactory setup' first to initialize profiles"
+                                    : "Start the background dispatcher loop in this dashboard server",
+                                  className: "px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                },
+                                isTogglingDispatcher ? "Starting..." : "▶ Start Dispatcher"
+                              )
                             )
                           )
                         )
