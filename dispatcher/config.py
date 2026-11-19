@@ -134,7 +134,9 @@ def is_worker_or_child_process() -> bool:
         or os.environ.get("ZEROFACTORY_SKIP_DISPATCHER") == "1"
     ):
         return True
-    profile = os.environ.get("HERMES_PROFILE") or ""
+    from paths import get_active_profile
+
+    profile = get_active_profile() or ""
     if profile in ("zf-builder", "zf-reviewer", "zf-orchestrator", "zf-goldfish"):
         return True
     if os.environ.get("ZEROFACTORY_IDLE_SCAN") == "1":

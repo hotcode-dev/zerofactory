@@ -157,6 +157,21 @@ def terminate_process_group(
         )
         return
 
+    my_pid = os.getpid()
+    try:
+        my_pgid = os.getpgrp()
+    except OSError:
+        my_pgid = None
+    if (my_pgid is not None and pgid == my_pgid) or (
+        isinstance(pid, int) and pid == my_pid
+    ):
+        _log.warning(
+            "terminate_process_group: refusing to signal own process group (pgid=%s, pid=%s)",
+            pgid,
+            pid,
+        )
+        return
+
     # Cheap guard: probe group existence before signalling
     try:
         os.killpg(pgid, 0)
@@ -230,17 +245,20 @@ def terminate_task_worker(task_id: str, pid: int | None) -> None:
     cleanup_process_artifacts(task_id)
 
 
-def stop_task_worker(task_id: str, cursor: sqlite3.Cursor | None = None) -> None:
+def stop_task_worker(
+    task_id: str,
+    cursor: sqlite3.Cursor | None = None,
+    pid: int | None = None,
+) -> None:
     """Safely terminate any active worker process for a task.
 
-    Checks in-memory workers first, then falls back to `tasks.worker_pid` column or metadata.
-    Idempotent and exception-safe.
+    Checks in-memory workers first, then explicit ``pid``, then falls back to
+    ``tasks.worker_pid`` column or metadata. Idempotent and exception-safe.
     """
     proc = _active_workers.pop(task_id, None)
-    pid = None
     if proc is not None:
         pid = proc.pid
-    elif cursor:
+    elif pid is None and cursor:
         try:
             try:
                 cursor.execute(

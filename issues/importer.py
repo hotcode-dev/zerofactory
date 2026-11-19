@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import sqlite3
 import subprocess
@@ -188,7 +187,12 @@ def import_external_issue(
         "external_unverified": True,
     }
 
-    actor_val = actor or os.environ.get("HERMES_PROFILE") or "user"
+    try:
+        from ..paths import get_active_profile
+    except (ImportError, ValueError):
+        from paths import get_active_profile  # type: ignore
+
+    actor_val = actor or get_active_profile() or "user"
 
     req = TaskCreate(
         task_id=task_id,

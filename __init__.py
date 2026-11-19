@@ -235,6 +235,11 @@ except ImportError:
     from issues import GitHubIssueClient, import_external_issue  # type: ignore
 
 try:
+    from .paths import get_active_profile
+except ImportError:
+    from paths import get_active_profile  # type: ignore
+
+try:
     from .paths import ZEROFACTORY_REPO, ZEROFACTORY_GITHUB_URL, ZEROFACTORY_ISSUES_URL
 except ImportError:
     try:
@@ -986,9 +991,7 @@ def register(ctx: Any):
                 if files_arg
                 else []
             )
-            actor_val = (
-                getattr(args, "actor", None) or os.environ.get("HERMES_PROFILE") or None
-            )
+            actor_val = getattr(args, "actor", None) or get_active_profile() or None
             target_repos_arg = getattr(args, "target_repos", None)
             target_repos_list = (
                 [r.strip() for r in target_repos_arg.split(",") if r.strip()]
@@ -1027,11 +1030,7 @@ def register(ctx: Any):
 
         elif action == "import-gh-issue":
             client = GitHubIssueClient(default_repo=getattr(args, "repo", None))
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             req_label = getattr(args, "label", "zerofactory")
             force = getattr(args, "force", False)
             sync_mode = getattr(args, "sync", False)
@@ -1155,11 +1154,7 @@ def register(ctx: Any):
 
         elif action == "setup-gh-issues":
             board_slug = getattr(args, "board", None)
-            actor_val = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor_val = getattr(args, "actor", None) or get_active_profile() or "user"
             if board_slug:
                 try:
                     from .dashboard.gh_issues_service import (
@@ -1223,11 +1218,7 @@ def register(ctx: Any):
             )
 
         elif action == "move":
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             reason = getattr(args, "reason", None)
             assignee = getattr(args, "assignee", None)
             req = TaskMove(
@@ -1246,11 +1237,7 @@ def register(ctx: Any):
                 print(f"Moved task {args.task_id} to {args.status}")
 
         elif action == "split":
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             repos = (
                 [r.strip() for r in args.repos.split(",") if r.strip()]
                 if getattr(args, "repos", None)
@@ -1265,11 +1252,7 @@ def register(ctx: Any):
             print()
 
         elif action == "approve":
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             split_flag = bool(getattr(args, "split", False))
             res = _approve_task(
                 args.task_id, TaskApproveRequest(split=split_flag, actor=actor)
@@ -1287,11 +1270,7 @@ def register(ctx: Any):
                 )
 
         elif action == "reject":
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             feedback = getattr(args, "feedback", "")
             res = _reject_task(
                 args.task_id, TaskRejectRequest(feedback=feedback, actor=actor)
@@ -1301,11 +1280,7 @@ def register(ctx: Any):
             )
 
         elif action == "triage":
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             mode = getattr(args, "mode", "grill")
             res = _triage_task(args.task_id, _TaskTriageRequest(mode=mode, actor=actor))
             print(f"\n✓ {res.get('message', 'Task dispatched for triage')}\n")
@@ -1331,11 +1306,7 @@ def register(ctx: Any):
             if status_val:
                 # Status is a lifecycle transition — always via move_task so the
                 # move semantics (flags, worker stop, dispatch trigger) apply.
-                actor = (
-                    getattr(args, "actor", None)
-                    or os.environ.get("HERMES_PROFILE")
-                    or "user"
-                )
+                actor = getattr(args, "actor", None) or get_active_profile() or "user"
                 _move_task(args.task_id, TaskMove(status=status_val, actor=actor))
             print(f"Updated task {args.task_id}")
 
@@ -1343,21 +1314,13 @@ def register(ctx: Any):
             # Delegate to `move_task` with the reason so the single shared
             # code path in dashboard/plugin_api.py records the "Blocked: ..."
             # comment — identical to `move <id> blocked --reason ...`.
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             req = TaskMove(status="blocked", actor=actor, reason=args.reason)
             _move_task(args.task_id, req)
             print(f"Task {args.task_id} marked as BLOCKED ({args.reason})")
 
         elif action == "comment":
-            author = (
-                getattr(args, "author", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            author = getattr(args, "author", None) or get_active_profile() or "user"
             _add_comment(args.task_id, CommentCreate(author=author, body=args.body))
             print(f"Added comment to task {args.task_id}")
 
@@ -1432,11 +1395,7 @@ def register(ctx: Any):
         elif action == "recover":
             task_id = args.task_id
             guidance = getattr(args, "guidance", None)
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             try:
                 res = _recover_task(
                     task_id=task_id,
@@ -1456,11 +1415,7 @@ def register(ctx: Any):
             task_id = args.task_id
             title = args.title
             body = getattr(args, "body", None)
-            actor = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor = getattr(args, "actor", None) or get_active_profile() or "user"
             create_issue = getattr(args, "create_issue", None)
             try:
                 res = _report_task_bug(
@@ -1613,11 +1568,7 @@ def register(ctx: Any):
                     if getattr(args, "tags", None)
                     else []
                 )
-                author = (
-                    getattr(args, "author", None)
-                    or os.environ.get("HERMES_PROFILE")
-                    or "user"
-                )
+                author = getattr(args, "author", None) or get_active_profile() or "user"
                 content = (args.content or "").strip()
                 if len(content) > _MEMORY_CONTENT_MAX_LENGTH:
                     print(
@@ -1685,11 +1636,7 @@ def register(ctx: Any):
             if not board_slug:
                 print("Error: --board <slug> is required.")
                 return
-            actor_val = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor_val = getattr(args, "actor", None) or get_active_profile() or "user"
             status_info = _check_board_precommit_status(board_slug)
             if status_info.get("has_precommit"):
                 print(
@@ -1712,11 +1659,7 @@ def register(ctx: Any):
             if not board_slug:
                 print("Error: --board <slug> is required.")
                 return
-            actor_val = (
-                getattr(args, "actor", None)
-                or os.environ.get("HERMES_PROFILE")
-                or "user"
-            )
+            actor_val = getattr(args, "actor", None) or get_active_profile() or "user"
             status_info = _check_board_openwiki_status(board_slug)
             if status_info.get("has_openwiki"):
                 print(

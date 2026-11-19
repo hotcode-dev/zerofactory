@@ -21,6 +21,11 @@ if _DASHBOARD_ROOT not in sys.path:
 from fastapi import APIRouter, HTTPException, Query
 
 try:
+    from ...paths import get_active_profile
+except (ImportError, ValueError):
+    from paths import get_active_profile  # type: ignore
+
+try:
     from ...dispatcher import transition_task
 except (ImportError, ValueError):
     try:
@@ -449,7 +454,7 @@ def create_task(req: TaskCreate):
         ):
             creator_actor = "zf-orchestrator"
         if not creator_actor:
-            creator_actor = os.environ.get("HERMES_PROFILE") or "user"
+            creator_actor = get_active_profile() or "user"
 
         log_activity(
             conn, task_id, creator_actor, "create", f"Task created in {status_val}"
@@ -1000,6 +1005,8 @@ def move_task(task_id: str, req: TaskMove):
             meta["blocked_reason_type"] = normalize_blocked_reason_type(req.reason)
             meta_updated = True
 
+        should_stop_worker = False
+        prev_worker_pid = None
         if req.status in ("todo", "running", "done"):
             if "last_worker_failure" in meta:
                 meta.pop("last_worker_failure", None)
@@ -1019,6 +1026,7 @@ def move_task(task_id: str, req: TaskMove):
                     meta.pop("conflict_retries", None)
                     meta_updated = True
             if req.status == "todo" or (req.status == "done" and not is_agent_actor):
+                prev_worker_pid = meta.get("worker_pid")
                 if "worker_pid" in meta or "session_id" in meta or "started_at" in meta:
                     meta.pop("worker_pid", None)
                     meta.pop("session_id", None)
@@ -1032,22 +1040,8 @@ def move_task(task_id: str, req: TaskMove):
                             if not s.get("ended_at"):
                                 s["ended_at"] = now
                             meta_updated = True
-                try:
-                    from ...dispatcher import stop_task_worker
-                except Exception:
-                    try:
-                        from dispatcher import stop_task_worker  # type: ignore
-                    except Exception:
-                        stop_task_worker = None
-                if stop_task_worker is not None and not is_agent_actor:
-                    try:
-                        stop_task_worker(task_id, cursor=cursor)
-                    except Exception as _stw_err:
-                        _log.debug(
-                            "stop_task_worker in move_task failed for %s: %s",
-                            task_id,
-                            _stw_err,
-                        )
+                if not is_agent_actor:
+                    should_stop_worker = True
 
         resolved_assignee = resolve_status_assignee(
             new_status,
@@ -1142,6 +1136,23 @@ def move_task(task_id: str, req: TaskMove):
                     )
 
         conn.commit()
+        if should_stop_worker:
+            try:
+                from ...dispatcher import stop_task_worker
+            except Exception:
+                try:
+                    from dispatcher import stop_task_worker  # type: ignore
+                except Exception:
+                    stop_task_worker = None
+            if stop_task_worker is not None:
+                try:
+                    stop_task_worker(task_id, cursor=cursor, pid=prev_worker_pid)
+                except Exception as _stw_err:
+                    _log.debug(
+                        "stop_task_worker in move_task failed for %s: %s",
+                        task_id,
+                        _stw_err,
+                    )
         log_step_end(
             "move",
             move_t0,
@@ -1203,8 +1214,8 @@ def add_comment(task_id: str, req: CommentCreate):
         body_str = req.body.strip()
         if req.author:
             author_val = req.author
-        elif os.environ.get("HERMES_PROFILE"):
-            author_val = os.environ.get("HERMES_PROFILE")
+        elif get_active_profile():
+            author_val = get_active_profile()
         else:
             author_val = "user"
 
@@ -1318,11 +1329,7 @@ def triage_task(
     init_db()
     now = int(time.time())
     effective_mode = (mode or (req.mode if req else None) or "grill").strip().lower()
-    actor = (
-        (req.actor if req and req.actor else None)
-        or os.environ.get("HERMES_PROFILE")
-        or "user"
-    )
+    actor = (req.actor if req and req.actor else None) or get_active_profile() or "user"
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -1458,7 +1465,7 @@ def split_task(task_id: str, req: TaskSplitRequest | None = None):
             except Exception:
                 parent_tags = []
 
-        actor = req.actor or os.environ.get("HERMES_PROFILE") or "zf-orchestrator"
+        actor = req.actor or get_active_profile() or "zf-orchestrator"
 
         custom_tasks_by_repo = {}
         if req.tasks:
@@ -1615,7 +1622,7 @@ def reply_interview(task_id: str, req: InterviewReply):
             )
         comment_body = "\n\n".join(reply_lines)
 
-        author_val = os.environ.get("HERMES_PROFILE") or "human"
+        author_val = get_active_profile() or "human"
         cursor.execute(
             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
             (task_id, author_val, comment_body, now),
@@ -1674,7 +1681,7 @@ def recover_task(task_id: str, req: TaskRecoverRequest | None = None):
         req = TaskRecoverRequest()
     init_db()
     now = int(time.time())
-    actor = req.actor or os.environ.get("HERMES_PROFILE") or "user"
+    actor = req.actor or get_active_profile() or "user"
     is_agent = actor.startswith("zf-")
 
     with get_db_conn() as conn:
@@ -1789,7 +1796,7 @@ def report_task_bug(task_id: str, req: TaskReportBugRequest):
 
     init_db()
     now = int(time.time())
-    actor = req.actor or os.environ.get("HERMES_PROFILE") or "user"
+    actor = req.actor or get_active_profile() or "user"
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -2110,7 +2117,7 @@ def approve_task(task_id: str, req: TaskApproveRequest | None = None):
         req = TaskApproveRequest()
     init_db()
     now = int(time.time())
-    actor = req.actor or os.environ.get("HERMES_PROFILE") or "user"
+    actor = req.actor or get_active_profile() or "user"
 
     with get_db_conn() as conn:
         cursor = conn.cursor()
@@ -2182,7 +2189,7 @@ def reject_task(task_id: str, req: TaskRejectRequest):
     """Reject or request revision on a drafted specification in triage."""
     init_db()
     now = int(time.time())
-    actor = req.actor or os.environ.get("HERMES_PROFILE") or "user"
+    actor = req.actor or get_active_profile() or "user"
 
     with get_db_conn() as conn:
         cursor = conn.cursor()

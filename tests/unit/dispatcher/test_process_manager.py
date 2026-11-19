@@ -187,3 +187,26 @@ def test_terminate_task_worker():
         terminate_task_worker("task-xyz", 9876)
         mock_term.assert_called_once_with(None, 9876)
         mock_cleanup.assert_called_once_with("task-xyz")
+
+
+def test_terminate_process_group_refuses_self_pgid():
+    """Never signal our own process group (prevents CLI move from self-killing)."""
+    my_pgid = os.getpgrp()
+    with patch("dispatcher.process_manager.os.killpg") as mock_killpg:
+        terminate_process_group(None, my_pgid, grace=0.1)
+        mock_killpg.assert_not_called()
+
+
+def test_get_active_profile_from_hermes_home(monkeypatch):
+    """Infer profile name from HERMES_HOME=.../profiles/<name> when HERMES_PROFILE is unset."""
+    from paths import get_active_profile
+
+    monkeypatch.delenv("HERMES_PROFILE", raising=False)
+    monkeypatch.setenv("HERMES_HOME", "/home/test/.hermes/profiles/zf-builder")
+    assert get_active_profile() == "zf-builder"
+
+    monkeypatch.setenv("HERMES_HOME", "/home/test/.hermes")
+    assert get_active_profile() is None
+
+    monkeypatch.setenv("HERMES_PROFILE", "zf-reviewer")
+    assert get_active_profile() == "zf-reviewer"

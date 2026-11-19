@@ -301,6 +301,24 @@ def get_hermes_home() -> Path:
     return (Path.home() / ".hermes").resolve()
 
 
+def get_active_profile() -> str | None:
+    """Return the active Hermes profile name from HERMES_PROFILE or HERMES_HOME.
+
+    Hermes's sandboxed terminal tool sets ``HERMES_HOME=<base>/profiles/<name>``
+    but may omit ``HERMES_PROFILE``; falling back to the ``profiles/<name>``
+    segment preserves agent identity across CLI invocations.
+    """
+    profile = (os.environ.get("HERMES_PROFILE") or "").strip()
+    if profile:
+        return profile
+    env_home = (os.environ.get("HERMES_HOME") or "").strip()
+    if env_home:
+        p = Path(env_home).expanduser()
+        if p.parent.name == "profiles" and p.name:
+            return p.name
+    return None
+
+
 def _hermes_profiles_root() -> Path:
     """Root directory holding per-profile state directories."""
     return get_hermes_home() / "profiles"
