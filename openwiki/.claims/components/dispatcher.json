@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ba1ae0e179e6dbf533981610b18002291faac8bd907a187b35e1a9e477a2750a",
+  "pageVersion": "sha256:c7098064e909e2525291edfeaaa4bed127275e269d751cd0ecb19256c2c71e53",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
-      "statement": "run_dispatch_cycle is the single unit of work the dispatcher, queue watchdog, and CLI `dispatch` command all trigger; it runs behind a process-level exclusive file lock so concurrent cycles never corrupt board state, and a background thread drives it every DISPATCH_INTERVAL_SECONDS (30s).",
+      "statement": "run_dispatch_cycle is the single unit of work the dispatcher, queue watchdog, and CLI `dispatch` command all trigger; it runs behind a process-level exclusive file lock so concurrent cycles never corrupt board state, and a background thread (_dispatcher_loop via start_background_dispatcher) drives it every DISPATCH_INTERVAL_SECONDS (30s).",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scheduler.py#L1412-L1444",
-          "version": "repo-lines-v1:sha256:7c3c22fe0a38eac8757441c414d7a6b747bff1c6ba465e8bdee5ab7d0011fa9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ODY2OTIxMDhjNWJiZDVkOWVmZTRiZWNhY2RiZDU3ZWI5MDZkZTBjZGYxMWZiMTJiZjE3NTdmYTBiM2M2NTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxNzM1MDZlNzk4OWEzYzlhNjgyYjAzNWE0MzUyN2UyMmIzOGE4YzE1N2MyYTE3Yjk4YzAzZDM3NDk2ZjljMGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2N2Q0Mjc2ZjQ0MzA4N2VkOTFlZTUxYzdmMDYwNTk1MTQ1MDVkZDMzOTI4ZTkzNGViMjNlYmM4ZjUwNWUzM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5ODRhYWJjNDRkNjBiMzkzYmJkNmJiMDQ4ODJmYTI3NDc4MjA3ZTcwZDFiYjM1ODc5MGZmM2M0ZGU0OWQxYmEifQ"
+          "resource": "repo://dispatcher/scheduler.py#L2394-L2431",
+          "version": "repo-lines-v1:sha256:9e6195e623077efca31d14b59abe5cda578a7fe4e505e97806e283ea6a569125:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ODY2OTIxMDhjNWJiZDVkOWVmZTRiZWNhY2RiZDU3ZWI5MDZkZTBjZGYxMWZiMTJiZjE3NTdmYTBiM2M2NTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkYWQwNGEzNWJkNmM3ODBlMjFmYmZhN2RiYjNlMWQ3NDU4OTQ5YmY1ZmRlOGNmNDZmMGQ3YjUzYWQyMzAyM2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlZGM1Y2MxOWU0OGUwMGVkMGVlZjMzNjI3ZjkzMzViZmQzMzExMzFkN2FlNDczMDQ0OGFiZDk2NmRiYjRlZDYifQ"
         },
         {
-          "resource": "repo://dispatcher/scheduler.py#L36-L70",
-          "version": "repo-lines-v1:sha256:b4fd3be1aa917f89135128534a6c882ac9a14c6a98183626ca7f939c3736eb71:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkOGFlZDM0ZGYwNWY5NGVlNDUzZmMyMzQxMDQ3ZTBlYzZjZTRhZGM4YjNmODI1ZjQ3NDJhNzVmZWZhNjU0YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYmQwN2JjYWIxYmJmMjgwY2U4ZWRhMGI5ZGY2Mzc2Yjg1ZWMzZWNlOGQwYzdjODc0MzliYTNhMTU0NGMyOTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5OGIwNjNkOWI0N2U2NTM3OTYyNTU3MmNjZTE5NzY2OWQ1NzY3ZTEyYzE4YmUwNzU2NTJiOGNkOTgxY2U4ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyOGM3NDRmYzdhNWJlZTc4M2Q4ODJmOTBjNmJiZTA0ODFkYWU3MTcwMTdjZTQ0YTUyZDliNTgyYjc2ODVjNDkifQ"
+          "resource": "repo://dispatcher/scheduler.py#L40-L90",
+          "version": "repo-lines-v1:sha256:cfd5ce7aeb3b5591d1549fb8f7e5afb180c18fc7a6882b3e02f91c4dbbf99e45:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkOGFlZDM0ZGYwNWY5NGVlNDUzZmMyMzQxMDQ3ZTBlYzZjZTRhZGM4YjNmODI1ZjQ3NDJhNzVmZWZhNjU0YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmZTExYmNkNTE4MGQyYjg0ZDE1MjRiMTg2MzVhZmNkYTkzOTU5M2E2NGI2NzY4NmI0OTU0OGY2NDc4ZTc4MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzZTZiMmEzODVkNjBlYTMzYTdlNmEwZTQxMmRiNmVlYjkxYjhjMGE1NDcwNjkzMmIyMzI1YjAzMWRkODJkODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwNWUxOTMwYTIxMDZjYTcxOWQ4NWI4ZTk1MDMwYjJkNDA2Njk3YTA0NzIyYTM2ZTA3ZmZlYmIxZjQyMTJkNTQifQ"
         }
       ]
     },
@@ -52,25 +52,25 @@
     },
     {
       "id": "claim_4b77e0178b414430b01b006e7076efae",
-      "statement": "Merge conflicts are routed, not swallowed: _handle_local_merge_conflict and _handle_pr_conflict_from_github send a conflicted task back to zf-builder for conflict resolution rather than aborting.",
+      "statement": "Merge conflicts are routed, not swallowed: _handle_local_merge_conflict and _handle_pr_conflict_from_github increment conflict_retries and send a conflicted task back to zf-builder for conflict resolution rather than aborting; once the conflict-retry budget is exceeded the first exhaustion stamps triage_phase='recovery' and routes the task to zf-orchestrator for one autonomous diagnostic attempt (when orchestrator_recovery_count < 1), otherwise parking it in blocked for a human.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/worktree.py#L460-L557",
-          "version": "repo-lines-v1:sha256:c172d34284d661c1dfbe9fafb1014120968ac557975ed50a3717739dcacfd565:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjYWYyMjBiNTAyYjQyZGQ3MjUxYzJjZDJjNzI0MjI4YmQwNzQ2MWExZWFlNDI2MGFlOTVhZDhhNmU0YmEzN2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxYWMyOWRmYjZjM2M3OTViMDk1MTBhZDU0MjNmNjgxNDM2OWQzZmQwN2VmZDg3ZDg2MmQ3MTM0NjVhYzJlY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczM2U4NDg3Yzg1ZGZkY2Y5ZmE3YjkzYzc0NmM5NDYyNWFlNDdlMTIwYzc5N2U3OTFlNzM3ZjllZDdmZmM3M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjMDc2ZDE4Y2RmMjFkYWM0MDNlOTgzZGE3NDQ0MGQ1NDk0ZmIzNzJmNTAzMWZlZDliOWQ3NzVmMjk0MTM3NzcifQ"
+          "resource": "repo://dispatcher/worktree.py#L646-L764",
+          "version": "repo-lines-v1:sha256:bd41c28b7fdc45d476b2049fb9d17a4b94ba2dd3ce3ad913b7d127e07fd48e62:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxY2FmMjIwYjUwMmI0MmRkNzI1MWMyY2QyYzcyNDIyOGJkMDc0NjFhMWVhZTQyNjBhZTk1YWQ4YTZlNGJhMzdmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MzNlODQ4N2M4NWRmZGNmOWZhN2I5M2M3NDZjOTQ2MjVhZTQ3ZTEyMGM3OTdlNzkxZTczN2Y5ZWQ3ZmZjNzNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1MzQwY2M1NmQyZmI5NDVjMTk1MjQ1OTc4Y2IwOTlkZjYwMGQyZTU2MGRiMzliNWVjY2ViNzdmM2RlZjQ0MmNjIn0"
         },
         {
-          "resource": "repo://dispatcher/worktree.py#L724-L847",
-          "version": "repo-lines-v1:sha256:28a68d7d0bfa1e08abf088bf48e8beb51f572a7d666c11298a1a236374e2401d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2YzM2MTVmNThjOTZkYWNmZWZkNGM3YzBkZDBkMzU1NDBmZmM2ZWYwNGUwMTVlZWI5MzM3ZjNkMWQ4ZGY1OGU1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiZTIyMTk0ZTg1NWM0NjE4ZjE2ZjYyNjEyNDllOTc0NzQ1YzQwZjRkN2Y1NmYwOTA3MDdkYmY3ZjEwNGY3ZDcxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YTI4ZjMwNDBkZmJlYjY4Y2M5NDYwODQ3Yjg1ZGI1OWQzZTBhZDcwOTc5OTcxYTczNGM0OTVhMjEwYjllYjdkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwNDFiZTc1ZDE3OTJjNDRmNDI2ZDRiOGY1ZjhlMGNhMWEyNmI3MjRjYjdiNWU1MGE4M2FhNWZlMWU5NzQ1ZDZkIn0"
+          "resource": "repo://dispatcher/worktree.py#L932-L1076",
+          "version": "repo-lines-v1:sha256:ed2f9294c9f55f82f1953ca51e2190c7cf23f4f19c230d3d19d737ef7272cdd7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2YzM2MTVmNThjOTZkYWNmZWZkNGM3YzBkZDBkMzU1NDBmZmM2ZWYwNGUwMTVlZWI5MzM3ZjNkMWQ4ZGY1OGU1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YTI4ZjMwNDBkZmJlYjY4Y2M5NDYwODQ3Yjg1ZGI1OWQzZTBhZDcwOTc5OTcxYTczNGM0OTVhMjEwYjllYjdkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OTc3MzcwMzUzM2JiMDk4OGMzMzk0YWY4N2JiM2IyYzBlYTQzYjMxN2IxMjg3NDM1MDczNTQ5MjlhMjQ4ZWJmIn0"
         }
       ]
     },
     {
       "id": "claim_fb69dd025a184af283a5a439061a1f49",
-      "statement": "spawn_agent_worker launches the assigned specialist as a detached hermes -p <assignee> subprocess with stdin=DEVNULL and stderr=STDOUT merged into the worker log, pinning HERMES_HOME to the profile's home, then correlates the new session_id against the profile's state.db via resolve_profile_state_db.",
+      "statement": "spawn_agent_worker launches the assigned specialist as a detached hermes -p <assignee> subprocess with stdin=DEVNULL and stderr=STDOUT merged into the worker log, pinning HERMES_HOME to the profile's home (spawn flags are --cli chat -q <prompt>, with --yolo --accept-hooks appended only when allow_unattended_approvals is enabled), then correlates the new session_id against the profile's state.db via resolve_profile_state_db.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/worker_spawner.py#L69-L788",
-          "version": "repo-lines-v1:sha256:0d3f004de3d66ee220dfc93cddc61e9079ff230420b8a9678e5f52e0f1c17919:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiNDViM2ZkMjgzZTdkZmI1ZTkyOGYyODcxMDVlMDRlNGJjYzRhNzNlMTZmNjgzYmRmOTlkYjg2MGQ1NTdiNzk5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1NmM5OGQ5OTY3YjQwNmIzNWY5NjU1NzVmZjY1ZDNlZGEyZGZhMjVlNzgzZjFlNGZmZWQ1OTc0NmI5ZGMxYjFjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0NTUwMzA0MjQzYTQ3ZDNiYjUwNDk2MjZhZDY5YjBkYjQyMDMyNmU4MDU1NGI5MjFlMmFlYzdkZDIwOTAwYTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dispatcher/worker_spawner.py#L118-L849",
+          "version": "repo-lines-v1:sha256:1010107f0a6fea2c3df861bc890295ff2d69c83cd222bcc4066e8ed557c3497f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiNDViM2ZkMjgzZTdkZmI1ZTkyOGYyODcxMDVlMDRlNGJjYzRhNzNlMTZmNjgzYmRmOTlkYjg2MGQ1NTdiNzk5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1NmM5OGQ5OTY3YjQwNmIzNWY5NjU1NzVmZjY1ZDNlZGEyZGZhMjVlNzgzZjFlNGZmZWQ1OTc0NmI5ZGMxYjFjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0NTUwMzA0MjQzYTQ3ZDNiYjUwNDk2MjZhZDY5YjBkYjQyMDMyNmU4MDU1NGI5MjFlMmFlYzdkZDIwOTAwYTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -86,11 +86,11 @@
     },
     {
       "id": "claim_536bb4ec7e714e93bcd2cb95f9359445",
-      "statement": "_handle_precommit_failure implements the self-healing loop: it increments metadata[precommit_retries] and, within ZEROFACTORY_MAX_PRECOMMIT_RETRIES (default 3), routes the task back to zf-builder as a claimable todo retry (clearing awaiting_pr) with the exact failing output injected into the respawned worker's prompt; once retries are exhausted it moves the task to blocked with blocked_reason_type='stuck' and assignee 'human' for inspection and posts a failure comment.",
+      "statement": "_handle_precommit_failure implements the self-healing loop: it increments metadata[precommit_retries] and, within ZEROFACTORY_MAX_PRECOMMIT_RETRIES (default 3), routes the task back to zf-builder as a claimable todo retry (clearing awaiting_pr) with the exact failing output injected into the respawned worker's prompt; once retries are exhausted the first exhaustion stamps triage_phase='recovery' and routes the task to zf-orchestrator for one autonomous diagnostic attempt (gated on orchestrator_recovery_count < 1), and a second exhaustion moves the task to blocked with blocked_reason_type='stuck' and assignee 'human' for inspection and posts a failure comment.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/worktree.py#L897-L1017",
-          "version": "repo-lines-v1:sha256:6143549ee5a9e12639a62612234983fba31aafe49261bcf69ad8b3448669793e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0ODg2OWIzMjRhOTk1OGYxMGJhNTY2YTU3M2M2ZjBkMDRmMmUyYTRhYzk1ZTcxNDdjNzdkM2Y2NzIzYjA1YzBkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1NTAzMmU5NjRkMDkzMjM1MWU1ZDE4NTI2OTI4MWIxNzFhM2EwOWIwOGIyODZlNjYxZWE0NzAzMjNjODJlYjRkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNThlYjE3NDllMDIwMWFjZDhjMDU3MWM1NzVhMmNmMmIzOTljODE3MDUwZTU0YmUxMmIwZjMwY2FmMWE0ODhlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dispatcher/worktree.py#L1127-L1269",
+          "version": "repo-lines-v1:sha256:480b6f6e0b3a535c41b7d89d3d3c9edad358d5e1e7def2cd71f9658fe9ef280a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0ODg2OWIzMjRhOTk1OGYxMGJhNTY2YTU3M2M2ZjBkMDRmMmUyYTRhYzk1ZTcxNDdjNzdkM2Y2NzIzYjA1YzBkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1NTAzMmU5NjRkMDkzMjM1MWU1ZDE4NTI2OTI4MWIxNzFhM2EwOWIwOGIyODZlNjYxZWE0NzAzMjNjODJlYjRkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNThlYjE3NDllMDIwMWFjZDhjMDU3MWM1NzVhMmNmMmIzOTljODE3MDUwZTU0YmUxMmIwZjMwY2FmMWE0ODhlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -116,19 +116,19 @@
     },
     {
       "id": "claim_7414caddf45c4549ae10dc50ac6b83c1",
-      "statement": "reaper.py detects hung workers using a per-task max running time and an inactivity timeout: reap_active_workers terminates a worker that exceeded its budget and records the session end, and reap_stuck_tasks is the entry point the queue watchdog and the check-stuck CLI use (with PRAGMA busy_timeout and retry-on-OperationalError backoff); worker-failure handling is retry-oriented (a failed or vanished running worker returns to todo for re-spawn up to DEFAULT_MAX_WORKER_RETRIES), and the exhausted-retry path stamps blocked_reason_type='stuck' with assignee 'human'.",
+      "statement": "reaper.py detects hung workers using a shared _compute_stuck_state (per-task max running time plus inactivity timeout) so reap_active_workers (the only path that kills processes) and check_stuck_tasks (reporting/manual reap) cannot drift apart; reaper DB connections are WAL-tolerant (PRAGMA busy_timeout) and reap_stuck_tasks retries on sqlite3.OperationalError 'database is locked' with capped backoff; worker-failure handling is retry-oriented (a failed or vanished running worker returns to todo for re-spawn up to DEFAULT_MAX_WORKER_RETRIES), and on exhaustion with assignee != zf-orchestrator and orchestrator_recovery_count < 1 the task is routed back to todo with triage_phase='recovery' for one autonomous attempt, while a second exhaustion stamps permanently_blocked with blocked_reason_type='stuck' and assignee 'human'.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/reaper.py#L114-L523",
-          "version": "repo-lines-v1:sha256:def0dc4ac6fc097cdb918c31480632a8165383ad2fedf025011b7cd804d25c1a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1ZjRhNGRhZjkzMjczMDQ2MjkxZWQ3NTQ0Mjk1ZDg0ODZhYWFkZTc2YjJjODMzMmUwNjEzMjRmOTdjNTZhY2Y1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYjU1ODA2YzIyYTcwNGFhOWFjN2ExNjY3NWIxZTM4MjUyNjBmZWNkYmRhMjdlOTkwMWE2NTdlYjJmMWY2ZGYxIn0"
+          "resource": "repo://dispatcher/reaper.py#L151-L674",
+          "version": "repo-lines-v1:sha256:5d04d2b9836624d848538c911346801d34848a6406ecdc403833a94837f12997:eyJzZWxlY3RlZExpbmVDb3VudCI6NTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZWQ3NWM4ZGE2MzU4ODExNTUwYjJlYTE1ZjliZjAwM2ZiZjRhMzlkOWU5MDQ0Yzk3MGU2MGIxNDRlNDllZjQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NGIxMjJlYjRiNTk4MTI2MjVkODQ0ZjVmMWUzMGYzZGJkYjIzYjYwNTY5OTJmYTQzMWQ0NTNlMWQ4NDgwNDcxIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzNGM2ZmY3MGQ0ZjJjYWY4MTAyNDc4OTQ0Y2ZjYjI3ODM2Zjk3NzkzYTEwYTQwNDBmZTUxYjE3ODdmY2QzMmVhIn0"
         },
         {
-          "resource": "repo://dispatcher/reaper.py#L33-L38",
-          "version": "repo-lines-v1:sha256:55eb315f5a9ff72c7a36cfcd9ca58c3a975e66328624fa0125574d41a1528338:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDllMmIwN2JhODA3YzA1ZDcyNmNmZTExZmZhNWYxN2FjNzM0YmMwZTZhYTJjODBiODE4MmUyMDc3YzA1ZThkOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWZlMWFkNjgwOTgwNGU4NjI4ODczZmIzZDY2MWI1NTRhMzBkYTMxYmY2YjUzNGNkNDk0ZTFiNDI2NjFhMWU0OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjA1ZmZhNjgzMWNmYTVjNzVkYzg1NmExMzI4ZDdmNDcxNjgxYjZjOWRlOTA2MDUwNWViZWFlNzE2NTIxNzM3NyJ9"
+          "resource": "repo://dispatcher/reaper.py#L70-L134",
+          "version": "repo-lines-v1:sha256:9a5a9dbbbfc1cdeb96192d1fc29d1a971cfb3dfb9bc67702ffd7560824bb6642:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZTJiMDdiYTgwN2MwNWQ3MjZjZmUxMWZmYTVmMTdhYzczNGJjMGU2YWEyYzgwYjgxODJlMjA3N2MwNWU4ZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxYjMwZTk5MmI2Yzc3YTc4NjczMjAzOTdkMjZmM2UyNTRlZjA2MjI4NWI4ZTc3MGJhNjNlYWQ2YzViZmM1MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmZTFhZDY4MDk4MDRlODYyODg3M2ZiM2Q2NjFiNTU0YTMwZGEzMWJmNmI1MzRjZDQ5NGUxYjQyNjYxYTFlNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxOWQ1NGNlZjEzNGJhNmY2ZDQzYmQ3ZWIwYTA4Zjg5ZjJiZTJlNTk4OTkyZjliYTUwMmMwZmNkODE5ZGZiMzYifQ"
         },
         {
-          "resource": "repo://dispatcher/reaper.py#L714-L813",
-          "version": "repo-lines-v1:sha256:db0f67a9b10f37f7034474ee3665abdcb9f5f884d4f5eaab08c051f7a047fe93:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzNzBjZTE5OWZhOWExOTNkZmQ3NDRiNGYyNGUwNjE0NWU1NDQ5MjdhN2RjZDg2OTEzOTE5Y2ViMTdiNjY1NjEwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNTQyOWIxY2FiOWJiOTAzZTU1OGVlYjY0YTRiN2U0MzkwODFhZWIzNmM3NDhlNjMwOWRkNzc1NTBjODZhNmJjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwOWRmZWU5OWQ2OTJhNzFiMTQ4OGFhYjE2NzJmNWI2M2Q2MmU2NDU5MGRkM2E5NGRiMThmNTQyNjIwZmI2ZGM3In0"
+          "resource": "repo://dispatcher/reaper.py#L863-L1048",
+          "version": "repo-lines-v1:sha256:5d2815f807aba5f26324b20e3aab1bf6bb3b8311f5a43e1e842a47db33ee72c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzNzBjZTE5OWZhOWExOTNkZmQ3NDRiNGYyNGUwNjE0NWU1NDQ5MjdhN2RjZDg2OTEzOTE5Y2ViMTdiNjY1NjEwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmYTExYzA1NjdkMGE1ZjllOWIxMzVmNjVjZDI1MzcyZGZkNjI4Nzc1ZjdjMWVkMjUzZjhiYWQ0MmRkMmQ2NjY5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNTQyOWIxY2FiOWJiOTAzZTU1OGVlYjY0YTRiN2U0MzkwODFhZWIzNmM3NDhlNjMwOWRkNzc1NTBjODZhNmJjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -167,12 +167,16 @@
       "statement": "When an agent actor reports done the task stays running with metadata['awaiting_pr']=true and _package_and_open_pr is the single owner of the packaging phase: idempotently running precommit, commit, merge against latest main, push (with an HTTPS-to-SSH fallback when the OAuth token lacks workflow scope), opening the GitHub PR, and routing the ticket to zf-reviewer on each cycle until it succeeds; the phase has a 3-attempt failure budget (_handle_packaging_failure: increments packaging_retries, stores last_packaging_error, then parks the task in blocked with blocked_reason_type='stuck' and assignee=human), and _finalize_terminal_done only cleans up (stop stale worker, prune worktree, close the open PR when close_pr is set) and never commits, pushes, opens a PR, or routes the task back to review.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scheduler.py#L1587-L1636",
-          "version": "repo-lines-v1:sha256:f89d57df103f3cd9d0738ee0324ecbbae8329e0de2263574b9ac5ea78b8c7d77:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4YTRjNzJjYmYzZmFjZDQyNjNmNTVjMjc3ODVhZWYzMTJhZTczMDJjODg5NmU3ZTEzMTM4YzI4OWNjNzJmYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5OWVmZWRmZDJkOTcwNmQ4OTFjN2JhOTgzZTdmODRlMDVhZDBlMDE5MWMxMzI3OThiZTVlM2MxY2M1MzA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmNmI5ZmNjMTYzNzQ4OTUwZTkwMGY3NDQyMDVjMDUxMWI5Y2Q2OTFlYWQ0NTJhYmE4ODRkOTAyMzRiMzc4NGEifQ"
+          "resource": "repo://dispatcher/scheduler.py#L1703-L1753",
+          "version": "repo-lines-v1:sha256:29c0143bd2a1d3bdfdeba25a406d5a606ebb729f3253fd4efb35e4d52d547eeb:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4YTRjNzJjYmYzZmFjZDQyNjNmNTVjMjc3ODVhZWYzMTJhZTczMDJjODg5NmU3ZTEzMTM4YzI4OWNjNzJmYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5OWVmZWRmZDJkOTcwNmQ4OTFjN2JhOTgzZTdmODRlMDVhZDBlMDE5MWMxMzI3OThiZTVlM2MxY2M1MzA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzMTdmY2RlOTI4YmQ1NzViOThlODIwYTQxNjlmM2M0ZGM1YzY1ZWIzOWE2MmUyYzQ0M2E1MTE0ODQ2ZjRhZGIifQ"
         },
         {
-          "resource": "repo://dispatcher/scheduler.py#L1638-L2068",
-          "version": "repo-lines-v1:sha256:128ce6023d6b47d92a8e0527d5d73b316d0e65121f79a5865cafb5e6dadb15e6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiYjRmNjA5ZGUxMjVmMjM5OWFhNDQ1NTNjYWM3NDY3NTlhNmY4NzQyMTBjMTczNDZlNzUwMzNmNWUwOTY2OTE3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOGU5MTc0YzEwZDU1NjQyYWFhZTM4NWNlZmRlNzg2MmNkOWE2OGMzMDlhNWUwNDIyNjZmMTY5NDk5Y2NjYzBlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YTI4ZjMwNDBkZmJlYjY4Y2M5NDYwODQ3Yjg1ZGI1OWQzZTBhZDcwOTc5OTcxYTczNGM0OTVhMjEwYjllYjdkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzZTUzNGU4MGQ4ZmJjYTczMGNjOTZhMThiM2IyMmIzODE3N2Q0MjdiM2VjZjI3Y2UxMjE4YWQ4MTI0YjhlNjZjIn0"
+          "resource": "repo://dispatcher/scheduler.py#L1754-L2326",
+          "version": "repo-lines-v1:sha256:d23c39a8dd8cb4d80983994bb71823c01cfdd157a2c6ce0713e45692381d7358:eyJzZWxlY3RlZExpbmVDb3VudCI6NTczLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiYjRmNjA5ZGUxMjVmMjM5OWFhNDQ1NTNjYWM3NDY3NTlhNmY4NzQyMTBjMTczNDZlNzUwMzNmNWUwOTY2OTE3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YTI4ZjMwNDBkZmJlYjY4Y2M5NDYwODQ3Yjg1ZGI1OWQzZTBhZDcwOTc5OTcxYTczNGM0OTVhMjEwYjllYjdkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0YmQyZjQ1MTE3N2YwYTg3MWQ5ODk5OTY2NDQwMGEzNTc4YjkzOWU4NjRjYWMzNmEyZTU0NTdiOWExZjdhZDA1In0"
+        },
+        {
+          "resource": "repo://dispatcher/scheduler.py#L2327-L2393",
+          "version": "repo-lines-v1:sha256:9e07846a82d3fdb7c2ffee1b0053d4a4ed2ca34ee15afd69a6cca7e30e6a7738:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3ZDM4ODI5NDU1MWY0NzQ4YmNiMGQ5ZTlkYzM0MTIyNjE1NjhjMTdlODVlMzUxMDBiYmVlYTVmM2FiZjIzMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5OWVmZWRmZDJkOTcwNmQ4OTFjN2JhOTgzZTdmODRlMDVhZDBlMDE5MWMxMzI3OThiZTVlM2MxY2M1MzA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlMzEzZjdjYmRiZjNiYzRlZmM0Y2JjNzBiMDg0NDFjY2U3MTQ1MzdmZjlhNDMzN2YwMWE2ZDk0NDYxZGFmYmUifQ"
         }
       ]
     },
@@ -185,10 +189,34 @@
           "version": "repo-lines-v1:sha256:6f5329e41e2cfa3ed9d6559bf291361b129139019c3c186806c97fa5daaa6579:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlM2NiOTMxOTYxMjY0OGQwOGU4NzY5YzM1ODViMmU3Y2Y3YTdjZjkwYmE0ZjFmMmM0ZjJhMzQwNWM2ZTAxZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5OWVmZWRmZDJkOTcwNmQ4OTFjN2JhOTgzZTdmODRlMDVhZDBlMDE5MWMxMzI3OThiZTVlM2MxY2M1MzA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0NzgzYjc0NzBkNDJhNTdjZmFhNTViOTQ5MTVlNmFjN2UzYzBlZWViMWE5NjIyZDg3OWNkNzVjMzRmZjBmNTYifQ"
         }
       ]
+    },
+    {
+      "id": "claim_66638bf862e14ddeb1d3e63662963c0e",
+      "statement": "All task status and assignee transitions funnel through transition_task in dispatcher/state_machine.py, which validates every move against the VALID_TRANSITIONS graph, raises InvalidStateTransitionError for illegal edges (non-human actors rejected from any edge outside the graph), and delegates canonical assignee resolution for a target status to resolve_status_assignee in paths.py so reaper, scheduler, and dashboard move_task agree on legal moves.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/state_machine.py#L13-L278",
+          "version": "repo-lines-v1:sha256:8c00d07d9d336edcc1c6b7fe3786d6fe5b2a3c13f58a88b79eb91d3ff8f3904c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjY2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwYWMwN2M1Y2E4NmUwMjU4YTVhZDg5YWM1OGU3YWQ3YWJjZjI3Yzk0OTYzODc3OGM1Mzc1MDc3N2ZjOGZhNWVkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxMDM0ODQ5MTM3YWE1ZDZmYjk5Mzg4ODQ4MDBmMGQ0NDhmOTk4MGFlYTUyMTRhMTA1MWVmMjdlZTJhMmZiZjljIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_45cf636664ea4b51ab5b0d3941c15223",
+      "statement": "The per-board improvement scanner runs inside the dispatcher process: each dispatch cycle reaps dead scanner PIDs via reap_active_scanners and, when a board's active task count is below its cap, its todo count is below idle_scan_max_todo, no scanner is active for that board, and the get_scanner_cron_config cooldown has elapsed, spawns a background zf-orchestrator scan of the board's repositories via spawn_board_scanner; lifecycle helpers (get_active_scanner_pids, kill_board_scanner, reset_idle_scanner_state) live in dispatcher/scanner.py.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scanner.py#L86-L304",
+          "version": "repo-lines-v1:sha256:94169490a537cdd4fc0db46f7f735cc9382d88aa9e1f7b3d10255e4e2524f798:eyJzZWxlY3RlZExpbmVDb3VudCI6MjE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NzkxMzAzZWZiNDFiZTRhMjg5NzY2MzFjZWNjZWMyYTNjMzNhNDM5MTg4NzViYWVlZDEzM2ZhYmI3YThkMmQ0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4MGFlNmI1YzM0MGMyOWE2ZWFkNTk4ZTAxMWEzMzNjNzVkMzE4MGQzNWE5ZTYzMzczYjU3YWQyN2U3M2Y1NjExIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZTc1NzVjM2I3Nzc2Y2YyZjljMmJmYmNhNDRmMjE0ODEzYTc4MjdlYWE5YzM4NDU0YzcwM2I2ODlhNzQ0Mzg2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://dispatcher/scheduler.py#L806-L830",
+          "version": "repo-lines-v1:sha256:5a9d52a9db7888ac8272681207ac3133b1e44c11fd59f5886e3cc5b315b2a06e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMTY0YzJlNzViYzI5Y2U5MmQxZWJkOGFhNGE3ZWU5NjNjYWY1MzVlYzkyZTE1ZmQwZTdhMWU4MmNkZjZmYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwNTFiYmI0NGJjMWJhY2M1ZmExYzdjOGYyYzVmNzc0YmQwZjU5ZGJlOTAxMzRiODgzM2RlYjMxZGU4ZmJiYTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4MjRiZjJkNWI2YTk3ZmM0NWIyMGQwNzg0ODk2MGJkM2EwOWU5ZjE5YzRlMDYxOGE4MzcyMDY3ZGRhNzA4ZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3NWVkZjRjYWJhOThkZGRjYjdkMGI2MzRjYzJiMzFkNTYzZTk0NDZjZmEwMTFjM2E0Y2EwNjQ4MDVlMDRmYzAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-07T14:59:48.283Z"
+    "at": "2026-11-19T13:45:16.591Z"
   }
 }

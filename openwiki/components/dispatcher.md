@@ -1,8 +1,8 @@
 ---
 type: subsystem
 title: Dispatch Engine
-description: The dispatcher subsystem — run_dispatch_cycle lifecycle, multi-repo isolated Git worktrees, worker spawning with a spawn-grace period, the deterministic precommit self-healing gate, git/PR ops incl. the packaging-failure retry budget and the HTTPS-to-SSH push fallback, the per-commit review cap, automerge, and the WAL-tolerant stuck-worker reaper.
-tags: [dispatcher, dispatch-loop, git-worktree, worker-spawning, precommit, github-pr, reaper, self-healing, multi-repo, automerge, spawn-grace]
+description: The dispatcher subsystem — the centralized 13-stage task state machine, the run_dispatch_cycle lifecycle (in-dispatcher improvement scanner, autonomous recovery routing), multi-repo isolated Git worktrees, worker spawning with a spawn-grace period, the deterministic precommit self-healing gate, git/PR ops incl. the packaging-failure retry budget and the HTTPS-to-SSH push fallback, the per-commit review cap, automerge, and the WAL-tolerant stuck-worker reaper.
+tags: [dispatcher, dispatch-loop, state-machine, git-worktree, worker-spawning, precommit, github-pr, reaper, self-healing, multi-repo, automerge, spawn-grace, recovery]
 sources:
   - id: openwiki-source-78d773f851580c376cac002d
     resource: repo://dispatcher/config.py
@@ -12,16 +12,20 @@ sources:
     resource: repo://dispatcher/github_pr.py
   - id: openwiki-source-e7a6784a6e1f7f421dd572ed
     resource: repo://dispatcher/reaper.py
+  - id: openwiki-source-ecd05021670a16c89458cec0
+    resource: repo://dispatcher/scanner.py
   - id: openwiki-source-9f9b3c9d5afeac588f3cdae1
     resource: repo://dispatcher/scheduler.py
+  - id: openwiki-source-1cbc0eb99c8b57cd43185064
+    resource: repo://dispatcher/state_machine.py
   - id: openwiki-source-b73a2eae57b810a3ad15196e
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-bd2c9dd479aa89010adee0f5
     resource: repo://dispatcher/worktree.py
-generated: { by: "hermes", at: "2026-11-06T15:00:57.907Z" }
+generated: { by: "hermes", at: "2026-11-19T06:27:25.202Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-07T14:59:48.283Z
+    at: 2026-11-19T13:45:16.591Z
 ---
 
 # Dispatch Engine
@@ -30,14 +34,28 @@ The dispatcher (`dispatcher/`) is the heart of the factory. Its job is to turn
 Kanban `todo` cards into live specialist workers, keep each one inside an
 isolated Git worktree, gate its output through a deterministic precommit
 pipeline, open a GitHub PR, route it through review (or auto-merge it), and
-reap anything that hangs.
+reap anything that hangs. Every task status/assignee move funnels through one
+validated primitive — `transition_task` in `repo://dispatcher/state_machine.py`
+— so the reaper, the scheduler, and the dashboard's `move_task` never disagree
+about a legal move.
+
+## The centralized 13-stage state machine
+
+`VALID_TRANSITIONS` (`repo://dispatcher/state_machine.py#L13-L278`) defines the
+legal edges between the five storage statuses; `transition_task`
+(`repo://dispatcher/state_machine.py#L30`) validates each move against that
+graph and raises `InvalidStateTransitionError` for illegal edges (non-human
+actors are rejected from any edge outside the graph). Canonical assignee
+resolution for a target status is delegated to `resolve_status_assignee` in
+`repo://paths.py`, keeping the `(status, assignee)` invariant consistent
+everywhere a transition happens.
 
 ## The core loop: `run_dispatch_cycle`
 
-`run_dispatch_cycle` (`repo://dispatcher/scheduler.py#L38`) is the single
+`run_dispatch_cycle` (`repo://dispatcher/scheduler.py#L40`) is the single
 unit of work the dispatcher, the queue watchdog, and the CLI `dispatch` command
 all trigger. It runs behind a process-level exclusive file lock so concurrent
-cycles never corrupt board state (`repo://dispatcher/scheduler.py#L38-L76`).
+cycles never corrupt board state (`repo://dispatcher/scheduler.py#L40-L90`).
 Within one cycle it:
 
 1. **Unblocks / promotes** — moves tasks whose parents are all `done` into
@@ -47,100 +65,139 @@ Within one cycle it:
    `DEFAULT_MAX_CONCURRENT_LLM_WORKERS` caps; the task-timeout (default 1h) and
    inactivity-timeout (default 15 min) budgets are read from the settings table
    with a database fallback
-   (`repo://dispatcher/config.py#L159-L229`). EGM triage work is capped at a
+   (`repo://dispatcher/config.py#L22-L23`,
+   `repo://dispatcher/config.py#L151-L175`). EGM triage work is capped at a
    single concurrent worker: the claim query also counts running
    `zf-orchestrator` / `zf-goldfish` tasks and refuses to claim another one
    while one is in flight
-   (`repo://dispatcher/scheduler.py#L164-L201`), and the claim stamps
+   (`repo://dispatcher/scheduler.py#L161-L216`), and the claim stamps
    `triage_phase` (`elephant_drafting` → `goldfish_auditing`) so the reaper
    can advance the phase when each triage worker exits
-   (`repo://dispatcher/scheduler.py#L345-L366`,
-   `repo://dispatcher/reaper.py#L190-L216`).
+   (`repo://dispatcher/scheduler.py#L355-L383`,
+   `repo://dispatcher/reaper.py#L260-L280`).
 3. **Provisions a worktree** — `setup_worktree` resolves the task's repository
    via `resolve_task_repo_path` against `board_repositories` and creates a
    dedicated `~/.zerofactory/workspaces/<board>/worktrees/<task_id>/<repo_alias>`
    worktree on a `task/<task_id>` branch, so a worker never touches `main`
-   directly (`repo://dispatcher/worktree.py#L174-L588`).
+   directly (`repo://dispatcher/worktree.py#L230-L645`).
 4. **Spawns the worker** — `spawn_agent_worker` launches the assigned specialist
    as an isolated `hermes -p <assignee>` subprocess
-   (`repo://dispatcher/worker_spawner.py#L69-L788`).
+   (`repo://dispatcher/worker_spawner.py#L118-L849`).
 5. **Packages** — on worker completion the task stays `running` with
    `awaiting_pr` set; `_package_and_open_pr` runs the deterministic precommit
    gate, commits, merges against latest main, pushes (with an HTTPS→SSH
    fallback when the OAuth token lacks workflow scope), opens a GitHub PR, and
    routes the ticket to `zf-reviewer` (or auto-merges it when enabled),
    retrying up to 3 times before parking the task in `blocked`
-   (`repo://dispatcher/scheduler.py#L1717`).
+   (`repo://dispatcher/scheduler.py#L1703-L2326`).
 6. **Reaps** — `reap_stuck_tasks` / `reap_active_workers` detect and clean up
-   hung workers (`repo://dispatcher/reaper.py`).
+   hung workers (`repo://dispatcher/reaper.py#L863-L964`,
+   `repo://dispatcher/reaper.py#L151-L674`).
 
 A background thread (`_dispatcher_loop` → `start_background_dispatcher`)
 drives this every `DISPATCH_INTERVAL_SECONDS` (30s,
-`repo://dispatcher/config.py#L78`).
+`repo://dispatcher/config.py#L82`,
+`repo://dispatcher/scheduler.py#L2394-L2431`), and the dashboard exposes
+start/stop/status controls for that loop via
+`repo://dashboard/routes/dispatch.py`.
+
+## The in-dispatcher improvement scanner
+
+The per-board improvement scanner runs **inside the dispatcher process**
+rather than as an external cron daemon (`repo://dispatcher/scanner.py#L86-L304`).
+Each dispatch cycle reaps dead scanner PIDs with `reap_active_scanners`
+(`repo://dispatcher/scheduler.py#L123`), and when a board's active task count
+is below its cap, its `todo` count is below `idle_scan_max_todo`, no scanner is
+active for that board, and the `get_scanner_cron_config`
+(`repo://dispatcher/scanner.py#L130-L187`) cooldown has elapsed, the cycle
+launches a background `zf-orchestrator` scan of the board's repositories via
+`spawn_board_scanner` (`repo://dispatcher/scanner.py#L188-L292`,
+`repo://dispatcher/scheduler.py#L806-L830`). Lifecycle helpers —
+`get_active_scanner_pids`, `kill_board_scanner`, `reset_idle_scanner_state` —
+sit alongside in the same module (`repo://dispatcher/scanner.py#L33-L85`,
+`repo://dispatcher/scanner.py#L293-L304`).
 
 ## Isolated-worktree invariant
 
 Every task executes in its own Git worktree on its own `task/<task_id>` branch
-(`repo://dispatcher/worktree.py#L174-L588`). This is the load-bearing invariant:
+(`repo://dispatcher/worktree.py#L230-L645`). This is the load-bearing invariant:
 workers never mutate `main`, parallel tasks don't clobber each other, and the
 worktree + branch are the durable substrate that survives a worker crash. The
 multi-repository layout keys the worktree by `<repo_alias>` so that sibling
 repositories on the same board check out side-by-side under the shared
 `~/.zerofactory/workspaces/<board>/worktrees/<task_id>/` root. Worktree
 provisioning is bounded: every `git worktree add` runs under
-`_WORKTREE_ADD_TIMEOUT` (30s, `repo://dispatcher/config.py#L98-L99`) and a
+`_WORKTREE_ADD_TIMEOUT` (30s, `repo://dispatcher/config.py#L103`) and a
 timeout/failed add triggers `git worktree prune` plus one retry, so a slow or
 stuck checkout can never hang the dispatch cycle
-(`repo://dispatcher/worktree.py#L354-L452`). When a task
-completes or is abandoned, `_remove_worktree` / `_delete_remote_branch`
+(`repo://dispatcher/worktree.py#L412-L452`). When a task
+completes or is abandoned, `_delete_remote_branch` / `_remove_worktree`
 prune the worktree and remote branch
-(`repo://dispatcher/worktree.py#L687-L852`). Merge conflicts are routed, not
+(`repo://dispatcher/worktree.py#L765-L931`). Merge conflicts are routed, not
 swallowed: `_handle_local_merge_conflict` and `_handle_pr_conflict_from_github`
 send the task back to `zf-builder` for conflict resolution
-(`repo://dispatcher/worktree.py#L590-L686`, `repo://dispatcher/worktree.py#L854-L975`).
+(`repo://dispatcher/worktree.py#L646-L764`,
+`repo://dispatcher/worktree.py#L932-L1076`), and once the conflict-retry budget
+is exhausted the first exhaustion stamps `triage_phase = "recovery"` and routes
+the task to `zf-orchestrator` for one autonomous diagnostic attempt (gated on
+`orchestrator_recovery_count < 1`), otherwise parking it in `blocked` for a
+human (`repo://dispatcher/worktree.py#L684-L700`).
 
 ## Worker spawning
 
 `spawn_agent_worker` resolves the `hermes` binary, builds a prompt (injecting
 task context, board repository memories, and the review/handoff instructions),
-and launches a **detached** subprocess with `stdin=DEVNULL`, `start_new_session=True`,
+and launches a **detached** subprocess with `stdin=DEVNULL`,
+`start_new_session=True`,
 and `stderr=STDOUT` merged into the worker log, pinning `HERMES_HOME` to the
 profile's home so the worker is fully isolated
-(`repo://dispatcher/worker_spawner.py#L702-L726`). It then correlates the new
+(`repo://dispatcher/worker_spawner.py#L780-L800`). It then correlates the new
 `session_id` against the profile's `state.db` via `resolve_profile_state_db`
 (shared from `paths.py`) so the dashboard and dispatcher agree on which session
-a task owns (`repo://dispatcher/worker_spawner.py#L741-L788`).
+a task owns (`repo://dispatcher/worker_spawner.py#L804-L849`). The spawn
+command is `--cli chat -q <prompt>`; `--yolo --accept-hooks` are appended only
+when the `allow_unattended_approvals` setting is enabled
+(`repo://dispatcher/worker_spawner.py#L751-L754`).
 
 Prompt context is **pre-digested in Python** before the agent wakes:
 `digest_reviewer_git_context` pre-computes the git log, diffstat, and a bounded
 diff so the reviewer spends tokens on review, not on `git` exploration
-(`repo://dispatcher/context_builder.py#L16-L209`). The reviewer prompt instructs
-a **Ponytail anti-overengineering review** (diff hygiene, dependency veto,
-YAGNI) and submission via `gh pr review --comment` — not `--approve` /
-`--request-changes`, which GitHub blocks for the author's own token — with
-`[AI:zf-reviewer]`-tagged comments; the builder prompt likewise tags its
-GitHub output `[AI:zf-builder]`.
+(`repo://dispatcher/context_builder.py#L16-L209`), and
+`digest_board_memories_context` injects the most relevant Mem0/board-memory
+entries into the same prompt (`repo://dispatcher/context_builder.py#L210`). The
+reviewer prompt instructs a **Ponytail anti-overengineering review** (diff
+hygiene, dependency veto, YAGNI) and submission via `gh pr review --comment` —
+not `--approve` / `--request-changes`, which GitHub blocks for the author's own
+token — with `[AI:zf-reviewer]`-tagged comments; the builder prompt likewise
+tags its GitHub output `[AI:zf-builder]`
+(`repo://dispatcher/worker_spawner.py#L287-L288`,
+`repo://dispatcher/worker_spawner.py#L699-L715`).
 
 ## Deterministic precommit + self-healing retry
 
 Before any commit/PR, `run_deterministic_precommit` runs the worktree's
 `.zerofactory/precommit.sh` (format → build → test) with a timeout, capturing
-the full stdout/stderr (`repo://dispatcher/worktree.py#L977-L1025`). If it fails,
-`_handle_precommit_failure` implements the **self-healing loop**
-(`repo://dispatcher/worktree.py#L1027`):
+the full stdout/stderr (`repo://dispatcher/worktree.py#L1077-L1126`). If it
+fails, `_handle_precommit_failure` implements the **self-healing loop**
+(`repo://dispatcher/worktree.py#L1127-L1269`):
 
 - it increments `metadata["precommit_retries"]` and stores the last error;
 - if retries are within `ZEROFACTORY_MAX_PRECOMMIT_RETRIES` (default **3**), it
   routes the task **back to `zf-builder` as a claimable `todo` retry** (clearing
   `awaiting_pr`) with the exact failing output injected into the respawned
   worker's prompt, so the agent can fix the regressions;
-- once retries are exhausted it moves the task to **`blocked`** with
+- once retries are exhausted the first exhaustion stamps
+  `triage_phase = "recovery"` and routes the task to `zf-orchestrator` for one
+  autonomous diagnostic attempt (gated on `orchestrator_recovery_count < 1`);
+  a second exhaustion moves the task to **`blocked`** with
   `blocked_reason_type = "stuck"` and assignee `human` for inspection, and
-  posts a failure comment (`repo://dispatcher/worktree.py#L942-L946`).
+  posts a failure comment
+  (`repo://dispatcher/worktree.py#L1165-L1185`,
+  `repo://dispatcher/worktree.py#L1249-L1268`).
 
 So a broken build or lint error never silently becomes a PR; the builder gets the
-exact error logs to auto-fix (up to 3 retries), and only genuinely stuck work
-escalates to a human.
+exact error logs to auto-fix (up to 3 retries), and only work that is still stuck
+after one orchestrator diagnostic attempt escalates to a human.
 
 ## The packaging phase (`awaiting_pr` / `close_pr`)
 
@@ -149,7 +206,7 @@ escalates to a human.
 marked by `metadata["awaiting_pr"] = true` (set by the dashboard `move_task`
 when an agent actor reports completion, and by the reaper when it observes a
 worker exit mid-package). `_package_and_open_pr`
-(`repo://dispatcher/scheduler.py#L1717`) is the single owner of that
+(`repo://dispatcher/scheduler.py#L1754-L2326`) is the single owner of that
 phase; it is idempotent and re-runs on the next cycle until it succeeds.
 The phase also carries its own failure budget: any git/PR command failure
 (including timeouts) routes to `_handle_packaging_failure`, which increments
@@ -158,11 +215,11 @@ The phase also carries its own failure budget: any git/PR command failure
 parks the task in `blocked` with `blocked_reason_type = "stuck"`, assignee
 `human`, a dispatcher comment, and a `packaging_failed` activity entry,
 instead of looping the packaging step forever
-(`repo://dispatcher/scheduler.py#L1666-L1715`). The `recover` endpoint and
+(`repo://dispatcher/scheduler.py#L1703-L1753`). The `recover` endpoint and
 `build_stuck_task_context` both surface/reset these counters
-(`repo://dashboard/routes/tasks.py#L1564-L1677`,
-(`repo://dispatcher/reaper.py#L816-L899`). When a task is closed terminally by a human or by a merged PR,
-`_finalize_terminal_done` (`repo://dispatcher/scheduler.py#L2289`) only
+(`repo://dashboard/routes/tasks.py#L1678-L1792`,
+`repo://dispatcher/reaper.py#L965-L1048`). When a task is closed terminally by a human or by a merged PR,
+`_finalize_terminal_done` (`repo://dispatcher/scheduler.py#L2327-L2393`) only
 cleans up — stopping any stale worker, pruning the worktree, and, when
 `close_pr` is set, closing the open PR and deleting the remote branch so
 GitHub matches the board. It never commits, pushes, opens a PR, or routes the
@@ -192,15 +249,16 @@ ops).
   `hitl`/`manual-review` tags/labels → false; opt-in `automerge`/`yolo` → true;
   else the board `automerge` default) and executes `attempt_pr_automerge` via
   the `gh` CLI (squash + delete-branch, falling back to `--auto --squash` when
-  status checks or required reviews gate the merge). The PR-poll query
+  status checks or required reviews gate the merge)
+  (`repo://dispatcher/github_pr.py#L529-L633`). The PR-poll query
   selects the task's `tags` (and `description`) columns when present, and
   `_poll_pr_and_route_review` falls back to a `SELECT tags FROM tasks` lookup
   by task id when the row lacks a `tags` field, so task-level `automerge`
   tags apply even on older query shapes. On success the dispatcher
   stops the worker, prunes the worktree and remote branch, and moves the task
   to `done` directly; on failure it parks the task for a human
-  (`repo://dispatcher/github_pr.py#L529-L587`,
-  `repo://dispatcher/scheduler.py#L104-L106`, `repo://dispatcher/scheduler.py#L465-L470`, `repo://dispatcher/scheduler.py#L1527-L1535`).
+  (`repo://dispatcher/scheduler.py#L1560-L1570`,
+  `repo://dispatcher/scheduler.py#L1572-L1580`).
 - **Per-commit review cap** — when a reviewer's actionable comments route a task
   back to the builder, the dispatcher tracks `commit_review_count` in task
   metadata keyed to the PR's `headRefOid` (reset to 0 whenever the head commit
@@ -208,53 +266,70 @@ ops).
   `ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**): exceeding it sets
   `review_cap_reached` and `blocked_reason_type = "human-gate"`, assigns the
   task to `human`, and moves it to `blocked` instead of looping builder ↔
-  reviewer forever (`repo://dispatcher/scheduler.py#L1374-L1448`).
+  reviewer forever (`repo://dispatcher/scheduler.py#L1412-L1446`).
 - **External-issue PR linkage** — when a task carries `external_issue` metadata
   (see [External Issue Import](/openwiki/components/issues-importer.md)), the
-  PR body the dispatcher opens appends `Fixes #<n>` (GitHub) or
-  `Resolves: <KEY>` (Jira) so merging the PR closes the source issue
-  (`repo://dispatcher/scheduler.py#L2116-L2133`); for GitHub issues the
+  PR body the dispatcher opens appends `Fixes #<n>` for GitHub issues (a legacy
+  `Resolves: <KEY>` branch still exists for pre-Jira-removal `jira`-source
+  metadata rows) so merging the PR closes the source issue
+  (`repo://dispatcher/scheduler.py#L2157-L2175`); for GitHub issues the
   dispatcher additionally posts a single idempotent "PR opened" status reply on
   the source issue via `post_issue_pr_comment` (gated on `has_ai_request`,
   marker-deduped with `<!-- zf-task:<task_id> -->`)
-  (`repo://dispatcher/scheduler.py#L925-L1012`).
+  (`repo://dispatcher/scheduler.py#L961-L1049`).
 - **HTTPS→SSH push fallback** — when `git push` of the task branch is rejected
   because the GitHub OAuth token lacks the `workflow` scope, the dispatcher
   derives the SSH URL from the `https://github.com/…` origin remote, retries the
   push against `git@github.com:…`, and — on success — rewrites the worktree's
   `origin` remote, the base repo's remote, and the `board_repositories.git_url`
   row to the SSH URL so subsequent pushes stay on SSH
-  (`repo://dispatcher/scheduler.py#L2008-L2086`).
+  (`repo://dispatcher/scheduler.py#L2058-L2127`).
 
-## Reaper
+## Reaper & autonomous recovery
 
 `reaper.py` detects hung workers using a shared `_compute_stuck_state` (a
 per-task max running time plus an inactivity timeout) so `reap_active_workers`
 (the only path that kills processes) and `check_stuck_tasks` (reporting /
-manual reap) cannot drift apart. Because the dashboard holds many open
+manual reap) cannot drift apart (`repo://dispatcher/reaper.py#L70-L134`).
+Because the dashboard holds many open
 connections plus an active writer, the reaper opens **WAL-tolerant**
-connections: `_open_reaper_conn` sets `PRAGMA busy_timeout=15000`, and
+connections: `_open_reaper_conn` sets `PRAGMA busy_timeout`, and
 `reap_stuck_tasks` retries on `sqlite3.OperationalError` "database is locked"
 with capped exponential backoff (~30s) and returns a clean failure dict instead
 of raising, so a busy DB can never abort the watchdog tick
-(`repo://dispatcher/reaper.py#L33-L38`, `repo://dispatcher/reaper.py#L787-L800`). `reap_active_workers`
+(`repo://dispatcher/reaper.py#L70-L76`,
+`repo://dispatcher/reaper.py#L863-L1048`). `reap_active_workers`
 terminates a worker that exceeded its budget and records the session end;
-`reap_stuck_tasks` is the entry the watchdog and `check-stuck` CLI use.
+`reap_stuck_tasks` is the entry the watchdog and `check-stuck` CLI use
+(`repo://dispatcher/reaper.py#L151-L674`).
 
 Worker-failure handling is **retry-oriented, not terminal**: a crashed or
-vanished worker is routed back to `todo` when it was already `running` (so the
+vanished worker is routed back to `todo` (or `triage` for in-flight EGM drafts)
+when it was already `running` (so the
 dispatcher re-spawns it on the next cycle, up to `DEFAULT_MAX_WORKER_RETRIES`)
-and only escalates to `blocked` when the task was parked elsewhere
-(`repo://dispatcher/reaper.py#L272-L330`, `repo://dispatcher/reaper.py#L345-L411`). The reaper recognizes two more
+and only escalates when retries are exhausted
+(`repo://dispatcher/reaper.py#L151-L674`). Exhaustion routes to autonomous
+recovery, not straight to a human: when the assignee is not `zf-orchestrator`
+and `orchestrator_recovery_count < 1`, the task goes back to `todo` with
+`triage_phase = "recovery"` for **one** diagnostic attempt by
+`zf-orchestrator` (which can `recover` with guidance, `report-bug` an internal
+defect, or `block` for a human gate); a second exhaustion — or any exhaustion
+of the orchestrator itself — sets `permanently_blocked` and parks the task in
+`blocked` with `blocked_reason_type = "stuck"` for a human
+(`repo://dispatcher/reaper.py#L363-L400`). The conflict and precommit failure
+handlers share the same two-tier routing, stamping `triage_phase = "recovery"`
+after their own retry budgets (`repo://dispatcher/worktree.py#L684-L700`,
+`repo://dispatcher/worktree.py#L1165-L1185`). The reaper recognizes two more
 states: the **packaging phase** (a `running` task with `awaiting_pr` set is
 owned by `_package_and_open_pr` and is deliberately skipped rather than treated
-as an orphan, `repo://dispatcher/reaper.py#L337-L344`, `repo://dispatcher/reaper.py#L407-L414`) and the **spawn grace
+as an orphan, `repo://dispatcher/reaper.py#L447-L535`) and the **spawn grace
 period** — a freshly claimed task with a `spawning_at` timestamp younger than
 `DEFAULT_SPAWN_GRACE_SECONDS` (180s) is treated as "spawn in flight", not an
 orphan, so the reaper does not double-dispatch the builder mid-startup
-(`repo://dispatcher/reaper.py#L407-L444`). The exhausted-retry path instead
-stamps `blocked_reason_type = "stuck"` on the parked task
-(`repo://dispatcher/reaper.py#L455-L495`).
+(`repo://dispatcher/reaper.py#L539-L546`,
+`repo://dispatcher/config.py#L79`). `check_stuck_tasks` /
+`build_stuck_task_context` power the `check-stuck` CLI and the dashboard's
+⚡ Recover Task button (`repo://dispatcher/reaper.py#L675-L1048`).
 
 ## Step logging
 
@@ -277,7 +352,8 @@ step that died; the full grep playbook lives in
 
 Upstream: claims work off the durable Kanban SQLite substrate described in
 [Architecture](/openwiki/architecture.md). Downstream: the deterministic
-precommit and PR ops hand off to the reviewer, and the dashboard / cron layer
-(`Dashboard, Cron & Automation`) triggers `run_dispatch_cycle` and inspects
-worker liveness. Coding rules for touching this code live in
+precommit and PR ops hand off to the reviewer, and the dashboard layer
+([Dashboard & Automation](/openwiki/components/dashboard-cron.md)) triggers
+`run_dispatch_cycle` and inspects worker liveness. Coding rules for touching
+this code live in
 [Conventions](/openwiki/conventions.md).

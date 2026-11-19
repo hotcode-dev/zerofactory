@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0074c68a8c6fd86fa186382d0de48da62fb62f21d06521751cd93cbd7a4dfe2c",
+  "pageVersion": "sha256:e3855ebb5d46012b2714aa6717f7dd644359b6596216672f27a189d3cb29274b",
   "claims": [
     {
       "id": "claim_be552b6d7ec04f239ee42608bf0f568d",
@@ -37,22 +37,12 @@
       ]
     },
     {
-      "id": "claim_31e8180c8b284d738f3972a1720c5658",
-      "statement": "JiraIssueClient accepts PROJ-123-style keys and fetches issues over the Jira REST API 3 endpoint; the instance URL resolves from the board's jira_url column or JIRA_BASE_URL and credentials from JIRA_EMAIL/JIRA_API_TOKEN, a missing URL raising a descriptive ValueError; mock_data payloads are parsed for tests and webhooks.",
-      "evidence": [
-        {
-          "resource": "repo://issues/jira.py",
-          "version": "repo-file-v1:sha256:3a857576a3b7dabdb0c3e475c8ae513f0e18b2de05844c9b232ae8b224852622"
-        }
-      ]
-    },
-    {
       "id": "claim_9c13f221b5b54d73ae13d87db4495a31",
-      "statement": "resolve_board_for_issue picks the target board in priority order: an explicit valid board_slug, then the issue repo_or_project matched against each board's git_url, repo_alias, jira_url, or slug (via a LEFT JOIN over board_repositories), then the working directory's git remote origin against board URLs, falling back to the supplied board slug or the first available board.",
+      "statement": "resolve_board_for_issue picks the target board in priority order: an explicit valid board_slug, then the issue repo_or_project matched against each board's git_url, repo_alias, or slug (via a LEFT JOIN over board_repositories), then the working directory's git remote origin against board URLs, falling back to the supplied board slug or the first available board.",
       "evidence": [
         {
-          "resource": "repo://issues/importer.py#L30-L111",
-          "version": "repo-lines-v1:sha256:52bd2a11ad1b9664ab619fbf448147cb959d47f759361f58e04fe5c63a284f19:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwZjNhZWJiZGFkMGI4ZWVjMzAzOTY3MzM5ODMzOGNlNDNlMDE1ODE4MzJhODk5NzdjMWI5ZjFmMmQwYjE0ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlNTE3ZGNhYzJmNDk0NzM0Mjg5ZjE1YWQ3ZTA3YmNjMDE0NmZkMDg5YjBmYTM1ZjFiMjM4ODYzNTZjZDY3NDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOTVmYzQ4MzEwMGY5MGQ3Y2MyYzMyNzY2NzhmZTIxM2MyZTFiYmIyNjU5ODg5MTY3NjM3ZmU3NDMzMzM4N2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxOTIwNTRhYmM1ZTlkZGRjMjMwMTYzYzYyZGU5NDRjNDZhYzAwYjk3YmIxMmFkODZhNjBmODFkMjExMjJlMjAifQ"
+          "resource": "repo://issues/importer.py#L29-L111",
+          "version": "repo-lines-v1:sha256:e121ad14aa5136908158bdba44626ef2a0e73f672198cd9f9cffd70b525bb8b7:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwZjNhZWJiZGFkMGI4ZWVjMzAzOTY3MzM5ODMzOGNlNDNlMDE1ODE4MzJhODk5NzdjMWI5ZjFmMmQwYjE0ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOTVmYzQ4MzEwMGY5MGQ3Y2MyYzMyNzY2NzhmZTIxM2MyZTFiYmIyNjU5ODg5MTY3NjM3ZmU3NDMzMzM4N2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4ODRiMzRkZTY3N2Q0OWZkOWFmZDA2MzVhYWUyNzNkMTg0NjM2ZTkxYzU5MzUyNTY0NjU4NzdhYWUzYjk1ODEifQ"
         }
       ]
     },
@@ -61,8 +51,8 @@
       "statement": "import_external_issue creates the Kanban task deterministically: it resolves the board, derives the task id and 'issue:' dedup key, infers priority/category unless overridden, builds a '[Triage] [<Type>] [<key>] <title>' title, and passes an explicit task_id plus external_issue/dedup_key metadata through TaskCreate to the dashboard create-task endpoint; a require_ai_request guard rejects issues lacking the human AI-investigation label unless forced.",
       "evidence": [
         {
-          "resource": "repo://issues/importer.py#L116-L226",
-          "version": "repo-lines-v1:sha256:7f08e40b636e4d180b613dd6e87d7a5174fbf43ea8f9d7628c30b76711b893cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NjJlZjYxMzY3NGI5NmU0NTE0YTRmNjY3Y2E4MGUyODYzZmYyYmE2ZWM5MTY2NGFlYmQ0MThmMWJhMmVmYTExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NWRiMTkwNzUxNzdjZTM0Mzg3ZWIzYTNmY2Y5NmFlY2NjZDY1YTA3NmVhNmIxNjM5NTE5ZjUxNWYyOWY1YmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://issues/importer.py#L112-L229",
+          "version": "repo-lines-v1:sha256:df20f18e7c1a19dfb6bebe9bada546239eeff05822edc160fd7b8176d3152c02:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NjJlZjYxMzY3NGI5NmU0NTE0YTRmNjY3Y2E4MGUyODYzZmYyYmE2ZWM5MTY2NGFlYmQ0MThmMWJhMmVmYTExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NWRiMTkwNzUxNzdjZTM0Mzg3ZWIzYTNmY2Y5NmFlY2NjZDY1YTA3NmVhNmIxNjM5NTE5ZjUxNWYyOWY1YmE2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -78,19 +68,15 @@
     },
     {
       "id": "claim_8fe62b0ac38949fdb5d94997ddefcd70",
-      "statement": "The CLI commands `hermes zerofactory import-gh-issue <issue>` and `hermes zerofactory import-jira-issue <issue>` accept a number, #42, a GitHub URL, or owner/repo#42 (and Jira keys/URLs), with flags for --repo, --board, --status (default triage), --priority, --assignee (default zf-orchestrator), --label (default zerofactory), --force, --sync (bulk-import all labeled open issues), --type, and --actor; the handler fetches via GitHubIssueClient and prints the resulting task id, board, status, priority, and URL.",
+      "statement": "The CLI command `hermes zerofactory import-gh-issue <issue>` accepts a number, #42, a GitHub URL, or owner/repo#42 (omitted when using --sync), with flags for --repo, --board, --status (default triage), --priority, --assignee (default human), --label (default zerofactory), --force, --sync (bulk-import all labeled open issues), --type, and --actor; the handler fetches via GitHubIssueClient and prints the resulting task id, board, status, priority, and URL. The former import-jira-issue command was removed with the Jira integration.",
       "evidence": [
         {
-          "resource": "repo://__init__.py#L1111-L1159",
-          "version": "repo-lines-v1:sha256:552c97e0aeafa34de89da50635e56dab43028279762647ac513e7d61d3d58e58:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyYTFkNzBmMTAxYjdmMDU4YjIxYmFkYjBkZDY1NjBhOWRmMDQ1YTA3ZDYzZTEyN2M3ZTY1MDM0YWM0MDBmOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZjcxYjI3ZTA1MmI1ZDgxNGQyNzBjNmRjNzcxNjQ4MmZiNWJhMWFmZjA4OTZkMGUzZTk2OGI1ZjViZWY4ODkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjYWYzZjNkNzllNGFmZTAzZDI0ZWIyZjFjNmEzMGNhYjkyZjczMmIwNDc1NzU5MzNiY2I4MmVjNGViNjljNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0OWVlOTMwOTcxMTU4YmMwMTZjMmIwMDNmMWM4ZjhjYzdiMGVlODRhMzVjZWE3NDY4OTIxNWVmOWIxZGMzMjEifQ"
+          "resource": "repo://__init__.py#L1031-L1154",
+          "version": "repo-lines-v1:sha256:202049b03ba44ad2ca8156a715a7bce93973362f2f514092550f4c0a0e8bed13:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMjFlMzVjMGQ3Y2Q2MGY0NGZlNTI3MmMyNWNkNDUzN2JiNTk3MWM1OTI2MTJmNDAyN2JiOTZkNTVkYTAxNzA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYTVhYzM4NGYwNTRlNzc1MjkxZWM4MTgxYTk0Nzc2NzMzMzA2ZGU1YWYzN2ZmNmQwYTg3ZWE5N2ZkMWQ2YjA5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYTZjMjY3NGE2OGQ1NjU1NzkzMmJiNjE1Y2RhMjZlNDNkYTU5NmNkYTBiYjlkYTcyODJkMTUxMDNhNDgzYzA4In0"
         },
         {
-          "resource": "repo://__init__.py#L351-L464",
-          "version": "repo-lines-v1:sha256:d6231942b6155f523c7415df69cc93a830cdc4c478339027190dea795d4ebd9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZjVmMzdmMmQxNDRlYWZlM2JiZDkyODNjZDQ4NGU4OWQ4MDc4ZWIwMWJlZDk5ZGE2ZDgxMDUxNzRiOTQ2MjA2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyMWYyMGFlMDkyMDdmZmZjZWY4YjNjZGFkOGZhYmZmMDcyNGFlMGI2YTJlZjYyMjYxYTVhZDY5YTFjMDI0MzU4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNzQzZTZlYmJkOTJkOWY0MDI2ZTU5YjNkNTFhZjU3ZmNkY2FjMTFmNWU5NmM4MDI3NjY3ZGNiZmE4MThmMGQyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhMDcxOGY2ZTZlMGRiMDljNTNhZGY4NTUzMTUxY2U5ZjNjMTE4NDc0ZGYyNzYxNGJiMjc3NmNmM2Q5YWUyYzg1In0"
-        },
-        {
-          "resource": "repo://__init__.py#L983-L1109",
-          "version": "repo-lines-v1:sha256:0a33724704683358c1ff8fd208bad97e63a1c401acf70071f37b6ffda40ed0ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMjFlMzVjMGQ3Y2Q2MGY0NGZlNTI3MmMyNWNkNDUzN2JiNTk3MWM1OTI2MTJmNDAyN2JiOTZkNTVkYTAxNzA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiOGY3MWIyN2UwNTJiNWQ4MTRkMjcwYzZkYzc3MTY0ODJmYjViYTFhZmYwODk2ZDBlM2U5NjhiNWY1YmVmODg5IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYTVhYzM4NGYwNTRlNzc1MjkxZWM4MTgxYTk0Nzc2NzMzMzA2ZGU1YWYzN2ZmNmQwYTg3ZWE5N2ZkMWQ2YjA5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiY2YxMTY4NjQ0NjFiZGNiNWE4Mzk1NjUwY2ZkYTk2ZTM2NmZjYzM1ZmM3YTAwM2UxZDk5ZThkNDJmODk0OGE4In0"
+          "resource": "repo://__init__.py#L412-L473",
+          "version": "repo-lines-v1:sha256:c5d93f62e7d8c1031db423e773abe8b39acc67c30662a10511e15a463c0f8338:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0MTg1YmZjZmZkYzViOTZhZjczNjMzM2IzNDE1NTllODA2NDNkZDcyZTI0ZjA0ZDI4YzkyNzhhNjU5MTNjNzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MWVhZmM0ZTljNTk3ODUyNWRkYTUyODcxZmRmMzA4NTA5ODc1YjAzOGUzNGRjYzFhMGMyODQzYzJlZjUyYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3NTg5YzdjMzhhNGRlNjNhZjljMzNiM2NiOTVmNzYwYzEyMTA4NjgwZDdhYzQyYTQ3NzhlMGIzZjZiMzMzNTQifQ"
         }
       ]
     },
@@ -106,25 +92,25 @@
     },
     {
       "id": "claim_287e7638e7914772b01ff77c06ae312b",
-      "statement": "tests/unit/issues/test_issues.py covers issue ref parsing, priority/category inference, deterministic task-id and dedup-key derivation, board resolution, import behavior, and setup_github_issues template generation (including align-mode writes) in the unit test tier.",
+      "statement": "tests/unit/issues/test_issues.py covers issue ref parsing, priority/category inference, deterministic task-id and dedup-key derivation, board resolution, import behavior (deterministic and idempotent), the CLI import flow with label enforcement, and setup_github_issues template generation (including align-mode writes) in the unit test tier.",
       "evidence": [
         {
           "resource": "repo://tests/unit/issues/test_issues.py",
-          "version": "repo-file-v1:sha256:5e7c7d27da2d55634bb1f3ac08d095c22f58392ae27684dfa5c3a4b3e569dfd6"
+          "version": "repo-file-v1:sha256:e2c3cad8f0757448b37b081c28d6262bc591c5ec9cce8bef83613e6779f68bc1"
         }
       ]
     },
     {
       "id": "claim_60a0037ddea74492ac944d331df5ddee",
-      "statement": "The dashboard exposes the external-tracker integration surface: GET/POST /boards/{slug}/sync-gh-issues and POST /boards/{slug}/import-gh-issue drive GitHub issue synchronization and import, GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues drive the task-based GitHub issues setup (create_gh_issues_setup_task files or dedups a P0 zf-builder task whose prompt runs scripts/setup_gh_issues.py in --align mode: config.yml always regenerated, bug_report.yml/feature_request.yml rewritten only when missing or lacking the expected zerofactory labels; labels via gh CLI when authenticated), and POST /boards/{slug}/setup-jira / POST /boards/{slug}/test-jira configure and test the board's Jira Cloud link.",
+      "statement": "The dashboard exposes the GitHub-tracker integration surface: GET/POST /boards/{slug}/sync-gh-issues (with per-repo variant) and POST /boards/{slug}/import-gh-issue drive GitHub issue synchronization and import, and GET /boards/{slug}/gh-issues-status plus POST /boards/{slug}/setup-gh-issues drive the task-based GitHub issues setup (create_gh_issues_setup_task files or dedups a P0 zf-builder task whose prompt runs scripts/setup_gh_issues.py in --align mode: config.yml always regenerated, bug_report.yml/feature_request.yml rewritten only when missing or lacking the expected zerofactory labels; labels via gh CLI when authenticated). The former setup-jira / test-jira routes were removed with the Jira integration.",
       "evidence": [
         {
-          "resource": "repo://dashboard/gh_issues_service.py#L104-L104",
-          "version": "repo-lines-v1:sha256:0382b541b29295fb927ef96a5334b47876a908c706b9ee44470f158f5e6247de:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDM4MmI1NDFiMjkyOTVmYjkyN2VmOTZhNTMzNGI0Nzg3NmE5MDhjNzA2YjllZTQ0NDcwZjE1OGY1ZTYyNDdkZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDM4MmI1NDFiMjkyOTVmYjkyN2VmOTZhNTMzNGI0Nzg3NmE5MDhjNzA2YjllZTQ0NDcwZjE1OGY1ZTYyNDdkZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGNjNGE3ZDFjYzc5NmFiYTNlNDY3MjMzMjdmNTE3ZTlmODExOTgyZDI1MGYwNzAyOTg2ZTRiNTc2NGFkOTU4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2VlYzg5N2UyYzJkN2U0M2Y1MDcyZjMzODc0OTRiNjUwZTQzZGQxMWNkMjFkZDllMjNiNGQ3NTNhNmI5NjAyNyJ9"
+          "resource": "repo://dashboard/gh_issues_service.py#L104-L125",
+          "version": "repo-lines-v1:sha256:98545e5ab66a96170dbf38d90fe51e584d1bc9b75d79827400f230fa39f610bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzODJiNTQxYjI5Mjk1ZmI5MjdlZjk2YTUzMzRiNDc4NzZhOTA4YzcwNmI5ZWU0NDQ3MGYxNThmNWU2MjQ3ZGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://dashboard/routes/boards.py#L1032-L1237",
-          "version": "repo-lines-v1:sha256:1d18fd9cd9655c8b99829b39014d22b9d74519440a06b50440b2d9e9e18570f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkMDNjMGVmYWMzODYwMDQzNDM3MTM4YmQzYzExMWJiZjExZWNiNjZjY2UzYzk1NTFkMTg4YTRmNGM1Y2RhMDUzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTk2OGE4ZjgzMDE4ZjY2NDM5YWExODVhYmZiZjAwNjM0OTNiNTJhZjJjMGYyNzNiNmM0YTYxNTlmMGNjYzIzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dashboard/routes/boards.py#L956-L1152",
+          "version": "repo-lines-v1:sha256:87b73bb615cdd94d2fc5ee213076b51b6563d68b472400050900f1ce98fdd0cb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTk3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzOTUwNjllMzkwZWE1MGU0MTc1YzYyMzZkNTY5NWJjMzk5YTEwZDk2ZTlkY2U1NWQ3MmU0NTgyM2FhMDM4OTA1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiYzE5YjQwZjcwYzQzNjJhNDJiZjAyMDA3YzRiMTYyN2IxNzkxMDIxNjZjMDcwNmUwMjNhNTgyMzY0OTZmYWI0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNThlYjkxZjliMWE5NGNkZmE4OGI4NmZkMDVmM2Y5NTQ3ZWYxNTk0ODVjNTVkZTRkYmUzMDdlOGI1YmYzYjQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -141,6 +127,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-07T14:59:48.283Z"
+    "at": "2026-11-19T13:45:16.591Z"
   }
 }

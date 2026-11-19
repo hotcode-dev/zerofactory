@@ -166,7 +166,10 @@ def test_cleanup_process_artifacts(tmp_path):
     exit_file.write_text("0")
     tmp_file.write_text("0")
 
-    with patch("pathlib.Path.home", return_value=tmp_path.parent):
+    with (
+        patch("pathlib.Path.home", return_value=tmp_path.parent),
+        patch.dict(os.environ, {"HERMES_HOME": ""}),
+    ):
         logs_dir = tmp_path.parent / ".hermes" / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         (logs_dir / f"worker_{task_id}.exit").write_text("0")

@@ -6,14 +6,14 @@ tags: [conventions, import-pattern, ruff, pytest, css-build, logging, error-hand
 sources:
   - id: openwiki-source-9ab161c6e9774cf771b19ced
     resource: repo://.zerofactory/precommit.sh
-  - id: openwiki-source-334dcccc8c22be32509cfb1e
-    resource: repo://cron/definitions.py
   - id: openwiki-source-b0b96941097286c5af925c64
     resource: repo://dashboard/build_css.mjs
   - id: openwiki-source-594f18a4ed0f4f061e35fdc9
     resource: repo://dashboard/db.py
   - id: openwiki-source-afe67e60bbdbffde9666707f
     resource: repo://dashboard/routes/__init__.py
+  - id: openwiki-source-78d773f851580c376cac002d
+    resource: repo://dispatcher/config.py
   - id: openwiki-source-b9dde5e47d9b9a7f900ad216
     resource: repo://dispatcher/github_pr.py
   - id: openwiki-source-b73a2eae57b810a3ad15196e
@@ -22,14 +22,16 @@ sources:
     resource: repo://migrations/runner.py
   - id: openwiki-source-d763dfe33a2468865a9b9ce5
     resource: repo://ruff.toml
+  - id: openwiki-source-8bf8788755a522a066b8b827
+    resource: repo://scripts/zf_daily_stats.py
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
   - id: openwiki-source-b4194cdb1aee8e18787b21d6
     resource: repo://tests/unit/dashboard/test_dashboard_css.py
-generated: { by: "hermes", at: "2026-11-01T07:54:23.892Z" }
+generated: { by: "hermes", at: "2026-11-19T06:27:25.202Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-07T14:59:48.283Z
+    at: 2026-11-19T13:45:16.591Z
 ---
 
 # Conventions
@@ -51,17 +53,18 @@ except (ImportError, ValueError):
     from settings import load_settings  # type: ignore   # direct module load
 ```
 
-See `repo://dashboard/db.py#L24-L30` and the route aggregator
-`repo://dashboard/routes/__init__.py#L23-L46`. Preserve this exact shape when
+See `repo://dashboard/db.py#L24-L37` and the route aggregator
+`repo://dashboard/routes/__init__.py#L17-L34`. Preserve this exact shape when
 adding cross-module imports.
 
 ## `sys.path` bootstrap before imports
 
-Modules that may be loaded directly (scripts, `cron/definitions.py`,
-`dashboard/*`) insert the plugin root onto `sys.path` **before** importing
-internal modules, e.g. `repo://cron/definitions.py#L14-L16`. Ruff ignores
+Modules that may be loaded directly (the No-Agent Mode pre-run scripts, e.g.
+`scripts/zf_daily_stats.py`, and the `dashboard/*` modules) insert the plugin
+root onto `sys.path` **before** importing internal modules, e.g.
+`repo://scripts/zf_daily_stats.py#L21-L25`. Ruff ignores
 `E402` specifically so this required ordering is legal
-(`repo://ruff.toml#L14`). The test suite does the same in
+(`repo://ruff.toml#L14-L14`). The test suite does the same in
 `repo://tests/conftest.py#L13-L16`, and **pins** the repository's own `tests`
 package with `import tests  # noqa: E402` before anything else runs: the
 dispatcher import chain inserts foreign roots (e.g.
@@ -73,10 +76,11 @@ imports inside test modules (an order-dependent `ModuleNotFoundError`)
 ## Namespaced logging
 
 Loggers are namespaced under `zerofactory.*` per subsystem
-(`zerofactory.cron`, `zerofactory.migrations`, ...), created with
+(`zerofactory.kanban.dispatcher`, `zerofactory.migrations`,
+`zerofactory.issues.importer`, ...), created with
 `logging.getLogger("zerofactory.<subsystem>")`
-(`repo://cron/definitions.py#L29`, `repo://migrations/runner.py#L23`). Use the
-matching namespace for new modules rather than the root logger.
+(`repo://dispatcher/config.py#L70-L70`, `repo://migrations/runner.py#L23-L23`).
+Use the matching namespace for new modules rather than the root logger.
 
 ## Error handling
 
@@ -110,22 +114,25 @@ non-zero on a missing tool) rather than silently skipping.
 the **hermetic environment defaults** that make every test safe to run without a
 real factory: it sets `ZEROFACTORY_SKIP_GIT`, `ZEROFACTORY_SKIP_CRON_SYNC`,
 `ZEROFACTORY_DISABLE_DISPATCHER`, and `ZEROFACTORY_SKIP_WORKER_SPAWN`
-(`repo://tests/conftest.py#L25-L29`) and provides `test_db_path` /
-`initialized_db`, `git_repo`, `api_client`, and `default_board` fixtures
-(`repo://tests/conftest.py#L43-L113`).
+(`repo://tests/conftest.py#L25-L29`) and provides the `isolated_env`,
+`test_db_path` / `initialized_db`, `git_repo`, `api_client`, and `default_board`
+fixtures (`repo://tests/conftest.py#L32-L113`).
 
 Test tiers (mirrored on disk):
 
-- **`tests/unit/`** — fast, isolated units per subsystem
-  (`unit/dispatcher/`, `unit/cron/`, `unit/dashboard/`, `unit/scripts/`,
-  `unit/issues/`).
+- **`tests/unit/`** — fast, isolated units per subsystem: top-level
+  `test_*.py` files (migrations, paths, settings, profile manager, triage
+  split, task recovery, listing compliance, blocked-reason types) plus
+  `unit/dashboard/`, `unit/dispatcher/`, `unit/issues/`, and `unit/scripts/`.
 - **`tests/integration/`** — the FastAPI REST surface via the `api_client`
   fixture (`test_tasks_api.py`, `test_boards_api.py`, `test_memories_api.py`,
   `test_settings_api.py`).
 - **`tests/e2e/`** — hermetic multi-agent workflow and resilience simulations
   (`test_multi_agent_workflow.py`, `test_concurrency_resilience.py`,
-  `test_cli_lifecycle.py`, `test_automation_scripts.py`, `test_plugin_api.py`,
-  `test_openwiki_cron_e2e.py`).
+  `test_cli_lifecycle.py`, `test_automation_scripts.py`,
+  `test_plugin_api.py`), subprocess listing-compliance checks
+  (`test_listing_compliance_e2e.py`), and a Playwright-driven browser E2E for
+  the dashboard UI (`test_dashboard_ui_playwright.py`).
 
 The precommit gate runs **`python3 -m pytest tests/ -q`**
 (`repo://.zerofactory/precommit.sh`). Add a regression test alongside any bug fix
@@ -150,13 +157,13 @@ referenced (including variant-prefixed) utility class.
 Any agent-authored GitHub text (PR titles/bodies, review comments) **must**
 begin with a **role-tagged** marker `[AI:<role>]` — e.g. `[AI:zf-builder]`,
 `[AI:zf-reviewer]` — enforced by the role-aware `ai_prefix(text, role)` in
-`repo://dispatcher/github_pr.py#L321-L335`). `AI_PREFIX_RE` matches only
+`repo://dispatcher/github_pr.py#L324-L336`. `AI_PREFIX_RE` matches only
 role-tagged markers, so `ai_prefix` **never emits a bare `[AI]`** and text
 already carrying a role-tagged marker is returned unchanged, making re-writes
 idempotent and never double-prefix. The reviewer submits verdicts
 as `gh pr review --comment` (not `--approve` / `--request-changes`, which GitHub
 blocks for the PR author's own token) with `[AI:zf-reviewer]`-tagged bodies
-(`repo://dispatcher/worker_spawner.py#L215-L228`).
+(`repo://dispatcher/worker_spawner.py#L287-L288`).
 
 ## What NOT to add
 

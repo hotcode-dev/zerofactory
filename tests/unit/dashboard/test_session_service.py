@@ -35,6 +35,9 @@ def hermes_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     (fake_home / ".hermes" / "logs").mkdir(parents=True)
     monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
     monkeypatch.setenv("HOME", str(fake_home))
+    # paths.get_hermes_home() prefers the HERMES_HOME env var over
+    # Path.home(); clear it so the fake home is authoritative.
+    monkeypatch.delenv("HERMES_HOME", raising=False)
     return fake_home
 
 
