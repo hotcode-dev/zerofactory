@@ -29,28 +29,57 @@ var ZeroFactoryDashboard = (function(exports) {
 			title: "Human",
 			icon: "👤",
 			dotColor: "#f43f5e",
-			desc: "Human gates & blocked tasks"
+			role: "All Human Gates (0 Tokens)",
+			desc: "Human decision gates and escalations sorted by urgency. Consumes zero LLM tokens until activated or merged.",
+			stages: [
+				"awaiting_merge",
+				"spec_approval",
+				"interview",
+				"blocked",
+				"triage"
+			]
 		},
 		{
 			id: "todo",
 			title: "Todo",
 			icon: "📋",
 			dotColor: "#38bdf8",
-			desc: "AI queue waiting for dispatch"
+			role: "AI Execution Queue",
+			desc: "Queued AI tasks waiting for available concurrency slots across specialist agents.",
+			stages: [
+				"grill",
+				"spec_draft",
+				"spec_audit",
+				"building",
+				"review",
+				"recovery"
+			]
 		},
 		{
 			id: "running",
 			title: "Running",
 			icon: "⚡",
 			dotColor: "#fbbf24",
-			desc: "Autonomous AI agents running"
+			role: "Active AI & Packaging",
+			desc: "Active worker sessions inside isolated Git worktrees plus deterministic precommit and PR packaging.",
+			stages: [
+				"grill",
+				"spec_draft",
+				"spec_audit",
+				"building",
+				"packaging",
+				"review",
+				"recovery"
+			]
 		},
 		{
 			id: "done",
 			title: "Done",
 			icon: "✅",
 			dotColor: "#a78bfa",
-			desc: "Completed & merged"
+			role: "Terminal Completed",
+			desc: "PR merged on GitHub or task closed. Worktree is pruned and repository memory is extracted.",
+			stages: ["done"]
 		}
 	];
 	var NEXT_STATUS_MAP = {
@@ -697,6 +726,13 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#region dashboard/src/components/KanbanBoard.jsx
 	function KanbanBoard(props) {
 		const { tasksByColumn, dragOverCol, handleDragOver, handleDragLeave, handleDrop, handleDragStart, loadTaskDetails, selectedBoard, currentBoard, stoppingSessionId, handleStopTaskSession, handleAdvanceTask, handleTriageTask } = props;
+		const [openLaneInfo, setOpenLaneInfo] = React.useState({});
+		const toggleLaneInfo = (colId) => {
+			setOpenLaneInfo((prev) => ({
+				...prev,
+				[colId]: !prev[colId]
+			}));
+		};
 		return React.createElement("div", { className: "overflow-x-auto pb-4 -mx-1 px-1 zfk-scrollbar" }, React.createElement("div", {
 			className: "grid grid-cols-4 gap-3.5 items-start min-w-[960px] w-full",
 			style: {
@@ -706,6 +742,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		}, COLUMNS.map((col) => {
 			const colTasks = tasksByColumn[col.id] || [];
 			const isOver = dragOverCol === col.id;
+			const isInfoOpen = Boolean(openLaneInfo[col.id]);
 			return React.createElement("div", {
 				key: col.id,
 				className: "flex flex-col gap-2.5 bg-slate-900/50 backdrop-blur-md border rounded-xl p-2.5 min-h-[520px] transition-all duration-150 " + (isOver ? "border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/30" : "border-slate-800/80"),
@@ -718,7 +755,25 @@ var ZeroFactoryDashboard = (function(exports) {
 					backgroundColor: col.dotColor,
 					boxShadow: "0 0 6px " + col.dotColor + "88"
 				}
-			}), React.createElement("h3", { className: "text-xs font-semibold uppercase tracking-wider text-slate-300 truncate m-0" }, col.title)), React.createElement("span", { className: "text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/60 text-slate-400 font-mono" }, colTasks.length)), React.createElement("div", { className: "flex flex-col gap-2.5 flex-1 min-h-[120px]" }, colTasks.length === 0 ? React.createElement("div", { className: "flex flex-col items-center justify-center p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800/80 rounded-lg bg-slate-900/20 my-auto select-none" }, "No " + col.title + " tasks", React.createElement("br", null), React.createElement("span", { className: "text-[0.6875rem] opacity-60 mt-1" }, "Drop tasks here")) : colTasks.map((t) => {
+			}), React.createElement("h3", { className: "text-xs font-semibold uppercase tracking-wider text-slate-300 truncate m-0" }, col.title), React.createElement("button", {
+				type: "button",
+				"aria-label": `Toggle ${col.title} lane information`,
+				"aria-expanded": isInfoOpen,
+				title: isInfoOpen ? `Hide ${col.title} lane info` : `Show ${col.title} lane info`,
+				onClick: () => toggleLaneInfo(col.id),
+				className: "inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-serif italic font-bold leading-none border transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 " + (isInfoOpen ? "bg-indigo-500/25 text-indigo-200 border-indigo-400/60" : "bg-slate-800/80 text-slate-400 border-slate-700/70 hover:text-slate-200 hover:border-slate-500")
+			}, "i")), React.createElement("span", { className: "text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/60 text-slate-400 font-mono" }, colTasks.length)), isInfoOpen && React.createElement("div", {
+				role: "region",
+				"aria-label": `${col.title} lane information`,
+				className: "rounded-lg border border-slate-700/70 bg-slate-950/75 p-2.5 text-xs space-y-2 shadow-inner"
+			}, col.role && React.createElement("div", { className: "text-[10px] font-semibold uppercase tracking-wider text-slate-300" }, col.role), React.createElement("p", { className: "text-[11px] text-slate-400 leading-relaxed m-0" }, col.desc), col.stages && col.stages.length > 0 && React.createElement("div", { className: "flex flex-wrap gap-1 pt-1 border-t border-slate-800/80" }, col.stages.map((stageKey) => {
+				const stg = STAGE_META[stageKey];
+				if (!stg) return null;
+				return React.createElement("span", {
+					key: stageKey,
+					className: "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border " + stg.badgeClass
+				}, stg.icon + " " + stg.label);
+			}))), React.createElement("div", { className: "flex flex-col gap-2.5 flex-1 min-h-[120px]" }, colTasks.length === 0 ? React.createElement("div", { className: "flex flex-col items-center justify-center p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800/80 rounded-lg bg-slate-900/20 my-auto select-none" }, "No " + col.title + " tasks", React.createElement("br", null), React.createElement("span", { className: "text-[0.6875rem] opacity-60 mt-1" }, "Drop tasks here")) : colTasks.map((t) => {
 				const isRunning = t.status === "running";
 				const prioClass = t.priority === "P0" ? "bg-rose-500/15 text-rose-300 border-rose-500/30" : t.priority === "P1" ? "bg-amber-500/15 text-amber-300 border-amber-500/30" : t.priority === "P3" ? "bg-slate-700/40 text-slate-400 border-slate-600/30" : "bg-sky-500/15 text-sky-300 border-sky-500/30";
 				const roleMeta = AGENT_META[t.assignee];

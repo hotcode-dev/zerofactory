@@ -20,6 +20,11 @@ export function KanbanBoard(props) {
     handleTriageTask
   } = props;
 
+  const [openLaneInfo, setOpenLaneInfo] = React.useState({});
+  const toggleLaneInfo = (colId) => {
+    setOpenLaneInfo((prev) => ({ ...prev, [colId]: !prev[colId] }));
+  };
+
   return (
                     React.createElement(
                       "div",
@@ -33,6 +38,7 @@ export function KanbanBoard(props) {
                         COLUMNS.map((col) => {
                           const colTasks = tasksByColumn[col.id] || [];
                           const isOver = dragOverCol === col.id;
+                          const isInfoOpen = Boolean(openLaneInfo[col.id]);
 
                           return React.createElement(
                             "div",
@@ -50,9 +56,63 @@ export function KanbanBoard(props) {
                                 "div",
                                 { className: "flex items-center gap-2 min-w-0" },
                                 React.createElement("div", { className: "w-2.5 h-2.5 rounded-full shrink-0 shadow-xs", style: { backgroundColor: col.dotColor, boxShadow: "0 0 6px " + col.dotColor + "88" } }),
-                                React.createElement("h3", { className: "text-xs font-semibold uppercase tracking-wider text-slate-300 truncate m-0" }, col.title)
+                                React.createElement("h3", { className: "text-xs font-semibold uppercase tracking-wider text-slate-300 truncate m-0" }, col.title),
+                                React.createElement(
+                                  "button",
+                                  {
+                                    type: "button",
+                                    "aria-label": `Toggle ${col.title} lane information`,
+                                    "aria-expanded": isInfoOpen,
+                                    title: isInfoOpen ? `Hide ${col.title} lane info` : `Show ${col.title} lane info`,
+                                    onClick: () => toggleLaneInfo(col.id),
+                                    className:
+                                      "inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-serif italic font-bold leading-none border transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 " +
+                                      (isInfoOpen
+                                        ? "bg-indigo-500/25 text-indigo-200 border-indigo-400/60"
+                                        : "bg-slate-800/80 text-slate-400 border-slate-700/70 hover:text-slate-200 hover:border-slate-500")
+                                  },
+                                  "i"
+                                )
                               ),
                               React.createElement("span", { className: "text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/60 text-slate-400 font-mono" }, colTasks.length)
+                            ),
+
+                            isInfoOpen &&
+                            React.createElement(
+                              "div",
+                              {
+                                role: "region",
+                                "aria-label": `${col.title} lane information`,
+                                className: "rounded-lg border border-slate-700/70 bg-slate-950/75 p-2.5 text-xs space-y-2 shadow-inner"
+                              },
+                              col.role &&
+                              React.createElement(
+                                "div",
+                                { className: "text-[10px] font-semibold uppercase tracking-wider text-slate-300" },
+                                col.role
+                              ),
+                              React.createElement(
+                                "p",
+                                { className: "text-[11px] text-slate-400 leading-relaxed m-0" },
+                                col.desc
+                              ),
+                              col.stages && col.stages.length > 0 &&
+                              React.createElement(
+                                "div",
+                                { className: "flex flex-wrap gap-1 pt-1 border-t border-slate-800/80" },
+                                col.stages.map((stageKey) => {
+                                  const stg = STAGE_META[stageKey];
+                                  if (!stg) return null;
+                                  return React.createElement(
+                                    "span",
+                                    {
+                                      key: stageKey,
+                                      className: "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded border " + stg.badgeClass
+                                    },
+                                    stg.icon + " " + stg.label
+                                  );
+                                })
+                              )
                             ),
 
                             React.createElement(

@@ -5,10 +5,42 @@ export const ZEROFACTORY_GITHUB_URL = `https://github.com/${ZEROFACTORY_REPO}`;
 export const ZEROFACTORY_ISSUES_URL = `https://github.com/${ZEROFACTORY_REPO}/issues`;
 
 export const COLUMNS = [
-  { id: "human", title: "Human", icon: "👤", dotColor: "#f43f5e", desc: "Human gates & blocked tasks" },
-  { id: "todo", title: "Todo", icon: "📋", dotColor: "#38bdf8", desc: "AI queue waiting for dispatch" },
-  { id: "running", title: "Running", icon: "⚡", dotColor: "#fbbf24", desc: "Autonomous AI agents running" },
-  { id: "done", title: "Done", icon: "✅", dotColor: "#a78bfa", desc: "Completed & merged" },
+  {
+    id: "human",
+    title: "Human",
+    icon: "👤",
+    dotColor: "#f43f5e",
+    role: "All Human Gates (0 Tokens)",
+    desc: "Human decision gates and escalations sorted by urgency. Consumes zero LLM tokens until activated or merged.",
+    stages: ["awaiting_merge", "spec_approval", "interview", "blocked", "triage"]
+  },
+  {
+    id: "todo",
+    title: "Todo",
+    icon: "📋",
+    dotColor: "#38bdf8",
+    role: "AI Execution Queue",
+    desc: "Queued AI tasks waiting for available concurrency slots across specialist agents.",
+    stages: ["grill", "spec_draft", "spec_audit", "building", "review", "recovery"]
+  },
+  {
+    id: "running",
+    title: "Running",
+    icon: "⚡",
+    dotColor: "#fbbf24",
+    role: "Active AI & Packaging",
+    desc: "Active worker sessions inside isolated Git worktrees plus deterministic precommit and PR packaging.",
+    stages: ["grill", "spec_draft", "spec_audit", "building", "packaging", "review", "recovery"]
+  },
+  {
+    id: "done",
+    title: "Done",
+    icon: "✅",
+    dotColor: "#a78bfa",
+    role: "Terminal Completed",
+    desc: "PR merged on GitHub or task closed. Worktree is pruned and repository memory is extracted.",
+    stages: ["done"]
+  },
 ];
 
 export const NEXT_STATUS_MAP = {

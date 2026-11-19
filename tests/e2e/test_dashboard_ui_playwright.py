@@ -214,7 +214,16 @@ def test_dashboard_setup_banner_new_task_and_settings_playwright(tmp_path, monke
             page.get_by_role("button", name="Create Task").click()
             page.get_by_text("Playwright UI Task").wait_for(timeout=10000)
 
-            # 4. Open Settings modal and verify it renders without errors
+            # 4. Toggle lane info ("i") panel open and closed
+            info_btn = page.get_by_role("button", name="Toggle Human lane information")
+            info_btn.click()
+            lane_info = page.get_by_role("region", name="Human lane information")
+            lane_info.wait_for(timeout=10000)
+            assert "All Human Gates (0 Tokens)" in (lane_info.text_content() or "")
+            info_btn.click()
+            lane_info.wait_for(state="hidden", timeout=10000)
+
+            # 5. Open Settings modal and verify it renders without errors
             page.get_by_role("button", name="⚙️ Settings").click()
             page.get_by_text("Zero Factory Global Settings").wait_for(timeout=10000)
 
