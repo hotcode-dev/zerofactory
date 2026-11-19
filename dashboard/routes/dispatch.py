@@ -46,12 +46,15 @@ def start_dispatcher():
     """Start the in-process background dispatcher polling loop (explicit user opt-in)."""
     try:
         from ...profile_manager import check_setup_status
-        from ...cron import ensure_builtin_cron_jobs
         from ...dispatcher import start_background_dispatcher
     except (ImportError, ValueError):
         from profile_manager import check_setup_status  # type: ignore
-        from cron import ensure_builtin_cron_jobs  # type: ignore
         from dispatcher import start_background_dispatcher  # type: ignore
+
+    try:
+        from .cron import ensure_builtin_cron_jobs
+    except (ImportError, ValueError):
+        from routes.cron import ensure_builtin_cron_jobs  # type: ignore
 
     status = check_setup_status(use_cache=False)
     if not status.get("profiles_ready"):

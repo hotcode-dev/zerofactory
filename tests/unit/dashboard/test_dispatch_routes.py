@@ -39,8 +39,8 @@ def test_dispatch_start_rejects_when_profiles_missing(tmp_path, monkeypatch):
 
 
 def test_dispatch_start_and_stop_lifecycle(tmp_path, monkeypatch):
-    import cron
     import profile_manager
+    from dashboard.routes import cron as cron_routes
     from dispatcher import scheduler as sched
 
     hermes_home = tmp_path / "hermes"
@@ -50,7 +50,7 @@ def test_dispatch_start_and_stop_lifecycle(tmp_path, monkeypatch):
     monkeypatch.setattr(
         profile_manager, "check_gh_auth_status", lambda use_cache=True: True
     )
-    monkeypatch.setattr(cron, "ensure_builtin_cron_jobs", lambda: None)
+    monkeypatch.setattr(cron_routes, "ensure_builtin_cron_jobs", lambda: None)
     monkeypatch.setattr(sched, "run_dispatch_cycle", lambda *a, **kw: {"ok": True})
     monkeypatch.setattr(sched, "is_worker_or_child_process", lambda: False)
 
