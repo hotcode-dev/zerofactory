@@ -339,6 +339,17 @@ flowchart LR
 - Failure handling: `_handle_precommit_failure` records `precommit_retries` +
   `last_precommit_error`, re-spawns `zf-builder` with the exact output (≤ 3 retries), then
   blocks the task for human inspection.
+- **Deterministic Anti-Slop Gate** (`dispatcher/slop_gate.py`, `run_deterministic_slop_gate`):
+  runs immediately after `.zerofactory/precommit.sh` in `packaging` (0 LLM tokens, skippable via
+  `ZEROFACTORY_SKIP_SLOP_GATE=1`). Scans added `+` lines (including untracked files) and bounces
+  hard violations back to `zf-builder` via `_handle_precommit_failure`: debugger leftovers
+  (`breakpoint()`, `pdb.set_trace()`, `debugger;`), placeholder `TODO`/`FIXME`/`XXX`/`HACK`
+  comments in production code, skipped/disabled tests (`@pytest.mark.skip`, `.skip(`), and an
+  optional net-LOC cap (`ZEROFACTORY_MAX_DIFF_LINES`).
+- **Diff Hygiene Scorecard** (`build_diff_hygiene_scorecard`): injected into `zf-reviewer`'s
+  pre-digested git context (`digest_reviewer_git_context`), reporting scope (`+LOC/-LOC`, files),
+  test line delta (flagging net test deletion), modified dependency manifests, lint/type
+  suppressors, silent `except: pass` blocks, and whether the inline diff preview was truncated.
 
 ---
 

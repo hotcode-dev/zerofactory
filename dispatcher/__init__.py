@@ -164,6 +164,13 @@ from .scheduler import (
     start_background_dispatcher,
     stop_background_dispatcher,
 )
+from .slop_gate import (
+    DiffHygieneReport,
+    SlopFinding,
+    analyze_workspace_diff,
+    build_diff_hygiene_scorecard,
+    run_deterministic_slop_gate,
+)
 from .worker_spawner import (
     _inject_langfuse_env,
     spawn_agent_worker,
@@ -278,12 +285,17 @@ __all__ = [
     "_global_llm_occupancy",
     "spawn_board_scanner",
     "reset_idle_scanner_state",
-    # Worktree
+    # Worktree & Slop Gate
     "_find_checked_out_worktree",
     "resolve_board_repo_path",
     "resolve_task_repo_path",
     "setup_worktree",
     "run_deterministic_precommit",
+    "run_deterministic_slop_gate",
+    "analyze_workspace_diff",
+    "build_diff_hygiene_scorecard",
+    "DiffHygieneReport",
+    "SlopFinding",
     "_handle_local_merge_conflict",
     "_handle_precommit_failure",
     "_delete_remote_branch",

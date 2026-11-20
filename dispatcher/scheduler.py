@@ -1899,6 +1899,31 @@ def _package_and_open_pr(
             conn.commit()
             return False
 
+        # Deterministic Anti-Slop Gate (0 LLM tokens)
+        steps.start("package.slop_gate")
+        slop_ok, slop_out, slop_code = _disp.run_deterministic_slop_gate(
+            Path(workspace_path)
+        )
+        if not slop_ok:
+            _log.warning(
+                "Task %s deterministic slop gate failed (code %s): %s",
+                task_id,
+                slop_code,
+                slop_out,
+            )
+            steps.end("fail", f"slop_gate exit={slop_code}")
+            _disp._handle_precommit_failure(
+                cursor,
+                task_id,
+                title,
+                workspace_path,
+                slop_out,
+                now,
+                code=slop_code,
+            )
+            conn.commit()
+            return False
+
         if meta and ("precommit_retries" in meta or "last_precommit_error" in meta):
             meta.pop("precommit_retries", None)
             meta.pop("last_precommit_error", None)

@@ -137,6 +137,7 @@ def digest_reviewer_git_context(
 
     # 3. Code Diff
     diff_content = ""
+    is_diff_truncated = False
     try:
         diff_res = subprocess.run(
             ["git", "diff", "-U2", diff_range, "--", *excluded_diff_pathspecs],
@@ -160,14 +161,13 @@ def digest_reviewer_git_context(
 
         if raw_diff:
             lines = raw_diff.splitlines()
-            is_truncated = False
             if len(lines) > max_diff_lines:
                 raw_diff = "\n".join(lines[:max_diff_lines])
-                is_truncated = True
+                is_diff_truncated = True
             if len(raw_diff) > max_diff_chars:
                 raw_diff = raw_diff[:max_diff_chars]
-                is_truncated = True
-            if is_truncated:
+                is_diff_truncated = True
+            if is_diff_truncated:
                 raw_diff += "\n... [diff truncated for token efficiency; inspect remaining diff with git diff in workspace]"
             diff_content = raw_diff
     except Exception:
@@ -191,10 +191,24 @@ def digest_reviewer_git_context(
     if not log_summary and not diffstat and not diff_content:
         return ""
 
+    scorecard = ""
+    try:
+        from .slop_gate import build_diff_hygiene_scorecard
+
+        scorecard = build_diff_hygiene_scorecard(
+            workspace_path,
+            target_branch=default_branch,
+            is_diff_truncated=is_diff_truncated,
+        )
+    except Exception as e:
+        _log.debug("build_diff_hygiene_scorecard failed: %s", e)
+
     sections = [
         "### 🔍 Pre-Digested PR Changes (Zero-Token Ingested)",
         f"- **Target Base Branch:** `{default_branch}`",
     ]
+    if scorecard:
+        sections.append(scorecard)
     if log_summary:
         sections.append(f"#### Commits on Feature Branch:\n```\n{log_summary}\n```")
     if diffstat:

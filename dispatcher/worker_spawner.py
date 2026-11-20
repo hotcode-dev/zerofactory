@@ -279,10 +279,10 @@ def spawn_agent_worker(
             f"{automerge_reviewer_block}"
             f"Your goal as Reviewer:\n"
             f"1. Examine the Pull Request branch changes ({branch_name or 'main'}) for correctness, edge cases, test coverage, and security (review the pre-digested diff above).\n"
-            f"2. Apply Ponytail Anti-Overengineering Review (7-Rung Ladder of Laziness):\n"
-            f"   - Diff Scope & Hygiene (Rung 7): Reject drive-by reformatting, unrelated changes, or leftover debug code.\n"
+            f"2. Apply Ponytail Anti-Overengineering Review (7-Rung Ladder of Laziness) & Diff Hygiene Scorecard:\n"
+            f"   - Diff Scope & Hygiene (Rung 7): Check the Diff Hygiene Scorecard above; if the diff preview was truncated, inspect remaining files via `git diff` before approving. Reject drive-by reformatting, unrelated changes, or leftover debug code.\n"
             f"   - Dependency Veto (Rungs 3 & 5): Reject newly added packages if standard library or existing packages suffice.\n"
-            f"   - Simplicity & YAGNI (Rungs 1 & 6): Reject premature abstractions, unnecessary wrappers, single-caller factories, and deep nesting.\n"
+            f"   - Simplicity & YAGNI (Rungs 1 & 6): Reject premature abstractions, unnecessary wrappers, single-caller factories, tautological mock-only tests, and deep nesting.\n"
             f"3. Run automated test suites and linters in your workspace ({workdir}).\n"
             f'4. Submit your review feedback on GitHub as a comment (`gh pr review --comment -b "[AI:zf-reviewer] [Reviewer Feedback] ..."` or inline via `gh api`). Do not use `--approve` or `--request-changes` as GitHub prevents authors/tokens from approving their own PRs.\n'
             f'   - AI ATTRIBUTION: Every GitHub comment or review you post (review bodies, `gh pr comment`, inline `gh api` comments) MUST begin with `[AI:zf-reviewer]` (e.g. `"[AI:zf-reviewer] [Reviewer Feedback] Round 1: ..."`) so humans can distinguish agent output. Do not strip the `[AI:zf-builder]` prefix from the auto-opened PR title or body.\n'
