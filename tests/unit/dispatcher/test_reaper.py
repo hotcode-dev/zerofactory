@@ -947,3 +947,53 @@ def test_reap_active_workers_reviewer_exit0_without_verdict_parks_blocked():
     assert not saved_meta.get("awaiting_pr")
     assert saved_meta.get("blocked_reason_type") == "human-gate"
     assert "worker_pid" not in saved_meta
+
+
+def test_reap_active_workers_exit0_clears_stale_failure_state():
+    """A clean exit 0 must delete stale failure keys from stored metadata via
+    transition_task (not leave them behind via dict.update), so the scheduler
+    packaging gate does not skip the finished task. Regression for GitHub #91."""
+    now = 5000
+    meta = {
+        "worker_pid": 4321,
+        "session_id": "sess-ok",
+        "started_at": now - 100,
+        "sessions": [
+            {"session_id": "sess-ok", "status": "ongoing", "started_at": now - 100}
+        ],
+        "last_worker_failure": {"retcode": 130, "failed_at": now - 500},
+        "worker_failure_retries": 2,
+        "permanently_blocked": True,
+        "blocked_reason": "Worker process exited with code 130 (attempt 2/3)",
+        "blocked_reason_type": "stuck",
+    }
+    conn = _spawn_grace_conn("t-clear-stale", meta, now)
+
+    from dispatcher.config import _active_workers
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 4321
+    mock_proc.poll.return_value = 0
+    _active_workers["t-clear-stale"] = mock_proc
+    try:
+        reaped = reap_active_workers(conn.cursor(), now=now)
+        conn.commit()
+    finally:
+        _active_workers.pop("t-clear-stale", None)
+
+    assert reaped == 1
+    row = conn.execute(
+        "SELECT status, metadata FROM tasks WHERE id = 't-clear-stale'"
+    ).fetchone()
+    assert row["status"] == "running"
+    saved_meta = json.loads(row["metadata"])
+    assert saved_meta.get("awaiting_pr") is True
+    for key in (
+        "last_worker_failure",
+        "worker_failure_retries",
+        "permanently_blocked",
+        "blocked_reason",
+        "blocked_reason_type",
+    ):
+        assert key not in saved_meta, f"{key} should have been deleted on exit 0"
+    conn.close()

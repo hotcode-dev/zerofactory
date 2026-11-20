@@ -1009,3 +1009,75 @@ def test_run_dispatch_cycle_repairs_todo_human_and_dispatches_recovery(tmp_path:
         ).fetchone()
         assert r2["status"] == "running"
         assert r2["assignee"] == "zf-orchestrator"
+
+
+def test_clean_exit_after_prior_failure_is_packaged(tmp_path: Path):
+    """End-to-end regression for GitHub #91: a builder task that previously
+    failed (stale last_worker_failure in DB) and then exits 0 must have its
+    stale failure state deleted so the next dispatch cycle packages the PR."""
+    import dispatcher
+    from dispatcher.config import _active_workers
+    from dispatcher.reaper import reap_active_workers
+
+    db_path = tmp_path / "test.db"
+    _init_test_db(db_path)
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+
+    now = 1000
+    stale_meta = json.dumps(
+        {
+            "worker_pid": 4321,
+            "session_id": "sess-retry",
+            "started_at": now - 60,
+            "sessions": [
+                {
+                    "session_id": "sess-retry",
+                    "status": "ongoing",
+                    "started_at": now - 60,
+                }
+            ],
+            "worker_failure_retries": 1,
+            "last_worker_failure": {"retcode": 130, "failed_at": now - 300},
+        }
+    )
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO tasks "
+            + _TASK_COLS
+            + " VALUES ('t-gh91', 'Recovered Builder', '', 'running', 'zf-builder', 'P0', "
+            + "?, '[]', '', ?, '', 'b1', '', '', ?, ?)",
+            (stale_meta, str(ws), now - 60, now - 60),
+        )
+        conn.commit()
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 4321
+    mock_proc.poll.return_value = 0
+    _active_workers["t-gh91"] = mock_proc
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            assert reap_active_workers(conn.cursor(), now=now) == 1
+            conn.commit()
+    finally:
+        _active_workers.pop("t-gh91", None)
+
+    pkg_calls = []
+
+    def fake_package(conn, cursor, row, meta, *args, **kwargs):
+        pkg_calls.append(row["id"])
+        return True
+
+    lock_file = tmp_path / "dispatcher.lock"
+    with (
+        patch.object(dispatcher, "get_dispatcher_lock_path", return_value=lock_file),
+        patch("dispatcher.scheduler._package_and_open_pr", side_effect=fake_package),
+        patch.object(dispatcher, "resolve_task_repo_path", return_value=ws),
+        patch.dict(os.environ, {"ZEROFACTORY_SKIP_GIT": ""}),
+    ):
+        res = run_dispatch_cycle(db_path)
+        assert res["ok"] is True
+
+    assert pkg_calls == ["t-gh91"]
