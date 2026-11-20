@@ -614,3 +614,139 @@ def extract_and_record_memory(
         )
 
     return recorded
+
+
+def record_rejection_memory(
+    conn: sqlite3.Connection,
+    board_slug: str | None,
+    feedback: str,
+    task_id: str | None = None,
+    task_title: str | None = None,
+    author: str = "user",
+) -> list[dict]:
+    """Record human spec/PR rejection feedback as a `rejected_path` anti-pattern memory.
+
+    First extracts any explicitly prefixed memories (`GOTCHA:`, `CONVENTION:`, etc.).
+    If none were extracted and the feedback is substantive (>=10 chars), persists a
+    concise `rejected_path` memory to SQLite + Mem0 (respecting `auto_record_memory`
+    and content deduplication) so future runs on the board avoid repeating the mistake.
+    """
+    if not board_slug or not feedback or not feedback.strip():
+        return []
+
+    explicit = extract_and_record_memory(
+        conn,
+        board_slug=board_slug,
+        text=feedback,
+        task_id=task_id,
+        author=author,
+    )
+    if explicit:
+        return explicit
+
+    settings = load_settings(conn)
+    if not settings.get("auto_record_memory", True):
+        return []
+    try:
+        b_row = conn.execute(
+            "SELECT auto_record_memory FROM boards WHERE slug = ?", (board_slug,)
+        ).fetchone()
+        if b_row:
+            arm_val = (
+                b_row["auto_record_memory"]
+                if "auto_record_memory" in b_row.keys()
+                else b_row[0]
+            )
+            if arm_val is not None and not bool(arm_val):
+                return []
+    except Exception:
+        pass
+
+    collapsed = " ".join(feedback.strip().split())
+    if len(collapsed) < 10:
+        return []
+
+    prefix = (
+        f"Rejected on '{task_title.strip()[:80]}': " if task_title else "Rejected: "
+    )
+    clean_content = f"{prefix}{collapsed}"[:500].strip()
+
+    dedup_key = normalize_memory_content(clean_content)
+    exact_row = conn.execute(
+        "SELECT id FROM board_memories WHERE board_slug = ? AND content = ?",
+        (board_slug, clean_content),
+    ).fetchone()
+    if exact_row:
+        return []
+    rows = conn.execute(
+        "SELECT content FROM board_memories WHERE board_slug = ?", (board_slug,)
+    ).fetchall()
+    if any(normalize_memory_content(r["content"]) == dedup_key for r in rows):
+        return []
+
+    now = int(time.time())
+    mem_id = f"mem-{secrets.token_hex(4)}"
+    tags = ["auto-recorded", "human-rejection", f"from-{author}"]
+    tags_json = json.dumps(tags)
+
+    try:
+        client = get_mem0_client()
+        if client:
+            client.add(
+                clean_content,
+                user_id=board_slug,
+                infer=False,
+                metadata={
+                    "memory_id": mem_id,
+                    "category": "rejected_path",
+                    "task_id": task_id or "",
+                    "author": author,
+                    "tags": tags,
+                },
+            )
+    except Exception as _me:
+        _log.debug("Mem0 rejection-memory index failed: %s", _me)
+
+    conn.execute(
+        """
+        INSERT INTO board_memories (id, board_slug, task_id, category, content, tags, author, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            mem_id,
+            board_slug,
+            task_id,
+            "rejected_path",
+            clean_content,
+            tags_json,
+            author,
+            now,
+            now,
+        ),
+    )
+
+    if task_id:
+        try:
+            log_activity(
+                conn,
+                task_id,
+                author,
+                "auto_memory_recorded",
+                f"Auto-recorded rejected_path: {clean_content[:80]}",
+            )
+        except Exception:
+            pass
+
+    return [
+        {
+            "id": mem_id,
+            "board_slug": board_slug,
+            "task_id": task_id,
+            "category": "rejected_path",
+            "content": clean_content,
+            "tags": tags,
+            "author": author,
+            "created_at": now,
+            "updated_at": now,
+        }
+    ]

@@ -170,6 +170,7 @@ try:
         extract_and_record_memory,
         normalize_file_path,
         normalize_memory_content,
+        record_rejection_memory,
     )
 except (ImportError, ValueError):
     from memory_service import (  # type: ignore
@@ -178,6 +179,7 @@ except (ImportError, ValueError):
         extract_and_record_memory,
         normalize_file_path,
         normalize_memory_content,
+        record_rejection_memory,
     )
 
 # --- Re-export Session Service -----------------------------------------------

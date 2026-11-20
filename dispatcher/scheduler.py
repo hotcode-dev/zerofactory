@@ -1369,18 +1369,36 @@ def _poll_pr_and_route_review(
                         try:
                             from ..dashboard.plugin_api import (
                                 extract_and_record_memory,
+                                record_rejection_memory,
                             )
                         except (ImportError, ValueError):
                             from dashboard.plugin_api import (
                                 extract_and_record_memory,
+                                record_rejection_memory,
                             )
-                        extract_and_record_memory(
-                            conn,
-                            board_slug=board_slug,
-                            text=c["body"],
-                            task_id=task_id,
-                            author=c.get("author") or "zf-reviewer",
+                        body_str = str(c["body"]).strip()
+                        is_human_changes_req = str(
+                            c.get("state") or ""
+                        ).upper() == "CHANGES_REQUESTED" and not body_str.startswith(
+                            "[AI:"
                         )
+                        if is_human_changes_req:
+                            record_rejection_memory(
+                                conn,
+                                board_slug=board_slug,
+                                feedback=body_str,
+                                task_id=task_id,
+                                task_title=title,
+                                author=c.get("author") or "human",
+                            )
+                        else:
+                            extract_and_record_memory(
+                                conn,
+                                board_slug=board_slug,
+                                text=body_str,
+                                task_id=task_id,
+                                author=c.get("author") or "zf-reviewer",
+                            )
                     except Exception as _mem_e:
                         _log.debug(
                             "Auto-record memory from review comment failed: %s",

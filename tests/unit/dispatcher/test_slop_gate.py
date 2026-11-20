@@ -167,3 +167,67 @@ def test_scorecard_surfaces_warnings_and_truncation(tmp_path: Path):
     ctx = digest_reviewer_git_context(repo, target_branch="main")
     assert "Diff Hygiene Scorecard" in ctx
     assert "Dependency Manifests Modified" in ctx
+
+
+def test_record_rejection_memory_and_reject_task_loop(initialized_db: Path):
+    """Human spec rejection automatically records a deduplicated rejected_path memory."""
+    import time
+
+    from dashboard.models import TaskRejectRequest
+    from dashboard.plugin_api import get_db_conn, record_rejection_memory, reject_task
+
+    now = int(time.time())
+    task_id = "zf-reject-mem-1"
+    with get_db_conn() as conn:
+        conn.execute(
+            "INSERT INTO boards (slug, description, created_at, updated_at) VALUES ('slop-board', 'Slop Board', ?, ?)",
+            (now, now),
+        )
+        conn.execute(
+            "INSERT INTO tasks (id, board_slug, title, status, assignee, priority, created_at, updated_at) "
+            "VALUES (?, 'slop-board', 'Add caching layer', 'triage', 'human', 'P1', ?, ?)",
+            (task_id, now, now),
+        )
+        conn.commit()
+
+    # Plain natural-language rejection feedback should auto-record as rejected_path
+    reject_task(
+        task_id,
+        TaskRejectRequest(
+            feedback="Do not add a custom Redis wrapper; reuse the existing SQLite cache.",
+            actor="alice",
+        ),
+    )
+
+    with get_db_conn() as conn:
+        rows = conn.execute(
+            "SELECT category, content, tags, author FROM board_memories WHERE board_slug = 'slop-board'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0]["category"] == "rejected_path"
+        assert "Add caching layer" in rows[0]["content"]
+        assert "reuse the existing SQLite cache" in rows[0]["content"]
+        assert "human-rejection" in rows[0]["tags"]
+        assert rows[0]["author"] == "alice"
+
+        # Duplicate feedback is deduplicated
+        dup = record_rejection_memory(
+            conn,
+            board_slug="slop-board",
+            feedback="Do not add a custom Redis wrapper; reuse the existing SQLite cache.",
+            task_id=task_id,
+            task_title="Add caching layer",
+            author="alice",
+        )
+        assert dup == []
+
+        # Trivial short feedback (<10 chars) is ignored
+        trivial = record_rejection_memory(
+            conn,
+            board_slug="slop-board",
+            feedback="no",
+            task_id=task_id,
+            task_title="Add caching layer",
+            author="alice",
+        )
+        assert trivial == []

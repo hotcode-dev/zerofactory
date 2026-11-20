@@ -47,6 +47,7 @@ try:
         compute_dedup_key,
         extract_and_record_memory,
         normalize_file_path,
+        record_rejection_memory,
     )
     from ..models import (
         VALID_PRIORITIES,
@@ -81,6 +82,7 @@ except (ImportError, ValueError):
         compute_dedup_key,
         extract_and_record_memory,
         normalize_file_path,
+        record_rejection_memory,
     )
     from models import (  # type: ignore
         VALID_PRIORITIES,
@@ -2217,6 +2219,19 @@ def reject_task(task_id: str, req: TaskRejectRequest):
             "INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)",
             (task_id, actor, comment_body, now),
         )
+
+        # Capture human rejection feedback as a reusable rejected_path anti-pattern memory
+        try:
+            record_rejection_memory(
+                conn,
+                board_slug=task.get("board_slug"),
+                feedback=req.feedback,
+                task_id=task_id,
+                task_title=task.get("title"),
+                author=actor,
+            )
+        except Exception as _mem_err:
+            _log.debug("Auto-record memory from reject_task failed: %s", _mem_err)
 
         if revision_count >= 2:
             meta["permanently_blocked"] = True
