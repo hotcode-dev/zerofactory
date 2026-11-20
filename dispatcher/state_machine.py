@@ -47,6 +47,10 @@ def transition_task(
        If exiting running or switching workers within running, terminate old worker.
     3. Phase 2: Atomic SQLite update (status, assignee, worker_pid, started_at,
        blocked_reason, metadata, task_activity log, and optional comment).
+       metadata_patch keys set to None delete the key from the stored
+       metadata (so callers can clear stale state such as
+       worker_failure_retries / last_worker_failure / permanently_blocked);
+       other values are merged in as usual.
     """
     if target_status not in KNOWN_STATUSES:
         raise InvalidStateTransitionError(f"Unknown status '{target_status}'")
@@ -123,7 +127,11 @@ def transition_task(
         meta = {}
 
     if metadata_patch:
-        meta.update(metadata_patch)
+        for key, value in metadata_patch.items():
+            if value is None:
+                meta.pop(key, None)
+            else:
+                meta[key] = value
 
     if is_human:
         meta.pop("last_worker_failure", None)
