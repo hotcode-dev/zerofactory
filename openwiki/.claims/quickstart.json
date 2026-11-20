@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4c8322372837f811cebb13a6d4de93614b732706da857f19aa961fe362785c67",
+  "pageVersion": "sha256:cd0ccf15d8e837695a2c8acbf8713c52c194ca775bc231970137da827b821722",
   "claims": [
     {
       "id": "claim_390ae1a0b32941e4b5bf337f7061ffa7",
@@ -76,21 +76,53 @@
     },
     {
       "id": "claim_10b1364d51294747a0f3759afe3e7f8b",
-      "statement": "Tasks that exhaust their retry budget (worker crash/timeout, repeated precommit failures, merge conflicts) are routed to the `recovery` stage owned by `zf-orchestrator`, which gets exactly one autonomous diagnosis attempt; `hermes zerofactory recover <task_id> [--guidance ...]` sends the task back to `todo` for `zf-builder`, and a second exhaustion escalates to `blocked` for a human.",
+      "statement": "Tasks that exhaust their retry budget (worker crash/timeout, repeated precommit failures, merge conflicts) are routed to the recovery stage owned by zf-orchestrator, which gets exactly one autonomous diagnosis attempt; hermes zerofactory recover <task_id> [--guidance ...] sends the task back to todo for zf-builder, and a second exhaustion escalates to blocked for a human.",
       "evidence": [
         {
           "resource": "repo://__init__.py#L678-L691",
           "version": "repo-lines-v1:sha256:89724d97b156fa3cc4eeec906258560ef2267e0c1d957831d9f9ebb09f56a936:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViZTEyNDhkZTBhOWRiYWVlYjI3YjZmYzFkZDNiZTFlY2IyYTM0YmE2NDIxNzE3MWVhODAyOGYzMjA2Zjg2NjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMGQwMDA3MDA3YjlhMmRjOTVhYzE4YjNiNGQ3NzUwYTUzYTVmZWU5ODE4YjkwYTIyNmNiMDY1NTBmZTgwYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyNDkyMTRjODdiODU2OGZhMmVhNTRmYzM2MzkyNzUwMDA1NmQxZTE3OTY1ODZmYjAyZTQ4MTY0M2FmYjk1YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmYTgzY2Q0MWNkYTQ1ZWY0ZjYyMjgyNWQxZTRiNTNkY2FkYjNkNTlmYjhjYzI2Y2Q0YmQwN2E3NmMxOTVmMTUifQ"
         },
         {
-          "resource": "repo://dispatcher/reaper.py#L359-L381",
-          "version": "repo-lines-v1:sha256:d14399acdda73dc5ffde86424e5326a8390fbb0418d9773641318d3a6cbacaa9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3NTAyMDliZWUyNGM0ZTMzYjA2NTJkOWM4ZTU4ZDQyZmEzOWI2NmJlMWQxMzMwNzdiMWU1YWQ3M2JmZTk3YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYzIyYmY2NDZhN2FiZDY4OTE2OWUwYzI1Yzc2MDdlNzg3MTQyMTkzOWVkMGQ0ZjYzYTI2YzY4MWU3YmY1MzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzM2U4Yjg4MTI4MTA2NmYxYmY5NDYxMjNkN2I0ZGU4MjdiYmU2YjMxM2M3ZWFlMmIwZmIzMDFlNGI0NGZmZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiZWYwN2VhOThjNjY3NjM1MDI0MzE5YTQ0MGI3YmZhMGZlNTI4YzYxOTliNWY2MzY5NjBhMDBmMmZjMWUwMzcifQ"
+          "resource": "repo://dispatcher/reaper.py#L378-L426",
+          "version": "repo-lines-v1:sha256:09da719cf32e99a623a6ff71c8a00c29a5ed08951b278c5d487e74be17ee94d0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3NTAyMDliZWUyNGM0ZTMzYjA2NTJkOWM4ZTU4ZDQyZmEzOWI2NmJlMWQxMzMwNzdiMWU1YWQ3M2JmZTk3YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDEwNWUwYTY4NTIxYzNkMzMyNjE1MzkwZTg1OWUzOWNmMjQxMjc0YTdkNzgxZDE5NmEzYWRhMDdiMTBmZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzM2U4Yjg4MTI4MTA2NmYxYmY5NDYxMjNkN2I0ZGU4MjdiYmU2YjMxM2M3ZWFlMmIwZmIzMDFlNGI0NGZmZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjMDhkYTNkMmRkYjZhOTJlMWM0YzllMDAyYWE1MjE3M2Y1NzEyNmIxMTNlYmI5NTM0MDY0ZTA5YzhlY2YwZTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a242eea39de441e3af9cac89920175d4",
+      "statement": "After the three precommit phases pass, the packaging phase runs the zero-token deterministic anti-slop gate (run_deterministic_slop_gate in dispatcher/slop_gate.py, wired into _package_and_open_pr before commit): it blocks leftover debugger statements (breakpoint(), pdb.set_trace(), import pdb, debugger;), unresolved TODO/FIXME/XXX/HACK placeholder comments, and skipped tests; enforces an optional net-line budget via ZEROFACTORY_MAX_DIFF_LINES; and flags large diffs, net test-line deletions, dependency-manifest changes, and new lint/type suppressors as warnings. Its compact diff-hygiene scorecard (build_diff_hygiene_scorecard) is pre-digested into the zf-reviewer prompt; violations re-spawn zf-builder within the same 3-retry budget before any commit or PR is authored.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L1921-L1924",
+          "version": "repo-lines-v1:sha256:d1644732d2bc597cb37ce8049320691778b44c494196038b84ab2d86449a144b:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmJiYmJjNjM1M2JhNjcwNTlmYmJkNWI1ZTllYTYyYTlkMGZhMDI0MTJmOTk2MDczMzA0ZmExOTcwNzkxY2RlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTkwOWE1M2E2MThkMDI4ZTFkMzAwMGMwYTdhYmNlZWNiZTVmYjM3ZjRlNTExZWZlNDY2NDNmYWQ2ZTY2ODcyZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzZkMDA3YjRlZTExMDQ1ZmE2OWZmOGFkYzZmNjAyMGRiMDE5MjNmYmI5NmEwMmE3ZmI2NzZhMTE5NjRmZDI2NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2M3MmY5ZmFlYmMxZjNkN2U4MjcxZDFkN2IxYjQyN2ZjNDY3YThhZmU2ZjI3M2UzMzdlYjFhYTA0MWY1ODA1OSJ9"
+        },
+        {
+          "resource": "repo://dispatcher/slop_gate.py#L467-L504",
+          "version": "repo-lines-v1:sha256:e1cb75278cf4cc583a8e25a3dfee2d034a12f3d9d0023f4f811bd03096d4828e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmY2M0NmUwYmQ0ZWYzZWRmNjVjY2NjNTA5Mjc4ZDZkYWM5YTE3N2M1ZjBhZDE4MWVmZTA4ODNhNGI3ZjI1MjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0OWQ5NTBlYWZiMDYxYzQxYjcyZjQ5ZDg1MzcyM2Q3ODQ2NTI2N2ZmNzA1NThlZTJlODlhMmI4Mjc4YmZkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3MGUxODFjZTQ4MTRjYjA5NzMxYTBmNzczM2QxNTA3YjUyZDEzYTM2YzI2MDBkM2QyMTYyYTU1N2Q0ZTVhNTMifQ"
+        },
+        {
+          "resource": "repo://dispatcher/slop_gate.py#L505-L505",
+          "version": "repo-lines-v1:sha256:365e9c29775a1994dd221ed07a85656cbcf3e6e333572821c77e65fd3b495583:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzY1ZTljMjk3NzVhMTk5NGRkMjIxZWQwN2E4NTY1NmNiY2YzZTZlMzMzNTcyODIxYzc3ZTY1ZmQzYjQ5NTU4MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzY1ZTljMjk3NzVhMTk5NGRkMjIxZWQwN2E4NTY1NmNiY2YzZTZlMzMzNTcyODIxYzc3ZTY1ZmQzYjQ5NTU4MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWQ2NmQyYjY4NTM5YWU2MzMxYWY0NzU2MDYzMTZlYWIxZjM5YjUyNjRjYjYxMzQ1MmU0N2IyOTZlNWRiNmM2YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmFjZjFhOGZjMzJlYjU4ZTQ2YzYwYzFmMzEyODNjYjkzY2FkNzUwOTVmZGFjOTIzZDg1OWE1YzZlNjIzZTY5ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ef87a89fccf046c3a00b1a2e699273a3",
+      "statement": "POST /tasks/{id}/reject (and the hermes zerofactory reject CLI) records the spec revision request as a task comment and auto-records the human feedback as a rejected_path board memory via memory_service.record_rejection_memory so future triage runs on the board avoid the rejected approach.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/memory_service.py#L619-L640",
+          "version": "repo-lines-v1:sha256:1bd717ebb98820f899ef6c336be13944694c54b060bf10bfc071a5d94ce75fa2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwOTNhODc5YmU5MjYzZTVmMTQyZmRiODc5NzczNTUwNzNhNjY0NWRiN2ZjYjM2NmVmYzc5OGU1MWJlNjZlMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxYjYxZTVhMDQ2ZGU0MWRmZDQ4NmQyMDk1N2VhYzMwM2QyYzVjMTYzZDJiMzZmM2NjZmJhODc4NjFkNDNlMDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlMjY0OTE4OWU1NzFlZTVkYjExMDQ5NTAzY2EzMWU5ZTU2NTE5YjhhM2QwYmMyODRmMGY5M2QxZTYzZDE1NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhYTdiYTNiOWRkYTdjZjcwMDAzZWIwYjA1ZWI3ZjQwMjYzZjY2NTg5NzRhZTcxMzZlNDI1OGE1NjhjMDRmZDcifQ"
+        },
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L2190-L2230",
+          "version": "repo-lines-v1:sha256:da4f61c2e8864dae2ca9e233f35f8349adee6126460bc42f8ec491610ad03ede:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkM2YyNmIwZmYxNTFhMTJlNWYyODkzOTM0OGFhMDg5NjM1NmNkY2RlOGFlMzFmMGM2NDNmYWE4YzBhZWQ1YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhMDdiNGFlZjYxYmI3OTVkZWI3MmIyOGQ3NDI2MzRkMDE2MjkyNWJmY2NiMDhhMzVmNzY3MzQzZTg4YTY0MzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlNDAzOTA1ZjZiOGNjNDdmODcwMmE0ZWE1MzcyODU5MGI2MjU3ZWM4MWMyZjAzNGQ4YTBjYjI2N2U3MTMwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3ODhkOTA1N2UxMzAzZWM0YTkwMjAwYmFlOThiMmVhYjY4MmYzODlmMjFjMWU2NzU5OWZkMTI0NmUzM2IyZDAifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-19T13:45:16.591Z"
+    "at": "2026-11-20T15:20:57.003Z"
   }
 }

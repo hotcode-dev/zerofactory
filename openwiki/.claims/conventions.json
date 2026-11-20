@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:38fdf4c0db82a81dcfbfc84a66a07d3cd231f7d88262d513da3145845ef9f672",
+  "pageVersion": "sha256:34fbde21726a1494a658dde4574bc472c13e8b761d42a67ad23d400a8148be41",
   "claims": [
     {
       "id": "claim_f5049d3391c7479baf38776d89ce8a5a",
@@ -18,15 +18,19 @@
     },
     {
       "id": "claim_ace87e633ea142178e97dc9bc4d27fef",
-      "statement": "Modules that may be loaded directly (the No-Agent Mode pre-run scripts such as scripts/zf_daily_stats.py, and the dashboard/* modules) insert the plugin root onto sys.path before importing internal modules; ruff.toml ignores E402 specifically so this required import-before-top ordering is legal, and the test suite does the same in conftest.py.",
+      "statement": "Modules that may be loaded directly (the No-Agent Mode pre-run scripts such as scripts/zf_daily_stats.py, and the dashboard/* modules) insert the plugin root onto sys.path before importing internal modules, then use the shared helpers in paths.py (e.g. get_zerofactory_db_path for the kanban DB); ruff.toml ignores E402 specifically so this required import-before-top ordering is legal, and the test suite does the same in conftest.py.",
       "evidence": [
+        {
+          "resource": "repo://paths.py#L304-L322",
+          "version": "repo-lines-v1:sha256:2ef754620dc592765a6ef3898f3625abbb8bfd45cef1ef50d403235b200fc101:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3N2EyYjE3ZTU1Y2E4YWRjMjUyOTk0ZGQ1ZTAxYjlhNWJmNWNmYTliNDEzOWJkOWQ0MmNlNjE3OTkxOGMxYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkNWE0MDdhODUxNjY2ZWUzOGU3MTgzMmFhMjA4MTlmNTNmZTA3ZmM1OGQ0MWE2YjM0NWMzZDk5NjllNjdjNDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5MTk0M2YyZGNkY2I1MzkyNGVjMmU0ZTdlNjllYWZmOTQxYTdiNTk3NjYxMWEzODZmNTJkOGNlZTE2ZWM5OTAifQ"
+        },
         {
           "resource": "repo://ruff.toml#L14-L14",
           "version": "repo-lines-v1:sha256:aa4185279e29f64d29ae43909d2584613537737ac9910a605bbfc463eebc73a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE0MTg1Mjc5ZTI5ZjY0ZDI5YWU0MzkwOWQyNTg0NjEzNTM3NzM3YWM5OTEwYTYwNWJiZmM0NjNlZWJjNzNhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE0MTg1Mjc5ZTI5ZjY0ZDI5YWU0MzkwOWQyNTg0NjEzNTM3NzM3YWM5OTEwYTYwNWJiZmM0NjNlZWJjNzNhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjM4YjJkMGI2NzhjYWI5MGFiODlhYTM1NjJmZTg5ZThmNGNiY2FkNzc2NjYxYTc4MTYwNzUyNGYyYTE0YjMzOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzkzOWQ3NTU2OTNiOGI3OGEzNDIyM2Q5YjcyZjE5NTY5ZTI2YWVhYWQxNzQzNzNkYmE2ZjM3MmVhNzFmMDFmZiJ9"
         },
         {
-          "resource": "repo://scripts/zf_daily_stats.py#L21-L25",
-          "version": "repo-lines-v1:sha256:8c27937341a8520e3b6c829281f62502b5eae5b59029de4aff31dcb44784fb80:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDlhOWRiNzc2N2JkMjA1OTMyNDI0NGJiZDk5MzVjZGNlZGIyMWMwM2VjNDZhNjdjOTE4NmI0MWQ1YzI5ZDdiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDk2NjBlNmVjMmU4NWVmZDkzYzEwMGQ0YzFkOTliZjJlMzRkNzNkMGRlMTI3OTQ3MWFjMTY1ZTI3N2RhMzc3MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmM2NWQ5ZGQ3OTQyOTk0MjY0N2QxYzYwMWQ3MzA5OWRlMDc3MjZhMjM5M2VhYzc2NzE1MGJjNGVhNDFlNGIwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTBhYjhjZDFmMWU2ZTY1Njk2Y2FlYmFlNzEwMzgyZDNmMGNhNjNjYTJhMzY2MTQwYmZmMjIxNTU4YWI5NzNmNCJ9"
+          "resource": "repo://scripts/zf_daily_stats.py#L20-L24",
+          "version": "repo-lines-v1:sha256:e4ff48183c111f685cf4e4c4723b5e80ff0ab714bfaa8e102b210463d1d595b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDlhOWRiNzc2N2JkMjA1OTMyNDI0NGJiZDk5MzVjZGNlZGIyMWMwM2VjNDZhNjdjOTE4NmI0MWQ1YzI5ZDdiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTU4Y2E1MTdlOTBiNTIxNzJlZjAxZWNmZDQ1NjBiY2Q3NzU1ZjRjMzk3OTZiNjJiMWE0NDljMmJhOWFiODcyYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmM2NWQ5ZGQ3OTQyOTk0MjY0N2QxYzYwMWQ3MzA5OWRlMDc3MjZhMjM5M2VhYzc2NzE1MGJjNGVhNDFlNGIwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTBhYjhjZDFmMWU2ZTY1Njk2Y2FlYmFlNzEwMzgyZDNmMGNhNjNjYTJhMzY2MTQwYmZmMjIxNTU4YWI5NzNmNCJ9"
         },
         {
           "resource": "repo://tests/conftest.py#L13-L16",
@@ -117,12 +121,16 @@
       "statement": "Any agent-authored GitHub text (PR titles/bodies, review comments) must begin with a role-tagged [AI:<role>] marker such as [AI:zf-builder] or [AI:zf-reviewer] (enforced by the role-aware ai_prefix, whose AI_PREFIX_RE matches only role-tagged markers so it never emits a bare [AI] and is idempotent for already-tagged text) so humans can distinguish agent output from human output.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/github_pr.py#L324-L324",
-          "version": "repo-lines-v1:sha256:65b247a2c390ad27b933cc248b7ad3e843501231362c5d74665c375a76e4ed1a:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjViMjQ3YTJjMzkwYWQyN2I5MzNjYzI0OGI3YWQzZTg0MzUwMTIzMTM2MmM1ZDc0NjY1YzM3NWE3NmU0ZWQxYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjViMjQ3YTJjMzkwYWQyN2I5MzNjYzI0OGI3YWQzZTg0MzUwMTIzMTM2MmM1ZDc0NjY1YzM3NWE3NmU0ZWQxYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjg0MGM0MzZjNDc1NjQ2OWI5NTgxMjYyNDRmMzc4MmU1ZmFkYzc4ZGVmZDBjZjQwYmM5NGQ4YzliMmY4ZDIwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWRiMTM5NjdjZjUxNmQxN2U3Nzk5ZWVlZWIwMDNlYjJmMDE5N2ZjNGViOTcwNmIyNjQ5ZjAwMzgyMWM0OWU2MSJ9"
+          "resource": "repo://dispatcher/github_pr.py#L324-L334",
+          "version": "repo-lines-v1:sha256:0e0ac6780407c3a115104065a204449bfd35773af8940f983cbc6d0eda83e92d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YjI0N2EyYzM5MGFkMjdiOTMzY2MyNDhiN2FkM2U4NDM1MDEyMzEzNjJjNWQ3NDY2NWMzNzVhNzZlNGVkMWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZWU1NTU1NmIzNGNkNDU2MDk0YTVhODQ3N2ZlOGNmYzNhMDg4ZDQ3YTQ4NmNkYTgxZGE5YWE3NWQzZjgyZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4NDBjNDM2YzQ3NTY0NjliOTU4MTI2MjQ0ZjM3ODJlNWZhZGM3OGRlZmQwY2Y0MGJjOTRkOGM5YjJmOGQyMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MmI4MThlZDJjZGY1YjY4NTAzNWVjYTgxODdhMGQ0YWI0OWY3MjhjZTI1NzgyYmVlYTUyOGNiNDA5ZTFiNTEifQ"
         },
         {
-          "resource": "repo://dispatcher/worker_spawner.py#L215-L228",
-          "version": "repo-lines-v1:sha256:b80c00830734f02f7e82fb5c4d46a6a96b84b68729208fbea132db9e14fc8883:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1Mzc4Nzk0ODhjNDZjZTc5YzliMTZhYzcyNzczZGVlZDVhYmNkYzhlMTE5YTRkY2FhYjVlOTM2YjdmN2I3M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYTU3ODJjNDVjYmE0OGZjM2I2MWZjZWFkNzRiNjFlMDY5NTUxYWU4OTAyYmJhNzkxYzU4MzYyYjRjYWM4NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhZDhhMzg1NGE3MjFjYjU2MjU3YmNlNzljMTI3OTFlMmZmYjcxYzc5ZTI1ODdjNDU5MDhmNTU0NWIyM2ZmMTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhZWQwOTllMTEwY2E2N2Y2ZTQ3M2EzYWU1MzcwNmNjYTcxYzk2Zjc0OTFlMDIxNDc5ODUxMWEwMjBmZTBiMTgifQ"
+          "resource": "repo://dispatcher/worker_spawner.py#L288-L288",
+          "version": "repo-lines-v1:sha256:b0a1b5a683a5bbc57273c22cd2435bf79e1dad40f52072aa4ef197f7cc422626:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjBhMWI1YTY4M2E1YmJjNTcyNzNjMjJjZDI0MzViZjc5ZTFkYWQ0MGY1MjA3MmFhNGVmMTk3ZjdjYzQyMjYyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjBhMWI1YTY4M2E1YmJjNTcyNzNjMjJjZDI0MzViZjc5ZTFkYWQ0MGY1MjA3MmFhNGVmMTk3ZjdjYzQyMjYyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTBjYzAxNTgzODcwMzYxNGQ4ODc1ZGQ4MDBmZTE1ZmJjMDVlNTExMjNkNmYyOGJiNDBkNzY0MmE3NTk2ZGNmMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzgxYzQ4N2ZmZDliM2RiYjgxNzRkOTA0NzE2N2E4YzA2NDU2MTYxMTBlYmVlYTI2YzE1ZWI1MzFlZTVmNzdmNCJ9"
+        },
+        {
+          "resource": "repo://dispatcher/worker_spawner.py#L702-L702",
+          "version": "repo-lines-v1:sha256:3ef29558df447156bb14b1dec24c93a363fe2e47ce81aea5921795c4554adbdd:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2VmMjk1NThkZjQ0NzE1NmJiMTRiMWRlYzI0YzkzYTM2M2ZlMmU0N2NlODFhZWE1OTIxNzk1YzQ1NTRhZGJkZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2VmMjk1NThkZjQ0NzE1NmJiMTRiMWRlYzI0YzkzYTM2M2ZlMmU0N2NlODFhZWE1OTIxNzk1YzQ1NTRhZGJkZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmI0YjM3YTYxYTIxMDkzYjFlNGE2YmFhN2Y4MGIzMjAwNDZhYzZkNDNkNjY4NWI0NDE4NTJkMWM3YzE3OTY4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjY2OGZlODRmMzNiMThjY2MzN2FiZjkzNjkwODliN2VkMzM3NTIzZGRlY2VlNDkzM2E0ZDk1N2U4ZWVjYWQyOCJ9"
         }
       ]
     },
@@ -139,6 +147,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-19T13:45:16.591Z"
+    "at": "2026-11-20T15:20:57.003Z"
   }
 }
