@@ -20,6 +20,8 @@ sources:
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-2feae2067f9a49cc4d8f2150
     resource: repo://migrations/runner.py
+  - id: openwiki-source-0d153fd68e7210eb5d3be49d
+    resource: repo://paths.py
   - id: openwiki-source-d763dfe33a2468865a9b9ce5
     resource: repo://ruff.toml
   - id: openwiki-source-8bf8788755a522a066b8b827
@@ -28,10 +30,10 @@ sources:
     resource: repo://tests/conftest.py
   - id: openwiki-source-b4194cdb1aee8e18787b21d6
     resource: repo://tests/unit/dashboard/test_dashboard_css.py
-generated: { by: "hermes", at: "2026-11-19T06:27:25.202Z" }
+generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-19T13:45:16.591Z
+    at: 2026-11-20T15:20:57.003Z
 ---
 
 # Conventions
@@ -62,7 +64,9 @@ adding cross-module imports.
 Modules that may be loaded directly (the No-Agent Mode pre-run scripts, e.g.
 `scripts/zf_daily_stats.py`, and the `dashboard/*` modules) insert the plugin
 root onto `sys.path` **before** importing internal modules, e.g.
-`repo://scripts/zf_daily_stats.py#L21-L25`. Ruff ignores
+`repo://scripts/zf_daily_stats.py#L20-L24`; the No-Agent scripts then resolve
+the kanban DB through the shared `paths.get_zerofactory_db_path` helper rather
+than re-deriving the path (`repo://paths.py#L304-L322`). Ruff ignores
 `E402` specifically so this required ordering is legal
 (`repo://ruff.toml#L14-L14`). The test suite does the same in
 `repo://tests/conftest.py#L13-L16`, and **pins** the repository's own `tests`

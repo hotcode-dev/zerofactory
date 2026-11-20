@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ab9c43809e9c7641aa54077e183277a0bb3337ed0a7e008def0da58024fae281",
+  "pageVersion": "sha256:52f99183a27785468f8a73af5beadb30dcfc135ef89621ddc2b2457ac4d76c1b",
   "claims": [
     {
       "id": "claim_80cf282ecc34488f9bf7da2c69151cc1",
@@ -85,12 +85,12 @@
       "statement": "The system follows a session-per-handoff model: each handoff (implementation → review → changes-requested) spawns a new agent session for the next profile with a pre-digested current delta rather than the full implementation history, keeping context windows small and token cost flat across review rounds.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/context_builder.py#L16-L209",
-          "version": "repo-lines-v1:sha256:6deee098510bb510d94f196b7be3f995b4caabf7761e03bda2800ecd66acb644:eyJzZWxlY3RlZExpbmVDb3VudCI6MTk0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3YWZhNDUyYzI5NjI4MjAwMDMxN2M2N2E5OGNmZjA0Y2Y4YTFhYjc1OTZjZGY5NGQ2MThjMGRjOTAzOWVjNzc5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkMTZiZDFkYWVmOTkwYTk1NmM5MTU2M2FlMTJjMTNkMTczMDcwMTc3ZmE2ODQxN2RiNmI0MTg3Zjc1NzE0ZDRkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3YjUwZDY3YzEyYzYyMDhjMGRkNjEyOWFiY2IxZjAzNjdkYTVjZjJlNTVlMTFjN2Q2NmEyNzQ4NzMyNjJlOTg1In0"
+          "resource": "repo://dispatcher/context_builder.py#L16-L222",
+          "version": "repo-lines-v1:sha256:6b7952c64d3789b3b047e6fadb9fa395e5851f9bfc3c5f63d190f17e5beb5712:eyJzZWxlY3RlZExpbmVDb3VudCI6MjA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3YWZhNDUyYzI5NjI4MjAwMDMxN2M2N2E5OGNmZjA0Y2Y4YTFhYjc1OTZjZGY5NGQ2MThjMGRjOTAzOWVjNzc5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkMTZiZDFkYWVmOTkwYTk1NmM5MTU2M2FlMTJjMTNkMTczMDcwMTc3ZmE2ODQxN2RiNmI0MTg3Zjc1NzE0ZDRkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4Mjk5NzFiMTMyNTk4OWNlMjE4NWU0YTc0NGFmYmI0NTEyODJjNTQxNTY1MWM5YmJiZjM3MDBjNDlhNGQyNDEwIn0"
         },
         {
-          "resource": "repo://dispatcher/worker_spawner.py#L751-L790",
-          "version": "repo-lines-v1:sha256:fe62c7937975addc66b37b9b62e5270f0b1f1e70884056f693e51e4513497fbd:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNTExMmQ0YzQ2N2JjYzJiMDM4N2Y0ZGVhNGQyOTE5OTVjMzY0OTI0ZTEyNTFhNjA2OTJiOWI2NmU5NWYzMDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZTIxOWQxM2FlZmQ1Y2M0Y2M1Y2QxNzUwN2ZkN2Q1Mjc2NjQ3NzM4NzE4YTkyZmZiY2UxY2RhMmY4NTA0YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmOWQ0YzBkYTIzYWNkMzgzZTlhYjZlNGQ1MDRlNjE3Mzc5YWY5MDM5MTY4NDc5NWUxY2RlZmJjNDgxY2VhMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjYTRmMWYzZWQ5ZTNmNTg3YTRmZDc4ZDEyMGFjYWJhNjFiMTNmZjIzYzIwNGY0NmU1YjVkZjdjNGI1MGIxNmUifQ"
+          "resource": "repo://dispatcher/worker_spawner.py#L751-L847",
+          "version": "repo-lines-v1:sha256:266c872dbf017f8d03845d62bcd4ca5470bbbe04f8e8716ad687fbaa4440a767:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4OTFjMjA1YjI3NDllMTQ1ZjdjZTc4ZjEyN2EyNmQxYjJmZDk3NmZlZTBlZDYwMjZlODc5ZGFlOTUzYTAzYjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjMjliZjEwZGI1NzAyYjViZGZlYTAwODM1NWIyZGNjZDNlZDJiZmRiOGI2MTg5YmZmNjAyZDk1YWYyYmEyODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNzlmODFlYjdlMDM4YTY0MWJjMDEzOTRiZWZlNGMxMThiNmM4ZjQyZGIzMTUyOGY0YjNmZjVmZGY2MDQwZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhNzJkNTI2ZTQzNTY5OTZlNDIxYmRjOTI3NWUyMjc1YzA5OTRkMTI0MjdmNDk3NTE2N2YyNmEyMDM1ZmIzNzgifQ"
         }
       ]
     },
@@ -234,11 +234,11 @@
       "evidence": [
         {
           "resource": "repo://dispatcher/state_machine.py#L13-L50",
-          "version": "repo-lines-v1:sha256:eba972e1f96c4cd34fdcb720426be78a0be8610b32db0fc599e2fbb636227850:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYzA3YzVjYTg2ZTAyNThhNWFkODlhYzU4ZTdhZDdhYmNmMjdjOTQ5NjM4Nzc4YzUzNzUwNzc3ZmM4ZmE1ZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwMzQ4NDkxMzdhYTVkNmZiOTkzODg4NDgwMGYwZDQ0OGY5OTgwYWVhNTIxNGExMDUxZWYyN2VlMmEyZmJmOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4NzM3NWJhMTI5ZGZlZDJiNDZlZWI4ODYzMjkxZWZhZWJhNWRmNjE5MWM3YzI3ZTJjZDY1YmNmNjQwZDQwMDYifQ"
+          "version": "repo-lines-v1:sha256:68a6f30d74e2f35fc7f56b86eb4afe02c76d1d8515b287015b953cb7e86d0547:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYzA3YzVjYTg2ZTAyNThhNWFkODlhYzU4ZTdhZDdhYmNmMjdjOTQ5NjM4Nzc4YzUzNzUwNzc3ZmM4ZmE1ZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NGU1YjMyNmYxM2Y5NWRkZTBhNGFmYThhOGIwMGY2OGMxNWU4NGE2MTQyMzhmODkxZWZmMThiNGM5MDE4ZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwMzQ4NDkxMzdhYTVkNmZiOTkzODg4NDgwMGYwZDQ0OGY5OTgwYWVhNTIxNGExMDUxZWYyN2VlMmEyZmJmOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxZTNhY2Y1ODBhMjdkNTljZjdlZmFhMzAyZjNjZGMyMTg1YWEyODM3MTNhODBjYzg2NDg5NGM5YWJmNWY4MTAifQ"
         },
         {
-          "resource": "repo://dispatcher/state_machine.py#L30-L278",
-          "version": "repo-lines-v1:sha256:c2e8a9c5142041937f3cdc7393ea1d864896ca4ba5556cda3093059beec933e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQ5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ZTlhOTVkNWY3YzlkOGExYjYwMzcwNTJjOTFlZGFhYTYzOWJlMjZmZTZlMzFhMzhlYzU4NTMyZmQ3OTVkM2M0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NTQxMjczMDlmZGUyYmVlMTlkMzg2NTFkZDllOWZiYmZkMzNhOTBjNmI3NTg5ODY2ODMzNzdlNWJjYzc1MjllIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dispatcher/state_machine.py#L30-L286",
+          "version": "repo-lines-v1:sha256:89d8c89958639210616cfdab03e9df129210fe50bed761d43261d7d72f7b0895:eyJzZWxlY3RlZExpbmVDb3VudCI6MjU3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ZTlhOTVkNWY3YzlkOGExYjYwMzcwNTJjOTFlZGFhYTYzOWJlMjZmZTZlMzFhMzhlYzU4NTMyZmQ3OTVkM2M0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4NTQxMjczMDlmZGUyYmVlMTlkMzg2NTFkZDllOWZiYmZkMzNhOTBjNmI3NTg5ODY2ODMzNzdlNWJjYzc1MjllIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -248,11 +248,11 @@
       "evidence": [
         {
           "resource": "repo://dashboard/routes/tasks.py#L1678-L1771",
-          "version": "repo-lines-v1:sha256:a7c9e6cdfdc09342aa50de903962a0ec5e860a9823cfaadf2967f9514f5fe745:eyJzZWxlY3RlZExpbmVDb3VudCI6OTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5MGRiMTNhOTE3NWEyZDQ2NTI5Y2I3NzM0ZmU1MmIyMzYxOTdhMzlkYTQ4N2I0ZTE2M2VlY2YwOTA2ZTEwOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3ZTNiYzc1NjczOTdjOWZmNzU0MTg0OTVlZDAzNDNjMjhiMTg2NjVhMzM3Y2JiZTY0Y2Q3ZTJjMjc0NWQ3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1ZDg3ZDQzOGRmMjhlMzM2ZGMxZDFlMDFmOTAwNDVjYjQ1MjdjMzdjZDliNWZlYzY4MGI1MzUxODc4NTc4ODQifQ"
+          "version": "repo-lines-v1:sha256:556bfdd055f62639ae004b76b5d26a461dafef2ab3d6fe5990a38d84d3a9ccf2:eyJzZWxlY3RlZExpbmVDb3VudCI6OTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjM2JmMmVhMDY0NTdmYzgxYzllYTllOWFlNTlkNGVmMTc1NzVkZTJkMWE2YjkzZmUzZWEyN2ZiNjUyOTNmYTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4ZGRhM2Y1YWQyYjJlNTk3YzljNDZiMjIzNDkwYjQxMmY2ZWRhMzhiZGZmZTM4ZjBiYTM1MmE5ODZmZDY2NDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMifQ"
         },
         {
-          "resource": "repo://dispatcher/reaper.py#L359-L510",
-          "version": "repo-lines-v1:sha256:abdd9578c340cd925356cc5bcbde81ad83b0d9c6953141efa35830c2b20f9317:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5NzUwMjA5YmVlMjRjNGUzM2IwNjUyZDljOGU1OGQ0MmZhMzliNjZiZTFkMTMzMDc3YjFlNWFkNzNiZmU5N2FhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkMDAxMDVlMGE2ODUyMWMzZDMzMjYxNTM5MGU4NTllMzljZjI0MTI3NGE3ZDc4MWQxOTZhM2FkYTA3YjEwZmQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkMzNlOGI4ODEyODEwNjZmMWJmOTQ2MTIzZDdiNGRlODI3YmJlNmIzMTNjN2VhZTJiMGZiMzAxZTRiNDRmZmZhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MzFlZWU3ZGRmZjU4MDIxZDY0MGM0YzQ0NWIwNjYxNjQ0MGUwNTMzMzkwY2RkOGU5ZjZkMDQ4OTNiNjU2ZGZmIn0"
+          "resource": "repo://dispatcher/reaper.py#L380-L545",
+          "version": "repo-lines-v1:sha256:c555e5b3458adfd7ba3bb6525e9c9e3edd0e9143d5964eb818f6f10207fae03c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTY2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxMzNhYmI5MDQ0MzBmMGRlNjA3NDA0ODM2NDY5MzBiY2ZhNTNhNjZiYjBiYmYzY2RmZGMxZWI2ZGY3MWM2NTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkMmE1MTU3YzA3NjgzNDIwYmQ0Y2EyYTgxZDFlODg3NGRhZDI2NDQyYmY4ZTBlNTk1NzZhMjVhN2RlNDc5M2I2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1MTVhNTYzM2EzOWNhOGU4ZTc5ZDRmNmZmODY5N2Q2MTI4NGU1M2RjZDM3YWEyYWRkMTUwZDVkZTgxNDBjYzkwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjOTUzMTQ1ZDQ3MWQzMzlmNzAwYjhkMDkzNDc5MmZiMjYyNzc3MjE1YTAwNTRjOWU3ZjJmOTJlNTQ4NTU2OWU3In0"
         }
       ]
     },
@@ -269,10 +269,44 @@
           "version": "repo-lines-v1:sha256:d6c6ab550dfb1116192defa722c2dacb4b87bd4bc546ffabd4e15a8e36df1c88:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhYTgwODRmOTg2ODRlZjc5MTMzNmNhYWVlZWVlYjA1NjVhZDliYmE3N2Y5YmJjY2ZmNzFmNTU4MWEwMTliZDJlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlYWE5NjBlMjRkODE1ZTZjOTk5MjE5MGE5YTBhZjk4MDlmMGY0ZDBiN2RjNGVkZWNjOTE0N2M0NDdjZTliZWU4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwNDhmOGUwZmYxMmFhN2UwMjZiMmFiZWY5ZTMyZmZlNjJmZTUxODk4ZDA5YTY0ZTg2Zjc5OTQzYjk2YWNkMjJiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5NDAzYzE0MzkxMWYwY2RlZWFlNTEzZDM3ODE2ODk5NjBiOTNlMDc1YzVlOWM5ZWUxYjhiNDBkN2YzZjAxNDY3In0"
         }
       ]
+    },
+    {
+      "id": "claim_c6d8e6794b1448b8a3c0dacdcc6e035e",
+      "statement": "The packaging phase runs a zero-token deterministic anti-slop gate (run_deterministic_slop_gate in dispatcher/slop_gate.py) between the precommit check and commit; it blocks leftover debuggers, placeholder TODO/FIXME comments, and skipped tests, and enforces an optional ZEROFACTORY_MAX_DIFF_LINES net-line budget. Failures route back through _handle_precommit_failure, and build_diff_hygiene_scorecard's markdown block is pre-digested into the zf-reviewer prompt.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scheduler.py#L1920-L1940",
+          "version": "repo-lines-v1:sha256:2a1b60a58828a239dbcabd908cb07d386766868e09c670a353f7cd92f6e3ec99:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5MTkwYWQ5NjQ2OTQ1YTM5NjI4M2ZiZTQyYmViZmViNjEyYWEzYTAwOWExZmI0YzhmMDg5M2U4OWUxNWM3MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhOTdkMmVhMTAxNmQ2YmI0ODdhOWVhMWNlMWNkYTNmMDA5NmVjOTI3MThjZDczZjhmY2M5ZTBjZjA4YWIzMzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyNTVjMzNkMTRmODVjN2VlMmUwZTg5ZWU1MThlZTA5ZTQ2OGMyZTgxMWFhYjgwNTQ2NWRmODNmNTg2M2RhNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxNjhmOWJlNGUyNmNhM2I3ZDliZjQ1ZGViZjcwOGVmYTFiZjhkNjBlMjM4YjE0Mzk3MDgzM2VlYmRlMGVkOTAifQ"
+        },
+        {
+          "resource": "repo://dispatcher/slop_gate.py#L467-L502",
+          "version": "repo-lines-v1:sha256:07cbb609e3afbf64cd2f432cdf7756113093a1869ae6acc8a5bc168ce4e3a069:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmY2M0NmUwYmQ0ZWYzZWRmNjVjY2NjNTA5Mjc4ZDZkYWM5YTE3N2M1ZjBhZDE4MWVmZTA4ODNhNGI3ZjI1MjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNGMyMmY3OTFmMjMxOTY2ODk5ZmRlNTc3MDQ0OTY5YmE1ZDU3ZmNkYjcyZjkwOWI0NmZiY2QyMTEzMTM3NTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0OWQ5NTBlYWZiMDYxYzQxYjcyZjQ5ZDg1MzcyM2Q3ODQ2NTI2N2ZmNzA1NThlZTJlODlhMmI4Mjc4YmZkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlM2U4NzU2MTM5NjQzOGJjMjhjODM2ODljNmJlMWYzMDQ5YmI1ZWJiMDEwOTRkZjUwNmM0ZTRmZTcwNDM5ZjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_79e14256ef5546b2b9ae472c33b63cfc",
+      "statement": "A clean zf-reviewer exit that recorded no verdict (no block --reason approved/changes-requested/human-gate) is not retried: the reaper parks the task in blocked with blocked_reason_type='human-gate' and blocked_reason 'Reviewer exited without recording a verdict; awaiting human review', deliberately clearing awaiting_pr so the task never re-enters the packaging phase.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/reaper.py#L284-L294",
+          "version": "repo-lines-v1:sha256:4aa7abfcc12fb059ffa8379668f699fba03b942888a1c23b5751638a01acdc66:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmNmI3ZmZiODIwMzdhMmJlYTk2YjE0MTU4Yzg3ZDFlN2IwNDM4NzhkNWU5ODJmMDQ5MjA3MWM1MzUxMWYxNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMDhiMDllODc4ZDdlMGVkYjhjYjkxN2ZlMjY1OTFmY2M0YWM3ZjhmMTRmMTZhY2NkNWQyYjM2NGIwZDgwZDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlMzFjZmE2MTc0M2Y0MTI3Zjg5NzEwMmVkODdjNmQ2YmMyMTQ0ZTFmMjBmYjM3NzFlMTFiYzZiMTdkZTZmZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhMzBiNWU5N2Y5N2VjYjQ4YjllNmM1YWRmYTViYzIzY2JiMTE5MWQ4NjQwMDkzYmNlYTQ2ZDRkMDcyM2RkODIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bdba05d4b8144bbaa8c66d9ecc6ef988",
+      "statement": "The EGM reject gate (POST /tasks/{task_id}/reject) auto-records the human's rejection feedback as a rejected_path board memory via memory_service.record_rejection_memory so future runs avoid repeating the same mistake.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L2218-L2235",
+          "version": "repo-lines-v1:sha256:2ed5622b66a9a29705dfd3d0990b1945ec1a78436da6128ac25edd1a3149c843:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NjAyZmZhZDhkYTA1YjQ1NGMwNmZiOGE4NjdiOTBkZjcxMDFiNGZmMDQwMzM3MmRmZjg3NTM5MTg2MDVhMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5MWQ3MjhlYTM5MmVmNDk4NmQ4NjJiYzMzOWUyZmZjOGNlZDE0OGU2MDYzNTVkYzc0NThkNTU1MzUzMTU3NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4NGM0OTRhYTNjOTE0YWFjNjA5ZGRkYmQ3N2I5YTI2ZmFhNjBiZmYzOWQyMzhiYzQyZDU4MmQ1ODA3NTQ5M2EifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-19T13:45:16.591Z"
+    "at": "2026-11-20T15:20:57.003Z"
   }
 }

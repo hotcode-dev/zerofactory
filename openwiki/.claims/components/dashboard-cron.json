@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ed679b77144d02ea2fb5cb949b8b284661ac22fa38eeeb30a50e859683f3f2bc",
+  "pageVersion": "sha256:2de58eccd87b49173fe3b708930a2c84a327a7ea96c26807948b815acd4a93fe",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -70,11 +70,15 @@
     },
     {
       "id": "claim_a0f6482c9a0e41edb5b3a3cbaaf0e929",
-      "statement": "zf_daily_stats.py is a deterministic 24-hour metrics and velocity calculator with no LLM involvement: it queries zerofactory.db for completed tasks in the last 24h and pre-formats cycle-time, column distribution, throughput, and bottleneck tables for injection into the LLM prompt.",
+      "statement": "zf_daily_stats.py is a deterministic 24-hour metrics and velocity calculator with no LLM involvement: it resolves the kanban DB path through the shared paths.get_zerofactory_db_path helper, queries zerofactory.db for completed tasks in the last 24h, and pre-formats cycle-time, column distribution, throughput, and bottleneck tables for injection into the LLM prompt.",
       "evidence": [
         {
-          "resource": "repo://scripts/zf_daily_stats.py#L1-L15",
-          "version": "repo-lines-v1:sha256:8a84e8afcc51fe029abc284663d0f5c03ac2e58764b9f12bad9de0586383f382:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1MmVkMWY5ZTdjYzZhMjgzMWU1M2IyMTI4MjM1MmUxNDg2MzgxZjFlMDI0ZDZmMDA0YmZkMWRjMjc3NWNhNWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0MjQzZjFhNzM2YWE3OGEzNDY4MTI3NGEwMTczY2M5ZTJmZDY3MTYwNmFlNzlmZDY0NWY5NmQ0MDY0ZjNmMjQifQ"
+          "resource": "repo://paths.py#L304-L322",
+          "version": "repo-lines-v1:sha256:2ef754620dc592765a6ef3898f3625abbb8bfd45cef1ef50d403235b200fc101:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3N2EyYjE3ZTU1Y2E4YWRjMjUyOTk0ZGQ1ZTAxYjlhNWJmNWNmYTliNDEzOWJkOWQ0MmNlNjE3OTkxOGMxYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkNWE0MDdhODUxNjY2ZWUzOGU3MTgzMmFhMjA4MTlmNTNmZTA3ZmM1OGQ0MWE2YjM0NWMzZDk5NjllNjdjNDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5MTk0M2YyZGNkY2I1MzkyNGVjMmU0ZTdlNjllYWZmOTQxYTdiNTk3NjYxMWEzODZmNTJkOGNlZTE2ZWM5OTAifQ"
+        },
+        {
+          "resource": "repo://scripts/zf_daily_stats.py#L20-L24",
+          "version": "repo-lines-v1:sha256:e4ff48183c111f685cf4e4c4723b5e80ff0ab714bfaa8e102b210463d1d595b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDlhOWRiNzc2N2JkMjA1OTMyNDI0NGJiZDk5MzVjZGNlZGIyMWMwM2VjNDZhNjdjOTE4NmI0MWQ1YzI5ZDdiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTU4Y2E1MTdlOTBiNTIxNzJlZjAxZWNmZDQ1NjBiY2Q3NzU1ZjRjMzk3OTZiNjJiMWE0NDljMmJhOWFiODcyYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmM2NWQ5ZGQ3OTQyOTk0MjY0N2QxYzYwMWQ3MzA5OWRlMDc3MjZhMjM5M2VhYzc2NzE1MGJjNGVhNDFlNGIwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTBhYjhjZDFmMWU2ZTY1Njk2Y2FlYmFlNzEwMzgyZDNmMGNhNjNjYTJhMzY2MTQwYmZmMjIxNTU4YWI5NzNmNCJ9"
         }
       ]
     },
@@ -275,8 +279,8 @@
       "statement": "Beyond the on-demand cron trigger, the dispatch cycle itself spawns idle improvement scans: for each board whose running count dropped below the idle threshold with a todo backlog at or below idle_scan_max_todo (default 2), the scheduler checks the active-scanner PID map and the per-board cooldown (idle_scan_cooldown_minutes, default 15) and, when due, calls spawn_board_scanner to launch a zf-orchestrator scanner worker.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scanner.py#L188-L292",
-          "version": "repo-lines-v1:sha256:86bab927f8cf456565eb0f33fe71db06d4fcc062d6e62ee27aa53789f63cba65:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4NDViMGU5NmRmM2E2ODdkYzE5MWEzNjhkODcxYzBhMzhiZmIwMDY1YTZiODEwZjQwNDY4YTg5Mzg5YzgzOTkyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZmJkMDA5MzE0YmMyNzA4NDE2NzM0YTAyYWU1ZmYzOWExZTQ4YTA1MGJlOTFmNDNiMmZhYTkyMDAyYzYyYmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYmNmZDJmNmM2ZjNkMmU3ZTBjODlkMjdlNjQ2NjExNWRiODY1MzI3NWZiNWE3MWMyMTFjNmJlZGJjN2U2YzlhIn0"
+          "resource": "repo://dispatcher/scanner.py#L188-L297",
+          "version": "repo-lines-v1:sha256:adb847bfb76dbc990a49fcfda98d9b70c7e73412e403a9ea06a2f9b6093083d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4NDViMGU5NmRmM2E2ODdkYzE5MWEzNjhkODcxYzBhMzhiZmIwMDY1YTZiODEwZjQwNDY4YTg5Mzg5YzgzOTkyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZmJkMDA5MzE0YmMyNzA4NDE2NzM0YTAyYWU1ZmYzOWExZTQ4YTA1MGJlOTFmNDNiMmZhYTkyMDAyYzYyYmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYmNmZDJmNmM2ZjNkMmU3ZTBjODlkMjdlNjQ2NjExNWRiODY1MzI3NWZiNWE3MWMyMTFjNmJlZGJjN2U2YzlhIn0"
         },
         {
           "resource": "repo://dispatcher/scheduler.py#L810-L835",
@@ -297,10 +301,46 @@
           "version": "repo-lines-v1:sha256:d6c6ab550dfb1116192defa722c2dacb4b87bd4bc546ffabd4e15a8e36df1c88:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhYTgwODRmOTg2ODRlZjc5MTMzNmNhYWVlZWVlYjA1NjVhZDliYmE3N2Y5YmJjY2ZmNzFmNTU4MWEwMTliZDJlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlYWE5NjBlMjRkODE1ZTZjOTk5MjE5MGE5YTBhZjk4MDlmMGY0ZDBiN2RjNGVkZWNjOTE0N2M0NDdjZTliZWU4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwNDhmOGUwZmYxMmFhN2UwMjZiMmFiZWY5ZTMyZmZlNjJmZTUxODk4ZDA5YTY0ZTg2Zjc5OTQzYjk2YWNkMjJiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5NDAzYzE0MzkxMWYwY2RlZWFlNTEzZDM3ODE2ODk5NjBiOTNlMDc1YzVlOWM5ZWUxYjhiNDBkN2YzZjAxNDY3In0"
         }
       ]
+    },
+    {
+      "id": "claim_76b4cbc830b04a4ca52e233783e52d27",
+      "statement": "The dashboard's readiness banners are driven by GET /dispatch/setup/status (get_setup_status in dashboard/routes/dispatch.py), which wraps profile_manager.check_setup_status: a 'Zero Factory Setup Checklist' banner lists the missing one-shot steps (profiles not initialized, GitHub CLI not authenticated, dispatcher not running) with copy-ready CLI commands and an inline start-dispatcher action; an amber 'Agent Profiles Out of Sync' banner appears when check_setup_status reports non-empty outdated_profiles (installed SOUL.md prompts differ from the plugin templates) with a one-click Sync Profiles button; and a 'Zero Factory Plugin Update Available' banner (driven by plugin_update_available / latest_plugin_version from check_plugin_update) shows current to latest version, the hermes plugins update zerofactory command, a link to the Hermes Marketplace, and a per-session dismiss button.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/routes/dispatch.py#L105-L150",
+          "version": "repo-lines-v1:sha256:57f00b6eba9357b667535f984dfbf0fe18c5f3b3948b48b51b639bf501755f2a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0YjRhN2I5ODI2NGNiOWZkODEwZmQ4YTFhZDQxY2NmNDgyY2RlMmIzODkxYjU5NTc1YjgxM2I1NTQwMmUyMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiYTc2NDQzNjE0NjI0YjhmNDQyZTM2MTY4YWI3M2U4MzdhNzRkMDM0NjA0NTk2MDhkODJiMThmZDM4ZjcxMDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0ZjEyMGI4NTg5MjNmZTBlY2UwOTJlNGY4ZmFlMDliN2U1MjVmNWU4MDYyNGM3NjJlMGI0MjA0YjhmOTRjZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMifQ"
+        },
+        {
+          "resource": "repo://dashboard/src/components/SetupBanners.jsx",
+          "version": "repo-file-v1:sha256:c071ebbd28c6f323c12edd467aad929efced9c0fe3751fad5de3b691496d1f45"
+        },
+        {
+          "resource": "repo://profile_manager.py#L634-L709",
+          "version": "repo-lines-v1:sha256:3766c33434f0296e16727f2082c5b500af3932c5667aa173c4594ed0bf9fa6ba:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5MjI0YzFkZGM1MjMyZjBhYTU1NDYxNDY2NGNhMGRhYmY4N2Y4N2NlYjRlNDk2MjQzZTcwMzhkOGY3N2M1Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhMTFjMDU2N2QwYTVmOWU5YjEzNWY2NWNkMjUzNzJkZmQ2Mjg3NzVmN2MxZWQyNTNmOGJhZDQyZGQyZDY2NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwMzBlODg3NTVjNTkyZWY1MzUxMWRlY2JlNDE1MmZkZTJlODZjNGNhOWMzNzAxMzlmYmFmMzgxYjM3Nzc3NzkifQ"
+        },
+        {
+          "resource": "repo://profile_manager.py#L756-L788",
+          "version": "repo-lines-v1:sha256:00d9a8ed67004d75e1940fe4350600e0883628c8c4c8458b09ec0e9b7b3874b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OGE2Y2VmNTVkNTU3ZDg0MWJlYmZhNDgxY2RiOTZhNzdlMDUxNGZhNjE5ZGRlNGRmZThkZTk0MjVjMzY3OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MzcwM2YwNTk5M2FkZjZjNmU4MjllOGJjNzc1NDdkMjg4Zjk1NzM0NDM4Y2UzY2JhYzJlYjI4Y2RhZTg2MGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwNzM0MTZmZjY1MmNjOWFmMmVjN2JhZDI0ZjJkNzBkNjZkMmY0YzQ5ZjMxMWVlYjg3MTNmZWIyYjc1M2IwNjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b8614f2847c54c4ebea7b26e2fadfe7f",
+      "statement": "POST /tasks/{id}/reject records the revision request as a task comment and, as a side effect, auto-records the human's feedback as a rejected_path board memory via memory_service.record_rejection_memory so future runs on that board avoid the rejected approach.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/memory_service.py#L619-L640",
+          "version": "repo-lines-v1:sha256:1bd717ebb98820f899ef6c336be13944694c54b060bf10bfc071a5d94ce75fa2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwOTNhODc5YmU5MjYzZTVmMTQyZmRiODc5NzczNTUwNzNhNjY0NWRiN2ZjYjM2NmVmYzc5OGU1MWJlNjZlMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxYjYxZTVhMDQ2ZGU0MWRmZDQ4NmQyMDk1N2VhYzMwM2QyYzVjMTYzZDJiMzZmM2NjZmJhODc4NjFkNDNlMDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlMjY0OTE4OWU1NzFlZTVkYjExMDQ5NTAzY2EzMWU5ZTU2NTE5YjhhM2QwYmMyODRmMGY5M2QxZTYzZDE1NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhYTdiYTNiOWRkYTdjZjcwMDAzZWIwYjA1ZWI3ZjQwMjYzZjY2NTg5NzRhZTcxMzZlNDI1OGE1NjhjMDRmZDcifQ"
+        },
+        {
+          "resource": "repo://dashboard/routes/tasks.py#L2190-L2230",
+          "version": "repo-lines-v1:sha256:da4f61c2e8864dae2ca9e233f35f8349adee6126460bc42f8ec491610ad03ede:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkM2YyNmIwZmYxNTFhMTJlNWYyODkzOTM0OGFhMDg5NjM1NmNkY2RlOGFlMzFmMGM2NDNmYWE4YzBhZWQ1YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhMDdiNGFlZjYxYmI3OTVkZWI3MmIyOGQ3NDI2MzRkMDE2MjkyNWJmY2NiMDhhMzVmNzY3MzQzZTg4YTY0MzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlNDAzOTA1ZjZiOGNjNDdmODcwMmE0ZWE1MzcyODU5MGI2MjU3ZWM4MWMyZjAzNGQ4YTBjYjI2N2U3MTMwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3ODhkOTA1N2UxMzAzZWM0YTkwMjAwYmFlOThiMmVhYjY4MmYzODlmMjFjMWU2NzU5OWZkMTI0NmUzM2IyZDAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-19T13:45:16.591Z"
+    "at": "2026-11-20T15:20:57.003Z"
   }
 }

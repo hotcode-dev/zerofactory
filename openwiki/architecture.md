@@ -5,7 +5,7 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, state-machine, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-19T13:45:16.591Z
+    at: 2026-11-20T15:20:57.003Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -27,6 +27,8 @@ sources:
     resource: repo://dispatcher/reaper.py
   - id: openwiki-source-9f9b3c9d5afeac588f3cdae1
     resource: repo://dispatcher/scheduler.py
+  - id: openwiki-source-0445f3be32f0f8efe9dfeca4
+    resource: repo://dispatcher/slop_gate.py
   - id: openwiki-source-1cbc0eb99c8b57cd43185064
     resource: repo://dispatcher/state_machine.py
   - id: openwiki-source-b73a2eae57b810a3ad15196e
@@ -43,7 +45,7 @@ sources:
     resource: repo://plugin.yaml
   - id: openwiki-source-57b14ecc6ef51ae6212b15f0
     resource: repo://settings.py
-generated: { by: "hermes", at: "2026-11-19T06:27:25.202Z" }
+generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
 ---
 
 # Zero Factory Architecture
@@ -81,6 +83,7 @@ review rounds.
 | Issues import | GitHub issue → Kanban task ingestion (dedup, priority, board resolution), plus dashboard sync/import endpoints and deterministic setup flows | `repo://issues/importer.py` |
 | Profile management | Auto-provisioning of `zf-*` profiles | `repo://profile_manager.py` |
 | Mem0 memory | Semantic vector memory (Mem0 + embedded Qdrant, dual embedder) with dual-write to the `board_memories` SQLite table | `repo://dashboard/memory_service.py` |
+| Anti-slop gate | Zero-token deterministic diff hygiene checks (debugger residue, placeholder comments, skipped tests, diff-budget cap) that gate packaging before commit/PR | `repo://dispatcher/slop_gate.py` |
 
 External issue ingestion flows through the `issues/` package (GitHub-only):
 `hermes zerofactory import-gh-issue` fetches a GitHub issue, normalizes it
@@ -115,7 +118,7 @@ restricted to `zf-builder` / `zf-reviewer` / `zf-goldfish`), and
 `pr_url` + metadata (`repo://paths.py#L137-L278`).
 
 Every status change funnels through **one** primitive: `transition_task`
-(`repo://dispatcher/state_machine.py#L30-L278`). It (1) validates the
+(`repo://dispatcher/state_machine.py#L30-L286`). It (1) validates the
 transition against the `VALID_TRANSITIONS` graph — notably `done` only
 transitions back to `triage` (rework), and non-human agents are rejected
 from any edge outside the graph (`InvalidStateTransitionError`) — and
@@ -155,7 +158,7 @@ diff so the reviewer does not burn turns on exploratory `git` calls
 (`repo://dispatcher/context_builder.py#L16`), and
 `digest_board_memories_context` retrieves the most relevant Mem0/board-memory
 entries into the same prompt so agents do not repeat past mistakes
-(`repo://dispatcher/context_builder.py#L210`).
+(`repo://dispatcher/context_builder.py#L224`).
 
 ## Self-healing & autonomous recovery
 
@@ -167,7 +170,13 @@ not `zf-orchestrator`, the reaper routes it to `todo` with
 `zf-orchestrator` (gated on `orchestrator_recovery_count < 1`); a second
 exhaustion — or any exhaustion of the orchestrator itself — parks the task in
 `blocked` with `blocked_reason_type = "stuck"` and `permanently_blocked` for
-a human (`repo://dispatcher/reaper.py#L359-L510`). The orchestrator then acts
+a human (`repo://dispatcher/reaper.py#L359-L560`). A clean `zf-reviewer`
+exit that recorded no verdict (no `block --reason approved|changes-requested|
+human-gate`) is not retried: the reaper parks the task in `blocked` with
+`blocked_reason_type = "human-gate"` and the reason *"Reviewer exited without
+recording a verdict; awaiting human review"*, deliberately clearing `awaiting_pr`
+so the task never re-enters the packaging phase
+(`repo://dispatcher/reaper.py#L284-L294`). The orchestrator then acts
 via `hermes zerofactory recover <task_id> [--guidance ...]` (back to
 `zf-builder`), `report-bug` (internal defect → GitHub issue + `blocked`), or
 `block` (human gate) — all surfaced through the dashboard's `recover` /
@@ -246,13 +255,20 @@ move endpoint. `move_task` (and every other transition) applies through the
 `done` is **strictly terminal**: the moment an agent actor (builder/reviewer)
 reports completion the task deliberately stays `running` and is marked
 `metadata["awaiting_pr"] = true` — the *packaging phase* — during which the
-dispatcher runs the deterministic pipeline (precommit → commit → push → PR →
-route to reviewer) via `_package_and_open_pr`
-(`repo://dispatcher/scheduler.py#L1754`). Only a terminal event (a human
-closing the task, a merged PR, an auto-merge, or a PR archive via `close_pr`)
-clears the flag and finalizes the task through `_finalize_terminal_done`, which
-never commits, pushes, or re-opens review
-(`repo://dispatcher/scheduler.py#L2327`). Blocked tasks carry a
+dispatcher runs the deterministic pipeline (precommit → anti-slop gate →
+commit → push → PR → route to reviewer) via `_package_and_open_pr`
+(`repo://dispatcher/scheduler.py#L1772`). After the precommit check, a
+zero-token deterministic **anti-slop gate** (`run_deterministic_slop_gate` in
+`repo://dispatcher/slop_gate.py#L467`, wired in at
+`repo://dispatcher/scheduler.py#L1920`) blocks leftover debuggers,
+placeholder `TODO`/`FIXME` comments, and skipped tests, plus an optional
+`ZEROFACTORY_MAX_DIFF_LINES` budget; a failure routes back through
+`_handle_precommit_failure`, and its `build_diff_hygiene_scorecard`
+(`repo://dispatcher/slop_gate.py#L505`) is pre-digested into the `zf-reviewer`
+prompt. Only a terminal event (a human closing the task, a merged PR, an
+auto-merge, or a PR archive via `close_pr`) clears the flag and finalizes the
+task through `_finalize_terminal_done`, which never commits, pushes, or
+re-opens review (`repo://dispatcher/scheduler.py#L2370`). Blocked tasks carry a
 canonical `metadata["blocked_reason_type"]` classified by
 `normalize_blocked_reason_type` into `changes-requested`, `approved`,
 `human-gate`, or `stuck` (stamped by the dispatcher when a retry budget is
@@ -263,7 +279,7 @@ carries its own retry budget: repeated git/PR failures during
 `_package_and_open_pr` increment `metadata["packaging_retries"]` and store
 `metadata["last_packaging_error"]`; after 3 attempts the task is parked in
 `blocked` with `blocked_reason_type = "stuck"` and assignee `human`
-(`repo://dispatcher/scheduler.py#L1710`), and the `recover` endpoint
+(`repo://dispatcher/scheduler.py#L1721`), and the `recover` endpoint
 resets both fields alongside the other failure counters
 (`repo://dashboard/routes/tasks.py#L1678`).
 
@@ -296,7 +312,9 @@ zerofactory approve <task_id> [--split]`) promotes a single-repo task to
 `revision_count` and routes the spec back to `zf-orchestrator` in
 `elephant_drafting` — at most 2 revision rounds, after which the task is
 blocked for a human with `blocked_reason_type = "human-gate"`
-(`repo://dashboard/routes/tasks.py#L2188`). The full protocol is
+(`repo://dashboard/routes/tasks.py#L2189`); rejecting also auto-records the
+human's feedback as a `rejected_path` board memory so future runs avoid the
+same mistake (`repo://dashboard/routes/tasks.py#L2225`). The full protocol is
 documented in `repo://docs/sequential_egm_triage.md`.
 
 ## Session-per-handoff model

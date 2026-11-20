@@ -10,6 +10,8 @@ sources:
     resource: repo://dashboard/gh_issues_service.py
   - id: openwiki-source-ed7166b96533513cf627ba0c
     resource: repo://dashboard/manifest.json
+  - id: openwiki-source-4de239baa4d579276db7cf80
+    resource: repo://dashboard/memory_service.py
   - id: openwiki-source-52ae51442f849fdbd57863a3
     resource: repo://dashboard/models.py
   - id: openwiki-source-ad6531284d0db039367da971
@@ -34,6 +36,8 @@ sources:
     resource: repo://dashboard/src/components/MarkdownView.jsx
   - id: openwiki-source-4ed61aeddc44827fa8135492
     resource: repo://dashboard/src/components/Modal.jsx
+  - id: openwiki-source-4e30cd4a7d0804e1608dc8d2
+    resource: repo://dashboard/src/components/SetupBanners.jsx
   - id: openwiki-source-2cfa5f18edc921e1b93b39fe
     resource: repo://dashboard/src/constants.js
   - id: openwiki-source-8258252e9b79b31153b47276
@@ -44,16 +48,18 @@ sources:
     resource: repo://dispatcher/scheduler.py
   - id: openwiki-source-0d153fd68e7210eb5d3be49d
     resource: repo://paths.py
+  - id: openwiki-source-823a6ba05c3e376c5f6176a2
+    resource: repo://profile_manager.py
   - id: openwiki-source-9f27c77f1584beee490e0abd
     resource: repo://scripts/setup_gh_issues.py
   - id: openwiki-source-8bf8788755a522a066b8b827
     resource: repo://scripts/zf_daily_stats.py
   - id: openwiki-source-20bc44fdf115b28983477777
     resource: repo://scripts/zf_openwiki_gate.py
-generated: { by: "hermes", at: "2026-11-19T06:27:25.202Z" }
+generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-19T13:45:16.591Z
+    at: 2026-11-20T15:20:57.003Z
 ---
 
 # Dashboard & Automation
@@ -128,7 +134,11 @@ memories, and agents — wired up in
   split it into per-repo `todo` children) and
   `POST /tasks/{task_id}/reject` (route the spec back to
   `zf-orchestrator` for a revision; at most 2 rounds, then blocked for a
-  human with `blocked_reason_type = "human-gate"`); the UI shows a
+  human with `blocked_reason_type = "human-gate"`). Rejection also auto-records
+  the human's feedback as a `rejected_path` board memory via
+  `memory_service.record_rejection_memory`, so future runs on that board avoid
+  the rejected approach (`repo://dashboard/routes/tasks.py#L2225`,
+  `repo://dashboard/memory_service.py#L619`); the UI shows a
   "Spec & Audit Ready • Awaiting Approval" badge on cards whose metadata
   carries `awaiting_approval` and one-click approve/reject buttons in the
   task detail modal
@@ -196,6 +206,22 @@ stages (`triage`, `grill`, `interview`, `spec_draft`, `spec_audit`,
 `KanbanBoard.jsx` renders the columns and cards
 (`repo://dashboard/src/components/KanbanBoard.jsx#L33`).
 
+The setup-status data from `GET /dispatch/setup/status`
+(`repo://dashboard/routes/dispatch.py#L105-L150`, which wraps
+`profile_manager.check_setup_status`, `repo://profile_manager.py#L756-L788`)
+also drives the dashboard's readiness banners
+(`repo://dashboard/src/components/SetupBanners.jsx`): a "Zero Factory Setup
+Checklist" banner lists the missing one-shot steps (profiles not initialized,
+GitHub CLI not authenticated, dispatcher not running) with copy-ready CLI
+commands and an inline start-dispatcher action; an amber "Agent Profiles Out
+of Sync" banner appears when `outdated_profiles` is non-empty (the installed
+SOUL.md prompts differ from the plugin templates) with a one-click "🔄 Sync
+Profiles" button; and an indigo "Zero Factory Plugin Update Available" banner
+(driven by `plugin_update_available` / `latest_plugin_version` from
+`check_plugin_update`, `repo://profile_manager.py#L634-L709`) shows the current
+→ latest version, the `hermes plugins update zerofactory` command, a link to
+the Hermes Marketplace, and a per-session dismiss (✕) button.
+
 ## Built-in cron jobs
 
 Periodic automation no longer lives in a standalone `cron/` package: the
@@ -215,11 +241,11 @@ scanner). The families (`repo://dashboard/routes/cron.py#L77-L231`):
   when the board's `cron_enabled_zero-factory-improvement-scanner-<slug>` /
   `scan_on_idle_<slug>` (or global `scan_on_idle`, or the
   `ZEROFACTORY_SCAN_ON_IDLE` env var) setting is true
-  (`repo://dispatcher/scanner.py#L130-L186`). When the dashboard
+  (`repo://dispatcher/scanner.py#L130-L187`). When the dashboard
   triggers it, `spawn_board_scanner` launches a `zf-orchestrator` worker with
   pre-digested git context, or skips when busy/cooldown-active
   (`repo://dashboard/routes/cron.py#L261-L284`,
-  `repo://dispatcher/scanner.py#L188-L292`).
+  `repo://dispatcher/scanner.py#L188-L297`).
 - **`zero-factory-openwiki-update-<slug>`** (category `openwiki`, per-board) —
   the OpenWiki doc-sync schedule driven by the `zf_openwiki_gate.py` wake-gate
   (below).
@@ -246,7 +272,7 @@ extra infrastructure (`repo://dispatcher/scheduler.py#L810-L835`).
 `reap_active_scanners` and `reset_idle_scanner_state` keep the scanner table
 and in-memory cooldown map honest across restarts
 (`repo://dispatcher/scanner.py#L86-L118`,
-`repo://dispatcher/scanner.py#L293`).
+`repo://dispatcher/scanner.py#L298-L309`).
 
 ## No-Agent Mode scripts (0-token automation)
 
@@ -264,10 +290,12 @@ to skip the LLM run entirely:
   review. The script always exits 0, so the LLM run is suppressed either way
   (`repo://scripts/zf_openwiki_gate.py#L1-L30`).
 - **`scripts/zf_daily_stats.py`** — a deterministic 24-hour metrics / velocity
-  calculator with no LLM involvement: it queries `zerofactory.db` for
-  completed tasks in the last 24h and pre-formats cycle-time, column
-  distribution, throughput, and bottleneck tables for injection into the
-  LLM prompt (`repo://scripts/zf_daily_stats.py#L1-L15`).
+  calculator with no LLM involvement: it resolves the kanban DB path through
+  the shared `paths.get_zerofactory_db_path` helper, queries `zerofactory.db`
+  for completed tasks in the last 24h, and pre-formats cycle-time, column
+  distribution, throughput, and bottleneck tables for injection into the LLM
+  prompt (`repo://scripts/zf_daily_stats.py#L20-L24`,
+  `repo://paths.py#L304`).
 
 This design is what lets Zero Factory run 24/7 while spending near-zero tokens
 on the background checks that fire every fifteen minutes.

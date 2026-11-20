@@ -8,20 +8,26 @@ sources:
     resource: repo://__init__.py
   - id: openwiki-source-9ab161c6e9774cf771b19ced
     resource: repo://.zerofactory/precommit.sh
+  - id: openwiki-source-4de239baa4d579276db7cf80
+    resource: repo://dashboard/memory_service.py
   - id: openwiki-source-c705147b9966f3d6f300034a
     resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-e7a6784a6e1f7f421dd572ed
     resource: repo://dispatcher/reaper.py
+  - id: openwiki-source-9f9b3c9d5afeac588f3cdae1
+    resource: repo://dispatcher/scheduler.py
+  - id: openwiki-source-0445f3be32f0f8efe9dfeca4
+    resource: repo://dispatcher/slop_gate.py
   - id: openwiki-source-81127d20a2ccc07b7626fc4e
     resource: repo://plugin.yaml
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-11-19T06:27:25.202Z" }
+generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-19T13:45:16.591Z
+    at: 2026-11-20T15:20:57.003Z
 ---
 
 # Quickstart
@@ -102,6 +108,19 @@ failure:
 If the gate fails, the dispatcher re-spawns `zf-builder` with the exact error
 output (up to 3 precommit retries) before the work may become a PR.
 
+After precommit passes, the packaging phase runs a second zero-token gate —
+the deterministic **anti-slop gate**
+(`repo://dispatcher/slop_gate.py#L467-L504`): it blocks leftover debugger
+statements (`breakpoint()`, `pdb.set_trace()`, `import pdb`, `debugger;`),
+unresolved `TODO`/`FIXME`/`XXX`/`HACK` placeholder comments, and skipped
+tests; enforces an optional net-line budget via `ZEROFACTORY_MAX_DIFF_LINES`;
+and flags large diffs, net test-line deletions, dependency-manifest changes,
+and new lint/type suppressors as warnings. Its compact diff-hygiene scorecard
+(`repo://dispatcher/slop_gate.py#L505`) is pre-digested into the `zf-reviewer`
+prompt so review starts from a quantitative diff summary. Violations re-spawn
+`zf-builder` within the same 3-retry budget before any commit or PR is
+authored.
+
 ## Run the tests
 
 pytest is the framework (defined by `tests/conftest.py`), and the suite is
@@ -173,7 +192,12 @@ CLI handler (the API `PATCH /tasks/{id}` refuses status changes with a 400,
 pointing at `POST /tasks/{id}/move`) so lifecycle side effects — worker stop,
 flag cleanup, dispatch trigger — always apply. `move` accepts `--assignee` to
 reassign ownership while transitioning columns
-([External Issue Import](/openwiki/components/issues-importer.md)).
+([External Issue Import](/openwiki/components/issues-importer.md)). `reject`
+records the revision request as a task comment and, as a side effect,
+auto-records the human feedback as a `rejected_path` board memory
+(`repo://dashboard/routes/tasks.py#L2225`,
+`repo://dashboard/memory_service.py#L619`) so future triage runs on the board
+avoid repeating the rejected approach.
 
 OpenWiki architecture docs stay in sync automatically: the per-board
 `zero-factory-openwiki-update-<slug>` cron job runs the deterministic
