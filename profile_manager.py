@@ -625,9 +625,11 @@ def check_gh_auth_status(*, use_cache: bool = True) -> bool:
 
 
 def check_setup_status(*, use_cache: bool = True) -> dict[str, Any]:
-    """Read-only check of Zero Factory profile readiness and GitHub auth status."""
+    """Read-only check of Zero Factory profile readiness, template sync, and GitHub auth status."""
     profiles_dir = get_hermes_home() / "profiles"
+    templates_dir = get_plugin_root() / "templates"
     missing_profiles: list[str] = []
+    outdated_profiles: list[str] = []
     for role in ZF_PROFILES:
         prof_dir = profiles_dir / role
         if (
@@ -635,8 +637,22 @@ def check_setup_status(*, use_cache: bool = True) -> dict[str, Any]:
             or not (prof_dir / "plugins" / "zerofactory").exists()
         ):
             missing_profiles.append(role)
+            continue
+        soul_src = templates_dir / role / "SOUL.md"
+        soul_dst = prof_dir / "SOUL.md"
+        if soul_src.is_file():
+            try:
+                if (
+                    not soul_dst.is_file()
+                    or soul_src.read_bytes() != soul_dst.read_bytes()
+                ):
+                    outdated_profiles.append(role)
+            except OSError:
+                outdated_profiles.append(role)
     return {
         "profiles_ready": len(missing_profiles) == 0,
         "missing_profiles": missing_profiles,
+        "profiles_in_sync": len(missing_profiles) == 0 and len(outdated_profiles) == 0,
+        "outdated_profiles": outdated_profiles,
         "gh_authenticated": check_gh_auth_status(use_cache=use_cache),
     }

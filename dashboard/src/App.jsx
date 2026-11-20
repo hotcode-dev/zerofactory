@@ -357,6 +357,7 @@ export function ZeroFactoryKanbanApp() {
           }
           setSyncProfilesResult({ ok: true, message: msg });
           showToast("Agent profiles synchronized successfully!", "success");
+          loadSetupStatus();
         } else {
           const errMsg = (res && res.error) || "Failed to sync profiles";
           setSyncProfilesResult({ ok: false, message: errMsg });
@@ -2057,6 +2058,8 @@ export function ZeroFactoryKanbanApp() {
                     setupStatus,
                     isTogglingDispatcher,
                     handleStartDispatcher,
+                    isSyncingProfiles,
+                    handleSyncProfiles,
                     precommitStatus,
                     openwikiStatus,
                     ghIssuesStatus,

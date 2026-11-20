@@ -6,6 +6,8 @@ export function SetupBanners(props) {
     setupStatus,
     isTogglingDispatcher,
     handleStartDispatcher,
+    isSyncingProfiles,
+    handleSyncProfiles,
     precommitStatus,
     openwikiStatus,
     ghIssuesStatus,
@@ -16,6 +18,11 @@ export function SetupBanners(props) {
     isSettingUpGhIssues,
     handleTriggerGhIssuesSetup
   } = props;
+
+  const outdatedProfiles =
+    setupStatus && setupStatus.profiles_ready && Array.isArray(setupStatus.outdated_profiles)
+      ? setupStatus.outdated_profiles
+      : [];
 
   const missingSetupSteps = [];
   if (setupStatus && !setupStatus.profiles_ready) {
@@ -94,6 +101,57 @@ export function SetupBanners(props) {
                               )
                             )
                           )
+                        )
+                      )
+                    ),
+                    outdatedProfiles.length > 0 &&
+                    React.createElement(
+                      "div",
+                      {
+                        className: "mb-3.5 px-4 py-2.5 rounded-xl border border-amber-500/35 bg-amber-950/25 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs"
+                      },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2.5 text-amber-200" },
+                        React.createElement("span", { className: "text-base" }, "⚠️"),
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement(
+                            "div",
+                            { className: "font-semibold text-slate-100 flex flex-wrap items-center gap-1.5" },
+                            "Agent Profiles Out of Sync",
+                            React.createElement(
+                              "span",
+                              { className: "px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/80 text-amber-300 border border-amber-700/60" },
+                              outdatedProfiles.join(", ")
+                            )
+                          ),
+                          React.createElement(
+                            "div",
+                            { className: "text-slate-400 text-[11px]" },
+                            "Installed SOUL.md prompts in ~/.hermes/profiles/ differ from the latest plugin templates. Sync to apply updated rules (preserves config.yaml and .env)."
+                          )
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2" },
+                        React.createElement(
+                          "code",
+                          { className: "hidden sm:inline font-mono text-[11px] text-amber-300/90 bg-slate-950/70 px-2 py-1 rounded border border-slate-800 select-all" },
+                          "hermes zerofactory sync-profiles"
+                        ),
+                        handleSyncProfiles &&
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            disabled: Boolean(isSyncingProfiles),
+                            onClick: handleSyncProfiles,
+                            className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs bg-amber-600 hover:bg-amber-500 text-white shadow-sm transition-all duration-150 cursor-pointer disabled:opacity-50"
+                          },
+                          isSyncingProfiles ? "⏳ Syncing..." : "🔄 Sync Profiles"
                         )
                       )
                     ),

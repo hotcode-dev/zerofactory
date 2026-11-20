@@ -96,6 +96,35 @@ class TestProfileManagerUnit(unittest.TestCase):
             self.assertNotIn("HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-sample", lines2)
             self.assertIn("OPENROUTER_API_KEY=existing-key", lines2)
 
+    def test_check_setup_status_detects_outdated_profiles(self):
+        """check_setup_status flags zf-* profiles whose SOUL.md differs from templates."""
+        with tempfile.TemporaryDirectory() as td:
+            fake_home = Path(td)
+            with (
+                patch("profile_manager.get_hermes_home", return_value=fake_home),
+                patch("profile_manager.check_gh_auth_status", return_value=True),
+            ):
+                PM.ensure_zf_profiles()
+                status_fresh = PM.check_setup_status(use_cache=False)
+                self.assertTrue(status_fresh["profiles_ready"])
+                self.assertTrue(status_fresh["profiles_in_sync"])
+                self.assertEqual(status_fresh["outdated_profiles"], [])
+
+                # Simulate an outdated SOUL.md on zf-orchestrator
+                (fake_home / "profiles" / "zf-orchestrator" / "SOUL.md").write_text(
+                    "# Outdated prompt\n", encoding="utf-8"
+                )
+                status_stale = PM.check_setup_status(use_cache=False)
+                self.assertTrue(status_stale["profiles_ready"])
+                self.assertFalse(status_stale["profiles_in_sync"])
+                self.assertEqual(status_stale["outdated_profiles"], ["zf-orchestrator"])
+
+                # Syncing prompts resolves the drift
+                PM.ensure_zf_profiles(update_prompts=True)
+                status_synced = PM.check_setup_status(use_cache=False)
+                self.assertTrue(status_synced["profiles_in_sync"])
+                self.assertEqual(status_synced["outdated_profiles"], [])
+
     def test_update_config_yaml_plugins(self):
         """update_config_yaml_plugins adds and removes plugins cleanly."""
         with tempfile.TemporaryDirectory() as td:

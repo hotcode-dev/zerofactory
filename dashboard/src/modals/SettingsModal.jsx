@@ -331,7 +331,7 @@ export function SettingsModal(props) {
                           React.createElement("span", { className: "text-sm" }, "🤖"),
                           React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Agent Profiles & Skills")
                         ),
-                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Synchronize SOUL.md system prompts, skills, and templates across zf-orchestrator, zf-builder, and zf-reviewer in ~/.hermes/profiles/.")
+                        React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Synchronize SOUL.md system prompts, skills, and templates across zf-orchestrator, zf-goldfish, zf-builder, and zf-reviewer in ~/.hermes/profiles/.")
                       ),
                       React.createElement(
                         "button",
