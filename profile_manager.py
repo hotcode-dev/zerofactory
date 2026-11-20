@@ -11,11 +11,14 @@ Profiles are created inside ~/.hermes/profiles/ without overwriting user data.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -579,6 +582,132 @@ def sync_langfuse_profiles(settings: dict[str, Any] | None = None) -> dict[str, 
 _GH_AUTH_CACHE: dict[str, Any] = {"ts": 0.0, "ok": False}
 _GH_AUTH_CACHE_TTL_SECONDS = 30.0
 
+_HERMES_MARKETPLACE_CATALOG_URL = (
+    "https://hermes-agent.nousresearch.com/docs/api/plugin-catalog.json"
+)
+_PLUGIN_UPDATE_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_PLUGIN_UPDATE_CACHE_TTL_SECONDS = 6 * 3600.0
+_MAX_CATALOG_BYTES = 2 * 1024 * 1024
+_RE_PLUGIN_VERSION = re.compile(
+    r'^\s*version\s*:\s*["\']?v?([0-9]+(?:\.[0-9]+)*)["\']?',
+    re.MULTILINE,
+)
+
+
+def _parse_semver(version_str: str | None) -> tuple[int, ...]:
+    """Parse a dotted numeric version string like '1.4.2' into a comparable tuple."""
+    if not version_str:
+        return ()
+    cleaned = version_str.strip().lstrip("v")
+    parts: list[int] = []
+    for seg in cleaned.split("."):
+        m = re.match(r"^(\d+)", seg)
+        if not m:
+            break
+        parts.append(int(m.group(1)))
+    return tuple(parts)
+
+
+def _extract_plugin_version(yaml_text: str) -> str | None:
+    """Extract the `version:` field from plugin.yaml without requiring PyYAML."""
+    m = _RE_PLUGIN_VERSION.search(yaml_text)
+    return m.group(1) if m else None
+
+
+def _extract_catalog_version(
+    payload: Any, plugin_name: str = "zerofactory"
+) -> str | None:
+    """Extract a plugin's published version from a Hermes Marketplace catalog JSON payload."""
+    if not isinstance(payload, dict):
+        return None
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("name") == plugin_name:
+            ver = entry.get("version")
+            if isinstance(ver, str) and ver.strip():
+                return ver.strip().lstrip("v")
+    return None
+
+
+def check_plugin_update(*, use_cache: bool = True) -> dict[str, Any]:
+    """Check whether a newer Zero Factory version is published on Hermes Marketplace.
+
+    Reads Hermes's local `~/.hermes/cache/plugin-catalog.json` when fresh (0 network
+    calls), otherwise fetches the live Hermes Marketplace catalog JSON with a short
+    timeout, caches for 6 hours, and fails silently if offline or unreachable.
+    """
+    current_version: str | None = None
+    local_yaml = get_plugin_root() / "plugin.yaml"
+    if local_yaml.is_file():
+        try:
+            current_version = _extract_plugin_version(
+                local_yaml.read_text(encoding="utf-8")
+            )
+        except OSError:
+            current_version = None
+
+    base_result: dict[str, Any] = {
+        "plugin_version": current_version,
+        "latest_plugin_version": None,
+        "plugin_update_available": False,
+    }
+
+    if not current_version or os.environ.get("ZEROFACTORY_SKIP_UPDATE_CHECK"):
+        return base_result
+
+    now = time.monotonic()
+    cached = _PLUGIN_UPDATE_CACHE.get("data")
+    if (
+        use_cache
+        and isinstance(cached, dict)
+        and (now - float(_PLUGIN_UPDATE_CACHE.get("ts", 0.0)))
+        < _PLUGIN_UPDATE_CACHE_TTL_SECONDS
+    ):
+        return {**cached, "plugin_version": current_version}
+
+    latest_version: str | None = None
+
+    # 1. Prefer Hermes's own cached Marketplace catalog if fresh (0 network calls)
+    local_catalog = get_hermes_home() / "cache" / "plugin-catalog.json"
+    if local_catalog.is_file():
+        try:
+            age = time.time() - local_catalog.stat().st_mtime
+            if age < _PLUGIN_UPDATE_CACHE_TTL_SECONDS:
+                data = json.loads(local_catalog.read_text(encoding="utf-8"))
+                latest_version = _extract_catalog_version(data)
+        except Exception:
+            latest_version = None
+
+    # 2. Fall back to live Hermes Marketplace catalog JSON
+    if not latest_version:
+        try:
+            req = urllib.request.Request(
+                _HERMES_MARKETPLACE_CATALOG_URL,
+                headers={"User-Agent": f"zerofactory/{current_version}"},
+            )
+            with urllib.request.urlopen(req, timeout=2.5) as resp:
+                raw = resp.read(_MAX_CATALOG_BYTES + 1)
+                if len(raw) <= _MAX_CATALOG_BYTES:
+                    data = json.loads(raw.decode("utf-8", errors="replace"))
+                    latest_version = _extract_catalog_version(data)
+        except Exception:
+            latest_version = None
+
+    update_available = bool(
+        latest_version
+        and _parse_semver(latest_version) > _parse_semver(current_version)
+    )
+    result = {
+        "plugin_version": current_version,
+        "latest_plugin_version": latest_version,
+        "plugin_update_available": update_available,
+    }
+    _PLUGIN_UPDATE_CACHE["ts"] = now
+    _PLUGIN_UPDATE_CACHE["data"] = result
+    return result
+
 
 def _has_gh_token_in_zf_envs(profiles_dir: Path) -> bool:
     """Return True if any zf-* profile .env defines a non-empty GH_TOKEN or GITHUB_TOKEN."""
@@ -649,10 +778,12 @@ def check_setup_status(*, use_cache: bool = True) -> dict[str, Any]:
                     outdated_profiles.append(role)
             except OSError:
                 outdated_profiles.append(role)
+    plugin_update = check_plugin_update(use_cache=use_cache)
     return {
         "profiles_ready": len(missing_profiles) == 0,
         "missing_profiles": missing_profiles,
         "profiles_in_sync": len(missing_profiles) == 0 and len(outdated_profiles) == 0,
         "outdated_profiles": outdated_profiles,
         "gh_authenticated": check_gh_auth_status(use_cache=use_cache),
+        **plugin_update,
     }

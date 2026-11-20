@@ -19,10 +19,19 @@ export function SetupBanners(props) {
     handleTriggerGhIssuesSetup
   } = props;
 
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = React.useState(null);
+
   const outdatedProfiles =
     setupStatus && setupStatus.profiles_ready && Array.isArray(setupStatus.outdated_profiles)
       ? setupStatus.outdated_profiles
       : [];
+
+  const showPluginUpdateBanner = Boolean(
+    setupStatus &&
+      setupStatus.plugin_update_available &&
+      setupStatus.latest_plugin_version &&
+      dismissedUpdateVersion !== setupStatus.latest_plugin_version
+  );
 
   const missingSetupSteps = [];
   if (setupStatus && !setupStatus.profiles_ready) {
@@ -50,6 +59,64 @@ export function SetupBanners(props) {
   return React.createElement(
     React.Fragment,
     null,
+                    showPluginUpdateBanner &&
+                    React.createElement(
+                      "div",
+                      {
+                        className: "mb-3.5 px-4 py-2.5 rounded-xl border border-indigo-500/35 bg-indigo-950/25 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-xs"
+                      },
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2.5 text-indigo-200" },
+                        React.createElement("span", { className: "text-base" }, "⬆️"),
+                        React.createElement(
+                          "div",
+                          null,
+                          React.createElement(
+                            "div",
+                            { className: "font-semibold text-slate-100 flex flex-wrap items-center gap-1.5" },
+                            "Zero Factory Plugin Update Available",
+                            React.createElement(
+                              "span",
+                              { className: "px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-indigo-950/80 text-indigo-300 border border-indigo-700/60" },
+                              "v" + (setupStatus.plugin_version || "?") + " → v" + setupStatus.latest_plugin_version
+                            )
+                          ),
+                          React.createElement(
+                            "div",
+                            { className: "text-slate-400 text-[11px]" },
+                            "A newer version of Zero Factory is available. Update the plugin, then sync profiles if prompted."
+                          )
+                        )
+                      ),
+                      React.createElement(
+                        "div",
+                        { className: "flex items-center gap-2" },
+                        React.createElement(
+                          "code",
+                          { className: "hidden sm:inline font-mono text-[11px] text-indigo-300 bg-slate-950/70 px-2 py-1 rounded border border-slate-800 select-all" },
+                          "hermes plugins update zerofactory"
+                        ),
+                        React.createElement(
+                          "a",
+                          {
+                            href: "/plugins",
+                            className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all duration-150 cursor-pointer no-underline"
+                          },
+                          "🧩 Open Hermes Marketplace"
+                        ),
+                        React.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            title: "Dismiss update notice for this session",
+                            onClick: () => setDismissedUpdateVersion(setupStatus.latest_plugin_version),
+                            className: "px-2 py-1 rounded-md text-[11px] text-slate-400 hover:text-slate-100 hover:bg-slate-800/70 transition-colors cursor-pointer"
+                          },
+                          "✕"
+                        )
+                      )
+                    ),
                     missingSetupSteps.length > 0 &&
                     React.createElement(
                       "div",

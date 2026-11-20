@@ -992,6 +992,12 @@
     border-color: color-mix(in oklab, var(--color-indigo-500) 30%, transparent);
   }
 }
+.border-indigo-500\/35 {
+  border-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 35%, transparent);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in oklab, var(--color-indigo-500) 35%, transparent);
+  }
+}
 .border-indigo-500\/40 {
   border-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 40%, transparent);
   @supports (color: color-mix(in lab, red, red)) {
@@ -2678,6 +2684,9 @@
 .italic {
   font-style: italic;
 }
+.no-underline {
+  text-decoration-line: none;
+}
 .underline {
   text-decoration-line: underline;
 }
@@ -3172,6 +3181,14 @@
       background-color: color-mix(in oklab, var(--color-slate-800) 60%, transparent);
     }
   }
+  .hover\:bg-slate-800\/70:hover {
+    background-color: color-mix(in srgb, oklch(27.9% 0.041 260.031) 70%, transparent);
+  }
+  @supports (color: color-mix(in lab, red, red)) {
+    .hover\:bg-slate-800\/70:hover {
+      background-color: color-mix(in oklab, var(--color-slate-800) 70%, transparent);
+    }
+  }
   .hover\:bg-slate-800\/80:hover {
     background-color: color-mix(in srgb, oklch(27.9% 0.041 260.031) 80%, transparent);
   }
@@ -3222,6 +3239,9 @@
   }
   .hover\:text-rose-300:hover {
     color: var(--color-rose-300);
+  }
+  .hover\:text-slate-100:hover {
+    color: var(--color-slate-100);
   }
   .hover\:text-slate-200:hover {
     color: var(--color-slate-200);

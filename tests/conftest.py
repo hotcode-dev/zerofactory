@@ -27,6 +27,7 @@ os.environ.setdefault("ZEROFACTORY_SKIP_GIT", "1")
 os.environ.setdefault("ZEROFACTORY_SKIP_CRON_SYNC", "1")
 os.environ.setdefault("ZEROFACTORY_DISABLE_DISPATCHER", "1")
 os.environ.setdefault("ZEROFACTORY_SKIP_WORKER_SPAWN", "1")
+os.environ.setdefault("ZEROFACTORY_SKIP_UPDATE_CHECK", "1")
 
 
 @pytest.fixture
