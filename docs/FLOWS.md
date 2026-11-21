@@ -353,7 +353,7 @@ flowchart LR
 - **Upstream Spec & Scanner Anti-Slop**: `zf-orchestrator` EGM specs and `zf-goldfish` audits
   require explicit **Existing Code to Reuse** and **Do Not Touch / Non-Goals** sections; idle
   improvement scanner runs (`dispatcher/scanner.py`) only file evidence-backed tasks (dead code,
-  bugs, duplicate logic, net-LOC simplifications) parked in `triage` assigned to `human`.
+  bugs, duplicate logic, net-LOC simplifications) queued in `todo` assigned to `zf-builder`.
 - **Human Rejection Memory Loop** (`record_rejection_memory`): human spec rejections
   (`POST /tasks/{id}/reject`) and human GitHub `CHANGES_REQUESTED` review comments automatically
   persist a deduplicated `rejected_path` memory into `board_memories` + Mem0 so future runs on

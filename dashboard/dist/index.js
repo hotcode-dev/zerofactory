@@ -2174,7 +2174,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					desc: "Supervises the Kanban board, drafts technical specifications in triage, decomposes user epics into atomic tickets, schedules task execution, and detects stuck or hung worker processes.",
 					responsibilities: [
 						"Drafts end-to-end technical specifications, system contracts, and acceptance criteria in Triage",
-						"Autonomously scans projects via Codebase Improvement Scanner using the Ponytail ladder of laziness to file evidence-backed Triage tasks for human vetting",
+						"Autonomously scans projects via Codebase Improvement Scanner using the Ponytail ladder of laziness to file evidence-backed Todo tasks for zf-builder",
 						"Audits repository for dead code (Rung 1), stdlib reuse (Rungs 2-3), and anti-overengineering (Rung 6)",
 						"Decomposes high-level goals into structured sub-tasks using kanban_decomposer",
 						"Diagnoses failure logs and executes autonomous self-recovery for stuck tasks (strictly capped at 1 attempt)",
