@@ -26,14 +26,16 @@ sources:
     resource: repo://ruff.toml
   - id: openwiki-source-8bf8788755a522a066b8b827
     resource: repo://scripts/zf_daily_stats.py
+  - id: openwiki-source-b67109bae6e11351c2ec7247
+    resource: repo://skills/zf-reviewer-ponytail/SKILL.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
   - id: openwiki-source-b4194cdb1aee8e18787b21d6
     resource: repo://tests/unit/dashboard/test_dashboard_css.py
-generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
+generated: { by: "hermes", at: "2026-11-21T15:11:19.395Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-20T15:20:57.003Z
+    at: 2026-11-21T15:11:19.395Z
 ---
 
 # Conventions
@@ -167,7 +169,15 @@ already carrying a role-tagged marker is returned unchanged, making re-writes
 idempotent and never double-prefix. The reviewer submits verdicts
 as `gh pr review --comment` (not `--approve` / `--request-changes`, which GitHub
 blocks for the PR author's own token) with `[AI:zf-reviewer]`-tagged bodies
-(`repo://dispatcher/worker_spawner.py#L287-L288`).
+(`repo://dispatcher/worker_spawner.py#L287-L288`). The reviewer playbook
+(`repo://skills/zf-reviewer-ponytail/SKILL.md#L68-L71`) tightens this: post
+the verdict with `gh pr review <n> --comment --body-file <file>` — never
+inline `--body` (shell-mangling risk) — and, when the terminal output looks
+garbled or truncated, re-check
+`gh api repos/<owner>/<repo>/pulls/<n>/reviews` before retrying, because the
+first call may already have posted; posted reviews cannot be deleted, so
+duplicates are deduped with a `gh pr comment` note naming the canonical
+review id.
 
 ## What NOT to add
 

@@ -32,6 +32,10 @@ sources:
     resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-9e3e91dd19f899c194f7c69e
     resource: repo://dashboard/setup_common.py
+  - id: openwiki-source-197fe42963260f0e91d3bb76
+    resource: repo://dashboard/src/App.jsx
+  - id: openwiki-source-40df68d7b09966f5acc7b7ff
+    resource: repo://dashboard/src/components/KanbanBoard.jsx
   - id: openwiki-source-bd9db10cf8ae31f7cc14e5a9
     resource: repo://dashboard/src/components/MarkdownView.jsx
   - id: openwiki-source-4ed61aeddc44827fa8135492
@@ -40,6 +44,8 @@ sources:
     resource: repo://dashboard/src/components/SetupBanners.jsx
   - id: openwiki-source-2cfa5f18edc921e1b93b39fe
     resource: repo://dashboard/src/constants.js
+  - id: openwiki-source-70a6fb56330050305d908a7f
+    resource: repo://dashboard/src/modals/SettingsModal.jsx
   - id: openwiki-source-8258252e9b79b31153b47276
     resource: repo://dashboard/src/utils/grillParser.js
   - id: openwiki-source-ecd05021670a16c89458cec0
@@ -56,10 +62,14 @@ sources:
     resource: repo://scripts/zf_daily_stats.py
   - id: openwiki-source-20bc44fdf115b28983477777
     resource: repo://scripts/zf_openwiki_gate.py
-generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
+  - id: openwiki-source-57b14ecc6ef51ae6212b15f0
+    resource: repo://settings.py
+  - id: openwiki-source-96922648a7db59a14c0a3b60
+    resource: repo://templates/zf-orchestrator/SOUL.md
+generated: { by: "hermes", at: "2026-11-21T15:11:19.395Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-20T15:20:57.003Z
+    at: 2026-11-21T15:11:19.395Z
 ---
 
 # Dashboard & Automation
@@ -152,10 +162,14 @@ memories, and agents — wired up in
   (`mem0_enabled`, `mem0_embedder_provider` fastembed/openai,
   `mem0_embedder_model`, `mem0_base_url`/`api_key`/`model`),
   `auto_create_github_issues`, `auto_record_memory`,
-  `allow_unattended_approvals`, `auto_start_dispatcher`, Langfuse
-  observability, task/inactivity timeouts, and
+  `allow_unattended_approvals`, `auto_start_dispatcher`,
+  `done_archive_days` (Done-column archive window, default 7 days, 0 disables,
+  clamped to >= 0 on load and update), Langfuse observability,
+  task/inactivity timeouts, and
   `POST /settings/profiles/sync` which re-syncs the `zf-*` profile templates
-  and skills (`repo://settings.py#L114-L137`).
+  and skills (`repo://settings.py#L70-L75`, `repo://settings.py#L119-L124`,
+  `repo://settings.py#L260-L264`, `repo://dashboard/routes/settings.py#L80-L85`,
+  `repo://dashboard/models.py#L366-L370`).
 - **dispatch** — dispatcher start/stop/status controls and stuck-task health
   (below).
 - **cron** — list/toggle/update/reset/run of built-in jobs (below).
@@ -204,7 +218,15 @@ stages (`triage`, `grill`, `interview`, `spec_draft`, `spec_audit`,
 `awaiting_merge`, `blocked`, `done`) to an owner, icon, and urgency
 (`repo://dashboard/src/constants.js#L55-L69`);
 `KanbanBoard.jsx` renders the columns and cards
-(`repo://dashboard/src/components/KanbanBoard.jsx#L33`).
+(`repo://dashboard/src/components/KanbanBoard.jsx#L33`). In the `done`
+column, tasks whose timestamp is older than the `done_archive_days` window
+(default 7 days; 0 disables) are collapsed behind a "📦 Show/Hide N archived
+(>Nd)" toggle (`repo://dashboard/src/components/KanbanBoard.jsx#L42-L58`,
+`repo://dashboard/src/components/KanbanBoard.jsx#L441-L451`). The collapse is
+purely presentational — task rows, comments, and PR links are kept intact —
+and the window is bound to the `Archive Done Tasks (Days)` field in the
+settings modal (`repo://dashboard/src/modals/SettingsModal.jsx#L115-L128`,
+`repo://dashboard/src/App.jsx#L2079`).
 
 The setup-status data from `GET /dispatch/setup/status`
 (`repo://dashboard/routes/dispatch.py#L105-L150`, which wraps
@@ -245,7 +267,7 @@ scanner). The families (`repo://dashboard/routes/cron.py#L77-L231`):
   triggers it, `spawn_board_scanner` launches a `zf-orchestrator` worker with
   pre-digested git context, or skips when busy/cooldown-active
   (`repo://dashboard/routes/cron.py#L261-L284`,
-  `repo://dispatcher/scanner.py#L188-L297`).
+  `repo://dispatcher/scanner.py#L188-L296`).
 - **`zero-factory-openwiki-update-<slug>`** (category `openwiki`, per-board) —
   the OpenWiki doc-sync schedule driven by the `zf_openwiki_gate.py` wake-gate
   (below).
@@ -268,11 +290,16 @@ for each board whose running count dropped below the idle threshold with a
 checks the active-scanner PID map and the per-board cooldown
 (`idle_scan_cooldown_minutes`, default 15) and, when due, calls
 `spawn_board_scanner` for the board — so scans ride the 30s loop with zero
-extra infrastructure (`repo://dispatcher/scheduler.py#L810-L835`).
-`reap_active_scanners` and `reset_idle_scanner_state` keep the scanner table
-and in-memory cooldown map honest across restarts
+extra infrastructure (`repo://dispatcher/scheduler.py#L810-L835`). Tasks the
+scanner files queue directly into `todo` assigned to `zf-builder`
+(`hermes zerofactory create … --status todo --assignee zf-builder`), so the
+dispatcher claims them on a subsequent cycle rather than parking them in
+`triage` for a human to vet (`repo://dispatcher/scanner.py#L225-L227`,
+`repo://templates/zf-orchestrator/SOUL.md#L20`). `reap_active_scanners` and
+`reset_idle_scanner_state` keep the scanner table and in-memory cooldown map
+honest across restarts
 (`repo://dispatcher/scanner.py#L86-L118`,
-`repo://dispatcher/scanner.py#L298-L309`).
+`repo://dispatcher/scanner.py#L299-L310`).
 
 ## No-Agent Mode scripts (0-token automation)
 
