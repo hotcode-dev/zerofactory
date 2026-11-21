@@ -64,3 +64,8 @@ When reviewing on GitHub (`gh pr review --comment`), structure feedback with ref
    - Problem: Introduced `AbstractTokenValidatorFactory` with only one concrete implementation.
    - Action: Collapse into a single `validate_token(token)` function.
 ```
+
+## Posting the Review (GitHub)
+
+- Use `gh pr review <n> --comment --body-file <file>` — never `--approve` / `--request-changes` (the authed identity is the PR author, so GitHub rejects self-approval) and never inline `--body` (shell-mangling risk).
+- **Verify before retrying**: if the `gh pr review` terminal output looks garbled or truncated, re-check `gh api repos/<owner>/<repo>/pulls/<n>/reviews` before re-posting — the first call may have already succeeded (observed 2026-11-20 on PR #181: posted despite mangled output; the retry created a duplicate). Submitted reviews cannot be deleted; dedupe with a `gh pr comment` note naming the canonical review id.
