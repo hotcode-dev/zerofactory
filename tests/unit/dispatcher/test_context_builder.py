@@ -139,6 +139,57 @@ def test_digest_reviewer_git_context_with_commits(tmp_path: Path):
     assert "feat: add hello function" in ctx
 
 
+def test_digest_reviewer_git_context_diff_limits(tmp_path: Path):
+    """Medium diffs (<=400 lines) are not truncated; oversized diffs are truncated with warning."""
+    repo = tmp_path / "repo_limits"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"], cwd=str(repo), check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"], cwd=str(repo), check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=str(repo), check=True
+    )
+    (repo / "base.txt").write_text("init\n")
+    subprocess.run(["git", "add", "."], cwd=str(repo), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "initial"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "-b", "task/medium"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+
+    # 200-line change fits within the 400-line / 24,000-char default cap
+    medium_lines = "\n".join(f"x_{i} = {i}" for i in range(200)) + "\n"
+    (repo / "medium.py").write_text(medium_lines)
+    subprocess.run(["git", "add", "."], cwd=str(repo), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "feat: add medium module"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+
+    ctx_medium = digest_reviewer_git_context(repo, target_branch="main")
+    assert "x_199 = 199" in ctx_medium
+    assert "Truncated Preview" not in ctx_medium
+
+    # Explicit smaller cap triggers truncation + scorecard warning
+    ctx_truncated = digest_reviewer_git_context(
+        repo, target_branch="main", max_diff_lines=50, max_diff_chars=24000
+    )
+    assert "diff truncated for token efficiency" in ctx_truncated
+    assert "Truncated Preview" in ctx_truncated
+
+
 def test_digest_board_architecture_context(tmp_path: Path):
     """Verify system architecture notes and multi-repo topology extraction."""
     db_file = tmp_path / "test.db"

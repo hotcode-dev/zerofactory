@@ -16,8 +16,8 @@ from .config import _d, _log, get_db_path
 def digest_reviewer_git_context(
     workspace_path: Path,
     branch_name: str | None = None,
-    max_diff_lines: int = 100,
-    max_diff_chars: int = 4000,
+    max_diff_lines: int = 400,
+    max_diff_chars: int = 24000,
     target_branch: str | None = None,
 ) -> str:
     """Extract pre-digested commits, diffstat, and code diff for reviewer prompt.
