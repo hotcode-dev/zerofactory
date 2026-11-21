@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bae62a1f10d596e29d44419701ac90c1f2334f10d955b5eef804a217a6e18b8b",
+  "pageVersion": "sha256:17526a1576c228a64d06958c463395d3ebbe82fb3b7b4d70f43f75e2e4769385",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
@@ -202,11 +202,11 @@
     },
     {
       "id": "claim_45cf636664ea4b51ab5b0d3941c15223",
-      "statement": "The per-board improvement scanner runs inside the dispatcher process: each dispatch cycle reaps dead scanner PIDs via reap_active_scanners and, when a board's active task count is below its cap, its todo count is below idle_scan_max_todo, no scanner is active for that board, and the get_scanner_cron_config cooldown has elapsed, spawns a background zf-orchestrator scan of the board's repositories via spawn_board_scanner; lifecycle helpers (get_active_scanner_pids, kill_board_scanner, reset_idle_scanner_state) live in dispatcher/scanner.py.",
+      "statement": "The per-board improvement scanner runs inside the dispatcher process: each dispatch cycle reaps dead scanner PIDs via reap_active_scanners and, when a board's active task count is below its cap, its todo count is below idle_scan_max_todo, no scanner is active for that board, and the get_scanner_cron_config cooldown has elapsed, spawns a background zf-orchestrator scan of the board's repositories via spawn_board_scanner; the scanner prompt instructs zf-orchestrator to file findings directly in `todo` assigned to zf-builder (--status todo --assignee zf-builder, respecting idle_scan_max_todo) so the dispatcher picks them up without a human triage step; lifecycle helpers (get_active_scanner_pids, kill_board_scanner, reset_idle_scanner_state) live in dispatcher/scanner.py.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scanner.py#L86-L309",
-          "version": "repo-lines-v1:sha256:5831faa176d1099db53b39bfd7026ab5edf9ddcc675c4e123e40d240442a9b34:eyJzZWxlY3RlZExpbmVDb3VudCI6MjI0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NzkxMzAzZWZiNDFiZTRhMjg5NzY2MzFjZWNjZWMyYTNjMzNhNDM5MTg4NzViYWVlZDEzM2ZhYmI3YThkMmQ0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4MGFlNmI1YzM0MGMyOWE2ZWFkNTk4ZTAxMWEzMzNjNzVkMzE4MGQzNWE5ZTYzMzczYjU3YWQyN2U3M2Y1NjExIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZTc1NzVjM2I3Nzc2Y2YyZjljMmJmYmNhNDRmMjE0ODEzYTc4MjdlYWE5YzM4NDU0YzcwM2I2ODlhNzQ0Mzg2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dispatcher/scanner.py#L86-L310",
+          "version": "repo-lines-v1:sha256:3eb85eef7a5b1f129aad373611e184ec0e6ff79949b7a1a3b75a246dc7149bf8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjI1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NzkxMzAzZWZiNDFiZTRhMjg5NzY2MzFjZWNjZWMyYTNjMzNhNDM5MTg4NzViYWVlZDEzM2ZhYmI3YThkMmQ0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI4MGFlNmI1YzM0MGMyOWE2ZWFkNTk4ZTAxMWEzMzNjNzVkMzE4MGQzNWE5ZTYzMzczYjU3YWQyN2U3M2Y1NjExIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZTc1NzVjM2I3Nzc2Y2YyZjljMmJmYmNhNDRmMjE0ODEzYTc4MjdlYWE5YzM4NDU0YzcwM2I2ODlhNzQ0Mzg2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://dispatcher/scheduler.py#L808-L834",
@@ -245,6 +245,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-20T15:20:57.003Z"
+    "at": "2026-11-21T15:11:19.395Z"
   }
 }

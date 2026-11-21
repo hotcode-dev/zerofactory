@@ -24,10 +24,10 @@ sources:
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-bd2c9dd479aa89010adee0f5
     resource: repo://dispatcher/worktree.py
-generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
+generated: { by: "hermes", at: "2026-11-21T15:11:19.395Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-20T15:20:57.003Z
+    at: 2026-11-21T15:11:19.395Z
 ---
 
 # Dispatch Engine
@@ -106,18 +106,22 @@ start/stop/status controls for that loop via
 ## The in-dispatcher improvement scanner
 
 The per-board improvement scanner runs **inside the dispatcher process**
-rather than as an external cron daemon (`repo://dispatcher/scanner.py#L86-L309`).
+rather than as an external cron daemon (`repo://dispatcher/scanner.py#L86-L310`).
 Each dispatch cycle reaps dead scanner PIDs with `reap_active_scanners`
 (`repo://dispatcher/scheduler.py#L123`), and when a board's active task count
 is below its cap, its `todo` count is below `idle_scan_max_todo`, no scanner is
 active for that board, and the `get_scanner_cron_config`
 (`repo://dispatcher/scanner.py#L130-L187`) cooldown has elapsed, the cycle
 launches a background `zf-orchestrator` scan of the board's repositories via
-`spawn_board_scanner` (`repo://dispatcher/scanner.py#L188-L297`,
-`repo://dispatcher/scheduler.py#L808-L834`). Lifecycle helpers —
+`spawn_board_scanner` (`repo://dispatcher/scanner.py#L188-L296`,
+`repo://dispatcher/scheduler.py#L808-L834`). The scanner prompt instructs
+`zf-orchestrator` to file findings directly in `todo` assigned to
+`zf-builder` (`--status todo --assignee zf-builder`, respecting
+`idle_scan_max_todo`) so the dispatcher picks them up without a human
+triage step (`repo://dispatcher/scanner.py#L225-L227`). Lifecycle helpers —
 `get_active_scanner_pids`, `kill_board_scanner`, `reset_idle_scanner_state` —
 sit alongside in the same module (`repo://dispatcher/scanner.py#L33-L85`,
-`repo://dispatcher/scanner.py#L298-L309`).
+`repo://dispatcher/scanner.py#L299-L310`).
 
 ## Isolated-worktree invariant
 

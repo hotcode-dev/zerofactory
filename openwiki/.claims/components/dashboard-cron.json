@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2de58eccd87b49173fe3b708930a2c84a327a7ea96c26807948b815acd4a93fe",
+  "pageVersion": "sha256:1626cf1d61ff2b8bc811d598b3eae0aa59050024de8148280a6a3b46841e05a7",
   "claims": [
     {
       "id": "claim_8ffd7a38e73041469f21a041def6a7d0",
@@ -279,8 +279,8 @@
       "statement": "Beyond the on-demand cron trigger, the dispatch cycle itself spawns idle improvement scans: for each board whose running count dropped below the idle threshold with a todo backlog at or below idle_scan_max_todo (default 2), the scheduler checks the active-scanner PID map and the per-board cooldown (idle_scan_cooldown_minutes, default 15) and, when due, calls spawn_board_scanner to launch a zf-orchestrator scanner worker.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scanner.py#L188-L297",
-          "version": "repo-lines-v1:sha256:adb847bfb76dbc990a49fcfda98d9b70c7e73412e403a9ea06a2f9b6093083d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4NDViMGU5NmRmM2E2ODdkYzE5MWEzNjhkODcxYzBhMzhiZmIwMDY1YTZiODEwZjQwNDY4YTg5Mzg5YzgzOTkyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZmJkMDA5MzE0YmMyNzA4NDE2NzM0YTAyYWU1ZmYzOWExZTQ4YTA1MGJlOTFmNDNiMmZhYTkyMDAyYzYyYmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYmNmZDJmNmM2ZjNkMmU3ZTBjODlkMjdlNjQ2NjExNWRiODY1MzI3NWZiNWE3MWMyMTFjNmJlZGJjN2U2YzlhIn0"
+          "resource": "repo://dispatcher/scanner.py#L188-L296",
+          "version": "repo-lines-v1:sha256:515100ecd2ac1e638526079ab928c3cdaf8662749acee7d8adcea0ab46384a06:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4NDViMGU5NmRmM2E2ODdkYzE5MWEzNjhkODcxYzBhMzhiZmIwMDY1YTZiODEwZjQwNDY4YTg5Mzg5YzgzOTkyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlZTdjOTU3YmNiNDRmYjY3M2M5OGIwMDUwYTc1ZDM4MDgyZGI4MWQ5MThkZTMxM2EzZjA3YzEyMzUzMDZkN2VjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0ZmJkMDA5MzE0YmMyNzA4NDE2NzM0YTAyYWU1ZmYzOWExZTQ4YTA1MGJlOTFmNDNiMmZhYTkyMDAyYzYyYmZjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OGYzN2E5YTYwNTc4OTA3OGIyOWM2NTZiOGQ3YjEzMWRkOGFhYjFjZDcwYzYwZDhmYzY2ODU2ZmEzNTc5OWQxIn0"
         },
         {
           "resource": "repo://dispatcher/scheduler.py#L810-L835",
@@ -337,10 +337,68 @@
           "version": "repo-lines-v1:sha256:da4f61c2e8864dae2ca9e233f35f8349adee6126460bc42f8ec491610ad03ede:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkM2YyNmIwZmYxNTFhMTJlNWYyODkzOTM0OGFhMDg5NjM1NmNkY2RlOGFlMzFmMGM2NDNmYWE4YzBhZWQ1YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhMDdiNGFlZjYxYmI3OTVkZWI3MmIyOGQ3NDI2MzRkMDE2MjkyNWJmY2NiMDhhMzVmNzY3MzQzZTg4YTY0MzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlNDAzOTA1ZjZiOGNjNDdmODcwMmE0ZWE1MzcyODU5MGI2MjU3ZWM4MWMyZjAzNGQ4YTBjYjI2N2U3MTMwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3ODhkOTA1N2UxMzAzZWM0YTkwMjAwYmFlOThiMmVhYjY4MmYzODlmMjFjMWU2NzU5OWZkMTI0NmUzM2IyZDAifQ"
         }
       ]
+    },
+    {
+      "id": "claim_de1d80f7108d45d9877b1d44ece28411",
+      "statement": "Tasks the idle improvement scanner files queue directly in `todo` assigned to `zf-builder` (--status todo --assignee zf-builder), so the dispatcher claims them on a subsequent cycle (respecting the board's idle_scan_max_todo cap) instead of parking them in `triage` for a human to vet.",
+      "evidence": [
+        {
+          "resource": "repo://dispatcher/scanner.py#L225-L227",
+          "version": "repo-lines-v1:sha256:e95f2e8c38c77114a18b653310ffe4bc6fdf880dd7a3a3f99faea9aec12de8c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjUzMzAwNTBjMjUyMGI1MzhmNjg4OGFkZGZjZWYyODQxNjU3OGRkZTRmM2Q2N2VmZDk3ZmZmZDlmMDBmNDEwYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTE1MDllZDNhOGRhYzIxMjAxMmNmNTUzOGM5YmQ0YmIxYTI0OGJiZWQxODY3NTk2M2IyMDc1ODUwNjI4MjhlMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzg4NzkyMTY3YzhhY2YzZDM1NzgxODg0NjFlNDM1YzgxMzAxOTVjMGEzM2U1YTI3YjBiY2UyZmYwMTAwNmJjMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTI0YjZiNjRiYzUxYzFiZGVmZWIwNWFiMWMxMmNhOWMxNjFmMjY0YjhkZjFmM2IyZWY4Y2ViYzhiMDU5NTA1NSJ9"
+        },
+        {
+          "resource": "repo://templates/zf-orchestrator/SOUL.md#L20-L20",
+          "version": "repo-lines-v1:sha256:8bfdc061686bdb150ea0f78280f8d2b9f4494ffaaa449d7f0ce043be3affa208:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGJmZGMwNjE2ODZiZGIxNTBlYTBmNzgyODBmOGQyYjlmNDQ5NGZmYWFhNDQ5ZDdmMGNlMDQzYmUzYWZmYTIwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGJmZGMwNjE2ODZiZGIxNTBlYTBmNzgyODBmOGQyYjlmNDQ5NGZmYWFhNDQ5ZDdmMGNlMDQzYmUzYWZmYTIwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODBkMTAxYjNlMzk2NzhiMGNkY2UzYTNiNzYwZmJmMTJmYjQwMTYxYzhjNGQwYWZkZDdkMWNlNTQzMTRkOTExNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjc2OTg0YjIyNThjMWVkYzg5NzRlZjJiN2M3YmI2ZTFkMTI5YWVkN2MwMzU3NGJlNjQwZjQ2MDJiODFiM2YwMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_20d3c2cdcb9740e296b1f18b40e66163",
+      "statement": "The dashboard exposes a `done_archive_days` setting (default 7, 0 disables): SettingsUpdate accepts it with ge=0, update_settings clamps it to >= 0 before persisting, and load_settings clamps it to >= 0 with the default 7 when unset.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/models.py#L366-L370",
+          "version": "repo-lines-v1:sha256:2908d26ee25f0786f36f27800b9e31417b5f5a512bda027210a61483d577ef7e:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWRlYzRiOGQyYTI2NWYzYWFhYzg1NDAzOTllZDNjNGFhOWIxODMwNGRlYTg3NDU0MGUxMjQ2NDgwNGVhNjFmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjJhYzRjNWI2YTZiNGI1M2MyMjE0YmEwY2YwMmFiY2QwNjdlNGY1NzEwODU2YWZhY2M1OTcxNGQxYjBhODYzMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzVkMmFlM2RlZjE0ODdlYTQ3Y2U2ZTRjNzI5ZGIxZDBlN2E1ZTljZTU2MTM2MDFiNGU5ZWNiOGI3MGI3NjFiYiJ9"
+        },
+        {
+          "resource": "repo://dashboard/routes/settings.py#L80-L85",
+          "version": "repo-lines-v1:sha256:7ad72dee64e2ba13cbf9a28d504347ff5663cdb2f74617c68d65d81f5412b4be:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWU4M2U0MWJjMDUzODQ4NzhkZjdmZTk4YWU0NjgwYjhiOWJhMTE5MWFmNTE1NTMzMjc3OTJlMGMwNzc0ZTVmNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTUwMzJlOTY0ZDA5MzIzNTFlNWQxODUyNjkyODFiMTcxYTNhMDliMDhiMjg2ZTY2MWVhNDcwMzIzYzgyZWI0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWY0MTY4ZDllMjBhMTVkYjkxN2VhZjgyOGFmMmU2MGQ3YjViMjIzNTdjMmFmNDJjMWYxY2M1M2JhZTJhMTI4NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2ExZTZlNDcxNWI3YmM0MmUwYWM0MGUzY2JhMTVkNzlhMWQ0N2YzYzU3NzFjMDgzZTEwM2MzZGRiZjk2YWM1YSJ9"
+        },
+        {
+          "resource": "repo://settings.py#L260-L264",
+          "version": "repo-lines-v1:sha256:37c72b205b36fdff5b549692da7f2425af388e54bc429c81e5447fa5cee25395:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGY4MTk3NGZkMDMzODQyNDMyYzU4ZjUxYTc1OWYyYjk5MDAwZGU3MDg1M2M4Njg5YjRiZmU4MTQ2NjRmMGRkMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2MwZjRhOTU3YjMyYjI4OGMxNDJiYjY5Mzk4MDA5N2FjYTkwYmExNDJlYWVkMDA5NDg0ZGFkOGZmOWQ4NTM0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTI0MzRmNWEwN2I1ZjI5ZGE0OWNjMmYzYmNiYzllYzFjZDM4MTNhYWI0MWNlZjQxOWY1MTIyNDlmYjZiM2M5OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTljYmI4MmJhMDJkNjkxMGVhYzNkZTg4NTMyNjJiZGQ4OTVlZGJhZmY4MjkzNTM2OTQzYzZjYTI3MzZjMDZmYyJ9"
+        },
+        {
+          "resource": "repo://settings.py#L70-L75",
+          "version": "repo-lines-v1:sha256:f6c4f793de2046e83bc282c798f31151193412fdeaa27ac82ffe31a98b9170a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmE4ZGZiYTdiOWNhZmNlYzk0MWE5Yzk0ZGY5YWU2NTYxOWQ3Zjk4MjhiODgxMTZjMmNlYWEzYmIzNTgyNWU0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDMwNWFkZjlhN2Y3ODBmNTIzNmQ0ZGI3MTIyZTY2OTkzMGRhM2YzYjEzOTU3OTNlNDUwOTE0YTQwZDc4ZmQ4NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmE1MDI0NDE0YzJlZDU0MTgwODNhMDlkMjEzMTczNmZiZmNjMjk5ODliOThhNjY0ZTc0NjRhN2NjMTQ1MjY1OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzAxNjI2ZTY1OTFjOGJiZTQ4YmM2ZjMxNDk1NjkwOTU5NDM5M2UzZDIyYjExNjM1MWEyYzFjOGJlMjIyYWIxYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8625941d9f1c43eda42155f49e86eef0",
+      "statement": "In the React KanbanBoard, done tasks older than the done_archive_days window are collapsed behind a 'Show/Hide N archived (>Nd)' toggle button — a purely presentational, UI-only collapse that keeps task rows, comments, and PR links intact — with the window bound to the 'Archive Done Tasks (Days)' field in the settings modal.",
+      "evidence": [
+        {
+          "resource": "repo://dashboard/src/App.jsx#L2079-L2079",
+          "version": "repo-lines-v1:sha256:e36cae6a0a523117c4257401ada0e8886c24f44273feaf3d98cc1897013cb7ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTM2Y2FlNmEwYTUyMzExN2M0MjU3NDAxYWRhMGU4ODg2YzI0ZjQ0MjczZmVhZjNkOThjYzE4OTcwMTNjYjdlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTM2Y2FlNmEwYTUyMzExN2M0MjU3NDAxYWRhMGU4ODg2YzI0ZjQ0MjczZmVhZjNkOThjYzE4OTcwMTNjYjdlYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGUxNmVjYTM1YWQxN2RmYTA5OTc5NzMzZjA1MDY5Nzc1OWVjZDZmYTIyZjRjZGMyMWE2MmU1Y2EzNmJiNzAzOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2E0NzI2YjMxMDY0NWViYmUwM2JjMGE3NmVlZGNhNTUwNDY3YzlhNGYyN2M4MmYyZTM0ZjlmOWViMWZiNjAxOCJ9"
+        },
+        {
+          "resource": "repo://dashboard/src/components/KanbanBoard.jsx#L42-L58",
+          "version": "repo-lines-v1:sha256:fe132f332d46115f2c4150cef5d823db1b211ebab26f61fefd8fca0dcf332e92:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiMTc1NDM5NDgxNDkyZGM3YmExN2ZjNWJmNWViZjA3MDU4MDVhZTIyNjA0ZTBiYzJjZjEzMmZmZTJiMTE3YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViM2E0NTM2OTAxODM4YmJkM2Y4NDQwN2UwMzAyZTg1YmU5MTUyYWNiMTY4MjAzZDI5NjU0ZjNiOGM1ODQ0MjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczYWE4ZDM0ZDFhNmJiZWNkMjU4OTM4MTVhNmQwZDhkNGZhZmY5NzIwZjI0ZTk1ZGEwZjMxNWJjYTMwMWFkMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhZjMyMmUyZTg0ZmY5NGQ1NjU4ODUxZDFlM2EwZmRiMjJlZDBhMTk4YWRhNmI2ZGU4OWE4YzgyNGJhMTE5NTAifQ"
+        },
+        {
+          "resource": "repo://dashboard/src/components/KanbanBoard.jsx#L441-L451",
+          "version": "repo-lines-v1:sha256:88553767a9e65bee1d077c461ebf0134e4adf7f6bb4434312ec62a0a1ea9e070:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlYjAwNmEzNzQzZmJhZTU1ODE2YmMwOTcwZjJlMmJmYzZiMmUyZWJhNWUzMGY0ZmM0Zjk0NDE3NTI2YmQ2NWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5MDE2YmIyOGY0ZWMyZGNhODE3YTI3MTYwZTUxMjY0ZDJlNDFlODcyYjNjOTRlNmU1MDE2NjllZTBjY2M2MjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyZGUzNmNhZWU1YTlkZmEyNDUzZTBjYzFjZjI2NzVmNjc4NWIxNzgzMDYyY2Q2MDdjNTk0Zjg1NjY0MmQxOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmMGE0MzcyMzNmNWIyYTMzZDAzYjdhZGE2ZmExYjQ2ZmRjOWUyOTU5NTU0NmIyOGM5MmI5Njc5MTE3ZWNjYjkifQ"
+        },
+        {
+          "resource": "repo://dashboard/src/modals/SettingsModal.jsx#L115-L128",
+          "version": "repo-lines-v1:sha256:95f2d5c03619e1a40558ee4fd4e2987d8d98343bc235498b0228ee189791708c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwNzMzNzI5MmU2YzQ0YjRkNjYyMWY5YzA4YmVmNWMzYjQ1ZjZkY2RjMGYxNWZjOTMwM2EzNTNlYTBkOGM0N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MDgxZTIxNWVhZjFiNDMxMzc1Y2E4NDdhMGM1ODAxNjQ0NmQwMmJkZTZkMTZkOWU0NWU1Zjc5MjhkODU2ZTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlNzUwYmViNzJmMWZhMDliZmZlOGUwMGQwNjNlOTI5MjI3ODc2NWU2NGVjODcxZDM3NjA1YjhjODJlNTg0YTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwNmI3NWI3MjliYWE2YzIzNzYzNjJhOTgwNDk2M2M4MDhkYjNmNDFjNDJhNWM1NjY3NzE4NWIxMjhlZjJiYTgifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-20T15:20:57.003Z"
+    "at": "2026-11-21T15:11:19.395Z"
   }
 }

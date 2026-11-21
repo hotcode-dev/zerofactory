@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:34fbde21726a1494a658dde4574bc472c13e8b761d42a67ad23d400a8148be41",
+  "pageVersion": "sha256:cf1eeaa30cbc78f39661632af50f33b43feb0c7b3042a2e32cf464e6e0434a16",
   "claims": [
     {
       "id": "claim_f5049d3391c7479baf38776d89ce8a5a",
@@ -143,10 +143,20 @@
           "version": "repo-lines-v1:sha256:dae90446d66e9e431c7cf5d191fd43343178690d2feb30542334b5dea7f55b77:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjg2MjkyN2IzODZjYzg1NWU0ODZhMjNmZWViMzBkYzk2NjQ5NzUxZjE3ZTc2MjkwN2JkNTZkYzRhYWZkMTFhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FjY2RkODAyZjA5ZmY5ZjQxYzczODRkNThiMWZkM2Y1ZTY4NTU1M2MzN2Q1OTY0ZjM0MzVjNzgwZDhlZjQ2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiYzk3YWVjOWM5YTM5NmI0ZDcxMjExYzIzOGJkNDQ4MmMxNDRmYzc4ZDg2YTI0MzIwMjgzZjJhMmJmNjkzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODIzOTZiNGVlNWFiYmM3NDFlZWU2YjQ3ZjhjZTA2YzJiODBjM2UzOGQ3OWQ2MjA4OWJiZTMwODAwNGMwY2NhZiJ9"
         }
       ]
+    },
+    {
+      "id": "claim_4d817b36d5384ad2ab7eb5bf4a6f3aa9",
+      "statement": "The zf-reviewer's GitHub review-posting convention (from the reviewer skill): post verdicts via `gh pr review <n> --comment --body-file <file>` — never `--approve`/`--request-changes` (the authed identity is the PR author, so GitHub rejects self-approval) and never inline `--body` (shell-mangling risk); when terminal output looks garbled or truncated, re-check `gh api repos/<owner>/<repo>/pulls/<n>/reviews` before retrying, because the first call may already have posted and posted reviews cannot be deleted — duplicates are deduped with a `gh pr comment` note naming the canonical review id.",
+      "evidence": [
+        {
+          "resource": "repo://skills/zf-reviewer-ponytail/SKILL.md#L68-L71",
+          "version": "repo-lines-v1:sha256:f99d005343a6a60db4ca8edbbee13df26ac175c5bb2f57f4f6eebc0fd68db2c9:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjY0OGNhYjQ5MjQ2NGJmMjljYWJlZGQyN2Q3NDY4NjQ1NGIxMmQ2ZTUzMTg1OTg4YWEzNWU1MzlhMDFiNGFjMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjU5ZWU4ZDNiYjc1ODNhOWJiN2I0OGJlYjc1OWU5OWVmZDk2ZGU0ZGJlNzkwNjJlNWU1ZmIzZmI0Mjg5ZDRhYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTM2NmU3MDc1MDBkODE5Yjk2NGI1OTQ0ZTkzOTI0YTI1MWUxMzI3OGUwNDc1N2Y0ODc2MTYzZTEzY2UyMTU5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-20T15:20:57.003Z"
+    "at": "2026-11-21T15:11:19.395Z"
   }
 }
