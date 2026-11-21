@@ -361,7 +361,12 @@ class SettingsUpdate(BaseModel):
     activity_retention_days: int | None = Field(
         default=None,
         ge=1,
-        description="Days to retain task_activity log rows before pruning (default 30)",
+        description="Days to retain task_activity log rows before pruning (default 7)",
+    )
+    done_archive_days: int | None = Field(
+        default=None,
+        ge=0,
+        description="Days before done tasks collapse into the Done archive without deleting history (default 7, 0 disables)",
     )
     task_timeout_seconds: int | None = Field(
         default=None,

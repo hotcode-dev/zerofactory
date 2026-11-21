@@ -25,9 +25,15 @@ class TestSettingsUnit(unittest.TestCase):
             S.DEFAULT_SETTING_VALUES["max_concurrent_llm_workers"],
             str(S.DEFAULT_MAX_CONCURRENT_LLM_WORKERS),
         )
+        self.assertEqual(S.DEFAULT_ACTIVITY_RETENTION_DAYS, 7)
+        self.assertEqual(S.DEFAULT_DONE_ARCHIVE_DAYS, 7)
         self.assertEqual(
             S.DEFAULT_SETTING_VALUES["activity_retention_days"],
             str(S.DEFAULT_ACTIVITY_RETENTION_DAYS),
+        )
+        self.assertEqual(
+            S.DEFAULT_SETTING_VALUES["done_archive_days"],
+            str(S.DEFAULT_DONE_ARCHIVE_DAYS),
         )
         self.assertEqual(
             S.DEFAULT_SETTING_VALUES["task_timeout_seconds"],
@@ -61,6 +67,7 @@ class TestSettingsUnit(unittest.TestCase):
         self.assertEqual(
             res["activity_retention_days"], S.DEFAULT_ACTIVITY_RETENTION_DAYS
         )
+        self.assertEqual(res["done_archive_days"], S.DEFAULT_DONE_ARCHIVE_DAYS)
         self.assertEqual(res["task_timeout_seconds"], S.DEFAULT_TASK_TIMEOUT_SECONDS)
         self.assertEqual(
             res["inactivity_timeout_seconds"], S.DEFAULT_INACTIVITY_TIMEOUT_SECONDS
@@ -83,6 +90,7 @@ class TestSettingsUnit(unittest.TestCase):
                 ("max_active_tasks", "-5"),
                 ("max_concurrent_llm_workers", "0"),
                 ("activity_retention_days", "0"),
+                ("done_archive_days", "-3"),
                 ("task_timeout_seconds", "-100"),
                 ("inactivity_timeout_seconds", "0"),
                 ("enable_cron_scheduler", "1"),
@@ -97,6 +105,8 @@ class TestSettingsUnit(unittest.TestCase):
         self.assertEqual(res["max_active_tasks"], 1)
         self.assertEqual(res["max_concurrent_llm_workers"], 1)
         self.assertEqual(res["activity_retention_days"], 1)
+        # Clamped to >= 0 (0 disables Done archiving)
+        self.assertEqual(res["done_archive_days"], 0)
         self.assertEqual(res["task_timeout_seconds"], 1)
         self.assertEqual(res["inactivity_timeout_seconds"], 1)
         # Boolean parsing

@@ -741,8 +741,9 @@ var ZeroFactoryDashboard = (function(exports) {
 	//#endregion
 	//#region dashboard/src/components/KanbanBoard.jsx
 	function KanbanBoard(props) {
-		const { tasksByColumn, dragOverCol, handleDragOver, handleDragLeave, handleDrop, handleDragStart, loadTaskDetails, selectedBoard, currentBoard, stoppingSessionId, handleStopTaskSession, handleAdvanceTask, handleTriageTask } = props;
+		const { tasksByColumn, doneArchiveDays = 7, dragOverCol, handleDragOver, handleDragLeave, handleDrop, handleDragStart, loadTaskDetails, selectedBoard, currentBoard, stoppingSessionId, handleStopTaskSession, handleAdvanceTask, handleTriageTask } = props;
 		const [openLaneInfo, setOpenLaneInfo] = React.useState({});
+		const [showArchivedDone, setShowArchivedDone] = React.useState(false);
 		const toggleLaneInfo = (colId) => {
 			setOpenLaneInfo((prev) => ({
 				...prev,
@@ -756,7 +757,22 @@ var ZeroFactoryDashboard = (function(exports) {
 				gridTemplateColumns: "repeat(4, minmax(220px, 1fr))"
 			}
 		}, COLUMNS.map((col) => {
-			const colTasks = tasksByColumn[col.id] || [];
+			const rawColTasks = tasksByColumn[col.id] || [];
+			const archiveDaysNum = Math.max(0, parseInt(doneArchiveDays, 10) || 0);
+			const archiveCutoff = archiveDaysNum > 0 ? Math.floor(Date.now() / 1e3) - archiveDaysNum * 86400 : 0;
+			let colTasks = rawColTasks;
+			let archivedDoneCount = 0;
+			if (col.id === "done" && archiveDaysNum > 0) {
+				const recentTasks = [];
+				const archivedTasks = [];
+				rawColTasks.forEach((t) => {
+					const ts = Number(t.updated_at || t.created_at || 0);
+					if (ts > 0 && ts < archiveCutoff) archivedTasks.push(t);
+					else recentTasks.push(t);
+				});
+				archivedDoneCount = archivedTasks.length;
+				colTasks = showArchivedDone ? recentTasks.concat(archivedTasks) : recentTasks;
+			}
 			const isOver = dragOverCol === col.id;
 			const isInfoOpen = Boolean(openLaneInfo[col.id]);
 			return React.createElement("div", {
@@ -912,7 +928,11 @@ var ZeroFactoryDashboard = (function(exports) {
 					onClick: (e) => handleAdvanceTask(t, e),
 					title: "Move to next column"
 				}, "→"))));
-			})));
+			}), col.id === "done" && archivedDoneCount > 0 && React.createElement("button", {
+				type: "button",
+				onClick: () => setShowArchivedDone((prev) => !prev),
+				className: "w-full mt-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-slate-200 bg-slate-900/60 hover:bg-slate-800/80 border border-dashed border-slate-700/70 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+			}, showArchivedDone ? `📦 Hide ${archivedDoneCount} archived (>${archiveDaysNum}d)` : `📦 Show ${archivedDoneCount} archived (>${archiveDaysNum}d)`)));
 		})));
 	}
 	//#endregion
@@ -4063,7 +4083,17 @@ var ZeroFactoryDashboard = (function(exports) {
 				...settingsForm,
 				inactivity_timeout_seconds: e.target.value
 			})
-		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max idle time with no log output or session update before a worker is reaped. Default: 900 (15 minutes).")), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🧠"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules when tasks complete or receive review feedback.")), React.createElement("input", {
+		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max idle time with no log output or session update before a worker is reaped. Default: 900 (15 minutes).")), React.createElement("div", { className: "space-y-1.5" }, React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Archive Done Tasks (Days)"), React.createElement("input", {
+			type: "number",
+			min: 0,
+			step: 1,
+			className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+			value: settingsForm.done_archive_days ?? 7,
+			onChange: (e) => setSettingsForm({
+				...settingsForm,
+				done_archive_days: e.target.value
+			})
+		}), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Collapses Done tasks older than N days into an expandable archive without deleting tasks, comments, or PR history. Default: 7 (0 disables).")), React.createElement("div", { className: "pt-2 border-t border-slate-800/80 space-y-3" }, React.createElement("div", { className: "flex items-center justify-between" }, React.createElement("div", null, React.createElement("div", { className: "flex items-center gap-1.5" }, React.createElement("span", { className: "text-sm" }, "🧠"), React.createElement("label", { className: "block text-xs font-semibold text-slate-200 tracking-wide" }, "Auto-Record Repository Memory")), React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed mt-0.5" }, "Automatically extract and persist gotchas, conventions, and rules when tasks complete or receive review feedback.")), React.createElement("input", {
 			type: "checkbox",
 			className: "h-4 w-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer",
 			checked: Boolean(settingsForm.auto_record_memory !== false),
@@ -4652,6 +4682,7 @@ var ZeroFactoryDashboard = (function(exports) {
 		const [settingsForm, setSettingsForm] = useState({
 			max_active_tasks: 10,
 			max_concurrent_llm_workers: 10,
+			done_archive_days: 7,
 			task_timeout_seconds: 3600,
 			inactivity_timeout_seconds: 900,
 			langfuse_enabled: false,
@@ -4822,6 +4853,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					setSettingsForm({
 						max_active_tasks: data.settings.max_active_tasks ?? 10,
 						max_concurrent_llm_workers: data.settings.max_concurrent_llm_workers ?? 10,
+						done_archive_days: data.settings.done_archive_days ?? 7,
 						task_timeout_seconds: data.settings.task_timeout_seconds ?? 3600,
 						inactivity_timeout_seconds: data.settings.inactivity_timeout_seconds ?? 900,
 						langfuse_enabled: Boolean(data.settings.langfuse_enabled),
@@ -4853,6 +4885,7 @@ var ZeroFactoryDashboard = (function(exports) {
 				const payload = {
 					max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
 					max_concurrent_llm_workers: Math.max(1, parseInt(settingsForm.max_concurrent_llm_workers, 10) || 10),
+					done_archive_days: Math.max(0, Number.isNaN(parseInt(settingsForm.done_archive_days, 10)) ? 7 : parseInt(settingsForm.done_archive_days, 10)),
 					task_timeout_seconds: Math.max(1, parseInt(settingsForm.task_timeout_seconds, 10) || 3600),
 					inactivity_timeout_seconds: Math.max(1, parseInt(settingsForm.inactivity_timeout_seconds, 10) || 900),
 					langfuse_enabled: Boolean(settingsForm.langfuse_enabled),
@@ -4881,6 +4914,7 @@ var ZeroFactoryDashboard = (function(exports) {
 					setSettingsForm({
 						max_active_tasks: res.settings.max_active_tasks ?? 10,
 						max_concurrent_llm_workers: res.settings.max_concurrent_llm_workers ?? 10,
+						done_archive_days: res.settings.done_archive_days ?? 7,
 						task_timeout_seconds: res.settings.task_timeout_seconds ?? 3600,
 						inactivity_timeout_seconds: res.settings.inactivity_timeout_seconds ?? 900,
 						langfuse_enabled: Boolean(res.settings.langfuse_enabled),
@@ -6542,6 +6576,7 @@ var ZeroFactoryDashboard = (function(exports) {
 			handleTriggerGhIssuesSetup
 		}), React.createElement(KanbanBoard, {
 			tasksByColumn,
+			doneArchiveDays: settingsForm.done_archive_days ?? 7,
 			dragOverCol,
 			handleDragOver,
 			handleDragLeave,

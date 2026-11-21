@@ -49,6 +49,7 @@ export function ZeroFactoryKanbanApp() {
     const [settingsForm, setSettingsForm] = useState({
       max_active_tasks: 10,
       max_concurrent_llm_workers: 10,
+      done_archive_days: 7,
       task_timeout_seconds: 3600,
       inactivity_timeout_seconds: 900,
       langfuse_enabled: false,
@@ -224,6 +225,7 @@ export function ZeroFactoryKanbanApp() {
           setSettingsForm({
             max_active_tasks: data.settings.max_active_tasks ?? 10,
             max_concurrent_llm_workers: data.settings.max_concurrent_llm_workers ?? 10,
+            done_archive_days: data.settings.done_archive_days ?? 7,
             task_timeout_seconds: data.settings.task_timeout_seconds ?? 3600,
             inactivity_timeout_seconds: data.settings.inactivity_timeout_seconds ?? 900,
             langfuse_enabled: Boolean(data.settings.langfuse_enabled),
@@ -256,6 +258,7 @@ export function ZeroFactoryKanbanApp() {
         const payload = {
           max_active_tasks: Math.max(1, parseInt(settingsForm.max_active_tasks, 10) || 10),
           max_concurrent_llm_workers: Math.max(1, parseInt(settingsForm.max_concurrent_llm_workers, 10) || 10),
+          done_archive_days: Math.max(0, Number.isNaN(parseInt(settingsForm.done_archive_days, 10)) ? 7 : parseInt(settingsForm.done_archive_days, 10)),
           task_timeout_seconds: Math.max(1, parseInt(settingsForm.task_timeout_seconds, 10) || 3600),
           inactivity_timeout_seconds: Math.max(1, parseInt(settingsForm.inactivity_timeout_seconds, 10) || 900),
           langfuse_enabled: Boolean(settingsForm.langfuse_enabled),
@@ -284,6 +287,7 @@ export function ZeroFactoryKanbanApp() {
           setSettingsForm({
             max_active_tasks: res.settings.max_active_tasks ?? 10,
             max_concurrent_llm_workers: res.settings.max_concurrent_llm_workers ?? 10,
+            done_archive_days: res.settings.done_archive_days ?? 7,
             task_timeout_seconds: res.settings.task_timeout_seconds ?? 3600,
             inactivity_timeout_seconds: res.settings.inactivity_timeout_seconds ?? 900,
             langfuse_enabled: Boolean(res.settings.langfuse_enabled),
@@ -2072,6 +2076,7 @@ export function ZeroFactoryKanbanApp() {
                   }),
                   React.createElement(KanbanBoard, {
                     tasksByColumn,
+                    doneArchiveDays: settingsForm.done_archive_days ?? 7,
                     dragOverCol,
                     handleDragOver,
                     handleDragLeave,

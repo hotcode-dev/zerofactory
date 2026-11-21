@@ -112,6 +112,20 @@ export function SettingsModal(props) {
                     }),
                     React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Max idle time with no log output or session update before a worker is reaped. Default: 900 (15 minutes).")
                   ),
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1.5" },
+                    React.createElement("label", { className: "block text-xs font-semibold text-slate-300 tracking-wide" }, "Archive Done Tasks (Days)"),
+                    React.createElement("input", {
+                      type: "number",
+                      min: 0,
+                      step: 1,
+                      className: "w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors",
+                      value: settingsForm.done_archive_days ?? 7,
+                      onChange: (e) => setSettingsForm({ ...settingsForm, done_archive_days: e.target.value })
+                    }),
+                    React.createElement("p", { className: "text-[11px] text-slate-400 m-0 leading-relaxed" }, "Collapses Done tasks older than N days into an expandable archive without deleting tasks, comments, or PR history. Default: 7 (0 disables).")
+                  ),
 
                   React.createElement(
                     "div",

@@ -67,7 +67,12 @@ DEFAULT_IDLE_SCAN_MAX_TODO = 2
 # than this are pruned by ``dashboard.plugin_api.prune_old_activity``. A value of
 # ``0`` disables pruning (the table then grows without bound). Kept >= 1 by the
 # parser when set via the API so a stray "0" can't accidentally delete everything.
-DEFAULT_ACTIVITY_RETENTION_DAYS = 30
+DEFAULT_ACTIVITY_RETENTION_DAYS = 7
+
+# Non-destructive archive window (days) for completed ('done') tasks in the Kanban
+# Done column. Tasks older than this are collapsed into an expandable archive section
+# while keeping all task rows, comments, PR links, and history intact. 0 disables.
+DEFAULT_DONE_ARCHIVE_DAYS = 7
 
 # Enable periodic background cron scheduler execution (dispatcher ticker & scheduled runs).
 DEFAULT_ENABLE_CRON_SCHEDULER = True
@@ -115,6 +120,7 @@ SETTING_KEYS = (
     "max_active_tasks",
     "max_concurrent_llm_workers",
     "activity_retention_days",
+    "done_archive_days",
     "task_timeout_seconds",
     "inactivity_timeout_seconds",
     "enable_cron_scheduler",
@@ -142,6 +148,7 @@ DEFAULT_SETTING_VALUES: dict[str, str] = {
     "max_active_tasks": str(DEFAULT_MAX_ACTIVE_TASKS),
     "max_concurrent_llm_workers": str(DEFAULT_MAX_CONCURRENT_LLM_WORKERS),
     "activity_retention_days": str(DEFAULT_ACTIVITY_RETENTION_DAYS),
+    "done_archive_days": str(DEFAULT_DONE_ARCHIVE_DAYS),
     "task_timeout_seconds": str(DEFAULT_TASK_TIMEOUT_SECONDS),
     "inactivity_timeout_seconds": str(DEFAULT_INACTIVITY_TIMEOUT_SECONDS),
     "enable_cron_scheduler": "true" if DEFAULT_ENABLE_CRON_SCHEDULER else "false",
@@ -199,6 +206,7 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
         "max_active_tasks": DEFAULT_MAX_ACTIVE_TASKS,
         "max_concurrent_llm_workers": DEFAULT_MAX_CONCURRENT_LLM_WORKERS,
         "activity_retention_days": DEFAULT_ACTIVITY_RETENTION_DAYS,
+        "done_archive_days": DEFAULT_DONE_ARCHIVE_DAYS,
         "task_timeout_seconds": DEFAULT_TASK_TIMEOUT_SECONDS,
         "inactivity_timeout_seconds": DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
         "enable_cron_scheduler": DEFAULT_ENABLE_CRON_SCHEDULER,
@@ -249,6 +257,11 @@ def load_settings(conn_or_cursor: Any) -> dict[str, Any]:
             c = _clamp_int(v, 1)
             if c is not None:
                 settings["activity_retention_days"] = c
+        elif k == "done_archive_days":
+            # 0 disables hiding older done tasks; positive values collapse them in UI without deletion.
+            c = _clamp_int(v, 0)
+            if c is not None:
+                settings["done_archive_days"] = c
         elif k == "task_timeout_seconds":
             c = _clamp_int(v, 1)
             if c is not None:

@@ -6,6 +6,7 @@ import { renderPrIcon } from "../utils/icons.js";
 export function KanbanBoard(props) {
   const {
     tasksByColumn,
+    doneArchiveDays = 7,
     dragOverCol,
     handleDragOver,
     handleDragLeave,
@@ -21,6 +22,7 @@ export function KanbanBoard(props) {
   } = props;
 
   const [openLaneInfo, setOpenLaneInfo] = React.useState({});
+  const [showArchivedDone, setShowArchivedDone] = React.useState(false);
   const toggleLaneInfo = (colId) => {
     setOpenLaneInfo((prev) => ({ ...prev, [colId]: !prev[colId] }));
   };
@@ -36,7 +38,25 @@ export function KanbanBoard(props) {
                           style: { display: "grid", gridTemplateColumns: "repeat(4, minmax(220px, 1fr))" }
                         },
                         COLUMNS.map((col) => {
-                          const colTasks = tasksByColumn[col.id] || [];
+                          const rawColTasks = tasksByColumn[col.id] || [];
+                          const archiveDaysNum = Math.max(0, parseInt(doneArchiveDays, 10) || 0);
+                          const archiveCutoff = archiveDaysNum > 0 ? Math.floor(Date.now() / 1000) - archiveDaysNum * 86400 : 0;
+                          let colTasks = rawColTasks;
+                          let archivedDoneCount = 0;
+                          if (col.id === "done" && archiveDaysNum > 0) {
+                            const recentTasks = [];
+                            const archivedTasks = [];
+                            rawColTasks.forEach((t) => {
+                              const ts = Number(t.updated_at || t.created_at || 0);
+                              if (ts > 0 && ts < archiveCutoff) {
+                                archivedTasks.push(t);
+                              } else {
+                                recentTasks.push(t);
+                              }
+                            });
+                            archivedDoneCount = archivedTasks.length;
+                            colTasks = showArchivedDone ? recentTasks.concat(archivedTasks) : recentTasks;
+                          }
                           const isOver = dragOverCol === col.id;
                           const isInfoOpen = Boolean(openLaneInfo[col.id]);
 
@@ -417,7 +437,19 @@ export function KanbanBoard(props) {
                                       )
                                     )
                                   );
-                                })
+                                }),
+                              col.id === "done" && archivedDoneCount > 0 &&
+                              React.createElement(
+                                "button",
+                                {
+                                  type: "button",
+                                  onClick: () => setShowArchivedDone((prev) => !prev),
+                                  className: "w-full mt-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-slate-200 bg-slate-900/60 hover:bg-slate-800/80 border border-dashed border-slate-700/70 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                                },
+                                showArchivedDone
+                                  ? `📦 Hide ${archivedDoneCount} archived (>${archiveDaysNum}d)`
+                                  : `📦 Show ${archivedDoneCount} archived (>${archiveDaysNum}d)`
+                              )
                             )
                           );
                         })

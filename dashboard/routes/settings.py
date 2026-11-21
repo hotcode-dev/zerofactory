@@ -77,6 +77,12 @@ def update_settings(req: SettingsUpdate):
                 "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('activity_retention_days', ?, ?)",
                 (val, now),
             )
+        if req.done_archive_days is not None:
+            val = str(max(0, int(req.done_archive_days)))
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('done_archive_days', ?, ?)",
+                (val, now),
+            )
         if req.task_timeout_seconds is not None:
             val = str(max(1, int(req.task_timeout_seconds)))
             cursor.execute(
