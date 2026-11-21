@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import os
 import re
 import subprocess
@@ -68,8 +69,49 @@ _RE_INLINE_EMPTY_EXCEPT = re.compile(r"\bexcept\b[^:]*:\s*pass\b")
 _RE_EXCEPT_HEADER = re.compile(r"^\s*except\b[^:]*:\s*(?:#.*)?$")
 _RE_BARE_PASS = re.compile(r"^\s*pass\s*(?:#.*)?$")
 
+_RE_PY_TEST_DEF = re.compile(r"^(\s*)(?:async\s+)?def\s+(test_[A-Za-z0-9_]*)\s*\(")
+_RE_PY_BLOCK_BOUNDARY = re.compile(r"^(\s*)(?:(?:async\s+)?def\s+|class\s+)")
+_RE_JS_TEST_DEF = re.compile(r"^(\s*)(?:it|test)\s*\(\s*['\"`]")
+_RE_JS_BLOCK_BOUNDARY = re.compile(r"^(\s*)(?:it|test|describe)\s*\(")
+_RE_ASSERTION = re.compile(
+    r"\bassert\b|self\.assert|pytest\.(?:raises|warns|deprecated_call|fail)\b"
+    r"|\bexpect\s*\(|\.to(?:Be|Equal|Throw|Have|Match|Contain)\b"
+    r"|\.assert_called|\bassert_[A-Za-z0-9_]+\s*\(|\bmock\.assert"
+)
+_RE_MOCK_USAGE = re.compile(
+    r"(?:@patch\b|\b(?:MagicMock|AsyncMock|NonCallableMock"
+    r"|patch(?:\.object|\.dict|\.multiple)?|monkeypatch\.setattr|mocker\.patch"
+    r"|jest\.fn|jest\.spyOn|vi\.fn|vi\.spyOn|sinon\.(?:stub|mock|spy))\b)"
+)
+_RE_DNT_HEADER = re.compile(
+    r"^\s*(?:#{1,4}\s*|\*\*|[-*]\s*\*\*)[^*\n]*"
+    r"(?:do\s+not\s+touch|non-goals|out\s+of\s+scope|negative\s+scope)"
+    r"[^*\n]*(?:\*\*)?:?\s*(.*)$",
+    re.IGNORECASE,
+)
+_RE_SECTION_END = re.compile(r"^\s*(?:#{1,4}\s+\S|\*\*[A-Z][^*\n]+?\*\*:?)")
+_DNT_FILE_EXTS = (
+    tuple(CODE_EXTENSIONS)
+    + (
+        ".md",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".css",
+        ".html",
+        ".sql",
+        ".lock",
+        ".cfg",
+        ".ini",
+        ".txt",
+    )
+)
+
 DEFAULT_WARN_NET_LINES = 400
 DEFAULT_WARN_FILES = 12
+DEFAULT_MAX_DIFF_LINES = 800
+DEFAULT_UNTESTED_PROD_LINE_THRESHOLD = 20
 
 
 @dataclass
@@ -87,6 +129,8 @@ class DiffHygieneReport:
     files_changed: list[str] = field(default_factory=list)
     added_lines: int = 0
     deleted_lines: int = 0
+    prod_code_lines_added: int = 0
+    prod_code_lines_deleted: int = 0
     test_files_changed: list[str] = field(default_factory=list)
     test_lines_added: int = 0
     test_lines_deleted: int = 0
@@ -97,6 +141,71 @@ class DiffHygieneReport:
     @property
     def net_lines(self) -> int:
         return self.added_lines - self.deleted_lines
+
+    @property
+    def prod_code_net_lines(self) -> int:
+        return self.prod_code_lines_added - self.prod_code_lines_deleted
+
+
+def extract_do_not_touch_patterns(spec_text: str | None) -> list[str]:
+    """Extract file, directory, and glob patterns from a spec's Do Not Touch / Non-Goals section."""
+    if not spec_text:
+        return []
+
+    section_lines: list[str] = []
+    in_section = False
+    for raw_line in spec_text.splitlines():
+        hdr_m = _RE_DNT_HEADER.match(raw_line)
+        if hdr_m:
+            in_section = True
+            tail = (hdr_m.group(1) or "").strip()
+            if tail:
+                section_lines.append(tail)
+            continue
+        if in_section:
+            if _RE_SECTION_END.match(raw_line):
+                in_section = False
+                continue
+            section_lines.append(raw_line)
+
+    patterns: list[str] = []
+    seen: set[str] = set()
+    for line in section_lines:
+        for raw_token in re.findall(r"`([^`\n]+)`", line):
+            tok = raw_token.strip()
+            if not tok or any(ch.isspace() for ch in tok):
+                continue
+            if "(" in tok or ")" in tok or tok.startswith("-"):
+                continue
+            norm = tok.replace("\\", "/")
+            while norm.startswith("./"):
+                norm = norm[2:]
+            if not norm:
+                continue
+            looks_like_path = (
+                "/" in norm
+                or "*" in norm
+                or "?" in norm
+                or norm.lower().endswith(_DNT_FILE_EXTS)
+                or norm in DEPENDENCY_FILENAMES
+            )
+            if looks_like_path and norm not in seen:
+                seen.add(norm)
+                patterns.append(norm)
+    return patterns
+
+
+def _matches_do_not_touch(rel_path: str, pattern: str) -> bool:
+    norm_rel = rel_path.replace("\\", "/").lstrip("./")
+    norm_pat = pattern.replace("\\", "/").lstrip("./")
+    if not norm_rel or not norm_pat:
+        return False
+    if norm_rel == norm_pat:
+        return True
+    dir_prefix = norm_pat.rstrip("/") + "/"
+    if norm_rel.startswith(dir_prefix):
+        return True
+    return fnmatch.fnmatch(norm_rel, norm_pat)
 
 
 def is_test_file(rel_path: str) -> bool:
@@ -188,13 +297,42 @@ def _scan_added_lines(
         return
 
     test_file = is_test_file(rel_path)
-    is_python = Path(rel_path).suffix.lower() == ".py"
+    suffix = Path(rel_path).suffix.lower()
+    is_python = suffix == ".py"
+    is_js_ts = suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
     prev_was_except = False
     prev_line_num = -1
 
-    for line_num, content in lines_with_nums:
-        stripped = content.strip()
-        if test_file:
+    if test_file:
+        mock_count = 0
+        assert_count = 0
+        first_mock_line = 0
+
+        active_test_line = 0
+        active_test_indent = 0
+        active_test_snippet = ""
+        active_has_body = False
+        active_has_assert = False
+
+        def _finalize_active_test() -> None:
+            nonlocal active_test_line, active_has_body, active_has_assert
+            if active_test_line > 0 and active_has_body and not active_has_assert:
+                report.errors.append(
+                    SlopFinding(
+                        rule="assertion_free_test",
+                        severity="error",
+                        file=rel_path,
+                        line=active_test_line,
+                        snippet=active_test_snippet[:120],
+                        message="Newly added test function contains no assertions; add behavioural assertions.",
+                    )
+                )
+            active_test_line = 0
+            active_has_body = False
+            active_has_assert = False
+
+        for line_num, content in lines_with_nums:
+            stripped = content.strip()
             if _RE_TEST_SKIP.search(content):
                 report.errors.append(
                     SlopFinding(
@@ -206,7 +344,70 @@ def _scan_added_lines(
                         message="Skipped/disabled test added; fix the test instead of skipping it.",
                     )
                 )
-            continue
+
+            if not stripped.startswith(("import ", "from ")) and _RE_MOCK_USAGE.search(
+                content
+            ):
+                mock_count += 1
+                if first_mock_line == 0:
+                    first_mock_line = line_num
+            has_assert_on_line = bool(_RE_ASSERTION.search(content))
+            if has_assert_on_line:
+                assert_count += 1
+
+            test_def_m = (
+                _RE_PY_TEST_DEF.match(content)
+                if is_python
+                else (_RE_JS_TEST_DEF.match(content) if is_js_ts else None)
+            )
+            if test_def_m:
+                _finalize_active_test()
+                active_test_line = line_num
+                active_test_indent = len(test_def_m.group(1))
+                active_test_snippet = stripped
+                # Handle single-line JS/Python test blocks that include an assertion on the header line
+                if is_js_ts and has_assert_on_line:
+                    active_has_body = True
+                    active_has_assert = True
+                continue
+
+            if active_test_line > 0:
+                if not stripped or stripped.startswith(("#", "//", "/*", "*")):
+                    continue
+                curr_indent = len(content) - len(content.lstrip())
+                if is_python:
+                    if curr_indent <= active_test_indent and not stripped.startswith(
+                        (")", "]", "}")
+                    ):
+                        _finalize_active_test()
+                        continue
+                elif is_js_ts:
+                    boundary_m = _RE_JS_BLOCK_BOUNDARY.match(content)
+                    if boundary_m and len(boundary_m.group(1)) <= active_test_indent:
+                        _finalize_active_test()
+                        continue
+
+                active_has_body = True
+                if has_assert_on_line:
+                    active_has_assert = True
+
+        _finalize_active_test()
+
+        if mock_count >= 4 and mock_count > assert_count:
+            report.warnings.append(
+                SlopFinding(
+                    rule="mock_heavy_test",
+                    severity="warning",
+                    file=rel_path,
+                    line=first_mock_line,
+                    snippet=f"{mock_count} mocks vs {assert_count} assertions",
+                    message="Mock-heavy test additions detected; verify tests exercise real code paths rather than tautological mocks.",
+                )
+            )
+        return
+
+    for line_num, content in lines_with_nums:
+        stripped = content.strip()
 
         # Non-test code checks
         if _RE_DEBUG.search(content):
@@ -277,6 +478,8 @@ def analyze_workspace_diff(
     workspace_path: Path,
     target_branch: str | None = None,
     include_working_tree: bool = False,
+    spec_text: str | None = None,
+    skip_untested_check: bool = False,
 ) -> DiffHygieneReport:
     """Analyze git diff (and optionally untracked/working-tree files) for slop & hygiene metrics."""
     report = DiffHygieneReport()
@@ -297,9 +500,8 @@ def analyze_workspace_diff(
         return report
 
     merge_base = _resolve_merge_base(workspace_path, target_branch=target_branch)
-    diff_cmd = ["git", "diff", "-U0"]
-    diff_cmd.append(merge_base if include_working_tree else f"{merge_base}..HEAD")
-    diff_cmd.extend(["--", *EXCLUDED_DIFF_PATHSPECS])
+    diff_ref = merge_base if include_working_tree else f"{merge_base}..HEAD"
+    diff_cmd = ["git", "diff", "-U0", diff_ref, "--", *EXCLUDED_DIFF_PATHSPECS]
 
     raw_diff = ""
     try:
@@ -316,7 +518,9 @@ def analyze_workspace_diff(
         raw_diff = ""
 
     files_seen: set[str] = set()
+    all_unexcluded_files: set[str] = set()
     test_files_seen: set[str] = set()
+    prod_code_files_seen: set[str] = set()
     dep_files_seen: set[str] = set()
     added_by_file: dict[str, list[tuple[int, str]]] = {}
 
@@ -333,8 +537,11 @@ def analyze_workspace_diff(
                 target = target[2:]
             current_file = target
             files_seen.add(current_file)
+            all_unexcluded_files.add(current_file)
             if is_test_file(current_file):
                 test_files_seen.add(current_file)
+            elif _is_code_file(current_file):
+                prod_code_files_seen.add(current_file)
             if is_dependency_file(current_file):
                 dep_files_seen.add(current_file)
             continue
@@ -355,12 +562,16 @@ def analyze_workspace_diff(
             report.added_lines += 1
             if current_file in test_files_seen:
                 report.test_lines_added += 1
+            elif current_file in prod_code_files_seen:
+                report.prod_code_lines_added += 1
             added_by_file.setdefault(current_file, []).append((current_line, line_text))
             current_line += 1
         elif raw_line.startswith("-"):
             report.deleted_lines += 1
             if current_file in test_files_seen:
                 report.test_lines_deleted += 1
+            elif current_file in prod_code_files_seen:
+                report.prod_code_lines_deleted += 1
 
     # Also inspect untracked files during packaging (before `git add .`)
     if include_working_tree:
@@ -375,7 +586,10 @@ def analyze_workspace_diff(
             if untracked_res.returncode == 0:
                 for rel in untracked_res.stdout.splitlines():
                     rel = rel.strip()
-                    if not rel or rel in files_seen or _is_excluded_untracked(rel):
+                    if not rel:
+                        continue
+                    all_unexcluded_files.add(rel)
+                    if rel in files_seen or _is_excluded_untracked(rel):
                         continue
                     fp = workspace_path / rel
                     if not fp.is_file() or fp.is_symlink():
@@ -391,14 +605,19 @@ def analyze_workspace_diff(
                         continue
                     files_seen.add(rel)
                     is_tf = is_test_file(rel)
+                    is_prod = _is_code_file(rel) and not is_tf
                     if is_tf:
                         test_files_seen.add(rel)
+                    elif is_prod:
+                        prod_code_files_seen.add(rel)
                     if is_dependency_file(rel):
                         dep_files_seen.add(rel)
                     file_lines = text.splitlines()
                     report.added_lines += len(file_lines)
                     if is_tf:
                         report.test_lines_added += len(file_lines)
+                    elif is_prod:
+                        report.prod_code_lines_added += len(file_lines)
                     added_by_file[rel] = [
                         (idx, ln) for idx, ln in enumerate(file_lines, start=1)
                     ]
@@ -412,24 +631,74 @@ def analyze_workspace_diff(
     for rel_path, lines_with_nums in added_by_file.items():
         _scan_added_lines(rel_path, lines_with_nums, report)
 
-    # Aggregate budget & test-integrity checks
+    # Spec "Do Not Touch" file boundary enforcement (including paths filtered by EXCLUDED_DIFF_PATHSPECS)
+    dnt_patterns = extract_do_not_touch_patterns(spec_text)
+    if dnt_patterns:
+        try:
+            names_res = subprocess.run(
+                ["git", "diff", "--name-only", diff_ref],
+                cwd=str(workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if names_res.returncode == 0:
+                for p in names_res.stdout.splitlines():
+                    if p.strip():
+                        all_unexcluded_files.add(p.strip())
+        except Exception:
+            pass
+        for rel_path in sorted(all_unexcluded_files):
+            for pat in dnt_patterns:
+                if _matches_do_not_touch(rel_path, pat):
+                    report.errors.append(
+                        SlopFinding(
+                            rule="do_not_touch_violation",
+                            severity="error",
+                            file=rel_path,
+                            line=0,
+                            snippet=pat,
+                            message=f"Modified file '{rel_path}' violates spec Do Not Touch boundary '{pat}'. Revert changes to this file.",
+                        )
+                    )
+                    break
+
+    # Aggregate budget & test-integrity checks (default cap: DEFAULT_MAX_DIFF_LINES = 800; <= 0 disables)
     max_diff_env = os.environ.get("ZEROFACTORY_MAX_DIFF_LINES", "").strip()
+    max_diff_cap = DEFAULT_MAX_DIFF_LINES
     if max_diff_env:
         try:
             max_diff_cap = int(max_diff_env)
-            if max_diff_cap > 0 and report.net_lines > max_diff_cap:
-                report.errors.append(
-                    SlopFinding(
-                        rule="diff_budget_exceeded",
-                        severity="error",
-                        file="(diff)",
-                        line=0,
-                        snippet=f"+{report.added_lines}/-{report.deleted_lines} (net +{report.net_lines})",
-                        message=f"Net added lines (+{report.net_lines}) exceeds ZEROFACTORY_MAX_DIFF_LINES={max_diff_cap}. Split or simplify the diff.",
-                    )
-                )
         except ValueError:
-            pass
+            max_diff_cap = DEFAULT_MAX_DIFF_LINES
+    if max_diff_cap > 0 and report.net_lines > max_diff_cap:
+        report.errors.append(
+            SlopFinding(
+                rule="diff_budget_exceeded",
+                severity="error",
+                file="(diff)",
+                line=0,
+                snippet=f"+{report.added_lines}/-{report.deleted_lines} (net +{report.net_lines})",
+                message=f"Net added lines (+{report.net_lines}) exceeds ZEROFACTORY_MAX_DIFF_LINES={max_diff_cap}. Split or simplify the diff.",
+            )
+        )
+
+    if (
+        not skip_untested_check
+        and not os.environ.get("ZEROFACTORY_SKIP_UNTESTED_CHECK")
+        and report.prod_code_net_lines > DEFAULT_UNTESTED_PROD_LINE_THRESHOLD
+        and report.test_lines_added == 0
+    ):
+        report.errors.append(
+            SlopFinding(
+                rule="untested_production_diff",
+                severity="error",
+                file="(tests)",
+                line=0,
+                snippet=f"prod code net +{report.prod_code_net_lines} lines, +0 test lines",
+                message=f"Added net +{report.prod_code_net_lines} production code lines with 0 test lines added. Add unit or integration test coverage.",
+            )
+        )
 
     if (
         report.net_lines > DEFAULT_WARN_NET_LINES
@@ -467,6 +736,8 @@ def analyze_workspace_diff(
 def run_deterministic_slop_gate(
     workspace_path: Path,
     target_branch: str | None = None,
+    spec_text: str | None = None,
+    skip_untested_check: bool = False,
 ) -> tuple[bool, str, int]:
     """Run zero-token deterministic anti-slop checks before commit/PR creation.
 
@@ -480,6 +751,8 @@ def run_deterministic_slop_gate(
         workspace_path,
         target_branch=target_branch,
         include_working_tree=True,
+        spec_text=spec_text,
+        skip_untested_check=skip_untested_check,
     )
     if not report.errors:
         return (
@@ -497,7 +770,7 @@ def run_deterministic_slop_gate(
     if len(report.errors) > 15:
         lines.append(f"... and {len(report.errors) - 15} more violation(s).")
     lines.append(
-        "Fix all violations above (remove debuggers, unresolved placeholder comments, or skipped tests) before handoff."
+        "Fix all violations above (remove debuggers/TODOs, unskip or add assertions/tests, revert Do Not Touch files, or trim diff below ZEROFACTORY_MAX_DIFF_LINES) before handoff."
     )
     return False, "\n".join(lines), 1
 
@@ -506,14 +779,18 @@ def build_diff_hygiene_scorecard(
     workspace_path: Path,
     target_branch: str | None = None,
     is_diff_truncated: bool = False,
+    spec_text: str | None = None,
+    skip_untested_check: bool = False,
 ) -> str:
     """Build a compact Diff Hygiene Scorecard markdown block for zf-reviewer."""
     report = analyze_workspace_diff(
         workspace_path,
         target_branch=target_branch,
         include_working_tree=False,
+        spec_text=spec_text,
+        skip_untested_check=skip_untested_check,
     )
-    if not report.files_changed:
+    if not report.files_changed and not report.errors:
         return ""
 
     net_sign = "+" if report.net_lines >= 0 else ""

@@ -163,7 +163,7 @@ gh pr view task/<task_id> --json state,reviewDecision,mergeable
 4. **Polling lag is normal.** GitHub-side changes (merge, close, comments) are picked up by
    the 30s dispatch cycle — a few cycles of delay is expected, not a bug.
 5. **Retry budgets are small by design** (`3` for precommit / worker / conflict,
-   `2` review rounds per commit). A task that exhausts one moves to `blocked` — that is the
+   `2` review rounds per PR). A task that exhausts one moves to `blocked` — that is the
    system asking for a human, not a hang.
 
 ---

@@ -5,8 +5,10 @@ from pathlib import Path
 
 from dispatcher.context_builder import digest_reviewer_git_context
 from dispatcher.slop_gate import (
+    DEFAULT_MAX_DIFF_LINES,
     analyze_workspace_diff,
     build_diff_hygiene_scorecard,
+    extract_do_not_touch_patterns,
     is_dependency_file,
     is_test_file,
     run_deterministic_slop_gate,
@@ -117,10 +119,142 @@ def test_slop_gate_optional_diff_budget(tmp_path: Path, monkeypatch):
     (repo / "big.py").write_text("\n".join(f"x_{i} = {i}" for i in range(30)) + "\n")
     monkeypatch.setenv("ZEROFACTORY_MAX_DIFF_LINES", "20")
 
-    passed, msg, code = run_deterministic_slop_gate(repo, target_branch="main")
+    passed, msg, code = run_deterministic_slop_gate(
+        repo, target_branch="main", skip_untested_check=True
+    )
     assert passed is False
     assert code == 1
     assert "[diff_budget_exceeded]" in msg
+
+    # Setting ZEROFACTORY_MAX_DIFF_LINES=0 disables the hard diff cap
+    monkeypatch.setenv("ZEROFACTORY_MAX_DIFF_LINES", "0")
+    passed_unbounded, _, _ = run_deterministic_slop_gate(
+        repo, target_branch="main", skip_untested_check=True
+    )
+    assert passed_unbounded is True
+
+    # Default cap (800 net lines) applies when ZEROFACTORY_MAX_DIFF_LINES is unset
+    monkeypatch.delenv("ZEROFACTORY_MAX_DIFF_LINES", raising=False)
+    assert DEFAULT_MAX_DIFF_LINES == 800
+    (repo / "big.py").write_text("\n".join(f"x_{i} = {i}" for i in range(805)) + "\n")
+    passed_default, msg_default, _ = run_deterministic_slop_gate(
+        repo, target_branch="main", skip_untested_check=True
+    )
+    assert passed_default is False
+    assert "[diff_budget_exceeded]" in msg_default
+
+
+def test_slop_gate_do_not_touch_violation(tmp_path: Path):
+    spec = (
+        "## Implementation Plan\n"
+        "- Update `app.py`\n\n"
+        "## Do Not Touch / Non-Goals\n"
+        "- Do not modify `dispatcher/state_machine.py` or `dashboard/dist/*`.\n"
+        "- Keep `package-lock.json` untouched.\n\n"
+        "## Verification\n"
+        "- Run `pytest -v`\n"
+    )
+    patterns = extract_do_not_touch_patterns(spec)
+    assert "dispatcher/state_machine.py" in patterns
+    assert "dashboard/dist/*" in patterns
+    assert "package-lock.json" in patterns
+    assert "pytest -v" not in patterns
+
+    repo = _init_repo(tmp_path)
+    # Modify an excluded path (dashboard/dist/index.js) and a regular forbidden path
+    (repo / "dashboard" / "dist").mkdir(parents=True)
+    (repo / "dashboard" / "dist" / "index.js").write_text("console.log('touched');\n")
+    (repo / "dispatcher").mkdir()
+    (repo / "dispatcher" / "state_machine.py").write_text("X = 1\n")
+
+    passed, msg, code = run_deterministic_slop_gate(
+        repo, target_branch="main", spec_text=spec
+    )
+    assert passed is False
+    assert code == 1
+    assert "[do_not_touch_violation] dashboard/dist/index.js" in msg
+    assert "[do_not_touch_violation] dispatcher/state_machine.py" in msg
+
+
+def test_slop_gate_assertion_free_and_mock_heavy_tests(tmp_path: Path):
+    repo = _init_repo(tmp_path)
+    # Add an assertion-free Python test function and a mock-heavy test function
+    (repo / "tests" / "test_new.py").write_text(
+        "from unittest.mock import MagicMock, patch\n\n"
+        "def test_no_assert():\n"
+        "    x = 1 + 1\n"
+        "    # comment only, no assert\n\n"
+        "def test_heavy_mocks():\n"
+        "    m1 = MagicMock()\n"
+        "    m2 = MagicMock()\n"
+        "    m3 = MagicMock()\n"
+        "    m4 = MagicMock()\n"
+        "    assert m1 is not None\n"
+    )
+    # Also add an assertion-free JS test
+    (repo / "tests" / "ui.test.js").write_text(
+        "test('renders without crashing', () => {\n"
+        "  const el = document.createElement('div');\n"
+        "});\n"
+    )
+
+    passed, msg, code = run_deterministic_slop_gate(repo, target_branch="main")
+    assert passed is False
+    assert code == 1
+    assert "[assertion_free_test] tests/test_new.py:3" in msg
+    assert "[assertion_free_test] tests/ui.test.js:1" in msg
+
+    # Fix assertions and commit to verify mock_heavy_test warning in scorecard
+    (repo / "tests" / "test_new.py").write_text(
+        "from unittest.mock import MagicMock\n\n"
+        "def test_heavy_mocks():\n"
+        "    m1 = MagicMock()\n"
+        "    m2 = MagicMock()\n"
+        "    m3 = MagicMock()\n"
+        "    m4 = MagicMock()\n"
+        "    assert m1 is not None\n"
+    )
+    (repo / "tests" / "ui.test.js").unlink()
+    subprocess.run(["git", "add", "."], cwd=str(repo), check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "test: add mock heavy test"],
+        cwd=str(repo),
+        check=True,
+        capture_output=True,
+    )
+
+    scorecard = build_diff_hygiene_scorecard(repo, target_branch="main")
+    assert "[mock_heavy_test]" in scorecard
+    assert "4 mocks vs 1 assertions" in scorecard
+
+
+def test_slop_gate_untested_production_diff(tmp_path: Path, monkeypatch):
+    repo = _init_repo(tmp_path)
+    # Docs-only change (>20 lines) does NOT trigger untested_production_diff
+    (repo / "README.md").write_text("\n".join(f"Doc line {i}" for i in range(30)) + "\n")
+    passed_docs, _, _ = run_deterministic_slop_gate(repo, target_branch="main")
+    assert passed_docs is True
+
+    # >20 net lines of production Python code with 0 test lines triggers untested_production_diff
+    (repo / "service.py").write_text(
+        "\n".join(f"def fn_{i}(): return {i}" for i in range(25)) + "\n"
+    )
+    passed_prod, msg_prod, _ = run_deterministic_slop_gate(repo, target_branch="main")
+    assert passed_prod is False
+    assert "[untested_production_diff]" in msg_prod
+
+    # Explicit task metadata skip_untested_check=True bypasses the check
+    passed_skip, _, _ = run_deterministic_slop_gate(
+        repo, target_branch="main", skip_untested_check=True
+    )
+    assert passed_skip is True
+
+    # Adding a test with an assertion satisfies the check
+    (repo / "tests" / "test_service.py").write_text(
+        "from service import fn_0\n\ndef test_fn_0():\n    assert fn_0() == 0\n"
+    )
+    passed_tested, _, _ = run_deterministic_slop_gate(repo, target_branch="main")
+    assert passed_tested is True
 
 
 def test_scorecard_surfaces_warnings_and_truncation(tmp_path: Path):

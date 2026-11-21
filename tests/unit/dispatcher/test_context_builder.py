@@ -189,6 +189,14 @@ def test_digest_reviewer_git_context_diff_limits(tmp_path: Path):
     assert "diff truncated for token efficiency" in ctx_truncated
     assert "Truncated Preview" in ctx_truncated
 
+    # Forwarding spec_text and skip_untested_check works cleanly
+    spec = "## Do Not Touch\n- Do not touch `medium.py`\n"
+    ctx_dnt = digest_reviewer_git_context(
+        repo, target_branch="main", spec_text=spec, skip_untested_check=True
+    )
+    assert "[do_not_touch_violation]" in ctx_dnt
+    assert "[untested_production_diff]" not in ctx_dnt
+
 
 def test_digest_board_architecture_context(tmp_path: Path):
     """Verify system architecture notes and multi-repo topology extraction."""

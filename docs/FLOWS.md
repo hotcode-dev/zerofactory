@@ -104,7 +104,7 @@ Zero Factory organizes work into **Project Boards** that contain one or more equ
 | `worker_failure_retries`, `last_worker_failure` | reaper | Crash/timeout retry budget (`DEFAULT_MAX_WORKER_RETRIES = 3`) |
 | `precommit_retries`, `last_precommit_error` | `_handle_precommit_failure` | Precommit gate retry budget (max 3) |
 | `conflict_retries` | conflict handlers | Merge-conflict retry budget (`ZEROFACTORY_MAX_CONFLICT_RETRIES = 3`) |
-| `processed_review_comment_ids`, `last_reviewed_commit`, `commit_review_count`, `review_cap_reached` | step-3 review routing | Review-round bookkeeping, per commit SHA |
+| `processed_review_comment_ids`, `last_reviewed_commit`, `review_round`, `commit_review_count`, `review_cap_reached` | step-3 review routing | Review-round bookkeeping, cumulative per PR across rework commits (reset on human `recover`) |
 | `permanently_blocked`, `blocked_reason` | reaper / dispatcher | Hard-stop marker + human-readable cause (display only) |
 | `blocked_reason_type` | `move_task` (from `block --reason <code>`), dispatcher | Canonical routing code — `changes-requested` / `approved` / `human-gate` / `stuck` (retry budget exhausted), matched exactly, never prose |
 | `awaiting_interview`, `last_interview_reply` | orchestrator grill flow | Human interview state |
@@ -225,10 +225,10 @@ Polls tasks matching: `pr_url` set and not `done`, OR `blocked` with a builder a
    - `CONFLICTING` → conflict resolution flow (unless a builder already resolved and is
      handing off — then fall through to packaging).
    - **`changes-requested` verdict (`blocked_reason_type`), `reviewDecision == CHANGES_REQUESTED`, or actionable PR review comments (`is_actionable_review_comment`)** → record comments (memory
-     auto-extraction runs here), bump `commit_review_count` (reset when the head SHA changes),
-     remove worktree, clear `blocked_reason` / `blocked_reason_type`, route back to builder: `todo` + `assignee=<PR author>` + review-comment
-     prompt block. Actionable review feedback from reviewers/humans overrides any prior `approved` status and unparks tasks back to `todo`. When `commit_review_count > ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**)
-     → escalate: `blocked` + `assignee=human` + `review_cap_reached`.
+     auto-extraction runs here), increment cumulative `review_round` across PR rework commits,
+     remove worktree, clear `blocked_reason` / `blocked_reason_type`, route back to builder on Round 1: `todo` + `assignee=<PR author>` + review-comment
+     prompt block. Actionable review feedback from reviewers/humans overrides any prior `approved` status and unparks tasks back to `todo`. When `review_round >= ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**)
+     → escalate: `blocked` + `assignee=human` + `review_cap_reached` (short-circuiting idempotently on subsequent poll cycles until recovered).
    - **`approved` verdict or `reviewDecision == APPROVED` (with no actionable comments)** → `blocked` +
      `assignee=human` ("Reviewer approved; awaiting human merge"). If late non-actionable comments arrive while already parked, they are forwarded to task comments idempotently without re-parking side effects.
 3. **Packaging fallback** (no PR yet, or `done`/`blocked` handoff): deterministic
@@ -303,7 +303,7 @@ sequenceDiagram
     R-->>D: block --reason changes-requested
     D->>B: session 3 — 🚨 review comments block (fresh session)
     B-->>D: move done -> packaging re-sync
-    D->>R: session 4 — re-review (round 2, per commit SHA)
+    D->>R: session 4 — re-review (round 2 of 2, cumulative per PR)
     R-->>D: block --reason approved
     D->>H: blocked + assignee=human — awaiting merge
     H->>GitHub: merge PR
@@ -344,12 +344,19 @@ flowchart LR
   `ZEROFACTORY_SKIP_SLOP_GATE=1`). Scans added `+` lines (including untracked files) and bounces
   hard violations back to `zf-builder` via `_handle_precommit_failure`: debugger leftovers
   (`breakpoint()`, `pdb.set_trace()`, `debugger;`), placeholder `TODO`/`FIXME`/`XXX`/`HACK`
-  comments in production code, skipped/disabled tests (`@pytest.mark.skip`, `.skip(`), and an
-  optional net-LOC cap (`ZEROFACTORY_MAX_DIFF_LINES`).
+  comments in production code, skipped/disabled tests (`@pytest.mark.skip`, `.skip(`), assertion-free
+  newly added test functions (`assertion_free_test`), untested production code additions exceeding
+  `+20` net lines with `0` test lines added (`untested_production_diff`, skippable via
+  `skip_untested_check` metadata or `ZEROFACTORY_SKIP_UNTESTED_CHECK=1`), spec `Do Not Touch` file
+  boundary violations (`do_not_touch_violation`, checked across all changed paths including
+  excluded globs), and a default 800-line net-LOC cap (`ZEROFACTORY_MAX_DIFF_LINES=800`, disabled
+  when set to `<= 0`).
 - **Diff Hygiene Scorecard** (`build_diff_hygiene_scorecard`): injected into `zf-reviewer`'s
-  pre-digested git context (`digest_reviewer_git_context`), reporting scope (`+LOC/-LOC`, files),
-  test line delta (flagging net test deletion), modified dependency manifests, lint/type
-  suppressors, silent `except: pass` blocks, and whether the inline diff preview was truncated.
+  pre-digested git context (`digest_reviewer_git_context`, default inline preview `400` lines /
+  `24,000` chars), reporting scope (`+LOC/-LOC`, files), test line delta (flagging net test
+  deletion and mock-overload warnings via `mock_heavy_test`), modified dependency manifests,
+  lint/type suppressors, silent `except: pass` blocks, and whether the inline diff preview was
+  truncated.
 - **Upstream Spec & Scanner Anti-Slop**: `zf-orchestrator` EGM specs and `zf-goldfish` audits
   require explicit **Existing Code to Reuse** and **Do Not Touch / Non-Goals** sections; idle
   improvement scanner runs (`dispatcher/scanner.py`) only file evidence-backed tasks (dead code,
@@ -400,7 +407,7 @@ are recorded as content without triggering a reroute; substantive critique immed
 |---|---|
 | `blocked_reason_type == changes-requested`, `reviewDecision == CHANGES_REQUESTED`, or actionable PR review comment(s) | `todo` + builder + 🚨 review-comment block (round counter++; unparks approved tasks) |
 | `blocked_reason_type == approved` or `reviewDecision == APPROVED` (no actionable comments) | `blocked` + `human` (awaiting merge; idempotent parking) |
-| `commit_review_count > 2` (per commit SHA; resets on new commits) | escalate `blocked` + `human` + `review_cap_reached` |
+| `review_round >= 2` (cumulative per PR across rework commits) | escalate `blocked` + `human` + `review_cap_reached` |
 | Non-actionable comments only (approval notes, builder notes, automated bot messages) | record comments only; no reroute |
 
 Review rounds are **themed** (round 1: correctness/tests/security/Ponytail gatekeeping;
@@ -536,7 +543,7 @@ the pinned test stack — the dispatcher's bare `python3` may lack project depen
 |---|---|---|---|
 | `zf-orchestrator` | triage, decomposition, grill-with-docs interviews, improvement scans | write/review code, mark tasks done | temp 0.0, 120 turns |
 | `zf-builder` | implementation, tests, conflict resolution, precommit fixes | git push/PR, review | temp 0.1, 90 turns, OpenWiki MCP |
-| `zf-reviewer` | themed PR review (≤2 rounds/commit), Ponytail gatekeeping, memory tips | merge, `--approve`, open PRs | temp 0.0, 60 turns |
+| `zf-reviewer` | themed PR review (≤2 rounds/PR), Ponytail gatekeeping, memory tips | merge, `--approve`, open PRs | temp 0.0, 60 turns |
 
 All three share the **Ponytail Ladder of Laziness** (7 rungs: YAGNI → reuse → stdlib → native
 runtime → installed deps → simple functions → minimum viable diff) via bundled skills.
@@ -555,7 +562,7 @@ runtime → installed deps → simple functions → minimum viable diff) via bun
 | `ZEROFACTORY_SKIP_PRECOMMIT` | unset | gate returns pass without running |
 | `ZEROFACTORY_PRECOMMIT_TIMEOUT_SECONDS` | `300` | gate hard timeout |
 | `ZEROFACTORY_MAX_PRECOMMIT_RETRIES` | `3` | self-heal retries before blocking |
-| `ZEROFACTORY_MAX_REVIEW_ROUNDS` | `2` | per-commit review rounds before human escalation |
+| `ZEROFACTORY_MAX_REVIEW_ROUNDS` | `2` | cumulative per-PR review rounds before human escalation |
 | `ZEROFACTORY_MAX_CONFLICT_RETRIES` | `3` | merge-conflict resolution attempts |
 | `ZEROFACTORY_TASK_TIMEOUT_SECONDS` | `3600` | max worker runtime |
 | (inactivity) | `900` | max silence before stuck |

@@ -19,6 +19,8 @@ def digest_reviewer_git_context(
     max_diff_lines: int = 400,
     max_diff_chars: int = 24000,
     target_branch: str | None = None,
+    spec_text: str | None = None,
+    skip_untested_check: bool = False,
 ) -> str:
     """Extract pre-digested commits, diffstat, and code diff for reviewer prompt.
 
@@ -41,47 +43,16 @@ def digest_reviewer_git_context(
     except Exception:
         return ""
 
+    from .slop_gate import (
+        EXCLUDED_DIFF_PATHSPECS,
+        _resolve_merge_base,
+        build_diff_hygiene_scorecard,
+    )
+
     default_branch = (target_branch or "").strip() or _d().get_default_branch(
         workspace_path
     )
-    base_ref = f"origin/{default_branch}"
-    try:
-        verify_remote = subprocess.run(
-            ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{base_ref}"],
-            cwd=str(workspace_path),
-            timeout=5,
-        )
-        if verify_remote.returncode != 0:
-            verify_local = subprocess.run(
-                [
-                    "git",
-                    "show-ref",
-                    "--verify",
-                    "--quiet",
-                    f"refs/heads/{default_branch}",
-                ],
-                cwd=str(workspace_path),
-                timeout=5,
-            )
-            base_ref = default_branch if verify_local.returncode == 0 else "HEAD~1"
-    except Exception:
-        base_ref = "HEAD~1"
-
-    # Find merge base between HEAD and base_ref
-    merge_base = base_ref
-    try:
-        mb_res = subprocess.run(
-            ["git", "merge-base", "HEAD", base_ref],
-            cwd=str(workspace_path),
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if mb_res.returncode == 0 and mb_res.stdout.strip():
-            merge_base = mb_res.stdout.strip()
-    except Exception:
-        pass
-
+    merge_base = _resolve_merge_base(workspace_path, target_branch=default_branch)
     diff_range = f"{merge_base}..HEAD" if merge_base else "HEAD~1..HEAD"
 
     # 1. Commit log on branch
@@ -99,16 +70,7 @@ def digest_reviewer_git_context(
     except Exception:
         pass
 
-    # Pathspec exclusions to avoid token explosion on auto-generated / lock / minified files
-    excluded_diff_pathspecs = [
-        ":!*.lock",
-        ":!*package-lock.json",
-        ":!*pnpm-lock.yaml",
-        ":!*yarn.lock",
-        ":!*.min.*",
-        ":!*.map",
-        ":!*.svg",
-    ]
+    excluded_diff_pathspecs = list(EXCLUDED_DIFF_PATHSPECS)
 
     # 2. Diffstat
     diffstat = ""
@@ -193,12 +155,12 @@ def digest_reviewer_git_context(
 
     scorecard = ""
     try:
-        from .slop_gate import build_diff_hygiene_scorecard
-
         scorecard = build_diff_hygiene_scorecard(
             workspace_path,
             target_branch=default_branch,
             is_diff_truncated=is_diff_truncated,
+            spec_text=spec_text,
+            skip_untested_check=skip_untested_check,
         )
     except Exception as e:
         _log.debug("build_diff_hygiene_scorecard failed: %s", e)

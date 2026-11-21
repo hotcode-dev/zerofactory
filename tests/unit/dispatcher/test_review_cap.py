@@ -322,16 +322,17 @@ class TestReviewCapPerCommit:
             assert meta["commit_review_count"] == 1
 
     def test_review_cap_escalation_after_two_rounds(self, tmp_path: Path):
-        """When 2 review rounds on the same commit are exceeded, task escalates to human review."""
+        """When Round 2 review requests changes, the 2-round per-PR cap is reached and escalates to human blocked."""
         db_path = tmp_path / "test.db"
         _init_test_db(db_path)
         lock_file = tmp_path / "dispatcher.lock"
 
-        # Task already had 2 review rounds on commit 'commit_sha_123'
+        # Task already completed Round 1 review on commit 'commit_sha_123'
         task_id = "t-cap-test"
         initial_meta = {
             "last_reviewed_commit": "commit_sha_123",
-            "commit_review_count": 2,
+            "review_round": 1,
+            "commit_review_count": 1,
             "processed_review_comment_ids": [],
             "blocked_reason_type": "changes-requested",
         }
@@ -355,10 +356,10 @@ class TestReviewCapPerCommit:
 
         fake_pr_data = {
             "state": "OPEN",
-            "reviewDecision": "",
+            "reviewDecision": "CHANGES_REQUESTED",
             "url": "https://github.com/acme/repo/pull/1",
             "mergeable": "MERGEABLE",
-            "headRefOid": "commit_sha_123",  # Same commit!
+            "headRefOid": "commit_sha_123",
         }
 
         fake_review_comment = [
@@ -367,7 +368,7 @@ class TestReviewCapPerCommit:
                 "type": "pr_comment",
                 "author": "zf-reviewer",
                 "state": "COMMENTED",
-                "body": "[AI:zf-reviewer] [Reviewer Feedback] Round 3: Still seeing issues on commit.",
+                "body": "[AI:zf-reviewer] [Reviewer Feedback] Round 2: Still seeing issues on commit.",
             }
         ]
 
@@ -398,6 +399,9 @@ class TestReviewCapPerCommit:
         ):
             res = run_dispatch_cycle(db_path)
             assert res["ok"] is True
+            # Second poll cycle with reviewDecision=CHANGES_REQUESTED and no new comments must short-circuit idempotently
+            res2 = run_dispatch_cycle(db_path)
+            assert res2["ok"] is True
 
         with sqlite3.connect(str(db_path)) as conn:
             conn.row_factory = sqlite3.Row
@@ -413,23 +417,26 @@ class TestReviewCapPerCommit:
 
             meta = json.loads(row["metadata"])
             assert meta["review_cap_reached"] is True
+            assert meta["review_round"] == 2
             assert (
                 "Review cap reached (2 rounds on commit commit_"
                 in meta["blocked_reason"]
             )
 
-            # Verify activity log
-            activity = conn.execute(
+            # Verify activity log was recorded exactly once (idempotent on subsequent poll cycles)
+            activities = conn.execute(
                 "SELECT action, details FROM task_activity WHERE task_id = ? AND action = 'review_cap_reached'",
                 (task_id,),
-            ).fetchone()
-            assert activity is not None
+            ).fetchall()
+            assert len(activities) == 1
             assert (
-                "Review cap reached (2 review rounds on commit)" in activity["details"]
+                "Review cap reached (2 review rounds on PR)" in activities[0]["details"]
             )
 
-    def test_new_commit_resets_review_count(self, tmp_path: Path):
-        """When builder pushes a new commit SHA, review count resets to 1 instead of escalating."""
+    def test_new_commit_cumulatively_hits_review_cap_and_recover_resets(
+        self, tmp_path: Path
+    ):
+        """When builder pushes a new commit SHA after Round 1, Round 2 critique increments cumulatively to 2 and escalates to Human blocked; recover resets the cap."""
         db_path = tmp_path / "test.db"
         _init_test_db(db_path)
         lock_file = tmp_path / "dispatcher.lock"
@@ -437,7 +444,8 @@ class TestReviewCapPerCommit:
         task_id = "t-new-commit"
         initial_meta = {
             "last_reviewed_commit": "old_commit_111",
-            "commit_review_count": 2,  # Was at 2 on old commit
+            "review_round": 1,
+            "commit_review_count": 1,  # Completed Round 1 on old commit
             "processed_review_comment_ids": [],
             "blocked_reason_type": "changes-requested",
         }
@@ -450,7 +458,7 @@ class TestReviewCapPerCommit:
                 """,
                 (
                     task_id,
-                    "feat: test new commit",
+                    "feat: test new commit cumulative cap",
                     json.dumps(initial_meta),
                     str(tmp_path / "wt2"),
                 ),
@@ -464,7 +472,7 @@ class TestReviewCapPerCommit:
             "reviewDecision": "",
             "url": "https://github.com/acme/repo/pull/2",
             "mergeable": "MERGEABLE",
-            "headRefOid": "new_commit_222",  # New commit!
+            "headRefOid": "new_commit_222",  # New commit pushed by builder!
         }
 
         fake_review_comment = [
@@ -473,7 +481,7 @@ class TestReviewCapPerCommit:
                 "type": "pr_comment",
                 "author": "zf-reviewer",
                 "state": "COMMENTED",
-                "body": "[AI:zf-reviewer] [Reviewer Feedback] Round 1 on new commit: Please fix typo.",
+                "body": "[AI:zf-reviewer] [Reviewer Feedback] Round 2 on new commit: Still broken.",
             }
         ]
 
@@ -511,13 +519,40 @@ class TestReviewCapPerCommit:
             row = conn.execute(
                 "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
             ).fetchone()
-            # Routes to builder for round 1 of new commit
-            assert row["assignee"] == "zf-builder"
-            assert row["status"] == "todo"
+            # Escalates to human blocked instead of resetting to 1 on the new commit SHA!
+            assert row["assignee"] == "human"
+            assert row["status"] == "blocked"
 
             meta = json.loads(row["metadata"])
             assert meta["last_reviewed_commit"] == "new_commit_222"
-            assert meta["commit_review_count"] == 1
+            assert meta["review_round"] == 2
+            assert meta["commit_review_count"] == 2
+            assert meta["review_cap_reached"] is True
+
+        # Recovering the task clears review_cap_reached and review_round
+        from dashboard.models import TaskRecoverRequest
+        from dashboard.routes.tasks import recover_task
+
+        with patch.dict(
+            os.environ,
+            {"ZEROFACTORY_DB": str(db_path), "ZEROFACTORY_SKIP_DISPATCHER": "1"},
+        ):
+            rec_res = recover_task(
+                task_id, TaskRecoverRequest(guidance="Fix edge case", actor="user")
+            )
+            assert rec_res["ok"] is True
+
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT status, assignee, metadata FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            assert row["status"] == "todo"
+            assert row["assignee"] == "zf-builder"
+            recovered_meta = json.loads(row["metadata"])
+            assert "review_cap_reached" not in recovered_meta
+            assert "review_round" not in recovered_meta
+            assert "commit_review_count" not in recovered_meta
 
     def test_builder_verification_note_does_not_bounce_task(self, tmp_path: Path):
         """Builder verification notes are recorded in comments but do not route task back to builder."""

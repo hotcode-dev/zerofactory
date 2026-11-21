@@ -2143,14 +2143,14 @@ var ZeroFactoryDashboard = (function(exports) {
 					title: "Precommit, Slop Gate & PR",
 					badge: "Running: packaging",
 					bcolor: "text-sky-100 bg-sky-900/90 border-sky-500/70",
-					desc: "Dispatcher runs .zerofactory/precommit.sh (format ➔ build ➔ tests) and the zero-token Anti-Slop Gate (blocking debuggers, placeholder comments, and skipped tests, up to 3 retries), merges latest main, pushes, and opens a GitHub PR (0 LLM tokens)."
+					desc: "Dispatcher runs .zerofactory/precommit.sh (format ➔ build ➔ tests) and the zero-token Anti-Slop Gate (blocking debuggers, placeholder comments, skipped or assertion-free tests, untested >20-line production diffs, Do Not Touch file edits, and >800-line diffs, up to 3 retries), merges latest main, pushes, and opens a GitHub PR (0 LLM tokens)."
 				},
 				{
 					num: "6",
 					title: "Thematic Review",
 					badge: "Running: review",
 					bcolor: "text-cyan-100 bg-cyan-900/90 border-cyan-500/70",
-					desc: "zf-reviewer inspects the pre-digested Diff Hygiene Scorecard and conducts up to 2 thematic rounds (Correctness & Tests ➔ Verification & Polish). Rework loops back to Todo (building); approval moves to Human."
+					desc: "zf-reviewer inspects the pre-digested Diff Hygiene Scorecard (including mock-overload warnings) and conducts up to 2 cumulative rounds per PR (Correctness & Tests ➔ Verification & Polish). Round 1 rework loops to Todo (building); unresolved Round 2 escalates to Human (blocked); approval moves to Human (awaiting_merge)."
 				},
 				{
 					num: "7",

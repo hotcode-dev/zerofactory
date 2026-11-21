@@ -1721,6 +1721,9 @@ def recover_task(task_id: str, req: TaskRecoverRequest | None = None):
         meta.pop("permanently_blocked", None)
         meta.pop("blocked_reason", None)
         meta.pop("blocked_reason_type", None)
+        meta.pop("review_cap_reached", None)
+        meta.pop("review_round", None)
+        meta.pop("commit_review_count", None)
         meta.pop("awaiting_pr", None)
         meta.pop("triage_phase", None)
         meta["last_recovered_at"] = now
