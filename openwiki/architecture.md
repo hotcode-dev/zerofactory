@@ -5,7 +5,7 @@ description: High-level map of the Zero Factory Hermes plugin — subsystem cont
 tags: [architecture, system-design, kanban, dispatcher, state-machine, persistence, hermes-plugin]
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-20T15:20:57.003Z
+    at: 2026-11-22T16:47:58.699Z
 sources:
   - id: openwiki-source-4942bcbe129130ccad2b7e2a
     resource: repo://__init__.py
@@ -45,7 +45,7 @@ sources:
     resource: repo://plugin.yaml
   - id: openwiki-source-57b14ecc6ef51ae6212b15f0
     resource: repo://settings.py
-generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
+generated: { by: "hermes", at: "2026-11-22T16:47:58.699Z" }
 ---
 
 # Zero Factory Architecture
@@ -152,13 +152,17 @@ subprocess with the worker's `HERMES_HOME` pinned to the profile's home
 directory (`--yolo --accept-hooks` are appended only when the
 `allow_unattended_approvals` setting is enabled), then correlates the new
 `session_id` against the profile's `state.db`
-(`repo://dispatcher/worker_spawner.py#L751-L790`). The prompt is pre-digested in Python before the agent wakes —
+(`repo://dispatcher/worker_spawner.py#L787-L862`). The prompt is pre-digested in Python before the agent wakes —
 `digest_reviewer_git_context` pre-computes the git log, diffstat, and a bounded
-diff so the reviewer does not burn turns on exploratory `git` calls
-(`repo://dispatcher/context_builder.py#L16`), and
+diff (default 400 lines / 24000 chars via `max_diff_lines` / `max_diff_chars`)
+so the reviewer does not burn turns on exploratory `git` calls; its
+merge-base resolution and lock/min-file exclusion pathspecs are shared with the
+anti-slop gate (`_resolve_merge_base`, `EXCLUDED_DIFF_PATHSPECS` in
+`repo://dispatcher/slop_gate.py`) and it embeds the diff-hygiene scorecard via
+`build_diff_hygiene_scorecard` (`repo://dispatcher/context_builder.py#L16`).
 `digest_board_memories_context` retrieves the most relevant Mem0/board-memory
 entries into the same prompt so agents do not repeat past mistakes
-(`repo://dispatcher/context_builder.py#L224`).
+(`repo://dispatcher/context_builder.py#L186`).
 
 ## Self-healing & autonomous recovery
 
@@ -257,18 +261,30 @@ reports completion the task deliberately stays `running` and is marked
 `metadata["awaiting_pr"] = true` — the *packaging phase* — during which the
 dispatcher runs the deterministic pipeline (precommit → anti-slop gate →
 commit → push → PR → route to reviewer) via `_package_and_open_pr`
-(`repo://dispatcher/scheduler.py#L1772`). After the precommit check, a
+(`repo://dispatcher/scheduler.py#L1784`). After the precommit check, a
 zero-token deterministic **anti-slop gate** (`run_deterministic_slop_gate` in
-`repo://dispatcher/slop_gate.py#L467`, wired in at
-`repo://dispatcher/scheduler.py#L1920`) blocks leftover debuggers,
-placeholder `TODO`/`FIXME` comments, and skipped tests, plus an optional
-`ZEROFACTORY_MAX_DIFF_LINES` budget; a failure routes back through
-`_handle_precommit_failure`, and its `build_diff_hygiene_scorecard`
-(`repo://dispatcher/slop_gate.py#L505`) is pre-digested into the `zf-reviewer`
+`repo://dispatcher/slop_gate.py#L736`, wired in at
+`repo://dispatcher/scheduler.py#L1962-L1993`) blocks leftover debuggers,
+placeholder `TODO`/`FIXME`/`XXX`/`HACK` comments, and skipped tests; it also
+raises an error on assertion-free newly added test functions, on production
+code adding more than 20 net lines (`DEFAULT_UNTESTED_PROD_LINE_THRESHOLD`)
+without any test lines (overridable per task via the `skip_untested_check`
+metadata flag or the `ZEROFACTORY_SKIP_UNTESTED_CHECK` env var), and on any
+modification of files named in the task spec's "Do Not Touch" / "Non-Goals"
+section (`extract_do_not_touch_patterns` / `_matches_do_not_touch`,
+`repo://dispatcher/slop_gate.py#L150-L209`); the net-line budget
+(`diff_budget_exceeded`) now defaults to 800 lines
+(`DEFAULT_MAX_DIFF_LINES`, `repo://dispatcher/slop_gate.py#L111-L114`) and is
+overridden by `ZEROFACTORY_MAX_DIFF_LINES` (≤ 0 disables it). The gate is
+invoked with the resolved board target branch plus the task's spec/description
+text so spec boundaries are enforced even on paths excluded from the diff. A
+failure routes back through `_handle_precommit_failure`, and the gate's
+`build_diff_hygiene_scorecard`
+(`repo://dispatcher/slop_gate.py#L778`) is pre-digested into the `zf-reviewer`
 prompt. Only a terminal event (a human closing the task, a merged PR, an
 auto-merge, or a PR archive via `close_pr`) clears the flag and finalizes the
 task through `_finalize_terminal_done`, which never commits, pushes, or
-re-opens review (`repo://dispatcher/scheduler.py#L2370`). Blocked tasks carry a
+re-opens review (`repo://dispatcher/scheduler.py#L2390`). Blocked tasks carry a
 canonical `metadata["blocked_reason_type"]` classified by
 `normalize_blocked_reason_type` into `changes-requested`, `approved`,
 `human-gate`, or `stuck` (stamped by the dispatcher when a retry budget is
@@ -307,15 +323,15 @@ conversation).
 The release gate is human-only. `POST /tasks/{id}/approve` (or `hermes
 zerofactory approve <task_id> [--split]`) promotes a single-repo task to
 `todo` or splits a multi-repo one into linked `todo` children
-(`repo://dashboard/routes/tasks.py#L2114`); `POST /tasks/{id}/reject`
+(`repo://dashboard/routes/tasks.py#L2118-L2119`); `POST /tasks/{id}/reject`
 (or `hermes zerofactory reject <task_id> --feedback "..."`) bumps
 `revision_count` and routes the spec back to `zf-orchestrator` in
 `elephant_drafting` — at most 2 revision rounds, after which the task is
 blocked for a human with `blocked_reason_type = "human-gate"`
-(`repo://dashboard/routes/tasks.py#L2189`); rejecting also auto-records the
+(`repo://dashboard/routes/tasks.py#L2192-L2193`); rejecting also auto-records the
 human's feedback as a `rejected_path` board memory so future runs avoid the
-same mistake (`repo://dashboard/routes/tasks.py#L2225`). The full protocol is
-documented in `repo://docs/sequential_egm_triage.md`.
+same mistake (`repo://dashboard/routes/tasks.py#L2226-L2227`). The full protocol is
+documented in `repo://docs/designs/sequential_egm_triage.md`.
 
 ## Session-per-handoff model
 

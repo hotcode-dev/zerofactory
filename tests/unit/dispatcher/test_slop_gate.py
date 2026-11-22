@@ -231,7 +231,9 @@ def test_slop_gate_assertion_free_and_mock_heavy_tests(tmp_path: Path):
 def test_slop_gate_untested_production_diff(tmp_path: Path, monkeypatch):
     repo = _init_repo(tmp_path)
     # Docs-only change (>20 lines) does NOT trigger untested_production_diff
-    (repo / "README.md").write_text("\n".join(f"Doc line {i}" for i in range(30)) + "\n")
+    (repo / "README.md").write_text(
+        "\n".join(f"Doc line {i}" for i in range(30)) + "\n"
+    )
     passed_docs, _, _ = run_deterministic_slop_gate(repo, target_branch="main")
     assert passed_docs is True
 

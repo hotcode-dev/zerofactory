@@ -24,10 +24,10 @@ sources:
     resource: repo://README.md
   - id: openwiki-source-f0a6e7dc03522b2682f88655
     resource: repo://tests/conftest.py
-generated: { by: "hermes", at: "2026-11-20T15:20:57.003Z" }
+generated: { by: "hermes", at: "2026-11-22T15:24:22.005Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-20T15:20:57.003Z
+    at: 2026-11-22T15:24:22.005Z
 ---
 
 # Quickstart
@@ -109,14 +109,20 @@ If the gate fails, the dispatcher re-spawns `zf-builder` with the exact error
 output (up to 3 precommit retries) before the work may become a PR.
 
 After precommit passes, the packaging phase runs a second zero-token gate —
-the deterministic **anti-slop gate**
-(`repo://dispatcher/slop_gate.py#L467-L504`): it blocks leftover debugger
-statements (`breakpoint()`, `pdb.set_trace()`, `import pdb`, `debugger;`),
-unresolved `TODO`/`FIXME`/`XXX`/`HACK` placeholder comments, and skipped
-tests; enforces an optional net-line budget via `ZEROFACTORY_MAX_DIFF_LINES`;
-and flags large diffs, net test-line deletions, dependency-manifest changes,
-and new lint/type suppressors as warnings. Its compact diff-hygiene scorecard
-(`repo://dispatcher/slop_gate.py#L505`) is pre-digested into the `zf-reviewer`
+the deterministic **anti-slop gate** (wired into `_package_and_open_pr` with the
+resolved board target branch, the task's spec/description text, and a
+`skip_untested_check` flag; `repo://dispatcher/scheduler.py#L1962-L1993`): it
+blocks leftover debugger statements (`breakpoint()`, `pdb.set_trace()`,
+`import pdb`, `debugger;`), unresolved `TODO`/`FIXME`/`XXX`/`HACK` placeholder
+comments, skipped tests, assertion-free newly added test functions, production
+diffs that add more than 20 net lines with zero test lines, and modifications of
+files named in the task spec's "Do Not Touch" / "Non-Goals" section
+(`repo://dispatcher/slop_gate.py#L736-L776`); enforces a net-line budget that
+defaults to 800 lines (`DEFAULT_MAX_DIFF_LINES`, overridable via
+`ZEROFACTORY_MAX_DIFF_LINES`, ≤ 0 disables); and flags large diffs, net
+test-line deletions, dependency-manifest changes, new lint/type suppressors, and
+mock-heavy test additions as warnings. Its compact diff-hygiene scorecard
+(`repo://dispatcher/slop_gate.py#L778`) is pre-digested into the `zf-reviewer`
 prompt so review starts from a quantitative diff summary. Violations re-spawn
 `zf-builder` within the same 3-retry budget before any commit or PR is
 authored.
