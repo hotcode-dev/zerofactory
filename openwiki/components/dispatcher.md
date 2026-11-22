@@ -4,6 +4,8 @@ title: Dispatch Engine
 description: The dispatcher subsystem — the centralized 13-stage task state machine, the run_dispatch_cycle lifecycle (in-dispatcher improvement scanner, autonomous recovery routing), multi-repo isolated Git worktrees, worker spawning with a spawn-grace period, the deterministic precommit self-healing gate plus the zero-token anti-slop diff gate, git/PR ops incl. the packaging-failure retry budget and the HTTPS-to-SSH push fallback, the per-commit review cap, automerge, and the WAL-tolerant stuck-worker reaper.
 tags: [dispatcher, dispatch-loop, state-machine, git-worktree, worker-spawning, precommit, anti-slop, github-pr, reaper, self-healing, multi-repo, automerge, spawn-grace, recovery]
 sources:
+  - id: openwiki-source-c705147b9966f3d6f300034a
+    resource: repo://dashboard/routes/tasks.py
   - id: openwiki-source-78d773f851580c376cac002d
     resource: repo://dispatcher/config.py
   - id: openwiki-source-5e3b047b4a47ae6a59b90052
@@ -24,10 +26,10 @@ sources:
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-bd2c9dd479aa89010adee0f5
     resource: repo://dispatcher/worktree.py
-generated: { by: "hermes", at: "2026-11-21T15:11:19.395Z" }
+generated: { by: "hermes", at: "2026-11-22T15:24:22.005Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-21T15:11:19.395Z
+    at: 2026-11-22T15:24:22.005Z
 ---
 
 # Dispatch Engine
@@ -157,27 +159,39 @@ and launches a **detached** subprocess with `stdin=DEVNULL`,
 `start_new_session=True`,
 and `stderr=STDOUT` merged into the worker log, pinning `HERMES_HOME` to the
 profile's home so the worker is fully isolated
-(`repo://dispatcher/worker_spawner.py#L782-L798`). It then correlates the new
+(`repo://dispatcher/worker_spawner.py#L793-L804`). It then correlates the new
 `session_id` against the profile's `state.db` via `resolve_profile_state_db`
 (shared from `paths.py`) so the dashboard and dispatcher agree on which session
-a task owns (`repo://dispatcher/worker_spawner.py#L800-L847`). The spawn
+a task owns (`repo://dispatcher/worker_spawner.py#L805-L855`). The spawn
 command is `--cli chat -q <prompt>`; `--yolo --accept-hooks` are appended only
 when the `allow_unattended_approvals` setting is enabled
-(`repo://dispatcher/worker_spawner.py#L754-L757`).
+(`repo://dispatcher/worker_spawner.py#L764-L767`).
+
+For `zf-reviewer` specifically, the spawn resolves the target branch
+repo-alias-aware (`board_repositories` by `(board_slug, repo_alias)`, falling
+back to the board's first repository row) and injects a
+`Review Round: Round X of Y` header into the prompt so the reviewer knows its
+position in the review budget before escalating
+(`repo://dispatcher/worker_spawner.py#L238-L281`).
 
 Prompt context is **pre-digested in Python** before the agent wakes:
 `digest_reviewer_git_context` pre-computes the git log, diffstat, and a bounded
-diff so the reviewer spends tokens on review, not on `git` exploration
-(`repo://dispatcher/context_builder.py#L16-L222`), and
+diff (default 400 lines / 24000 chars) so the reviewer spends tokens on review,
+not on `git` exploration
+(`repo://dispatcher/context_builder.py#L16-L183`), and
 `digest_board_memories_context` injects the most relevant Mem0/board-memory
-entries into the same prompt (`repo://dispatcher/context_builder.py#L224`). The
-reviewer prompt instructs a **Ponytail anti-overengineering review** (diff
-hygiene, dependency veto, YAGNI) and submission via `gh pr review --comment` —
-not `--approve` / `--request-changes`, which GitHub blocks for the author's own
-token — with `[AI:zf-reviewer]`-tagged comments; the builder prompt likewise
-tags its GitHub output `[AI:zf-builder]`
-(`repo://dispatcher/worker_spawner.py#L288-L290`,
-`repo://dispatcher/worker_spawner.py#L693-L717`).
+entries into the same prompt (`repo://dispatcher/context_builder.py#L186`).
+The reviewer digest also receives `spec_text` (the task's specification or
+description) and `skip_untested_check` so the embedded diff-hygiene scorecard
+applies the same Do Not Touch / untested-production boundaries as the
+packaging gate. The reviewer prompt instructs a **Ponytail
+anti-overengineering review** (diff hygiene, dependency veto, YAGNI) and
+submission via `gh pr review --comment` — not `--approve` /
+`--request-changes`, which GitHub blocks for the author's own token — with
+`[AI:zf-reviewer]`-tagged comments (the attribution example interpolates the
+live round number); the builder prompt likewise tags its GitHub output
+`[AI:zf-builder]` (`repo://dispatcher/worker_spawner.py#L322-L323`,
+`repo://dispatcher/worker_spawner.py#L713`).
 
 ## Deterministic precommit + self-healing retry
 
@@ -209,17 +223,29 @@ after one orchestrator diagnostic attempt escalates to a human.
 
 After precommit passes, the packaging phase runs the **zero-token deterministic
 anti-slop gate** (`run_deterministic_slop_gate` in
-`repo://dispatcher/slop_gate.py#L467`, wired in at
-`repo://dispatcher/scheduler.py#L1920`) before any commit/PR is authored. It
-scans the full diff for leftover debugger statements, unresolved
-`TODO`/`FIXME`/`XXX`/`HACK` placeholder comments, and skipped tests — any
-violation is an error that blocks packaging and re-spawns the builder with the
-exact findings (routing back through `_handle_precommit_failure`, sharing the
-same retry budget). It also enforces an optional net-line budget via the
-`ZEROFACTORY_MAX_DIFF_LINES` environment variable and flags large diffs, net
-test-line deletions, dependency-manifest changes, and newly added lint/type
-suppressors as warnings. The gate's compact markdown
-(`build_diff_hygiene_scorecard`, `repo://dispatcher/slop_gate.py#L505`) is
+`repo://dispatcher/slop_gate.py#L736`, wired in at
+`repo://dispatcher/scheduler.py#L1962-L1993`) before any commit/PR is authored.
+It is invoked with the resolved board target branch plus the task's spec/description
+text (`spec_text`) and a `skip_untested_check` flag so spec-level boundaries apply
+even to paths excluded from the diff. It scans the full diff for leftover debugger
+statements, unresolved `TODO`/`FIXME`/`XXX`/`HACK` placeholder comments, and skipped
+tests — any violation is an error that blocks packaging and re-spawns the builder with
+the exact findings (routing back through `_handle_precommit_failure`, sharing the same
+retry budget). It additionally errors on assertion-free newly added test functions
+(`assertion_free_test`), on production code that adds more than 20 net lines
+(`DEFAULT_UNTESTED_PROD_LINE_THRESHOLD`) without any test lines
+(`untested_production_diff`, skippable per task via `skip_untested_check` or the
+`ZEROFACTORY_SKIP_UNTESTED_CHECK` env var), and on modifications of files named in the
+task spec's "Do Not Touch" / "Non-Goals" section
+(`extract_do_not_touch_patterns` / `_matches_do_not_touch`,
+`repo://dispatcher/slop_gate.py#L150-L209`). The net-line budget
+(`diff_budget_exceeded`) now defaults to **800** lines
+(`DEFAULT_MAX_DIFF_LINES`, `repo://dispatcher/slop_gate.py#L111-L114`) and is
+overridden by `ZEROFACTORY_MAX_DIFF_LINES` (≤ 0 disables it). Large diffs, net
+test-line deletions, dependency-manifest changes, and newly added lint/type suppressors
+remain warnings, and mock-heavy test additions (≥ 4 mocks with more mocks than
+assertions) are flagged as a `mock_heavy_test` warning. The gate's compact markdown
+(`build_diff_hygiene_scorecard`, `repo://dispatcher/slop_gate.py#L778`) is
 pre-digested into the `zf-reviewer` prompt so review starts from a quantitative
 diff summary rather than a raw diff.
 
@@ -231,7 +257,7 @@ task is still `running`,
 marked by `metadata["awaiting_pr"] = true` (set by the dashboard `move_task`
 when an agent actor reports completion, and by the reaper when it observes a
 worker exit mid-package). `_package_and_open_pr`
-(`repo://dispatcher/scheduler.py#L1772-L2368`) is the single owner of that
+(`repo://dispatcher/scheduler.py#L1784-L2387`) is the single owner of that
 phase; it is idempotent and re-runs on the next cycle until it succeeds.
 The phase also carries its own failure budget: any git/PR command failure
 (including timeouts) routes to `_handle_packaging_failure`, which increments
@@ -240,11 +266,11 @@ The phase also carries its own failure budget: any git/PR command failure
 parks the task in `blocked` with `blocked_reason_type = "stuck"`, assignee
 `human`, a dispatcher comment, and a `packaging_failed` activity entry,
 instead of looping the packaging step forever
-(`repo://dispatcher/scheduler.py#L1721-L1770`). The `recover` endpoint and
+(`repo://dispatcher/scheduler.py#L1733-L1781`). The `recover` endpoint and
 `build_stuck_task_context` both surface/reset these counters
-(`repo://dashboard/routes/tasks.py#L1678-L1792`,
+(`repo://dashboard/routes/tasks.py#L1678-L1775`,
 `repo://dispatcher/reaper.py#L982-L1065`). When a task is closed terminally by a human or by a merged PR,
-`_finalize_terminal_done` (`repo://dispatcher/scheduler.py#L2370-L2436`) only
+`_finalize_terminal_done` (`repo://dispatcher/scheduler.py#L2390-L2454`) only
 cleans up — stopping any stale worker, pruning the worktree, and, when
 `close_pr` is set, closing the open PR and deleting the remote branch so
 GitHub matches the board. It never commits, pushes, opens a PR, or routes the
@@ -283,14 +309,22 @@ ops).
   stops the worker, prunes the worktree and remote branch, and moves the task
   to `done` directly; on failure it parks the task for a human
   (`repo://dispatcher/scheduler.py#L1596-L1650`).
-- **Per-commit review cap** — when a reviewer's actionable comments route a task
-  back to the builder, the dispatcher tracks `commit_review_count` in task
-  metadata keyed to the PR's `headRefOid` (reset to 0 whenever the head commit
-  changes, so a new commit restarts the round budget). The cap is
-  `ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**): exceeding it sets
-  `review_cap_reached` and `blocked_reason_type = "human-gate"`, assigns the
-  task to `human`, and moves it to `blocked` instead of looping builder ↔
-  reviewer forever (`repo://dispatcher/scheduler.py#L1447-L1480`).
+- **Per-PR review cap** — when a reviewer's actionable comments route a task
+  back to the builder, the dispatcher increments `review_round` in task
+  metadata (written alongside the legacy `commit_review_count` for
+  compatibility). The counter is a **per-PR** round count and is *not* reset
+  when the PR head commit changes, so each new commit does not restart the
+  budget. The cap is `ZEROFACTORY_MAX_REVIEW_ROUNDS` (default **2**): once
+  `review_round >= max` the dispatcher sets `review_cap_reached` and
+  `blocked_reason_type = "human-gate"`, assigns the task to `human`, and moves
+  it to `blocked` instead of looping builder ↔ reviewer forever. Once
+  `review_cap_reached` is set, subsequent polls of that blocked/human task
+  early-return when no new PR comments have arrived, so the cap is applied exactly
+  once (`repo://dispatcher/scheduler.py#L1437-L1483`,
+  `repo://dispatcher/scheduler.py#L1344-L1351`). The `recover` endpoint clears
+  `review_cap_reached`, `review_round`, and `commit_review_count`, giving a
+  human-recovered task a fresh round budget
+  (`repo://dashboard/routes/tasks.py#L1724-L1726`).
 - **External-issue PR linkage** — when a task carries `external_issue` metadata
   (see [External Issue Import](/openwiki/components/issues-importer.md)), the
   PR body the dispatcher opens appends `Fixes #<n>` for GitHub issues (a legacy

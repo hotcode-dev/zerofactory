@@ -90,22 +90,19 @@ _RE_DNT_HEADER = re.compile(
     re.IGNORECASE,
 )
 _RE_SECTION_END = re.compile(r"^\s*(?:#{1,4}\s+\S|\*\*[A-Z][^*\n]+?\*\*:?)")
-_DNT_FILE_EXTS = (
-    tuple(CODE_EXTENSIONS)
-    + (
-        ".md",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".toml",
-        ".css",
-        ".html",
-        ".sql",
-        ".lock",
-        ".cfg",
-        ".ini",
-        ".txt",
-    )
+_DNT_FILE_EXTS = tuple(CODE_EXTENSIONS) + (
+    ".md",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".css",
+    ".html",
+    ".sql",
+    ".lock",
+    ".cfg",
+    ".ini",
+    ".txt",
 )
 
 DEFAULT_WARN_NET_LINES = 400

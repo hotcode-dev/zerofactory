@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:52f99183a27785468f8a73af5beadb30dcfc135ef89621ddc2b2457ac4d76c1b",
+  "pageVersion": "sha256:b1bffd7c69bc51e9bca6c4ea92a71255f6f8766e570cbaec06ddc308f471b60b",
   "claims": [
     {
       "id": "claim_80cf282ecc34488f9bf7da2c69151cc1",
@@ -34,11 +34,11 @@
     },
     {
       "id": "claim_977216a210934faa92eaa6897f799d6e",
-      "statement": "Agent prompts are pre-digested in Python before the agent wakes: digest_reviewer_git_context pre-computes the git log, diffstat, and a bounded diff (max 100 lines / 4000 chars) so the reviewer avoids exploratory git tool calls.",
+      "statement": "Agent prompts are pre-digested in Python before the agent wakes: digest_reviewer_git_context pre-computes the git log, diffstat, and a bounded diff (default 400 lines / 24000 chars via max_diff_lines / max_diff_chars) so the reviewer avoids exploratory git tool calls; its merge-base resolution and lock/min-file exclusion pathspecs are shared with the anti-slop gate (_resolve_merge_base, EXCLUDED_DIFF_PATHSPECS in dispatcher/slop_gate.py), and it embeds the diff-hygiene scorecard via build_diff_hygiene_scorecard.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/context_builder.py#L15-L88",
-          "version": "repo-lines-v1:sha256:9ad410f118872d399ae9ee11510c1d1d9dd64869b74ecd7647ab979253d77b56:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhZmE0NTJjMjk2MjgyMDAwMzE3YzY3YTk4Y2ZmMDRjZjhhMWFiNzU5NmNkZjk0ZDYxOGMwZGM5MDM5ZWM3NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYTVjNjZlMTdiMTQ1Mzk3ODM0YjhjODU0ZGM0MTkzZTIxMjUxODBhODk5NmExNGMzMTg4MzMyNmIyZWZiY2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxNmJkMWRhZWY5OTBhOTU2YzkxNTYzYWUxMmMxM2QxNzMwNzAxNzdmYTY4NDE3ZGI2YjQxODdmNzU3MTRkNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1N2ViMmUxN2MyOGMyMjYzMTg2NzIyZDVhNWU4NDdhY2YyNzdhYWZmYjEzMDlmZDE0OTE5NGUwZDJiNTI5ZDgifQ"
+          "resource": "repo://dispatcher/context_builder.py#L16-L56",
+          "version": "repo-lines-v1:sha256:a47b954c8e15b5f673e9839f3bdc69d93089b472174c5b70545684f12713bf3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhZmE0NTJjMjk2MjgyMDAwMzE3YzY3YTk4Y2ZmMDRjZjhhMWFiNzU5NmNkZjk0ZDYxOGMwZGM5MDM5ZWM3NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyN2U0MTdhYWQ0MWQwY2E0MTNlYTM3ZWU5NWIwNjI5MjJlNzAwN2U4N2RmZGE1MGU0MGFmODcxN2I1MGFhNjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxNmJkMWRhZWY5OTBhOTU2YzkxNTYzYWUxMmMxM2QxNzMwNzAxNzdmYTY4NDE3ZGI2YjQxODdmNzU3MTRkNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2MDY3NTEzMDhhMWFhYmY5N2UwZWVjMzkxZmFkMzFiNDgyNWJmYWYxNjAwNjE0M2IwYmM3MDE3MjQwNzk2N2QifQ"
         }
       ]
     },
@@ -85,12 +85,12 @@
       "statement": "The system follows a session-per-handoff model: each handoff (implementation → review → changes-requested) spawns a new agent session for the next profile with a pre-digested current delta rather than the full implementation history, keeping context windows small and token cost flat across review rounds.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/context_builder.py#L16-L222",
-          "version": "repo-lines-v1:sha256:6b7952c64d3789b3b047e6fadb9fa395e5851f9bfc3c5f63d190f17e5beb5712:eyJzZWxlY3RlZExpbmVDb3VudCI6MjA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3YWZhNDUyYzI5NjI4MjAwMDMxN2M2N2E5OGNmZjA0Y2Y4YTFhYjc1OTZjZGY5NGQ2MThjMGRjOTAzOWVjNzc5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkMTZiZDFkYWVmOTkwYTk1NmM5MTU2M2FlMTJjMTNkMTczMDcwMTc3ZmE2ODQxN2RiNmI0MTg3Zjc1NzE0ZDRkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4Mjk5NzFiMTMyNTk4OWNlMjE4NWU0YTc0NGFmYmI0NTEyODJjNTQxNTY1MWM5YmJiZjM3MDBjNDlhNGQyNDEwIn0"
+          "resource": "repo://dispatcher/context_builder.py#L16-L183",
+          "version": "repo-lines-v1:sha256:2364e26b2f6485450af024e02b656b2c02ffae80edb6a9f3b9b5cf23ce9d074d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTY4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3YWZhNDUyYzI5NjI4MjAwMDMxN2M2N2E5OGNmZjA0Y2Y4YTFhYjc1OTZjZGY5NGQ2MThjMGRjOTAzOWVjNzc5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMzZiMGQ4M2IyMjFjYWMzZjdjNmVlZTIxMzc4ZTkzYTU3NWMzNTFlZWJiODZhZGRhMzc0YTY5NTllOGNkYjIwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkMTZiZDFkYWVmOTkwYTk1NmM5MTU2M2FlMTJjMTNkMTczMDcwMTc3ZmE2ODQxN2RiNmI0MTg3Zjc1NzE0ZDRkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyOTgzMWM1MGJlM2ZkNWVkYjEwMGRlYzRiNDdiMTIyN2VlMWYxZjY1ZWEyNDAxOTQyNmMxODFkNzE5Y2QzZDQ1In0"
         },
         {
-          "resource": "repo://dispatcher/worker_spawner.py#L751-L847",
-          "version": "repo-lines-v1:sha256:266c872dbf017f8d03845d62bcd4ca5470bbbe04f8e8716ad687fbaa4440a767:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4OTFjMjA1YjI3NDllMTQ1ZjdjZTc4ZjEyN2EyNmQxYjJmZDk3NmZlZTBlZDYwMjZlODc5ZGFlOTUzYTAzYjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjMjliZjEwZGI1NzAyYjViZGZlYTAwODM1NWIyZGNjZDNlZDJiZmRiOGI2MTg5YmZmNjAyZDk1YWYyYmEyODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNzlmODFlYjdlMDM4YTY0MWJjMDEzOTRiZWZlNGMxMThiNmM4ZjQyZGIzMTUyOGY0YjNmZjVmZGY2MDQwZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhNzJkNTI2ZTQzNTY5OTZlNDIxYmRjOTI3NWUyMjc1YzA5OTRkMTI0MjdmNDk3NTE2N2YyNmEyMDM1ZmIzNzgifQ"
+          "resource": "repo://dispatcher/worker_spawner.py#L787-L862",
+          "version": "repo-lines-v1:sha256:30fd950ec597e3b8068c8ae1a1a72704af741628f47a22fe8183473a20a18886:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmN2MyNTNhYjhhYTkwNmI3MzFkNTY4ZjdlOTY2MmFjYWQxYTEwNDlhZTZjZjAwNmIzZWE1ZWU5NWRlZjY4ZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2Yzk4ZDk5NjdiNDA2YjM1Zjk2NTU3NWZmNjVkM2VkYTJkZmEyNWU3ODNmMWU0ZmZlZDU5NzQ2YjlkYzFiMWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA2Y2ZkNWY0OGEyOTk2OTNjOTI4ODEzZTFjYWE0YmViMGU0MTEyZmZhYWI5NjllOTFkNzYxMDFjN2YwZDEyYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -244,11 +244,11 @@
     },
     {
       "id": "claim_8db922c8c32840b8b0b37d18cede4602",
-      "statement": "Self-healing autonomous recovery: when a non-orchestrator worker exhausts the worker_failure_retries budget (or its process vanishes), the reaper routes the task to todo with triage_phase='recovery' for exactly one diagnostic attempt by zf-orchestrator (gated on orchestrator_recovery_count < 1); a second exhaustion, or any exhaustion of the orchestrator itself, parks the task in blocked with blocked_reason_type='stuck' and permanently_blocked for a human.",
+      "statement": "Self-healing autonomous recovery: when a non-orchestrator worker exhausts the worker_failure_retries budget (or its process vanishes), the reaper routes the task to todo with triage_phase='recovery' for exactly one diagnostic attempt by zf-orchestrator (gated on orchestrator_recovery_count < 1); a second exhaustion, or any exhaustion of the orchestrator itself, parks the task in blocked with blocked_reason_type='stuck' and permanently_blocked for a human. The recover endpoint resets failure counters including review_cap_reached, review_round, and commit_review_count.",
       "evidence": [
         {
-          "resource": "repo://dashboard/routes/tasks.py#L1678-L1771",
-          "version": "repo-lines-v1:sha256:556bfdd055f62639ae004b76b5d26a461dafef2ab3d6fe5990a38d84d3a9ccf2:eyJzZWxlY3RlZExpbmVDb3VudCI6OTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjM2JmMmVhMDY0NTdmYzgxYzllYTllOWFlNTlkNGVmMTc1NzVkZTJkMWE2YjkzZmUzZWEyN2ZiNjUyOTNmYTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4ZGRhM2Y1YWQyYjJlNTk3YzljNDZiMjIzNDkwYjQxMmY2ZWRhMzhiZGZmZTM4ZjBiYTM1MmE5ODZmZDY2NDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMifQ"
+          "resource": "repo://dashboard/routes/tasks.py#L1678-L1775",
+          "version": "repo-lines-v1:sha256:4f81e18cae2b5107fbc34598029b590a1f551d506a7092ad549b30d9ab15b1d2:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjM2JmMmVhMDY0NTdmYzgxYzllYTllOWFlNTlkNGVmMTc1NzVkZTJkMWE2YjkzZmUzZWEyN2ZiNjUyOTNmYTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0M2QxMWFkZmQ4ZDVkMjlkNzNhYTZlMDdmZjJhNDlkYWVhZGQ3YWU0ZTM3NTU0NGJjNzg0NmFjODVhMWYyNzkifQ"
         },
         {
           "resource": "repo://dispatcher/reaper.py#L380-L545",
@@ -272,15 +272,23 @@
     },
     {
       "id": "claim_c6d8e6794b1448b8a3c0dacdcc6e035e",
-      "statement": "The packaging phase runs a zero-token deterministic anti-slop gate (run_deterministic_slop_gate in dispatcher/slop_gate.py) between the precommit check and commit; it blocks leftover debuggers, placeholder TODO/FIXME comments, and skipped tests, and enforces an optional ZEROFACTORY_MAX_DIFF_LINES net-line budget. Failures route back through _handle_precommit_failure, and build_diff_hygiene_scorecard's markdown block is pre-digested into the zf-reviewer prompt.",
+      "statement": "The packaging phase runs a zero-token deterministic anti-slop gate (run_deterministic_slop_gate in dispatcher/slop_gate.py, wired into _package_and_open_pr after the precommit check and before commit) that errors on leftover debuggers, placeholder TODO/FIXME/XXX/HACK comments, skipped tests, assertion-free newly added test functions, production code adding more than 20 net lines without any test lines (DEFAULT_UNTESTED_PROD_LINE_THRESHOLD, overridable per task via skip_untested_check metadata or the ZEROFACTORY_SKIP_UNTESTED_CHECK env var), and modifications of files named in the task spec's Do Not Touch / Non-Goals section; the net-line budget (diff_budget_exceeded) defaults to 800 lines (DEFAULT_MAX_DIFF_LINES) and is overridden by ZEROFACTORY_MAX_DIFF_LINES (<=0 disables). The gate is invoked with the resolved board target branch and the task's spec/description text so spec boundaries apply even to paths excluded from the diff. Failures route back through _handle_precommit_failure, and build_diff_hygiene_scorecard's markdown block is pre-digested into the zf-reviewer prompt.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/scheduler.py#L1920-L1940",
-          "version": "repo-lines-v1:sha256:2a1b60a58828a239dbcabd908cb07d386766868e09c670a353f7cd92f6e3ec99:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5MTkwYWQ5NjQ2OTQ1YTM5NjI4M2ZiZTQyYmViZmViNjEyYWEzYTAwOWExZmI0YzhmMDg5M2U4OWUxNWM3MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhOTdkMmVhMTAxNmQ2YmI0ODdhOWVhMWNlMWNkYTNmMDA5NmVjOTI3MThjZDczZjhmY2M5ZTBjZjA4YWIzMzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyNTVjMzNkMTRmODVjN2VlMmUwZTg5ZWU1MThlZTA5ZTQ2OGMyZTgxMWFhYjgwNTQ2NWRmODNmNTg2M2RhNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxNjhmOWJlNGUyNmNhM2I3ZDliZjQ1ZGViZjcwOGVmYTFiZjhkNjBlMjM4YjE0Mzk3MDgzM2VlYmRlMGVkOTAifQ"
+          "resource": "repo://dispatcher/scheduler.py#L1962-L1993",
+          "version": "repo-lines-v1:sha256:6d24107b2ddda5a7a229b47cd6ec6381798a268f797128833b2c14967c653db8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5MTkwYWQ5NjQ2OTQ1YTM5NjI4M2ZiZTQyYmViZmViNjEyYWEzYTAwOWExZmI0YzhmMDg5M2U4OWUxNWM3MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMTFlYTExZWYwMWUyZTk2OWU1ZjRjNjI3MmYzZGI2NmRlNWY4ZTU0ZDFjYWFhNGFmZWYyZDIwYmJhMmVmMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlNGQwNWU1ZmU0NzdiMGZlYWNlZmJkNTIwMTAxMTNhZTA5M2U5ZjZiZjlkMzE1NjBjODhlNzBlNTQ2YzViNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxN2E5NWM3NjRjOGJhYTA2NWNiYzE5MWM2MDMwMWJjZDI0NGU5NjFmODhhZDUwMjM0NmRmZTlhNTQxZWNlZTQifQ"
         },
         {
-          "resource": "repo://dispatcher/slop_gate.py#L467-L502",
-          "version": "repo-lines-v1:sha256:07cbb609e3afbf64cd2f432cdf7756113093a1869ae6acc8a5bc168ce4e3a069:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmY2M0NmUwYmQ0ZWYzZWRmNjVjY2NjNTA5Mjc4ZDZkYWM5YTE3N2M1ZjBhZDE4MWVmZTA4ODNhNGI3ZjI1MjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNGMyMmY3OTFmMjMxOTY2ODk5ZmRlNTc3MDQ0OTY5YmE1ZDU3ZmNkYjcyZjkwOWI0NmZiY2QyMTEzMTM3NTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0OWQ5NTBlYWZiMDYxYzQxYjcyZjQ5ZDg1MzcyM2Q3ODQ2NTI2N2ZmNzA1NThlZTJlODlhMmI4Mjc4YmZkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlM2U4NzU2MTM5NjQzOGJjMjhjODM2ODljNmJlMWYzMDQ5YmI1ZWJiMDEwOTRkZjUwNmM0ZTRmZTcwNDM5ZjcifQ"
+          "resource": "repo://dispatcher/slop_gate.py#L111-L114",
+          "version": "repo-lines-v1:sha256:18ac8725abc4fb9e2308cf830e9553c284a060fc392ec4a522f2d032ec9510db:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODBkZTU2YzdmM2JlNmUxYjhlYzhmNzIzMDJkYzMwMzhmMGMzZDdmYWYwNWIwYzkyZjdjOGRiOTQ5ZDZhM2NmOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWFjNTE3ZDZhYmMyMWU2OGEyNTllNGZlY2Q4NmQ2YzhhMjZkZGE1ZWFlNWUwMWNkZGNkMTI3NjFhODIxNTZjMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzVkM2ZkNWRmYzA3N2JhMjY1NWQzNmI2ZTQ2YTM2OTc1NDJmOTQ0MjVmNjRhODk0NGMwZjkxMWVkMDM5MWJhZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmMxZjAyZmQ3ZWMxZDQ2MmMwY2I4MThiOTQ4ZmZlNGY3MTViMmMyYzQzMjYzMGMyMzJkZmUzNGQ0Mjc0M2ZhOSJ9"
+        },
+        {
+          "resource": "repo://dispatcher/slop_gate.py#L150-L209",
+          "version": "repo-lines-v1:sha256:02ba0a37da5331bb5722bdc9ec392aa4f36b344c19bbb636acbe172d9c320ce2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5YWY0MDA1ZWNhMDliZjcxMWVlMGE3ZTdkODRlZjZhMDUyMzdlZjg3MzllY2Y3NGVhZjIxNzcxZDkzOTFmOGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3YjRhNmI1ZmIwY2IxY2VlMzljZmVkN2NkMmFjYjRmYmEwZjg0Njk4YjY3YzZlMzU4OGFhMmU5YzBiNzVlYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiMjhmZDZjMTAxMjUxMWJlYWZlNTc2OWE0ZDlmOTMxNDM2NThjNjYzYjcxZDJmNTg1MTJkNmNiYjUzMWQxNjUifQ"
+        },
+        {
+          "resource": "repo://dispatcher/slop_gate.py#L634-L698",
+          "version": "repo-lines-v1:sha256:1a6e3316d4bb21cbb4b7ebb71f74560d45e0860cade7aac98ed642d88794ba98:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2YThlNjBkODI5OTk3MmY4NjU4YjFiNjJlMGI3OTdmMmI4NmJkMGYzNTM5NjAzZDA3ZTVkNzQzMDJhYmI1MDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1OWI5MWMxZWY2Njc3NjcxMmMzODc2OTI0YmE1NWVmNGZjMGIzMGI4NzQ1ZTI1OWQ5YzkwYTkzNTNlNTFkMzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYTljNDMxYzk4NTQyMGMxNzI4ZTExNjc5N2MyYTMzZjY0ZDk1YTg3MGZmNDVlYTI5YzU0YjU4NWFhNDRiY2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYjhlYWRhOThmNzczNjk1NmY1OTFlN2Y4ZTQyODlkOWQ0NTQ1ODMwZmVlMjM0OTJkY2EyNGQ2YzI5MzQwNzUifQ"
         }
       ]
     },
@@ -307,6 +315,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-20T15:20:57.003Z"
+    "at": "2026-11-22T16:47:58.699Z"
   }
 }
