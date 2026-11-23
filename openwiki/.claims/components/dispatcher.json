@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:27bbae437716177cf56ef29b573ffa90cbb6a868299761f534080ecf31c1449a",
+  "pageVersion": "sha256:606e2040a134b8884cedbf334c61662f48f6953cd2f19aaffeedf68090f860cb",
   "claims": [
     {
       "id": "claim_c2147ad6765547fc8b36019ed25959a4",
@@ -69,8 +69,8 @@
       "statement": "spawn_agent_worker launches the assigned specialist as a detached hermes -p <assignee> subprocess with stdin=DEVNULL and stderr=STDOUT merged into the worker log, pinning HERMES_HOME to the profile's home (spawn flags are --cli chat -q <prompt>, with --yolo --accept-hooks appended only when allow_unattended_approvals is enabled), then correlates the new session_id against the profile's state.db via resolve_profile_state_db. For zf-reviewer specifically, the target branch is resolved repo-alias-aware (board_repositories by board_slug+repo_alias, falling back to the board's first repository row) and the prompt carries a 'Review Round: Round X of Y' header plus the spec text and skip_untested_check flags into the pre-digested git context.",
       "evidence": [
         {
-          "resource": "repo://dispatcher/worker_spawner.py#L118-L862",
-          "version": "repo-lines-v1:sha256:a19acf8859ffd5244203b2fca97e9a1d3c76c593d868a079568702ea129237cc:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQ1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiNDViM2ZkMjgzZTdkZmI1ZTkyOGYyODcxMDVlMDRlNGJjYzRhNzNlMTZmNjgzYmRmOTlkYjg2MGQ1NTdiNzk5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1NmM5OGQ5OTY3YjQwNmIzNWY5NjU1NzVmZjY1ZDNlZGEyZGZhMjVlNzgzZjFlNGZmZWQ1OTc0NmI5ZGMxYjFjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0NTUwMzA0MjQzYTQ3ZDNiYjUwNDk2MjZhZDY5YjBkYjQyMDMyNmU4MDU1NGI5MjFlMmFlYzdkZDIwOTAwYTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://dispatcher/worker_spawner.py#L118-L856",
+          "version": "repo-lines-v1:sha256:4ca0cce051f16a1ea842f51e0e9dbfba07cb7ce24067cc76954cd06f28edddfc:eyJzZWxlY3RlZExpbmVDb3VudCI6NzM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiNDViM2ZkMjgzZTdkZmI1ZTkyOGYyODcxMDVlMDRlNGJjYzRhNzNlMTZmNjgzYmRmOTlkYjg2MGQ1NTdiNzk5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1NmM5OGQ5OTY3YjQwNmIzNWY5NjU1NzVmZjY1ZDNlZGEyZGZhMjVlNzgzZjFlNGZmZWQ1OTc0NmI5ZGMxYjFjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0NTUwMzA0MjQzYTQ3ZDNiYjUwNDk2MjZhZDY5YjBkYjQyMDMyNmU4MDU1NGI5MjFlMmFlYzdkZDIwOTAwYTUyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -261,6 +261,6 @@
   ],
   "verification": {
     "by": "openwiki/0.6.0",
-    "at": "2026-11-22T15:24:22.005Z"
+    "at": "2026-11-23T15:15:28.452Z"
   }
 }

@@ -26,10 +26,10 @@ sources:
     resource: repo://dispatcher/worker_spawner.py
   - id: openwiki-source-bd2c9dd479aa89010adee0f5
     resource: repo://dispatcher/worktree.py
-generated: { by: "hermes", at: "2026-11-22T15:24:22.005Z" }
+generated: { by: "hermes", at: "2026-11-23T15:15:28.452Z" }
 verified:
   - by: openwiki/0.6.0
-    at: 2026-11-22T15:24:22.005Z
+    at: 2026-11-23T15:15:28.452Z
 ---
 
 # Dispatch Engine
@@ -86,7 +86,7 @@ Within one cycle it:
    directly (`repo://dispatcher/worktree.py#L230-L645`).
 4. **Spawns the worker** — `spawn_agent_worker` launches the assigned specialist
    as an isolated `hermes -p <assignee>` subprocess
-   (`repo://dispatcher/worker_spawner.py#L118-L851`).
+   (`repo://dispatcher/worker_spawner.py#L118-L856`).
 5. **Packages** — on worker completion the task stays `running` with
    `awaiting_pr` set; `_package_and_open_pr` runs the deterministic precommit
    gate, then the zero-token anti-slop gate, commits, merges against latest main,
@@ -159,20 +159,20 @@ and launches a **detached** subprocess with `stdin=DEVNULL`,
 `start_new_session=True`,
 and `stderr=STDOUT` merged into the worker log, pinning `HERMES_HOME` to the
 profile's home so the worker is fully isolated
-(`repo://dispatcher/worker_spawner.py#L793-L804`). It then correlates the new
+(`repo://dispatcher/worker_spawner.py#L787-L795`). It then correlates the new
 `session_id` against the profile's `state.db` via `resolve_profile_state_db`
 (shared from `paths.py`) so the dashboard and dispatcher agree on which session
-a task owns (`repo://dispatcher/worker_spawner.py#L805-L855`). The spawn
+a task owns (`repo://dispatcher/worker_spawner.py#L809-L812`). The spawn
 command is `--cli chat -q <prompt>`; `--yolo --accept-hooks` are appended only
 when the `allow_unattended_approvals` setting is enabled
-(`repo://dispatcher/worker_spawner.py#L764-L767`).
+(`repo://dispatcher/worker_spawner.py#L759-L761`).
 
 For `zf-reviewer` specifically, the spawn resolves the target branch
 repo-alias-aware (`board_repositories` by `(board_slug, repo_alias)`, falling
 back to the board's first repository row) and injects a
 `Review Round: Round X of Y` header into the prompt so the reviewer knows its
 position in the review budget before escalating
-(`repo://dispatcher/worker_spawner.py#L238-L281`).
+(`repo://dispatcher/worker_spawner.py#L238-L326`).
 
 Prompt context is **pre-digested in Python** before the agent wakes:
 `digest_reviewer_git_context` pre-computes the git log, diffstat, and a bounded
@@ -190,8 +190,8 @@ submission via `gh pr review --comment` — not `--approve` /
 `--request-changes`, which GitHub blocks for the author's own token — with
 `[AI:zf-reviewer]`-tagged comments (the attribution example interpolates the
 live round number); the builder prompt likewise tags its GitHub output
-`[AI:zf-builder]` (`repo://dispatcher/worker_spawner.py#L322-L323`,
-`repo://dispatcher/worker_spawner.py#L713`).
+`[AI:zf-builder]` (`repo://dispatcher/worker_spawner.py#L316-L317`,
+`repo://dispatcher/worker_spawner.py#L707`).
 
 ## Deterministic precommit + self-healing retry
 

@@ -45,7 +45,7 @@ sources:
     resource: repo://plugin.yaml
   - id: openwiki-source-57b14ecc6ef51ae6212b15f0
     resource: repo://settings.py
-generated: { by: "hermes", at: "2026-11-22T16:47:58.699Z" }
+generated: { by: "hermes", at: "2026-11-23T15:15:28.452Z" }
 ---
 
 # Zero Factory Architecture
@@ -152,7 +152,7 @@ subprocess with the worker's `HERMES_HOME` pinned to the profile's home
 directory (`--yolo --accept-hooks` are appended only when the
 `allow_unattended_approvals` setting is enabled), then correlates the new
 `session_id` against the profile's `state.db`
-(`repo://dispatcher/worker_spawner.py#L787-L862`). The prompt is pre-digested in Python before the agent wakes —
+(`repo://dispatcher/worker_spawner.py#L787-L856`). The prompt is pre-digested in Python before the agent wakes —
 `digest_reviewer_git_context` pre-computes the git log, diffstat, and a bounded
 diff (default 400 lines / 24000 chars via `max_diff_lines` / `max_diff_chars`)
 so the reviewer does not burn turns on exploratory `git` calls; its
@@ -263,7 +263,7 @@ dispatcher runs the deterministic pipeline (precommit → anti-slop gate →
 commit → push → PR → route to reviewer) via `_package_and_open_pr`
 (`repo://dispatcher/scheduler.py#L1784`). After the precommit check, a
 zero-token deterministic **anti-slop gate** (`run_deterministic_slop_gate` in
-`repo://dispatcher/slop_gate.py#L736`, wired in at
+`repo://dispatcher/slop_gate.py#L733`, wired in at
 `repo://dispatcher/scheduler.py#L1962-L1993`) blocks leftover debuggers,
 placeholder `TODO`/`FIXME`/`XXX`/`HACK` comments, and skipped tests; it also
 raises an error on assertion-free newly added test functions, on production
@@ -272,15 +272,15 @@ without any test lines (overridable per task via the `skip_untested_check`
 metadata flag or the `ZEROFACTORY_SKIP_UNTESTED_CHECK` env var), and on any
 modification of files named in the task spec's "Do Not Touch" / "Non-Goals"
 section (`extract_do_not_touch_patterns` / `_matches_do_not_touch`,
-`repo://dispatcher/slop_gate.py#L150-L209`); the net-line budget
+`repo://dispatcher/slop_gate.py#L147-L206`); the net-line budget
 (`diff_budget_exceeded`) now defaults to 800 lines
-(`DEFAULT_MAX_DIFF_LINES`, `repo://dispatcher/slop_gate.py#L111-L114`) and is
+(`DEFAULT_MAX_DIFF_LINES`, `repo://dispatcher/slop_gate.py#L108-L111`) and is
 overridden by `ZEROFACTORY_MAX_DIFF_LINES` (≤ 0 disables it). The gate is
 invoked with the resolved board target branch plus the task's spec/description
 text so spec boundaries are enforced even on paths excluded from the diff. A
 failure routes back through `_handle_precommit_failure`, and the gate's
 `build_diff_hygiene_scorecard`
-(`repo://dispatcher/slop_gate.py#L778`) is pre-digested into the `zf-reviewer`
+(`repo://dispatcher/slop_gate.py#L775`) is pre-digested into the `zf-reviewer`
 prompt. Only a terminal event (a human closing the task, a merged PR, an
 auto-merge, or a PR archive via `close_pr`) clears the flag and finalizes the
 task through `_finalize_terminal_done`, which never commits, pushes, or
