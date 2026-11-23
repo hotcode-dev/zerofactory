@@ -32,7 +32,7 @@ sources:
     resource: repo://tests/conftest.py
   - id: openwiki-source-b4194cdb1aee8e18787b21d6
     resource: repo://tests/unit/dashboard/test_dashboard_css.py
-generated: { by: "hermes", at: "2026-11-22T15:24:22.005Z" }
+generated: { by: "hermes", at: "2026-11-23T15:15:28.452Z" }
 verified:
   - by: openwiki/0.6.0
     at: 2026-11-22T15:24:22.005Z
@@ -169,7 +169,7 @@ already carrying a role-tagged marker is returned unchanged, making re-writes
 idempotent and never double-prefix. The reviewer submits verdicts
 as `gh pr review --comment` (not `--approve` / `--request-changes`, which GitHub
 blocks for the PR author's own token) with `[AI:zf-reviewer]`-tagged bodies
-(`repo://dispatcher/worker_spawner.py#L322-L323` — the attribution example now
+(`repo://dispatcher/worker_spawner.py#L316-L317` — the attribution example now
 interpolates the live review round number). The reviewer playbook
 (`repo://skills/zf-reviewer-ponytail/SKILL.md#L68-L71`) tightens this: post
 the verdict with `gh pr review <n> --comment --body-file <file>` — never
