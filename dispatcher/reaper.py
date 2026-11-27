@@ -325,23 +325,40 @@ def reap_active_workers(cursor: sqlite3.Cursor, now: int) -> int:
                 )
             else:
                 cursor.execute(
-                    "SELECT assignee, status, title FROM tasks WHERE id = ?",
+                    "SELECT assignee, status, title, metadata FROM tasks WHERE id = ?",
                     (task_id,),
                 )
                 t_check = cursor.fetchone()
                 curr_stat = t_check["status"] if t_check else row_status
-                if curr_stat in ("todo", "done"):
-                    meta = _d()._mark_task_session_ended(meta, now, "finished")
+                curr_meta = dict(meta)
+                if t_check and t_check["metadata"]:
+                    try:
+                        curr_meta = json.loads(t_check["metadata"])
+                    except Exception:
+                        pass
+                already_handed_off = curr_stat in (
+                    "todo",
+                    "done",
+                    "blocked",
+                    "triage",
+                ) or (curr_stat == "running" and bool(curr_meta.get("awaiting_pr")))
+                if already_handed_off:
+                    curr_meta = _d()._mark_task_session_ended(
+                        curr_meta, now, "finished"
+                    )
+                    curr_meta.pop("worker_pid", None)
+                    curr_meta.pop("session_id", None)
+                    curr_meta.pop("started_at", None)
                     cursor.execute(
                         "UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?",
-                        (json.dumps(meta), now, task_id),
+                        (json.dumps(curr_meta), now, task_id),
                     )
                     _log.info(
-                        "Worker for task %s exited with code %d but task is already in %s; keeping %s",
+                        "Worker for task %s exited with code %d after handoff (status=%s, awaiting_pr=%s); preserving state",
                         task_id,
                         retcode,
                         curr_stat,
-                        curr_stat,
+                        bool(curr_meta.get("awaiting_pr")),
                     )
                     reaped += 1
                     continue
