@@ -107,10 +107,11 @@ def transition_task(
         and worker_pid != current_worker_pid
     )
 
+    is_agent_actor = actor.startswith("zf-")
     if is_exiting_running or is_switching_worker_in_running:
-        if current_worker_pid:
+        if current_worker_pid and not (is_exiting_running and is_agent_actor):
             terminate_task_worker(task_id, current_worker_pid)
-        else:
+        elif not is_agent_actor:
             cleanup_process_artifacts(task_id)
     elif target_status != "running":
         cleanup_process_artifacts(task_id)

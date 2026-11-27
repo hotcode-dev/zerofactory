@@ -709,6 +709,8 @@ def register(ctx: Any):
         )
         p_report_bug.add_argument(
             "--body",
+            "--root-cause",
+            dest="body",
             default=None,
             help="Detailed defect description, logs, or error trace",
         )

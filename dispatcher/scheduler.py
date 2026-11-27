@@ -2337,12 +2337,18 @@ def _package_and_open_pr(
         steps.end("ok", f"routed to reviewer: {pr_url}")
         return True
     except subprocess.CalledProcessError as e:
-        raw_err = e.stderr or b""
-        if isinstance(raw_err, bytes):
-            err_msg = raw_err.decode("utf-8", errors="replace").strip()
-        else:
-            err_msg = str(raw_err).strip()
-        err_msg = err_msg or str(e)
+        parts: list[str] = []
+        for raw in (e.stderr, e.output):
+            if not raw:
+                continue
+            text = (
+                raw.decode("utf-8", errors="replace").strip()
+                if isinstance(raw, bytes)
+                else str(raw).strip()
+            )
+            if text and text not in parts:
+                parts.append(text)
+        err_msg = "\n".join(parts) or str(e)
         if "No commits between" in err_msg:
             steps.end("skip", "no commits between branch and main")
             _log.info(

@@ -384,7 +384,7 @@ def spawn_agent_worker(
                 f'   hermes zerofactory recover {task_id} --guidance "<exact root cause and fix instructions>"\n'
                 f"2. ZERO FACTORY INTERNAL PLATFORM BUG:\n"
                 f"   If the failure was caused by a defect in Zero Factory itself (dispatcher, worktree, CLI, state machine):\n"
-                f'   hermes zerofactory report-bug --task {task_id} --title "<bug summary>" --root-cause "<diagnosis>"\n'
+                f'   hermes zerofactory report-bug --task {task_id} --title "<bug summary>" --body "<diagnosis>"\n'
                 f"3. EXTERNAL / INFRASTRUCTURE BLOCKER REQUIRING HUMAN:\n"
                 f"   If the task requires credentials, external infrastructure, or human intervention:\n"
                 f'   hermes zerofactory block {task_id} --reason "<clear explanation for the human operator>"\n'
@@ -653,7 +653,15 @@ def spawn_agent_worker(
                             if "[github review" in r["body"].lower()
                             or "[github pr" in r["body"].lower()
                             or r["author"] == "zf-reviewer"
-                            or r["author"] != assignee
+                            or (
+                                r["author"] != assignee
+                                and not (
+                                    r["author"] == "dispatcher"
+                                    and r["body"].startswith(
+                                        ("Retrying:", "Blocked:", "Recovered")
+                                    )
+                                )
+                            )
                         ]
                         if _rev_rows:
                             _cmt_blocks = []
@@ -766,6 +774,7 @@ def spawn_agent_worker(
 
     env = build_minimal_child_env(
         {
+            "HERMES_KANBAN_TASK": task_id,
             "HERMES_KANBAN_STOP_NUDGE": "0",
             "HERMES_KANBAN_WORKSPACE": str(workdir),
             "TERMINAL_CWD": str(workdir),
